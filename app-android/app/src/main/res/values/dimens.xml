@@ -1,0 +1,13 @@
+<resources>
+    <!--
+      시니어 대상 기본값. sp는 시스템 글꼴 크기 설정을 따라간다(코드에서 px 계산 금지).
+      터치 대상은 Android 권장 48dp보다 크게 잡는다.
+    -->
+    <dimen name="text_title">26sp</dimen>
+    <dimen name="text_body">20sp</dimen>
+    <dimen name="text_button">20sp</dimen>
+
+    <dimen name="touch_target_min">56dp</dimen>
+    <dimen name="spacing">24dp</dimen>
+    <dimen name="spacing_small">12dp</dimen>
+</resources>

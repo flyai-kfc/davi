@@ -1,0 +1,25 @@
+# PoC codebase
+reference/
+
+# Ignore environment variables and node modules
+.env
+.env.*
+node_modules/
+
+# Python (server/, eval/)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+eval/runs/
+
+# Android (app-android/)
+*.iml
+.gradle/
+local.properties
+app-android/build/
+app-android/**/build/
+.idea/
+*.keystore
+*.jks

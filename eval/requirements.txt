@@ -1,0 +1,7 @@
+# eval 하니스 의존성 (Python 3.12).  py -3.12 -m pip install -r requirements.txt
+# 서버 추론 코드를 직접 import하므로 서버 런타임 의존성도 필요하다.
+-r ../server/requirements.txt
+
+# 멀티모델 A/B (PoC2 이식). litellm은 Python 3.11+ 필요(HANDOFF §10).
+litellm>=1.91
+pytest>=8.3

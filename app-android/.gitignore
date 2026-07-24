@@ -1,0 +1,16 @@
+# Android / Gradle 표준
+*.iml
+.gradle/
+build/
+/local.properties
+.idea/
+.cxx/
+*.keystore
+*.jks
+
+# Kotlin 컴파일러 세션 아티팩트 (Android Studio 빌드가 남김)
+.kotlin/
+
+# 캡처/덤프(디버깅 산출물) — 픽스처는 eval/fixtures에 익명화해 둔다
+/captures/
+*.uix

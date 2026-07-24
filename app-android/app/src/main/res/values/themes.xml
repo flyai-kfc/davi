@@ -1,0 +1,4 @@
+<resources>
+    <!-- Material3 DayNight. 시니어 대상이라 대비·글자 크기는 이후 별도 튜닝(SPEC 온보딩 UX). -->
+    <style name="Theme.Davi" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>

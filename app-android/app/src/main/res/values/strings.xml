@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">다비 도우미</string>
+    <string name="accessibility_service_description">화면을 읽어 다음에 무엇을 누르면 되는지 화면 위에 표시해 드립니다. 화면 내용은 개인정보를 가린 뒤에만 사용됩니다.</string>
+
+    <!-- 온보딩 (두 모드: 가족 대신 설정 / 시니어 본인) -->
+    <string name="onboarding_title">다비 도우미 설정</string>
+    <string name="onboarding_body">시작하려면 두 가지 권한이 필요합니다.\n1) 접근성 — 화면을 읽어 안내하기 위함\n2) 다른 앱 위에 표시 — 안내를 화면 위에 띄우기 위함</string>
+    <string name="btn_open_accessibility">접근성 설정 열기</string>
+    <string name="btn_open_overlay">다른 앱 위에 표시 허용</string>
+    <string name="mode_family">가족이 대신 설정</string>
+    <string name="mode_self">직접 설정</string>
+</resources>

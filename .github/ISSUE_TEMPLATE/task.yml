@@ -1,0 +1,48 @@
+name: 작업
+description: 새로 만들 것 / 고칠 것
+labels: [task]
+body:
+  - type: dropdown
+    id: stack
+    attributes:
+      label: 범위
+      options:
+        - 앱 (app-android)
+        - 서버 (server)
+        - 평가 하니스 (eval)
+        - 문서 / 저장소 설정
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 무엇을
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 왜 필요한가
+      description: |
+        SPEC.md나 HANDOFF.md에 근거가 있으면 절 번호를 적어 주세요.
+        (예: SPEC §5-4 가드레일 단일 결정 지점, HANDOFF §3-7 propertyOrdering)
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 무엇이 되면 이 이슈를 닫을 수 있나요.
+      placeholder: |
+        - [ ] ...
+        - [ ] 서버면 pytest 통과 / 앱이면 실기기에서 확인
+
+  - type: checkboxes
+    id: scope_check
+    attributes:
+      label: 범위 확인
+      options:
+        - label: 이번 사이클(내부 도그푸딩) 목표에 들어간다 — SPEC §3의 비목표가 아니다

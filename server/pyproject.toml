@@ -1,0 +1,15 @@
+# 의존성은 requirements*.txt로 관리한다(pip 방식). 이 파일은 도구 설정만 담는다.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+# E,F=기본, I=import 정렬, UP=최신 문법, B=버그유발 패턴, SIM=단순화
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"

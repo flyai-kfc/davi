@@ -1,0 +1,23 @@
+# 버전 카탈로그. 모든 의존성·플러그인 버전을 한 곳에서 관리한다.
+# 아래는 시작 버전이다. Android Studio가 최신 AGP/Gradle 업그레이드를 제안하면 따라도 된다.
+
+[versions]
+agp = "8.13.2"
+kotlin = "2.1.0"
+coreKtx = "1.15.0"
+appcompat = "1.7.0"
+material = "1.12.0"
+okhttp = "4.12.0"
+serializationJson = "1.7.3"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

@@ -1,0 +1,61 @@
+name: 버그 리포트
+description: 동작이 기대와 다를 때
+labels: [bug]
+body:
+  - type: dropdown
+    id: stack
+    attributes:
+      label: 어디서 발생했나
+      options:
+        - 앱 (app-android)
+        - 서버 (server)
+        - 평가 하니스 (eval)
+        - 모르겠음
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 무슨 일이 일어났나
+      description: 기대한 동작과 실제 동작을 같이 적어 주세요.
+      placeholder: |
+        기대: '카카오톡' 아이콘에 강조가 뜬다
+        실제: 강조가 시계 위에 뜬다
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 재현 방법
+      placeholder: |
+        1. 홈 화면에서 시작
+        2. 목표 "카카오톡으로 메시지 보내기" 입력
+        3. 2번째 안내에서 발생
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 기기 / OS
+      description: 앱 이슈일 때만. 모델명과 One UI·Android 버전.
+      placeholder: SM-S918N / Android 16 (SDK 36) / One UI 8.5
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그
+      description: |
+        앱이면 `adb logcat -s GuideSvc` 발췌(재현 직전 `adb logcat -c`로 비우면 깨끗합니다).
+        서버면 uvicorn 출력. **개인정보가 보이면 가리고 붙여 주세요.**
+      render: text
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 확인
+      options:
+        - label: 붙여넣은 로그·캡처에 실제 개인정보(연락처 이름, 메시지 본문 등)가 없다
+          required: true

@@ -1,0 +1,16 @@
+# Python 표준 (루트 .gitignore가 대부분 덮지만, 폴더 단독으로도 안전하게)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 비밀값·로컬 설정
+.env
+.env.*
+!.env.example
+
+# 잠금/동결 산출물(원하면 커밋해도 됨 — 팀 합의 시 이 줄 제거)
+requirements.lock.txt

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+
+# 실행 산출물(JSON 결과·리포트). 픽스처는 커밋하되 runs는 아님.
+runs/
+report.html

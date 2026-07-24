@@ -1,0 +1,10 @@
+# 코드 소유자. PR이 열리면 해당 경로의 소유자가 리뷰어로 자동 지정된다.
+# 지금은 저장소 전체를 한 팀이 소유한다(팀 2~4명, 스택별로 쪼개면 담당자 부재 시 바로 막힘).
+# 스택별로 나눌 필요가 생기면 아래 주석을 참고해 확장한다.
+
+* @flyai-kfc/dev
+
+# 나중에 스택별로 나눌 때 예시:
+# /app-android/  @flyai-kfc/app
+# /server/       @flyai-kfc/backend
+# /eval/         @flyai-kfc/backend
