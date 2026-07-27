@@ -37,16 +37,19 @@ pytest
 | `app/reasoning.py` | 계획→실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/llm.py` | 스텁/Gemini 클라이언트. 스키마 400 폴백·에러 분류 자리. |
+| `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
 | `app/config.py` | 환경변수. 모델명·도그푸딩 기기 화이트리스트. |
 
 ## 지금 무엇이 진짜인가
 
 **동작하는 구현** (테스트로 덮인 것 포함)
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴. `tests/test_masking.py` 3건.
-- `app/schemas.py` — 계약 모델 전체. 단 **미확정 항목이 있다** → `CLAUDE.md` "API 계약 결정" 표.
+- `app/schemas.py` — 계약 모델 전체. C1~C8 반영 완료, `tests/test_contract.py`가 고정한다.
+- `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
+  `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태 매핑.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다.
-- `app/llm.py:StubLlmClient` — 규칙 기반 선택(첫 clickable 요소를 tap). **LLM 품질을 대변하지 않는다.**
+- `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
 - `app/config.py` — 환경변수 로딩. `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
