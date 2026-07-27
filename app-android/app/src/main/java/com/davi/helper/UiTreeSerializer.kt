@@ -117,7 +117,10 @@ object UiTreeSerializer {
             nodeId = "n${counter[0]}",
             // 줄바꿈·중복 공백을 한 칸으로 눌러 로그와 프롬프트를 읽을 수 있게 만든다
             // (실측: 키패드 라벨이 "6\n,ㄷ,ㅌ\n,M,N,O" 처럼 여러 줄로 나왔다).
-            label = label.replace(WHITESPACE, " ").trim().take(MAX_LABEL_CHARS),
+            // 정규화된 label을 외부 서버로 보내기 전에 여기서 반드시 1차 마스킹한다(SPEC §2).
+            // 길이 제한보다 먼저 마스킹해야 잘린 개인정보 조각이 정규식 매칭을 피하지 않는다.
+            label = PrivacyMasker.maskText(label.replace(WHITESPACE, " ").trim())
+                .take(MAX_LABEL_CHARS),
             role = roleOf(node),
             clickable = node.isClickable,
             bounds = listOf(r.left, r.top, r.right, r.bottom),
