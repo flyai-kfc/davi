@@ -37,6 +37,10 @@ jobs:
               - 'server/**'
               - 'eval/**'
               - '.github/workflows/ci.yml'
+              # 앱의 계약 파일이 바뀌어도 백엔드 잡을 돌린다.
+              # test_contract_drift.py 가 이 파일을 읽어 서버 enum과 대조하기 때문이다.
+              # 이게 없으면 앱만 고친 PR에서 드리프트 검사가 통째로 건너뛰어진다.
+              - 'app-android/app/src/main/java/com/davi/helper/Contract.kt'
 
   android:
     name: Android (assembleDebug + test)

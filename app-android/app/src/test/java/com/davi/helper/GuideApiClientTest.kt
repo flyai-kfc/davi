@@ -54,11 +54,32 @@ class GuideApiClientTest {
         assertFalse(body.contains("secret@example.com"))
     }
 
+    /**
+     * scroll은 서버가 "누를 게 없을 때" 실제로 돌려주는 액션이다.
+     * 앱 enum에 이 값이 없던 시절 이 응답이 오면 파싱이 통째로 터졌다(이슈 #17).
+     */
+    @Test
+    fun `parses a scroll action with direction`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목록 아래가 보인다","evidence":"더 넘길 수 있는 목록","action_type":"scroll","direction":"up","target_node_id":"n3","instruction":"화면을 쓸어서 더 내려 보세요."},"model":"stub","verified":false}""",
+            ),
+        )
+
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest())
+
+        assertTrue(result is NextStepResult.Success)
+        result as NextStepResult.Success
+        assertEquals(ActionType.SCROLL, result.response.action.actionType)
+        assertEquals(SwipeDirection.UP, result.response.action.direction)
+    }
+
+    /** kind 값은 서버 `ErrorKind`와 같아야 한다. 여기 쓰는 SERVER는 서버가 막혔을 때 주는 값이다. */
     @Test
     fun `parses server api errors by kind`() {
         server.enqueue(
             MockResponse().setResponseCode(502).setBody(
-                """{"kind":"UPSTREAM","message":"provider unavailable","request_id":"r1"}""",
+                """{"kind":"SERVER","message":"provider unavailable","request_id":"r1"}""",
             ),
         )
 
@@ -67,7 +88,7 @@ class GuideApiClientTest {
         assertTrue(result is NextStepResult.ApiFailure)
         result as NextStepResult.ApiFailure
         assertEquals(502, result.statusCode)
-        assertEquals(ApiErrorKind.UPSTREAM, result.error.kind)
+        assertEquals(ApiErrorKind.SERVER, result.error.kind)
     }
 
     @Test

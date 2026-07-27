@@ -1,4 +1,4 @@
-package com.davi.helper
+﻿package com.davi.helper
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -65,16 +65,24 @@ data class GuideAction(
     val instruction: String,
 )
 
+/**
+ * 서버 `ActionType`과 **값이 정확히 같아야 한다.**
+ *
+ * kotlinx.serialization은 모르는 enum 값을 만나면 예외를 던진다. `ignoreUnknownKeys`는 모르는
+ * **키**만 무시할 뿐 값은 막아주지 못하고, `action_type`은 기본값 없는 필수 필드라
+ * `coerceInputValues`로도 못 덮는다. 즉 한 글자만 어긋나도 그 액션이 오는 순간 안내가 끊긴다.
+ *
+ * 값의 근거는 `server/CLAUDE.md`의 "API 계약 결정" C6이다. 전역 동작(뒤로/홈)은 아직 이슈 #10에서
+ * 검토 중이므로 여기 없다. 추가하려면 **서버부터** 바꾸고 양쪽을 함께 움직인다.
+ * 어긋나면 `server/tests/test_contract_drift.py`가 CI에서 잡는다.
+ */
 @Serializable
 enum class ActionType {
     @SerialName("tap") TAP,
-    @SerialName("swipe") SWIPE,
-    @SerialName("back") BACK,
-    @SerialName("home") HOME,
-    @SerialName("open_app") OPEN_APP,
-    @SerialName("wait") WAIT,
+    @SerialName("scroll") SCROLL,
+    @SerialName("type") TYPE,
+    @SerialName("open_quick_settings") OPEN_QUICK_SETTINGS,
     @SerialName("done") DONE,
-    @SerialName("fail") FAIL,
 }
 
 @Serializable
@@ -93,12 +101,19 @@ data class ApiError(
     @SerialName("request_id") val requestId: String? = null,
 )
 
+/**
+ * 서버 `ErrorKind`와 **값이 정확히 같아야 한다**(위 [ActionType]과 같은 이유).
+ *
+ * 앱은 이 값을 보고 사용자 안내를 가른다 — "사용량 한도"와 "인터넷 불량"은 다르게 말해야 한다.
+ * `message`는 디버그용이므로 어르신께 그대로 보여주지 않는다(C8).
+ * 이름은 이전 PoC의 `LlmException(kind)` 계보를 그대로 따른다(HANDOFF §4).
+ */
 @Serializable
 enum class ApiErrorKind {
+    @SerialName("QUOTA") QUOTA,
     @SerialName("NETWORK") NETWORK,
-    @SerialName("TIMEOUT") TIMEOUT,
-    @SerialName("RATE_LIMIT") RATE_LIMIT,
-    @SerialName("UPSTREAM") UPSTREAM,
-    @SerialName("VALIDATION") VALIDATION,
-    @SerialName("UNEXPECTED") UNEXPECTED,
+    @SerialName("AUTH") AUTH,
+    @SerialName("SERVER") SERVER,
+    @SerialName("PARSE") PARSE,
+    @SerialName("BAD_REQUEST") BAD_REQUEST,
 }
