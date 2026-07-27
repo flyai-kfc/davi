@@ -31,13 +31,13 @@ class OverlayController(private val context: Context) {
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
 
-    fun highlight(bounds: Rect) {
+    fun showGuide(bounds: Rect?, instruction: String) {
         if (!canDraw()) {
             Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
             return
         }
         val target = view ?: createView() ?: return
-        target.setTarget(bounds)
+        target.setGuide(bounds, instruction)
     }
 
     fun clear() {

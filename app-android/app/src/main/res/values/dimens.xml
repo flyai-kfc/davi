@@ -6,8 +6,11 @@
     <dimen name="text_title">26sp</dimen>
     <dimen name="text_body">20sp</dimen>
     <dimen name="text_button">20sp</dimen>
+    <dimen name="text_overlay_instruction">22sp</dimen>
 
     <dimen name="touch_target_min">56dp</dimen>
     <dimen name="spacing">24dp</dimen>
     <dimen name="spacing_small">12dp</dimen>
+    <dimen name="overlay_instruction_padding">16dp</dimen>
+    <dimen name="overlay_instruction_margin">20dp</dimen>
 </resources>

@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 받은 안내를 그린다. 로그 태그는 GuideSvc로 통일한다(디버깅 1순위, CLAUDE.md).
  *
  * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 서버 호출·응답 로그(#4, #5, #8),
- * 서버가 고른 대상의 최소 오버레이 강조(#6).
+ * 서버가 고른 대상의 강조와 안내문, 도그푸딩 세션 시작·중지.
  * TODO: 스크롤 메타·페이지 dot, 정체 감지.
  */
 class GuideAccessibilityService : AccessibilityService() {
@@ -45,6 +45,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !isInteresting(event.eventType)) return
+        if (!GuideSessionStore.snapshot(this).isActive) {
+            overlay?.clear()
+            return
+        }
 
         // 접근성 이벤트는 초당 수십 번 온다. 디바운스하지 않으면 로그를 읽을 수 없다.
         val now = SystemClock.uptimeMillis()
@@ -65,10 +69,11 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         logScreen(result)
-        requestNextStep(result.screen)
+        requestNextStep(result.screen, GuideSessionStore.snapshot(this).goal)
     }
 
-    private fun requestNextStep(screen: Screen) {
+    private fun requestNextStep(screen: Screen, goal: String) {
+        if (goal.isBlank()) return
         if (!requestInFlight.compareAndSet(false, true)) return
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
@@ -80,7 +85,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 when (
                     val result = client.nextStep(
                         NextStepRequest(
-                            goal = GOAL,
+                            goal = goal,
                             screen = screen,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
@@ -94,17 +99,37 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "target=${action.targetNodeId ?: "-"} " +
                                 "instruction=${action.instruction}",
                         )
-                        mainHandler.post { highlightAction(screen, action) }
+                        mainHandler.post {
+                            // 중지한 뒤 도착한 응답은 다시 화면 위에 그리지 않는다.
+                            val session = GuideSessionStore.snapshot(this)
+                            if (!session.isActive || session.goal != goal) return@post
+                            if (action.actionType == ActionType.DONE) {
+                                GuideSessionStore.complete(this)
+                                overlay?.clear()
+                            } else {
+                                GuideSessionStore.updateStatus(this, GuideSessionStatus.GUIDING)
+                                highlightAction(screen, action)
+                            }
+                        }
                     }
 
-                    is NextStepResult.ApiFailure -> Log.w(
-                        TAG,
-                        "api_error kind=${result.error.kind.name} status=${result.statusCode}",
-                    )
+                    is NextStepResult.ApiFailure -> {
+                        Log.w(TAG, "api_error kind=${result.error.kind.name} status=${result.statusCode}")
+                        GuideSessionStore.updateStatus(this, GuideSessionStatus.SERVER_ERROR)
+                    }
 
-                    is NextStepResult.HttpFailure -> Log.w(TAG, "http_error status=${result.statusCode}")
-                    is NextStepResult.NetworkFailure -> Log.w(TAG, "network_error", result.exception)
-                    is NextStepResult.ParseFailure -> Log.w(TAG, "response_parse_error", result.exception)
+                    is NextStepResult.HttpFailure -> {
+                        Log.w(TAG, "http_error status=${result.statusCode}")
+                        GuideSessionStore.updateStatus(this, GuideSessionStatus.SERVER_ERROR)
+                    }
+                    is NextStepResult.NetworkFailure -> {
+                        Log.w(TAG, "network_error", result.exception)
+                        GuideSessionStore.updateStatus(this, GuideSessionStatus.NETWORK_ERROR)
+                    }
+                    is NextStepResult.ParseFailure -> {
+                        Log.w(TAG, "response_parse_error", result.exception)
+                        GuideSessionStore.updateStatus(this, GuideSessionStatus.SERVER_ERROR)
+                    }
                 }
             } finally {
                 requestInFlight.set(false)
@@ -112,18 +137,19 @@ class GuideAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** 서버가 지정한 `target_node_id`만 강조한다. 앱은 어떤 UI 동작도 수행하지 않는다. */
+    /** 서버 안내를 표시한다. 앱은 어떤 UI 동작도 수행하지 않는다. */
     private fun highlightAction(screen: Screen, action: GuideAction) {
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
         }
         val bounds = target?.bounds
-        if (target == null || bounds == null || bounds.size != 4) {
-            overlay?.clear()
-            return
+        val rect = if (bounds != null && bounds.size == 4) {
+            Rect(bounds[0], bounds[1], bounds[2], bounds[3])
+        } else {
+            null
         }
-        Log.i(TAG, "highlight ${target.nodeId} bounds=$bounds")
-        overlay?.highlight(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
+        if (target != null && rect != null) Log.i(TAG, "highlight ${target.nodeId} bounds=$bounds")
+        overlay?.showGuide(rect, action.instruction)
     }
 
     private fun logScreen(result: UiTreeSerializer.Result) {
@@ -172,6 +198,5 @@ class GuideAccessibilityService : AccessibilityService() {
         private const val DEBOUNCE_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
-        private const val GOAL = "카카오톡 열기"
     }
 }

@@ -73,7 +73,7 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 | 경로 | 역할 |
 |---|---|
 | `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림), MainActivity, 접근성 서비스 |
-| `.../MainActivity.kt` | 온보딩 골격(접근성·오버레이 권한 안내, 두 모드 자리) |
+| `.../MainActivity.kt` | 권한 상태 확인과 도그푸딩 안내 세션 시작·중지 |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
@@ -86,15 +86,16 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 
 **동작하는 구현**
 - Gradle 구성(버전 카탈로그, viewBinding, `BuildConfig.SERVER_URL` 주입), 매니페스트, 접근성 서비스 등록.
-- `MainActivity` — 온보딩 화면. 접근성 설정·오버레이 권한 화면으로 실제로 보낸다. XML + ViewBinding.
+- `MainActivity` — 접근성·오버레이 권한 상태를 실제로 다시 확인하고, 두 권한이 모두 켜진 뒤 목표를 입력해 안내 세션을 시작·중지한다. XML + ViewBinding.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
-- `GuideAccessibilityService` — 활성 화면 루트를 고르고 최소 화면 트리로 직렬화한 뒤, 백그라운드에서 `/v1/next-step`에 보낸다.
-- `GuideApiClient` — 서버의 `NextStepRequest`/`NextStepResponse` 계약을 직렬화·파싱한다. 성공 시 `action_type`, `target_node_id`, `instruction`을 로그로 남기고 서버가 지정한 대상만 오버레이로 강조한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 기록하며 앱을 종료하지 않는다.
+- `GuideAccessibilityService` — 활성 안내 세션일 때만 활성 화면 루트를 고르고 최소 화면 트리로 직렬화한 뒤, 사용자가 입력한 목표와 함께 백그라운드에서 `/v1/next-step`에 보낸다. 완료·서버 오류·네트워크 오류 상태를 화면에 반영한다.
+- `GuideApiClient` — 서버의 `NextStepRequest`/`NextStepResponse` 계약을 직렬화·파싱한다. 성공 시 `action_type`, `target_node_id`, `instruction`을 로그로 남기고 서버가 지정한 대상과 한 단계 안내문만 오버레이로 표시한다. 앱은 어떤 UI 동작도 수행하지 않는다.
 - `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다.
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **남은 작업**
-- 스크롤 메타·페이지 dot·정체 감지.
+- 스크롤 메타·페이지 dot·정체 감지(#22).
+- 가족/본인별 온보딩, 세션 지속·재개, 사용자 동의형 로그 수집, 실기기 접근성 검증.
 
 붙일 때 검증된 국소 구현은 `HANDOFF.md` §4 인덱스로 **해당 파일만** 참고한다(복사·이동 금지).
 

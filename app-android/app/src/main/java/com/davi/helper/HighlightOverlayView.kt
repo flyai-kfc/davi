@@ -22,6 +22,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     private val target = RectF()
     private var hasTarget = false
+    private var instruction = ""
 
     /** 이 뷰가 화면에서 실제로 어디에 놓였는지. 좌표 보정에 쓴다. */
     private val locationOnScreen = IntArray(2)
@@ -32,20 +33,36 @@ class HighlightOverlayView(context: Context) : View(context) {
         color = STROKE_COLOR
     }
 
-    fun setTarget(bounds: Rect) {
-        target.set(bounds)
-        hasTarget = true
+    private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = resources.getDimension(R.dimen.text_overlay_instruction)
+    }
+    private val instructionBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(235, 30, 30, 30)
+    }
+    private val instructionPadding = resources.getDimension(R.dimen.overlay_instruction_padding)
+    private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
+
+    fun setGuide(bounds: Rect?, instruction: String) {
+        if (bounds == null) {
+            hasTarget = false
+        } else {
+            target.set(bounds)
+            hasTarget = true
+        }
+        this.instruction = instruction.trim()
         invalidate()
     }
 
     fun clearTarget() {
         hasTarget = false
+        instruction = ""
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!hasTarget) return
+        if (!hasTarget && instruction.isBlank()) return
 
         // 화면 좌표 -> 캔버스 좌표 보정.
         //
@@ -65,15 +82,57 @@ class HighlightOverlayView(context: Context) : View(context) {
         val maxX = locationOnScreen[0] + width - half
         val maxY = locationOnScreen[1] + height - half
 
-        canvas.drawRoundRect(
-            (target.left - half).coerceAtLeast(minX),
-            (target.top - half).coerceAtLeast(minY),
-            (target.right + half).coerceAtMost(maxX),
-            (target.bottom + half).coerceAtMost(maxY),
-            CORNER_RADIUS_PX,
-            CORNER_RADIUS_PX,
-            strokePaint,
-        )
+        if (hasTarget) {
+            canvas.drawRoundRect(
+                (target.left - half).coerceAtLeast(minX),
+                (target.top - half).coerceAtLeast(minY),
+                (target.right + half).coerceAtMost(maxX),
+                (target.bottom + half).coerceAtMost(maxY),
+                CORNER_RADIUS_PX,
+                CORNER_RADIUS_PX,
+                strokePaint,
+            )
+        }
+        drawInstruction(canvas, minX, minY, maxX, maxY)
+    }
+
+    /** 한 단계 안내문만 상자에 그린다. 상자는 대상 위·아래 중 화면에 들어가는 쪽을 고른다. */
+    private fun drawInstruction(canvas: Canvas, minX: Float, minY: Float, maxX: Float, maxY: Float) {
+        if (instruction.isBlank()) return
+        val maxTextWidth = (maxX - minX - instructionPadding * 2).coerceAtLeast(1f)
+        val lines = wrapLines(instruction, maxTextWidth)
+        val lineHeight = instructionPaint.fontMetrics.run { bottom - top }
+        val boxHeight = lines.size * lineHeight + instructionPadding * 2
+        val preferredTop = if (hasTarget) target.top - instructionMargin - boxHeight else minY + instructionMargin
+        val belowTop = if (hasTarget) target.bottom + instructionMargin else preferredTop
+        val boxTop = when {
+            preferredTop >= minY -> preferredTop
+            belowTop + boxHeight <= maxY -> belowTop
+            else -> minY + instructionMargin
+        }
+        val box = RectF(minX + instructionPadding, boxTop, maxX - instructionPadding, boxTop + boxHeight)
+        canvas.drawRoundRect(box, CORNER_RADIUS_PX, CORNER_RADIUS_PX, instructionBackgroundPaint)
+        var baseline = box.top + instructionPadding - instructionPaint.fontMetrics.top
+        lines.forEach { line ->
+            canvas.drawText(line, box.left + instructionPadding, baseline, instructionPaint)
+            baseline += lineHeight
+        }
+    }
+
+    private fun wrapLines(text: String, maxWidth: Float): List<String> {
+        val lines = mutableListOf<String>()
+        var remaining = text
+        while (remaining.isNotEmpty()) {
+            val count = instructionPaint.breakText(remaining, true, maxWidth, null)
+            if (count >= remaining.length) {
+                lines += remaining
+                break
+            }
+            val breakAt = remaining.lastIndexOf(' ', count - 1).takeIf { it > 0 } ?: count
+            lines += remaining.substring(0, breakAt).trimEnd()
+            remaining = remaining.substring(breakAt).trimStart()
+        }
+        return lines
     }
 
     private companion object {
