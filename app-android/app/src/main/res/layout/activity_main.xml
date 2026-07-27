@@ -49,6 +49,54 @@
             android:text="@string/btn_open_overlay"
             android:textSize="@dimen/text_button" />
 
+        <TextView
+            android:id="@+id/goal_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing"
+            android:labelFor="@+id/goal_input"
+            android:text="@string/goal_label"
+            android:textSize="@dimen/text_body"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/goal_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:autofillHints=""
+            android:hint="@string/goal_hint"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:minHeight="@dimen/touch_target_min"
+            android:textSize="@dimen/text_body" />
+
+        <Button
+            android:id="@+id/btn_start"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:minHeight="@dimen/touch_target_min"
+            android:text="@string/btn_start"
+            android:textSize="@dimen/text_button" />
+
+        <Button
+            android:id="@+id/btn_stop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:minHeight="@dimen/touch_target_min"
+            android:text="@string/btn_stop"
+            android:textSize="@dimen/text_button" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/guide_hint"
+            android:textSize="@dimen/text_body" />
+
     </LinearLayout>
 
 </ScrollView>

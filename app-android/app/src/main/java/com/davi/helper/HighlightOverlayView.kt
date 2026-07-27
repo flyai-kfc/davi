@@ -9,10 +9,10 @@ import android.graphics.RectF
 import android.view.View
 
 /**
- * 강조할 영역에 테두리 하나를 그리는 뷰.
+ * 강조할 영역에 테두리를 하나 그리고, 서버가 준 안내문을 상자에 담아 함께 보여주는 뷰.
  *
- * 이번 이슈(#6)는 **사각형 하나**만 그린다. 강조 리플·방향 스와이프 애니메이션·안내 문구 배치는
- * 다음 작업이다(HANDOFF §4의 `HighlightOverlayView` / `SwipeGuideView` 참고).
+ * 강조 리플·방향 스와이프 애니메이션은 아직 없다(HANDOFF §4의 `HighlightOverlayView` /
+ * `SwipeGuideView` 참고). 안내문이 키보드를 가리는 문제(§3-13)도 다음 작업이다.
  *
  * 좌표는 **화면 좌표 그대로** 받는다. 오버레이 윈도우가 `FLAG_LAYOUT_IN_SCREEN`으로 전체 화면을
  * 차지하므로 접근성 `bounds`와 캔버스 좌표계가 일치한다. 이 플래그가 없으면 상태표시줄 높이만큼
@@ -22,6 +22,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     private val target = RectF()
     private var hasTarget = false
+    private var instruction = ""
 
     /** 이 뷰가 화면에서 실제로 어디에 놓였는지. 좌표 보정에 쓴다. */
     private val locationOnScreen = IntArray(2)
@@ -32,20 +33,34 @@ class HighlightOverlayView(context: Context) : View(context) {
         color = STROKE_COLOR
     }
 
-    fun setTarget(bounds: Rect) {
-        target.set(bounds)
-        hasTarget = true
+    // 크기는 res/values/dimens.xml에서 온다. 코드에서 px·밀도를 계산하지 않는다(app-android/CLAUDE.md).
+    private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = INSTRUCTION_TEXT_COLOR
+        textSize = resources.getDimension(R.dimen.text_overlay_instruction)
+    }
+    private val instructionBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = INSTRUCTION_BOX_COLOR
+    }
+    private val instructionPadding = resources.getDimension(R.dimen.overlay_instruction_padding)
+    private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
+
+    /** 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다. */
+    fun setGuide(bounds: Rect?, instruction: String) {
+        hasTarget = bounds != null
+        if (bounds != null) target.set(bounds)
+        this.instruction = instruction.trim()
         invalidate()
     }
 
     fun clearTarget() {
         hasTarget = false
+        instruction = ""
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!hasTarget) return
+        if (!hasTarget && instruction.isEmpty()) return
 
         // 화면 좌표 -> 캔버스 좌표 보정.
         //
@@ -65,15 +80,72 @@ class HighlightOverlayView(context: Context) : View(context) {
         val maxX = locationOnScreen[0] + width - half
         val maxY = locationOnScreen[1] + height - half
 
-        canvas.drawRoundRect(
-            (target.left - half).coerceAtLeast(minX),
-            (target.top - half).coerceAtLeast(minY),
-            (target.right + half).coerceAtMost(maxX),
-            (target.bottom + half).coerceAtMost(maxY),
-            CORNER_RADIUS_PX,
-            CORNER_RADIUS_PX,
-            strokePaint,
-        )
+        if (hasTarget) {
+            canvas.drawRoundRect(
+                (target.left - half).coerceAtLeast(minX),
+                (target.top - half).coerceAtLeast(minY),
+                (target.right + half).coerceAtMost(maxX),
+                (target.bottom + half).coerceAtMost(maxY),
+                CORNER_RADIUS_PX,
+                CORNER_RADIUS_PX,
+                strokePaint,
+            )
+        }
+        drawInstruction(canvas, minX, minY, maxX, maxY)
+    }
+
+    /**
+     * 안내문 상자. 대상을 가리지 않도록 위 → 아래 순으로 들어가는 자리를 고르고,
+     * 대상이 없거나 위아래 모두 안 들어가면 화면 아래에 붙인다.
+     */
+    private fun drawInstruction(canvas: Canvas, minX: Float, minY: Float, maxX: Float, maxY: Float) {
+        if (instruction.isEmpty()) return
+
+        val boxLeft = minX + instructionMargin
+        val boxRight = maxX - instructionMargin
+        // 줄바꿈 기준은 **상자 안쪽 폭**이다. 상자 폭 그대로 재면 글자가 상자 밖으로 삐져나온다.
+        val textWidth = (boxRight - boxLeft - instructionPadding * 2).coerceAtLeast(1f)
+        val lines = wrapLines(instruction, textWidth)
+        val lineHeight = instructionPaint.fontMetrics.run { bottom - top }
+        val boxHeight = lines.size * lineHeight + instructionPadding * 2
+
+        val above = target.top - instructionMargin - boxHeight
+        val below = target.bottom + instructionMargin
+        val boxTop = when {
+            hasTarget && above >= minY -> above
+            hasTarget && below + boxHeight <= maxY -> below
+            else -> (maxY - instructionMargin - boxHeight).coerceAtLeast(minY)
+        }
+
+        val box = RectF(boxLeft, boxTop, boxRight, boxTop + boxHeight)
+        canvas.drawRoundRect(box, CORNER_RADIUS_PX, CORNER_RADIUS_PX, instructionBoxPaint)
+
+        var baseline = box.top + instructionPadding - instructionPaint.fontMetrics.top
+        lines.forEach { line ->
+            canvas.drawText(line, box.left + instructionPadding, baseline, instructionPaint)
+            baseline += lineHeight
+        }
+    }
+
+    /** 안내문을 상자 안쪽 폭에 맞춰 자른다. 가능하면 띄어쓰기에서 끊는다. */
+    private fun wrapLines(text: String, maxWidth: Float): List<String> {
+        val lines = mutableListOf<String>()
+        var remaining = text
+        while (remaining.isNotEmpty()) {
+            val fits = instructionPaint.breakText(remaining, true, maxWidth, null)
+            if (fits >= remaining.length) {
+                lines += remaining
+                break
+            }
+            // 한 글자도 안 들어가는 폭이면 fits가 0이라 남은 글자가 줄지 않는다. onDraw 안에서
+            // 도는 루프라 그대로 두면 화면이 멈춘다. 최소 한 글자는 잘라낸다.
+            val hardBreak = fits.coerceAtLeast(1)
+            val spaceAt = remaining.lastIndexOf(' ', hardBreak - 1)
+            val breakAt = if (spaceAt > 0) spaceAt else hardBreak
+            lines += remaining.substring(0, breakAt).trimEnd()
+            remaining = remaining.substring(breakAt).trimStart()
+        }
+        return lines
     }
 
     private companion object {
@@ -81,5 +153,9 @@ class HighlightOverlayView(context: Context) : View(context) {
         const val STROKE_WIDTH_PX = 12f
         const val CORNER_RADIUS_PX = 24f
         val STROKE_COLOR = Color.parseColor("#FF3D00")
+
+        /** 어떤 앱 위에 떠도 읽히도록 어두운 상자 + 흰 글자. 대비는 실사용하며 다시 정한다. */
+        val INSTRUCTION_TEXT_COLOR = Color.WHITE
+        val INSTRUCTION_BOX_COLOR = Color.argb(235, 30, 30, 30)
     }
 }

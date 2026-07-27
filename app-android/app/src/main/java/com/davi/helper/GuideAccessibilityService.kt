@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 받은 안내를 그린다. 로그 태그는 GuideSvc로 통일한다(디버깅 1순위, CLAUDE.md).
  *
  * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 서버 호출·응답 로그(#4, #5, #8),
- * 서버가 고른 대상의 최소 오버레이 강조(#6).
- * TODO: 스크롤 메타·페이지 dot, 정체 감지.
+ * 스크롤 메타·페이지 dot(#22), 서버가 고른 대상의 강조와 안내문 표시 + 세션 시작·중지(#28).
+ * TODO: 정체 감지, 오버레이 불가 화면의 헤드업 폴백.
  */
 class GuideAccessibilityService : AccessibilityService() {
 
@@ -32,10 +32,19 @@ class GuideAccessibilityService : AccessibilityService() {
     private val requestInFlight = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * 세션이 끝나는 순간 화면에서 지운다. 다음 접근성 이벤트를 기다리면, 사용자가 중지를 눌러도
+     * 화면이 가만히 있는 동안에는 강조가 그대로 남는다.
+     */
+    private val sessionListener = GuideSession.Listener { goal ->
+        if (goal == null) mainHandler.post { overlay?.clear() }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
         guideApiClient = GuideApiClient(BuildConfig.SERVER_URL)
+        GuideSession.addListener(sessionListener)
         Log.i(
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
@@ -45,6 +54,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !isInteresting(event.eventType)) return
+
+        // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
+        // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
+        val goal = GuideSession.goal ?: return
 
         // 접근성 이벤트는 초당 수십 번 온다. 디바운스하지 않으면 로그를 읽을 수 없다.
         val now = SystemClock.uptimeMillis()
@@ -65,10 +78,10 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         logScreen(result)
-        requestNextStep(result.screen)
+        requestNextStep(result.screen, goal)
     }
 
-    private fun requestNextStep(screen: Screen) {
+    private fun requestNextStep(screen: Screen, goal: String) {
         if (!requestInFlight.compareAndSet(false, true)) return
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
@@ -80,7 +93,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 when (
                     val result = client.nextStep(
                         NextStepRequest(
-                            goal = GOAL,
+                            goal = goal,
                             screen = screen,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
@@ -94,7 +107,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "target=${action.targetNodeId ?: "-"} " +
                                 "instruction=${action.instruction}",
                         )
-                        mainHandler.post { highlightAction(screen, action) }
+                        mainHandler.post { applyAction(screen, action, goal) }
                     }
 
                     is NextStepResult.ApiFailure -> Log.w(
@@ -112,18 +125,37 @@ class GuideAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** 서버가 지정한 `target_node_id`만 강조한다. 앱은 어떤 UI 동작도 수행하지 않는다. */
-    private fun highlightAction(screen: Screen, action: GuideAction) {
+    /**
+     * 서버가 준 안내 하나를 화면에 반영한다. **앱은 어떤 UI 동작도 수행하지 않는다** — 강조와
+     * 안내문만 그리고, 실제 조작은 사용자가 한다(SPEC §2).
+     *
+     * 메인 스레드에서만 부른다. 응답이 늦게 오는 사이 사용자가 중지했거나 다른 목표로 다시 시작할
+     * 수 있으므로, 요청을 보낼 때의 목표와 지금 세션의 목표가 같을 때만 그린다.
+     */
+    private fun applyAction(screen: Screen, action: GuideAction, goal: String) {
+        if (GuideSession.goal != goal) return
+
+        if (action.actionType == ActionType.DONE) {
+            Log.i(TAG, "session done goal=$goal")
+            GuideSession.stop() // 리스너가 오버레이를 지운다
+            return
+        }
+
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
         }
-        val bounds = target?.bounds
-        if (target == null || bounds == null || bounds.size != 4) {
-            overlay?.clear()
-            return
+        val bounds = target?.bounds?.takeIf { it.size == 4 }
+        if (bounds == null) {
+            // 화면에 없는 node_id를 고르는 것은 경량 모델의 전형적 실수다. 안내문은 그대로 띄우되
+            // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.
+            Log.w(TAG, "highlight miss target=${action.targetNodeId ?: "-"}")
+        } else {
+            Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
-        Log.i(TAG, "highlight ${target.nodeId} bounds=$bounds")
-        overlay?.highlight(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
+        overlay?.showGuide(
+            bounds?.let { Rect(it[0], it[1], it[2], it[3]) },
+            action.instruction,
+        )
     }
 
     private fun logScreen(result: UiTreeSerializer.Result) {
@@ -170,6 +202,10 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
+        // 아무 일도 일어나지 않는 상태가 된다.
+        GuideSession.removeListener(sessionListener)
+        GuideSession.stop()
         // 창을 걷지 않으면 서비스가 꺼진 뒤에도 유령 오버레이가 화면에 남는다.
         overlay?.destroy()
         overlay = null
@@ -185,6 +221,5 @@ class GuideAccessibilityService : AccessibilityService() {
         private const val DEBOUNCE_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
-        private const val GOAL = "카카오톡 열기"
     }
 }

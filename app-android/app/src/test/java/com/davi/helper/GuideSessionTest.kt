@@ -1,0 +1,95 @@
+package com.davi.helper
+
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * `GuideSession`은 object라 테스트끼리 상태를 공유한다. 앞뒤로 반드시 비운다.
+ * (그래서 이 클래스는 Android 타입에 의존하지 않는다 — 세션 전이를 JVM에서 고정하려고 그렇게 뒀다.)
+ */
+class GuideSessionTest {
+
+    @Before
+    @After
+    fun reset() {
+        GuideSession.stop()
+    }
+
+    @Test
+    fun `시작하면 공백을 제거한 목표가 남는다`() {
+        GuideSession.start("  카카오톡 열기  ")
+
+        assertEquals("카카오톡 열기", GuideSession.goal)
+        assertTrue(GuideSession.isActive)
+    }
+
+    /** 목표는 서버 프롬프트의 첫 줄이다. 공백이면 안내가 성립하지 않으므로 시작하지 않는다. */
+    @Test
+    fun `빈 목표로는 시작하지 않는다`() {
+        GuideSession.start("   ")
+
+        assertNull(GuideSession.goal)
+        assertFalse(GuideSession.isActive)
+    }
+
+    /** 세션이 없는 동안 서비스는 화면을 읽지 않는다. 그 판정이 이 값 하나에 걸려 있다. */
+    @Test
+    fun `중지하면 목표가 사라진다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.stop()
+
+        assertNull(GuideSession.goal)
+        assertFalse(GuideSession.isActive)
+    }
+
+    @Test
+    fun `리스너가 시작과 종료를 모두 본다`() {
+        val seen = mutableListOf<String?>()
+        val listener = GuideSession.Listener { seen += it }
+        GuideSession.addListener(listener)
+
+        try {
+            GuideSession.start("카카오톡 열기")
+            GuideSession.stop()
+        } finally {
+            GuideSession.removeListener(listener)
+        }
+
+        assertEquals(listOf("카카오톡 열기", null), seen)
+    }
+
+    /** 같은 목표로 다시 시작해도 알리지 않는다. 매 이벤트마다 오버레이를 다시 그리지 않으려고. */
+    @Test
+    fun `상태가 그대로면 리스너를 부르지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        val seen = mutableListOf<String?>()
+        val listener = GuideSession.Listener { seen += it }
+        GuideSession.addListener(listener)
+
+        try {
+            GuideSession.start("카카오톡 열기")
+        } finally {
+            GuideSession.removeListener(listener)
+        }
+
+        assertTrue(seen.isEmpty())
+    }
+
+    @Test
+    fun `리스너를 떼면 더 이상 받지 않는다`() {
+        val seen = mutableListOf<String?>()
+        val listener = GuideSession.Listener { seen += it }
+        GuideSession.addListener(listener)
+        GuideSession.removeListener(listener)
+
+        GuideSession.start("카카오톡 열기")
+
+        assertTrue(seen.isEmpty())
+    }
+}
