@@ -68,7 +68,7 @@ pytest
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
 | `app/reasoning.py` | 계획→실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
-| `app/llm.py` | 스텁/Gemini 클라이언트. 스키마 400 폴백·에러 분류 자리. |
+| `app/llm.py` | 스텁/Gemini 클라이언트. 프롬프트·스키마 400 폴백·에러 분류. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
 | `app/config.py` | 환경변수. 모델명·도그푸딩 기기 화이트리스트. |
 
@@ -84,13 +84,16 @@ pytest
   한 줄로 기록한다. 화면 `label` 원문은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
+- `app/llm.py:GeminiLlmClient` — Gemini REST `generateContent`를 호출한다. 목표·화면 요소·최근 안내 이력으로
+  프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
+  JSON 계약을 프롬프트로 옮겨 무스키마 호출을 한 번 재시도한다.
+  HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
+- Gemini 실호출 스모크(2026-07-27) — 마스킹된 샘플 화면에서 `tap`, `target_node_id=n1` 구조화 응답을 받았다.
 - `app/config.py` — 환경변수 로딩. `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — 근거 필드가 비었는지만 본다. evidence·label 매칭 검사는 미정(SPEC §11).
 
 **껍데기** (호출하면 아무 일도 없거나 raise)
-- `llm.GeminiLlmClient.reason` — `raise`만 한다. 실제 Gemini 호출·스키마 강제·400 폴백 전부 미구현.
-  → 이것 때문에 `propertyOrdering` 약속이 아직 코드와 연결돼 있지 않다(`CLAUDE.md` C1).
 - `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. 하위 태스크 분해 없음.
 - `reasoning._apply_guardrails` — action을 그대로 통과시킨다. 가드 0개(HANDOFF §5-4 통합 지점만 잡아둠).
