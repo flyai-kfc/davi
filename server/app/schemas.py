@@ -15,8 +15,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ActionType(StrEnum):
@@ -115,6 +116,13 @@ class GuideAction(BaseModel):
         description="동작 대상 요소의 node_id. 대상이 없는 동작이면 생략한다.",
     )
     instruction: str = Field(description="시니어에게 보여줄 한국어 안내 한 줄")
+
+    @model_validator(mode="after")
+    def validate_scroll_direction(self) -> Self:
+        """scroll은 앱이 안내할 수 있는 손가락 방향을 반드시 가져야 한다(C3)."""
+        if self.action_type is ActionType.SCROLL and self.direction is None:
+            raise ValueError("scroll action에는 direction이 필요하다")
+        return self
 
 
 class NextStepResponse(BaseModel):

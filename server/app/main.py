@@ -10,9 +10,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .llm import LlmError, get_llm_client
+from .errors import LlmError, api_error_for, http_status_for, retry_after_header
+from .llm import get_llm_client
 from .reasoning import next_step
-from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
+from .schemas import NextStepRequest, NextStepResponse
 
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
 # Uvicorn 기본 핸들러를 상속해 별도 logging 설정 없이 서버 콘솔에 출력한다.
@@ -77,18 +78,9 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
     except LlmError as e:
         # 앱이 사용자에게 다르게 안내하도록 kind를 그대로 전달(HANDOFF §5, LlmException).
         # message는 디버그용이며 시니어에게 그대로 보여주지 않는다(C8).
-        status = 429 if e.kind is ErrorKind.QUOTA else 502
-        error = ApiError(
-            kind=e.kind,
-            message=e.message,
-            retry_after_seconds=e.retry_after_seconds,
-            request_id=uuid.uuid4().hex,
-        )
-        headers = {}
-        if e.retry_after_seconds is not None:
-            headers["Retry-After"] = str(e.retry_after_seconds)
+        error = api_error_for(e, uuid.uuid4().hex)
         return JSONResponse(
-            status_code=status,
+            status_code=http_status_for(e),
             content=error.model_dump(),
-            headers=headers or None,
+            headers=retry_after_header(e) or None,
         )

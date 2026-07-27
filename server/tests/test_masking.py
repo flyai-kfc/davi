@@ -1,4 +1,5 @@
-from app.masking import mask_screen, mask_text
+from app.masking import mask_screen, mask_screen_model, mask_text
+from app.schemas import Screen, UiElement
 
 
 def test_masks_common_pii():
@@ -24,3 +25,12 @@ def test_mask_screen_is_non_destructive():
     assert "hong@example.com" not in masked["elements"][0]["label"]
     # 다른 필드는 보존.
     assert masked["elements"][0]["node_id"] == "n1"
+
+
+def test_mask_screen_model_is_non_destructive():
+    screen = Screen(elements=[UiElement(node_id="n1", label="문의 hong@example.com")])
+
+    masked = mask_screen_model(screen)
+
+    assert "hong@example.com" in screen.elements[0].label
+    assert "hong@example.com" not in masked.elements[0].label

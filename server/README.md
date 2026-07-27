@@ -65,10 +65,12 @@ pytest
 | 파일 | 역할 |
 |---|---|
 | `app/main.py` | FastAPI 라우터(얇게). 에러 분류만. |
+| `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
 | `app/reasoning.py` | 계획→실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
-| `app/llm.py` | 스텁/Gemini 클라이언트. 프롬프트·스키마 400 폴백·에러 분류. |
+| `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
+| `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
 | `app/config.py` | 환경변수. 모델명·도그푸딩 기기 화이트리스트. |
 
@@ -79,12 +81,12 @@ pytest
 - `app/schemas.py` — 계약 모델 전체. C1~C8 반영 완료, `tests/test_contract.py`가 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
-- `app/main.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태 매핑.
+- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
 - `/v1/next-step` 요청 로깅 — 패키지명·요소 개수·목표·클라이언트 버전·처리 시간만
   한 줄로 기록한다. 화면 `label` 원문은 기록하지 않는다.
-- `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다.
+- `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
-- `app/llm.py:GeminiLlmClient` — Gemini REST `generateContent`를 호출한다. 목표·화면 요소·최근 안내 이력으로
+- `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
   프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
   JSON 계약을 프롬프트로 옮겨 무스키마 호출을 한 번 재시도한다.
   HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.

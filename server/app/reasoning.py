@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from .config import settings
 from .llm import LlmClient
-from .masking import mask_screen
-from .schemas import ActionType, GuideAction, NextStepRequest, NextStepResponse, Screen
+from .masking import mask_screen_model
+from .schemas import ActionType, GuideAction, NextStepRequest, NextStepResponse
 
 
 def _plan(req: NextStepRequest) -> list[str]:
@@ -46,7 +46,7 @@ def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
 def next_step(req: NextStepRequest, llm: LlmClient) -> NextStepResponse:
     """앱 요청 하나 -> 다음 안내 하나. 파이프라인의 진입점."""
     # 2차 마스킹 그물: 모델에 넘기기 전에 한 번 더(1차는 앱에서 이미 수행).
-    masked_screen = Screen.model_validate(mask_screen(req.screen.model_dump()))
+    masked_screen = mask_screen_model(req.screen)
     masked = req.model_copy(update={"screen": masked_screen})
 
     _plan(masked)  # TODO: 계획 결과를 실행에 반영
