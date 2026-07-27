@@ -38,3 +38,67 @@ data class Screen(
     @SerialName("current_page") val currentPage: Int? = null,
     @SerialName("total_pages") val totalPages: Int? = null,
 )
+
+@Serializable
+data class NextStepRequest(
+    val goal: String,
+    val screen: Screen,
+    @SerialName("device_id") val deviceId: String? = null,
+    @SerialName("recent_instructions") val recentInstructions: List<String> = emptyList(),
+    @SerialName("client_version") val clientVersion: String? = null,
+)
+
+@Serializable
+data class NextStepResponse(
+    val action: GuideAction,
+    val model: String,
+    val verified: Boolean = false,
+)
+
+@Serializable
+data class GuideAction(
+    @SerialName("expected_result") val expectedResult: String,
+    val evidence: String,
+    @SerialName("action_type") val actionType: ActionType,
+    val direction: SwipeDirection? = null,
+    @SerialName("target_node_id") val targetNodeId: String? = null,
+    val instruction: String,
+)
+
+@Serializable
+enum class ActionType {
+    @SerialName("tap") TAP,
+    @SerialName("swipe") SWIPE,
+    @SerialName("back") BACK,
+    @SerialName("home") HOME,
+    @SerialName("open_app") OPEN_APP,
+    @SerialName("wait") WAIT,
+    @SerialName("done") DONE,
+    @SerialName("fail") FAIL,
+}
+
+@Serializable
+enum class SwipeDirection {
+    @SerialName("up") UP,
+    @SerialName("down") DOWN,
+    @SerialName("left") LEFT,
+    @SerialName("right") RIGHT,
+}
+
+@Serializable
+data class ApiError(
+    val kind: ApiErrorKind,
+    val message: String,
+    @SerialName("retry_after_seconds") val retryAfterSeconds: Int? = null,
+    @SerialName("request_id") val requestId: String? = null,
+)
+
+@Serializable
+enum class ApiErrorKind {
+    @SerialName("NETWORK") NETWORK,
+    @SerialName("TIMEOUT") TIMEOUT,
+    @SerialName("RATE_LIMIT") RATE_LIMIT,
+    @SerialName("UPSTREAM") UPSTREAM,
+    @SerialName("VALIDATION") VALIDATION,
+    @SerialName("UNEXPECTED") UNEXPECTED,
+}

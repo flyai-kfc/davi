@@ -2,9 +2,13 @@ package com.davi.helper
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 닫힌 루프의 본체. 기기측 책임만 여기 있다(app-android/CLAUDE.md):
@@ -15,18 +19,23 @@ import android.view.accessibility.AccessibilityEvent
  * 추론(프롬프트·모델·완료 검증)은 서버에 있다. 이 서비스는 상태를 모아 서버에 보내고
  * 받은 안내를 그린다. 로그 태그는 GuideSvc로 통일한다(디버깅 1순위, CLAUDE.md).
  *
- * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 로그 출력(#4, #8),
- * 최소 오버레이 강조(#6).
- * TODO: 서버 호출(#5), 스크롤 메타·페이지 dot, 정체 감지.
+ * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 서버 호출·응답 로그(#4, #5, #8),
+ * 서버가 고른 대상의 최소 오버레이 강조(#6).
+ * TODO: 스크롤 메타·페이지 dot, 정체 감지.
  */
 class GuideAccessibilityService : AccessibilityService() {
 
     private var lastRunAtMs = 0L
     private var overlay: OverlayController? = null
+    private var guideApiClient: GuideApiClient? = null
+    private val apiExecutor = Executors.newSingleThreadExecutor()
+    private val requestInFlight = AtomicBoolean(false)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
+        guideApiClient = GuideApiClient(BuildConfig.SERVER_URL)
         Log.i(
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
@@ -56,24 +65,64 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         logScreen(result)
-        highlightTarget(result.screen)
+        requestNextStep(result.screen)
     }
 
-    /**
-     * 강조할 요소를 고른다.
-     *
-     * **임시 구현이다.** 원래 이 선택은 서버가 하고 앱은 `target_node_id`를 받아 그리기만 한다.
-     * 서버 호출(#5)이 아직 없어서, 오버레이 자체를 검증하려고 서버 스텁과 같은 규칙
-     * (첫 번째 이름 있는 클릭 요소)을 로컬에 둔 것이다. #5가 들어오면 이 함수는 사라진다.
-     */
-    private fun highlightTarget(screen: Screen) {
-        val target = screen.elements.firstOrNull { it.clickable && it.label.isNotBlank() }
+    private fun requestNextStep(screen: Screen) {
+        if (!requestInFlight.compareAndSet(false, true)) return
+        val client = guideApiClient ?: run {
+            requestInFlight.set(false)
+            return
+        }
+
+        apiExecutor.execute {
+            try {
+                when (
+                    val result = client.nextStep(
+                        NextStepRequest(
+                            goal = GOAL,
+                            screen = screen,
+                            clientVersion = BuildConfig.VERSION_NAME,
+                        ),
+                    )
+                ) {
+                    is NextStepResult.Success -> {
+                        val action = result.response.action
+                        Log.i(
+                            TAG,
+                            "action=${action.actionType.name.lowercase()} " +
+                                "target=${action.targetNodeId ?: "-"} " +
+                                "instruction=${action.instruction}",
+                        )
+                        mainHandler.post { highlightAction(screen, action) }
+                    }
+
+                    is NextStepResult.ApiFailure -> Log.w(
+                        TAG,
+                        "api_error kind=${result.error.kind.name} status=${result.statusCode}",
+                    )
+
+                    is NextStepResult.HttpFailure -> Log.w(TAG, "http_error status=${result.statusCode}")
+                    is NextStepResult.NetworkFailure -> Log.w(TAG, "network_error", result.exception)
+                    is NextStepResult.ParseFailure -> Log.w(TAG, "response_parse_error", result.exception)
+                }
+            } finally {
+                requestInFlight.set(false)
+            }
+        }
+    }
+
+    /** 서버가 지정한 `target_node_id`만 강조한다. 앱은 어떤 UI 동작도 수행하지 않는다. */
+    private fun highlightAction(screen: Screen, action: GuideAction) {
+        val target = action.targetNodeId?.let { nodeId ->
+            screen.elements.firstOrNull { it.nodeId == nodeId }
+        }
         val bounds = target?.bounds
         if (target == null || bounds == null || bounds.size != 4) {
             overlay?.clear()
             return
         }
-        Log.i(TAG, "highlight ${target.nodeId} label='${target.label}' bounds=$bounds")
+        Log.i(TAG, "highlight ${target.nodeId} bounds=$bounds")
         overlay?.highlight(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
     }
 
@@ -111,6 +160,8 @@ class GuideAccessibilityService : AccessibilityService() {
         // 창을 걷지 않으면 서비스가 꺼진 뒤에도 유령 오버레이가 화면에 남는다.
         overlay?.destroy()
         overlay = null
+        guideApiClient = null
+        apiExecutor.shutdownNow()
         return super.onUnbind(intent)
     }
 
@@ -121,5 +172,6 @@ class GuideAccessibilityService : AccessibilityService() {
         private const val DEBOUNCE_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
+        private const val GOAL = "카카오톡 열기"
     }
 }
