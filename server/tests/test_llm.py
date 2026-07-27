@@ -6,12 +6,21 @@ from app.llm import GUIDE_ACTION_SCHEMA, GeminiLlmClient, LlmError, get_llm_clie
 from app.schemas import ErrorKind, NextStepRequest, Screen, UiElement
 
 
+@pytest.fixture(autouse=True)
+def clear_llm_client_cache():
+    get_llm_client.cache_clear()
+    yield
+    get_llm_client.cache_clear()
+
+
 def _request() -> NextStepRequest:
     return NextStepRequest(
         goal="카카오톡 열기",
         recent_instructions=["앱 서랍을 여세요."],
         screen=Screen(
             package_name="com.android.launcher",
+            current_page=1,
+            total_pages=4,
             elements=[
                 UiElement(
                     node_id="n1",
@@ -65,6 +74,7 @@ def test_gemini_sends_prompt_and_response_schema():
         assert "id=n1" in prompt
         assert "카카오톡" in prompt
         assert "앱 서랍을 여세요." in prompt
+        assert "페이지: 전체 4쪽 중 1쪽" in prompt
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         assert body["generationConfig"]["responseSchema"] == GUIDE_ACTION_SCHEMA
         assert request.headers["x-goog-api-key"] == "test-key"
@@ -105,6 +115,17 @@ def test_gemini_classifies_rate_limit_and_uses_retry_after():
 
     assert raised.value.kind is ErrorKind.QUOTA
     assert raised.value.retry_after_seconds == 17
+
+
+def test_gemini_keeps_zero_retry_after():
+    client = _client(
+        lambda _: httpx.Response(429, headers={"Retry-After": "0"}, json={"error": {}})
+    )
+
+    with pytest.raises(LlmError) as raised:
+        client.reason(_request())
+
+    assert raised.value.retry_after_seconds == 0
 
 
 def test_gemini_classifies_auth_failure():
@@ -151,8 +172,6 @@ def test_gemini_classifies_invalid_model_output_as_parse_error():
 
 
 def test_get_llm_client_reuses_one_connection_pool():
-    get_llm_client.cache_clear()
-
     first = get_llm_client()
     second = get_llm_client()
 

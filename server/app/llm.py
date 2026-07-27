@@ -86,6 +86,9 @@ def build_prompt(req: NextStepRequest) -> str:
             details.append(f"prev_swipe_direction={element.prev_swipe_direction}")
         elements.append("- " + ", ".join(details))
     screen_elements = "\n".join(elements) or "- 요소 없음"
+    page_context = ""
+    if req.screen.current_page is not None and req.screen.total_pages is not None:
+        page_context = f"페이지: 전체 {req.screen.total_pages}쪽 중 {req.screen.current_page}쪽\n"
 
     return f"""당신은 스마트폰 사용을 돕는 안내 도우미입니다.
 사용자 대신 화면을 누르거나 조작하지 말고, 사용자가 다음에 할 행동 딱 한 가지만 안내하세요.
@@ -94,7 +97,7 @@ def build_prompt(req: NextStepRequest) -> str:
 
 목표: {req.goal}
 현재 앱 패키지: {req.screen.package_name or "알 수 없음"}
-최근에 했던 안내:
+{page_context}최근에 했던 안내:
 {recent}
 현재 화면 요소:
 {screen_elements}
@@ -238,7 +241,11 @@ class GeminiLlmClient(LlmClient):
             return LlmError(
                 ErrorKind.QUOTA,
                 "Gemini API 사용량 또는 요청 한도 초과",
-                error.retry_after_seconds or _DEFAULT_RETRY_AFTER_SECONDS,
+                (
+                    error.retry_after_seconds
+                    if error.retry_after_seconds is not None
+                    else _DEFAULT_RETRY_AFTER_SECONDS
+                ),
             )
         if error.status_code in {401, 403}:
             return LlmError(ErrorKind.AUTH, "Gemini API 인증 또는 권한 오류")
