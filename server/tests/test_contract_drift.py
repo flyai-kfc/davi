@@ -1,0 +1,80 @@
+"""앱과 서버의 계약 enum이 어긋나지 않았는지 확인한다.
+
+**왜 이 테스트가 있나.** 앱은 Kotlin, 서버는 Python이라 같은 계약을 두 번 적는다.
+한쪽만 고쳐도 컴파일은 되고 각자의 단위 테스트도 통과한다 — 자기가 쓴 픽스처로 자기 enum을
+검사하기 때문이다. 실제로 그렇게 어긋난 적이 있다(이슈 #17):
+
+- 앱이 `scroll`을 몰라서, 서버가 "누를 게 없으니 스크롤하세요"를 줄 때마다 파싱이 터졌다.
+- 앱이 `SERVER`를 몰라서, 막힘 에러를 분류하지 못했다.
+- 겹치는 값이 `tap`과 `NETWORK`뿐이었는데도 양쪽 테스트가 다 초록이었다.
+
+kotlinx.serialization은 모르는 enum 값에 예외를 던진다. `ignoreUnknownKeys`는 모르는 **키**만
+무시할 뿐 값은 막아주지 못한다. 그래서 한 글자만 어긋나도 그 액션이 오는 순간 안내가 끊긴다.
+
+Kotlin 파일을 정규식으로 읽는 방식이 투박하다는 것은 안다. 다만 "사람이 기억해서 맞추기"를
+"CI가 잡기"로 바꾸는 값이 그 투박함보다 크다. 계약이 바뀌면 **양쪽을 함께** 고쳐야 통과한다.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+from app.schemas import ActionType, ErrorKind, SwipeDirection
+
+CONTRACT_KT = (
+    Path(__file__).resolve().parents[2]
+    / "app-android"
+    / "app"
+    / "src"
+    / "main"
+    / "java"
+    / "com"
+    / "davi"
+    / "helper"
+    / "Contract.kt"
+)
+
+
+def _kotlin_enum_values(source: str, enum_name: str) -> set[str]:
+    """`enum class <이름> { @SerialName("x") X, ... }` 에서 x들을 뽑는다."""
+    match = re.search(
+        rf"enum\s+class\s+{re.escape(enum_name)}\s*\{{(.*?)\}}",
+        source,
+        re.DOTALL,
+    )
+    if match is None:
+        raise AssertionError(f"Contract.kt에서 enum class {enum_name} 을 찾지 못했다")
+    return set(re.findall(r'@SerialName\("([^"]*)"\)', match.group(1)))
+
+
+@pytest.fixture(scope="module")
+def contract_source() -> str:
+    if not CONTRACT_KT.exists():
+        pytest.skip(f"앱 소스가 없다: {CONTRACT_KT}")
+    return CONTRACT_KT.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kotlin_enum", "python_enum"),
+    [
+        ("ActionType", ActionType),
+        ("SwipeDirection", SwipeDirection),
+        ("ApiErrorKind", ErrorKind),
+    ],
+)
+def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_enum) -> None:
+    app_values = _kotlin_enum_values(contract_source, kotlin_enum)
+    server_values = {member.value for member in python_enum}
+
+    only_app = app_values - server_values
+    only_server = server_values - app_values
+
+    assert not only_app and not only_server, (
+        f"{kotlin_enum}(앱) 과 {python_enum.__name__}(서버) 의 값이 다르다.\n"
+        f"  앱에만 있음:   {sorted(only_app) or '없음'}\n"
+        f"  서버에만 있음: {sorted(only_server) or '없음'}\n"
+        "계약은 앱·서버·평가 셋이 동시에 무는 지점이다. 한쪽만 고치지 말 것 "
+        "(server/CLAUDE.md 'API 계약 결정')."
+    )
