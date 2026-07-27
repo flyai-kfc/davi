@@ -11,9 +11,24 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 빌드 → 기기 설치 → **접근성 서비스 재활성화**까지 한 번에 한다. 재설치하면 접근성 권한이 꺼지는
 문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에 들어갈 필요가 없다.
 
-옵션: `-ClearLog`(logcat 버퍼 비우기), `-SkipAccessibility`(권한 건드리지 않기).
-
 이후 로그: `adb logcat -s GuideSvc`
+
+### Android Studio로 빌드했다면 권한만 되살린다
+
+**재설치하면 접근성 권한이 꺼진다.** Studio로 빌드하면 스크립트가 관여하지 않으니 매번 꺼진 상태가 된다.
+그때는 빌드 없이 권한만 복구하면 된다(2초).
+
+```powershell
+./scripts/dev-install.ps1 -SkipBuild
+```
+
+옵션 정리
+
+| 옵션 | 뜻 |
+|---|---|
+| `-SkipBuild` | 빌드·설치 없이 접근성 권한만 복구 |
+| `-ClearLog` | 끝나고 logcat 버퍼 비우기 |
+| `-SkipAccessibility` | 권한을 건드리지 않음 |
 
 ### `HANDOFF.md` §3-15 "CLI 빌드 불가"는 해결됐다
 

@@ -18,11 +18,18 @@
      -> 설치 후 adb 로 다시 켠다. 로컬 테스트 전용이다.
 
 .EXAMPLE
+  # 빌드 + 설치 + 접근성 복구
   ./scripts/dev-install.ps1
-  ./scripts/dev-install.ps1 -SkipAccessibility
+
+.EXAMPLE
+  # Android Studio로 빌드한 뒤 접근성 권한만 되살릴 때.
+  # 재설치하면 권한이 꺼지는데(HANDOFF 12장) Studio는 그걸 되살려주지 않는다.
+  ./scripts/dev-install.ps1 -SkipBuild
 #>
 [CmdletBinding()]
 param(
+    # 빌드·설치를 건너뛰고 접근성 권한만 복구한다. Android Studio로 빌드한 직후에 쓴다.
+    [switch]$SkipBuild,
     # 접근성 서비스를 자동으로 켜지 않는다.
     [switch]$SkipAccessibility,
     # 설치 후 logcat 버퍼를 비운다. 바로 로그를 볼 때 편하다.
@@ -75,19 +82,27 @@ function Resolve-Adb {
 $adb = Resolve-Adb
 
 # --- 3) 빌드 + 설치 ------------------------------------------------------------
-Write-Host '== 빌드 + 설치 ==' -ForegroundColor Cyan
-$gradlew = Join-Path $appDir 'gradlew.bat'
-Push-Location $appDir
-try { Invoke-Native { & $gradlew installDebug } '빌드/설치' }
-finally { Pop-Location }
+if ($SkipBuild) {
+    Write-Host '== 빌드 건너뜀 (-SkipBuild) ==' -ForegroundColor DarkGray
+}
+else {
+    Write-Host '== 빌드 + 설치 ==' -ForegroundColor Cyan
+    $gradlew = Join-Path $appDir 'gradlew.bat'
+    Push-Location $appDir
+    try { Invoke-Native { & $gradlew installDebug } '빌드/설치' }
+    finally { Pop-Location }
+}
 
 # --- 4) 접근성 서비스 다시 켜기 -------------------------------------------------
+function Get-EnabledServices {
+    Invoke-Native { $script:raw = & $adb shell settings get secure enabled_accessibility_services } 'adb settings get'
+    $value = if ($script:raw) { "$script:raw".Trim() } else { '' }
+    if ($value -eq 'null') { '' } else { $value }
+}
+
 if (-not $SkipAccessibility) {
     Write-Host '== 접근성 서비스 활성화 ==' -ForegroundColor Cyan
-    $current = ''
-    Invoke-Native { $script:raw = & $adb shell settings get secure enabled_accessibility_services } 'adb settings get'
-    if ($script:raw) { $current = "$script:raw".Trim() }
-    if ($current -eq 'null') { $current = '' }
+    $current = Get-EnabledServices
 
     if ($current -split ':' -contains $service) {
         Write-Host '  이미 켜져 있음'
@@ -97,7 +112,15 @@ if (-not $SkipAccessibility) {
         $next = if ($current) { "$current`:$service" } else { $service }
         Invoke-Native { & $adb shell settings put secure enabled_accessibility_services $next } 'adb settings put'
         Invoke-Native { & $adb shell settings put secure accessibility_enabled 1 } 'adb settings put'
-        Write-Host "  켬: $service"
+
+        # 되읽어 확인한다. put 이 조용히 무시되는 경우(제조사 정책 등)를 잡기 위해서다.
+        Start-Sleep -Milliseconds 500
+        if ((Get-EnabledServices) -split ':' -contains $service) {
+            Write-Host "  켬: $service"
+        }
+        else {
+            Write-Warning '접근성 서비스를 켜지 못했다. 설정 앱에서 직접 켤 것.'
+        }
     }
 }
 
