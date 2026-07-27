@@ -23,6 +23,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val target = RectF()
     private var hasTarget = false
 
+    /** 이 뷰가 화면에서 실제로 어디에 놓였는지. 좌표 보정에 쓴다. */
+    private val locationOnScreen = IntArray(2)
+
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = STROKE_WIDTH_PX
@@ -43,6 +46,16 @@ class HighlightOverlayView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (!hasTarget) return
+
+        // 화면 좌표 -> 캔버스 좌표 보정.
+        //
+        // FLAG_LAYOUT_IN_SCREEN을 줘도 뷰가 항상 (0,0)에 놓이지는 않는다. 실측에서 전화 앱은
+        // 맞는데 런처에서만 상태표시줄 높이(약 96px)만큼 아래로 밀렸다 — 창마다 인셋이 다르게
+        // 적용된다. 그래서 "어느 창이든 (0,0)일 것"이라 가정하지 않고, 뷰가 실제로 놓인 위치를
+        // 물어보고 그만큼 되돌린다. 뷰가 (0,0)이면 이 보정은 아무 일도 하지 않는다.
+        getLocationOnScreen(locationOnScreen)
+        canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
+
         // 테두리가 대상 가장자리를 덮지 않도록 선 두께의 절반만큼 바깥으로 물린다.
         val half = STROKE_WIDTH_PX / 2f
         canvas.drawRoundRect(
