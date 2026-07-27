@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 
 import pytest
-from app.schemas import ActionType, ErrorKind, SwipeDirection
+from app.schemas import ActionType, ErrorKind, ScrollAxis, SwipeDirection
 
 CONTRACT_KT = (
     Path(__file__).resolve().parents[2]
@@ -61,6 +61,7 @@ def contract_source() -> str:
     [
         ("ActionType", ActionType),
         ("SwipeDirection", SwipeDirection),
+        ("ScrollAxis", ScrollAxis),
         ("ApiErrorKind", ErrorKind),
     ],
 )

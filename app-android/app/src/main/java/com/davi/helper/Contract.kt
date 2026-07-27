@@ -9,8 +9,8 @@ import kotlinx.serialization.Serializable
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
  * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C8)을 먼저 읽고 양쪽을 같이 고친다.
  *
- * 이번 이슈(#4)에서 실제로 채우는 것은 node_id / label / role / clickable / bounds 뿐이다.
- * 스크롤 메타와 페이지 위치는 필드만 두고 null로 남긴다 — 채우는 것은 다음 이슈다.
+ * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
+ * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
  */
 @Serializable
 data class UiElement(
@@ -20,21 +20,18 @@ data class UiElement(
     val clickable: Boolean = false,
     /** [left, top, right, bottom] 화면 좌표. */
     val bounds: List<Int>? = null,
-
-    // --- 아래는 다음 이슈에서 채운다. 지금은 항상 null이다. ---
     @SerialName("can_scroll_forward") val canScrollForward: Boolean? = null,
     @SerialName("can_scroll_backward") val canScrollBackward: Boolean? = null,
-    @SerialName("scroll_axis") val scrollAxis: String? = null,
-    @SerialName("next_swipe_direction") val nextSwipeDirection: String? = null,
-    @SerialName("prev_swipe_direction") val prevSwipeDirection: String? = null,
+    @SerialName("scroll_axis") val scrollAxis: ScrollAxis? = null,
+    @SerialName("next_swipe_direction") val nextSwipeDirection: SwipeDirection? = null,
+    @SerialName("prev_swipe_direction") val prevSwipeDirection: SwipeDirection? = null,
 )
 
 @Serializable
 data class Screen(
     @SerialName("package_name") val packageName: String = "",
     val elements: List<UiElement> = emptyList(),
-
-    // --- 페이지 위치도 다음 이슈. 화면 단위 상태라 여기 있다(C5). ---
+    /** 페이지 위치는 화면 단위 상태다(C5). 페이지 dot에서 읽는다(HANDOFF §3-3). */
     @SerialName("current_page") val currentPage: Int? = null,
     @SerialName("total_pages") val totalPages: Int? = null,
 )
@@ -85,12 +82,20 @@ enum class ActionType {
     @SerialName("done") DONE,
 }
 
+/** 손가락이 움직이는 방향. "무엇이 보이게 되는지"가 아니다. 서버 `SwipeDirection`과 값이 같아야 한다. */
 @Serializable
 enum class SwipeDirection {
     @SerialName("up") UP,
     @SerialName("down") DOWN,
     @SerialName("left") LEFT,
     @SerialName("right") RIGHT,
+}
+
+/** 서버 `ScrollAxis`와 값이 같아야 한다. */
+@Serializable
+enum class ScrollAxis {
+    @SerialName("vertical") VERTICAL,
+    @SerialName("horizontal") HORIZONTAL,
 }
 
 @Serializable

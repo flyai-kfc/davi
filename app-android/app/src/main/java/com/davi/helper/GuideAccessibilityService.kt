@@ -129,21 +129,34 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun logScreen(result: UiTreeSerializer.Result) {
         val screen = result.screen
         val clickableCount = screen.elements.count { it.clickable }
+        val page = if (screen.currentPage != null || screen.totalPages != null) {
+            " page=${screen.currentPage ?: "?"}/${screen.totalPages ?: "?"}"
+        } else {
+            ""
+        }
         Log.i(
             TAG,
             "screen pkg=${screen.packageName} elements=${screen.elements.size} " +
-                "clickable=$clickableCount" + if (result.truncated) " (truncated)" else "",
+                "clickable=$clickableCount$page" + if (result.truncated) " (truncated)" else "",
         )
         screen.elements.take(MAX_LOGGED_ELEMENTS).forEach { e ->
             Log.d(
                 TAG,
                 "  ${e.nodeId} ${if (e.clickable) "tap" else "text"} " +
-                    "role=${e.role} bounds=${e.bounds} label='${e.label}'",
+                    "role=${e.role} bounds=${e.bounds}${scrollInfo(e)} label='${e.label}'",
             )
         }
         if (screen.elements.size > MAX_LOGGED_ELEMENTS) {
             Log.d(TAG, "  ... ${screen.elements.size - MAX_LOGGED_ELEMENTS} more")
         }
+    }
+
+    /** 스크롤 가능한 요소에만 붙는다. 방향 안내가 맞는지 로그에서 바로 보려고 찍는다. */
+    private fun scrollInfo(e: UiElement): String {
+        if (e.canScrollForward == null && e.canScrollBackward == null) return ""
+        val fwd = if (e.canScrollForward == true) "+${e.nextSwipeDirection?.name?.lowercase()}" else ""
+        val back = if (e.canScrollBackward == true) "-${e.prevSwipeDirection?.name?.lowercase()}" else ""
+        return " scroll=${e.scrollAxis?.name?.lowercase()}$fwd$back"
     }
 
     private fun isInteresting(eventType: Int): Boolean =
