@@ -41,7 +41,21 @@ object ActiveWindowResolver {
             .filter { (window, _) -> area(window).toDouble() / displayArea >= MIN_AREA_RATIO }
             .maxByOrNull { (window, _) -> area(window) }
             ?.second
-            ?: service.rootInActiveWindow
+            ?: fallbackRoot(service, ownPackage)
+    }
+
+    /**
+     * 후보가 하나도 없을 때의 폴백. **여기서도 우리 앱은 걸러야 한다.**
+     *
+     * 실측: 온보딩 화면을 띄우면 후보가 전부 빠지고 폴백이 우리 앱을 돌려줘서,
+     * 우리 UI가 "사용자가 보는 화면"으로 잡혔다. 안내할 대상이 없으면 null이 맞다.
+     */
+    private fun fallbackRoot(
+        service: AccessibilityService,
+        ownPackage: String?,
+    ): AccessibilityNodeInfo? {
+        val root = service.rootInActiveWindow ?: return null
+        return if (root.packageName?.toString() == ownPackage) null else root
     }
 
     private fun displayArea(service: AccessibilityService): Long {
