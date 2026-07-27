@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 plugins {
@@ -44,14 +45,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         buildConfig = true
         // UI 컨벤션: 화면은 XML 레이아웃 + ViewBinding (app-android/CLAUDE.md)
         viewBinding = true
+    }
+}
+
+// AGP의 android { kotlinOptions } 는 구식이다. KGP 2.x 표준인 kotlin { compilerOptions } 를 쓴다.
+// 새 DSL에서도 그대로 동작하므로 마이그레이션 부담이 줄어든다.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
