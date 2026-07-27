@@ -2,8 +2,37 @@
 
 Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은 `CLAUDE.md`, 방향은 `../SPEC.md`.
 
-## 열기·빌드
-Android Studio로 `app-android/` 폴더를 열거나 Gradle Wrapper로 빌드한다.
+## 빌드·설치 (CLI 한 줄)
+
+```powershell
+./scripts/dev-install.ps1
+```
+
+빌드 → 기기 설치 → **접근성 서비스 재활성화**까지 한 번에 한다. 재설치하면 접근성 권한이 꺼지는
+문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에 들어갈 필요가 없다.
+
+옵션: `-ClearLog`(logcat 버퍼 비우기), `-SkipAccessibility`(권한 건드리지 않기).
+
+이후 로그: `adb logcat -s GuideSvc`
+
+### `HANDOFF.md` §3-15 "CLI 빌드 불가"는 해결됐다
+
+원인은 문서에 적힌 **TCP 루프백이 아니라 AF_UNIX(유닉스 도메인 소켓)** 였다.
+
+JDK 17+ 는 Windows에서 `Selector.open()`에 AF_UNIX 소켓 쌍을 쓴다. 그 소켓 파일을 `%TEMP%`에
+만들면 이 PC에서 **bind는 되는데 connect가 `Invalid argument`로 실패**한다. Gradle은 셀렉터 없이
+못 돌기 때문에 `Unable to establish loopback connection`으로 죽는다. TCP 루프백 자체는 멀쩡하다.
+
+소켓 파일 위치만 옮기면 정상 동작한다. 스크립트가 이렇게 처리한다.
+
+```
+JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
+```
+
+수동으로 `gradlew`를 쓸 때도 같은 환경변수를 주면 된다. 다른 PC에서 이 문제가 없다면 그냥 두면 된다
+(폴더만 만들어지고 동작은 같다).
+
+### Gradle
 
 - **Gradle Wrapper가 있다.** `./gradlew test assembleDebug`로 단위 테스트와 디버그 APK를 함께 검증한다(CI도 이 기준을 쓴다). Gradle 9.5.0.
 - `gradle/gradle-daemon-jvm.properties`가 데몬 JVM을 **Java 21 / JetBrains**로 고정한다.
@@ -11,6 +40,10 @@ Android Studio로 `app-android/` 폴더를 열거나 Gradle Wrapper로 빌드한
 - `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
   이 속성이 깨지지 않게 유지할 것 — 깨지면 리눅스 CI에서 실행되지 않는다.
 - AGP/Gradle/Kotlin 버전은 `gradle/libs.versions.toml`의 **시작 버전**이다. Studio가 업그레이드를 제안하면 따라도 된다.
+
+### Android Studio는 언제 쓰나
+
+디버거·Layout Inspector·프로파일러가 필요할 때만. 일상적인 빌드·설치·로그 확인은 CLI가 더 빠르다.
 
 ## 설정 (local.properties — gitignore됨)
 ```properties
@@ -33,6 +66,7 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 
 ## 지금 무엇이 진짜인가
 
+> 실기기(SM-S921N / Android 16 / One UI 8.5)에서 빌드·실행·로그를 확인한 상태다.
 > 실기기에서는 `DAVI_SERVER_URL`에 서버 터널 URL을 설정한 뒤 테스트한다. API 키는 앱에 넣지 않는다.
 
 **동작하는 구현**

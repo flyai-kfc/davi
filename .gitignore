@@ -23,3 +23,5 @@ app-android/**/build/
 .idea/
 *.keystore
 *.jks
+# Gradle CLI 우회용 AF_UNIX 소켓 임시 폴더 (app-android/scripts/dev-install.ps1)
+.gradle-afunix-tmp/
