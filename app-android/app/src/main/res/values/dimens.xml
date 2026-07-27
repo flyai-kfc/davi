@@ -6,8 +6,14 @@
     <dimen name="text_title">26sp</dimen>
     <dimen name="text_body">20sp</dimen>
     <dimen name="text_button">20sp</dimen>
+    <!-- 다른 앱 위에 뜨는 안내문. 본문보다 조금 크게. -->
+    <dimen name="text_overlay_instruction">22sp</dimen>
 
     <dimen name="touch_target_min">56dp</dimen>
     <dimen name="spacing">24dp</dimen>
     <dimen name="spacing_small">12dp</dimen>
+
+    <!-- 안내문 상자: 글자와 상자 사이(padding), 상자와 대상·화면 가장자리 사이(margin). -->
+    <dimen name="overlay_instruction_padding">16dp</dimen>
+    <dimen name="overlay_instruction_margin">20dp</dimen>
 </resources>

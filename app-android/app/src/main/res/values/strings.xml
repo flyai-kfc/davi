@@ -7,6 +7,14 @@
     <string name="onboarding_body">시작하려면 두 가지 권한이 필요합니다.\n1) 접근성 — 화면을 읽어 안내하기 위함\n2) 다른 앱 위에 표시 — 안내를 화면 위에 띄우기 위함</string>
     <string name="btn_open_accessibility">접근성 설정 열기</string>
     <string name="btn_open_overlay">다른 앱 위에 표시 허용</string>
+
+    <!-- 목표 입력 + 안내 시작·중지 -->
+    <string name="goal_label">무엇을 하고 싶으신가요?</string>
+    <string name="goal_hint">예: 카카오톡 열기</string>
+    <string name="goal_required">하고 싶은 일을 적어 주세요.</string>
+    <string name="btn_start">안내 시작</string>
+    <string name="btn_stop">안내 중지</string>
+    <string name="guide_hint">시작을 누른 뒤 하려던 앱으로 이동하면 화면 위에 안내가 뜹니다.</string>
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 </resources>

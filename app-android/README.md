@@ -60,6 +60,49 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 
 디버거·Layout Inspector·프로파일러가 필요할 때만. 일상적인 빌드·설치·로그 확인은 CLI가 더 빠르다.
 
+## 도그푸딩 관통 절차 (실기기)
+
+닫힌 루프를 처음부터 끝까지 한 번 돌리는 절차다. **USB로 붙은 기기는 터널이 필요 없다.**
+
+```powershell
+# 1) 서버 (스텁으로 먼저)
+cd server; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 2) 기기 -> 호스트 PC 포트 연결. 터널 대신 이걸 쓴다
+adb reverse tcp:8000 tcp:8000
+
+# 3) local.properties 에 DAVI_SERVER_URL=http://127.0.0.1:8000 을 넣고 설치
+cd app-android; ./scripts/dev-install.ps1 -ClearLog
+```
+
+앱에서 목표를 입력 → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
+목표를 달성하면 서버가 `done`을 주고 오버레이가 사라진다.
+
+배선이 확인되면 **실호출**로 한 번 더 돌린다. `.env`를 고치지 않고 환경변수로 덮어쓴다.
+
+```powershell
+cd server; $env:DAVI_USE_STUB_LLM="false"; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+`GET /health`의 `stub_llm`이 `false`인지 먼저 확인한다. 무료 티어는 15 RPM / 1,000 RPD이고
+RPD 리셋은 한국시간 17:00이다(`../HANDOFF.md` §10). 확인이 끝나면 서버를 내려 쿼터를 아낀다.
+
+**평문 HTTP는 디버그 빌드에서만 열려 있다.** targetSdk 36은 평문 통신을 기본 차단하므로
+`http://127.0.0.1:8000`으로 붙으면 `CLEARTEXT communication ... not permitted`로 막힌다.
+`app/src/debug/`의 `network_security_config.xml`이 로컬 주소(127.0.0.1 / localhost / 10.0.2.2)에만
+예외를 준다. **릴리스 빌드는 여전히 평문이 막혀 있다.**
+
+### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
+
+```
+GuideSvc: screen pkg=com.sec.android.app.launcher elements=8 clickable=8
+GuideSvc: action=tap target=n8 instruction=카메라 아이콘을 눌러주세요.
+GuideSvc: highlight n8 bounds=[787, 1902, 1035, 2170]
+GuideSvc: screen pkg=com.sec.android.app.camera elements=14 clickable=13
+GuideSvc: action=done target=- instruction=이미 카메라 앱이 열려 있습니다.
+GuideSvc: session done goal=open camera app
+```
+
 ## 설정 (local.properties — gitignore됨)
 ```properties
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
@@ -73,7 +116,8 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 | 경로 | 역할 |
 |---|---|
 | `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림), MainActivity, 접근성 서비스 |
-| `.../MainActivity.kt` | 온보딩 골격(접근성·오버레이 권한 안내, 두 모드 자리) |
+| `.../MainActivity.kt` | 온보딩 + 목표 입력, 안내 세션 시작·중지 |
+| `.../GuideSession.kt` | 안내 세션 하나(목표). 인메모리 — 영속화하지 않는다 |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
@@ -81,20 +125,25 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 
 ## 지금 무엇이 진짜인가
 
-> 실기기(SM-S921N / Android 16 / One UI 8.5)에서 빌드·실행·로그를 확인한 상태다.
-> 실기기에서는 `DAVI_SERVER_URL`에 서버 터널 URL을 설정한 뒤 테스트한다. API 키는 앱에 넣지 않는다.
+> **닫힌 루프가 실기기에서 한 번 관통됐다** (2026-07-27, SM-S921N / Android 16 / One UI 8.5).
+> 목표 입력 → 안내 → 사용자가 따라 함 → 화면 변화 감지 → `done`까지. 스텁 1회, Gemini 실호출 1회.
+> API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
 - Gradle 구성(버전 카탈로그, viewBinding, `BuildConfig.SERVER_URL` 주입), 매니페스트, 접근성 서비스 등록.
-- `MainActivity` — 온보딩 화면. 접근성 설정·오버레이 권한 화면으로 실제로 보낸다. XML + ViewBinding.
+- `MainActivity` + `GuideSession` — 두 권한이 있을 때만 목표를 입력해 안내를 시작·중지한다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
-- `GuideAccessibilityService` — 활성 화면 루트를 고르고 최소 화면 트리로 직렬화한 뒤, 백그라운드에서 `/v1/next-step`에 보낸다.
-- `GuideApiClient` — 서버의 `NextStepRequest`/`NextStepResponse` 계약을 직렬화·파싱한다. 성공 시 `action_type`, `target_node_id`, `instruction`을 로그로 남기고 서버가 지정한 대상만 오버레이로 강조한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 기록하며 앱을 종료하지 않는다.
-- `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다.
+- `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
+- `GuideApiClient` — 서버의 `NextStepRequest`/`NextStepResponse` 계약을 직렬화·파싱한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 기록하며 앱을 종료하지 않는다.
+- `OverlayController` + `HighlightOverlayView` — 서버가 고른 대상에 테두리를 그리고 안내문을 상자에 담아 함께 보여준다. `done`이면 지운다.
+- `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다. 스크롤 메타·페이지 dot도 함께 채운다.
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
-**남은 작업**
-- 스크롤 메타·페이지 dot·정체 감지.
+**관통에서 드러난 것 (다음 작업의 근거)**
+- **같은 안내를 반복한다.** 카메라 안내가 문구만 바꿔 세 번 나왔다. 앱이 `recent_instructions`를 안 보내기 때문이다(`../HANDOFF.md` §3-10).
+- **앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.** 카메라 전환 직후 `elements=1`인 화면이 서버로 갔다. 시간 기반 정체·안정화 판정이 필요하다.
+- 권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다.
+- 정체 감지, 오버레이 불가 화면(설정 앱)의 헤드업 폴백은 아직 없다.
 
 붙일 때 검증된 국소 구현은 `HANDOFF.md` §4 인덱스로 **해당 파일만** 참고한다(복사·이동 금지).
 
