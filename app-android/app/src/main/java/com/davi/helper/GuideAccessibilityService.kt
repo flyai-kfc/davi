@@ -14,8 +14,8 @@ import android.view.accessibility.AccessibilityEvent
  * 추론(프롬프트·모델·완료 검증)은 서버에 있다. 이 서비스는 상태를 모아 서버에 보내고
  * 받은 안내를 그린다. 로그 태그는 GuideSvc로 통일한다(디버깅 1순위, CLAUDE.md).
  *
- * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 로그 출력 (이슈 #4).
- * TODO: 1차 마스킹(#8), 서버 호출(#5), 오버레이(#6), 스크롤 메타·페이지 dot, 정체 감지.
+ * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 로그 출력 (이슈 #4, #8).
+ * TODO: 서버 호출(#5), 오버레이(#6), 스크롤 메타·페이지 dot, 정체 감지.
  */
 class GuideAccessibilityService : AccessibilityService() {
 

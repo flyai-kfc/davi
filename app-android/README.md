@@ -42,11 +42,13 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 - Gradle 구성(버전 카탈로그, viewBinding, `BuildConfig.SERVER_URL` 주입), 매니페스트, 접근성 서비스 등록.
 - `MainActivity` — 온보딩 화면. 접근성 설정·오버레이 권한 화면으로 실제로 보낸다. XML + ViewBinding.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
+- `GuideAccessibilityService` — 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 로그에 남긴다.
+- `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다.
+  규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **껍데기**
-- `GuideAccessibilityService` — `onServiceConnected`에서 로그 한 줄만 찍는다.
-  **`onAccessibilityEvent`는 비어 있다.** 즉 화면 트리 직렬화·1차 마스킹·서버 호출·오버레이·정체 감지가
-  전부 없다. 앱은 아직 아무것도 안내하지 못한다.
+- 서버 호출·오버레이·스크롤 메타·페이지 dot·정체 감지는 아직 없다.
+  따라서 앱은 마스킹된 화면 상태를 수집할 수 있지만, 아직 안내를 표시하지 못한다.
 
 붙일 때 검증된 국소 구현은 `HANDOFF.md` §4 인덱스로 **해당 파일만** 참고한다(복사·이동 금지).
 
