@@ -26,8 +26,17 @@
 
 ## 3. 이번 사이클의 범위
 
-**목표 = 내부 도그푸딩.** 검증 기기(SM-S918N, One UI 8.5) 한 대에서 닫힌 루프가 매일 안정적으로 돌고,
+**목표 = 내부 도그푸딩.** 검증 기기에서 닫힌 루프가 매일 안정적으로 돌고,
 실패 화면과 로그가 쌓여 다음 사이클(클로즈드 베타)의 근거가 되는 상태.
+
+검증 기기는 **두 대**다.
+
+| 기기 | 성격 | 용도 |
+|---|---|---|
+| **SM-S918N** (Galaxy S23 Ultra, One UI 8.5) | 개인 기기 | HANDOFF의 모든 실측이 이 기기 기준이다. **개인 데이터가 있으므로 로그·픽스처 취급에 주의.** |
+| **SM-S921N** (Galaxy S24, One UI 8.5) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+
+둘 다 삼성·One UI라 **제조사 차이는 여전히 검증되지 않는다.** 다기기 매트릭스는 비목표 그대로다(§5-6).
 
 피드백 대상도 **팀 내부로 한정**한다. 실사용자(시니어) 반응 수집은 다음 사이클이다.
 
@@ -91,7 +100,7 @@
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 로컬 빌드는 Android Studio에서(§3-15, 개발 PC에서 Gradle CLI가 loopback 실패). `./gradlew`는 CI에서 돈다. |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). HANDOFF §3-15의 "CLI 빌드 불가"는 해결됐다(원인은 AF_UNIX 소켓 임시 폴더). Android Studio는 디버거·Layout Inspector용. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). 출시 전이라 교체 가능. |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정(§10, litellm 3.11+ 필요). |

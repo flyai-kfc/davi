@@ -65,8 +65,11 @@ CI와 같은 것을 돌린다.
 cd server && ruff check . && ruff format --check . && pytest
 ```
 
-앱은 **Android Studio에서 빌드·실행한다.** Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
-개발 PC에 따라 Gradle CLI가 loopback 연결을 못 열어 실패할 수 있다(HANDOFF §3-15). 그 경우 Studio를 쓴다.
+앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화가 끝난다.
+Android Studio는 디버거·Layout Inspector가 필요할 때만 쓴다. Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
+개발 PC에 따라 Gradle CLI가 `Unable to establish loopback connection`으로 실패할 수 있다(HANDOFF §3-15).
+원인은 AF_UNIX 소켓 임시 폴더이고 `app-android/scripts/dev-install.ps1`이 이를 흡수한다 —
+자세한 건 `app-android/README.md`.
 
 `gradlew`는 실행 비트와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`가 강제). Windows에서 이 속성이
 깨지면 리눅스 CI에서 실행되지 않으니, wrapper 파일을 건드린 PR은 `git ls-files --stage app-android/gradlew`가
