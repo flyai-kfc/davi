@@ -11,6 +11,9 @@
 from __future__ import annotations
 
 import re
+from typing import Any
+
+from .schemas import Screen
 
 _TOKEN = "•••"
 
@@ -37,9 +40,22 @@ def mask_text(text: str) -> str:
     return text
 
 
-def mask_screen(screen: dict) -> dict:
+def mask_screen(screen: dict[str, Any]) -> dict[str, Any]:
     """Screen dict의 모든 element label을 마스킹한 새 dict를 돌려준다(비파괴)."""
     elements = [
         {**el, "label": mask_text(el.get("label", ""))} for el in screen.get("elements", [])
     ]
     return {**screen, "elements": elements}
+
+
+def mask_screen_model(screen: Screen) -> Screen:
+    """파이프라인용 Screen 모델을 직렬화 왕복 없이 비파괴로 2차 마스킹한다."""
+
+    return screen.model_copy(
+        update={
+            "elements": [
+                element.model_copy(update={"label": mask_text(element.label)})
+                for element in screen.elements
+            ]
+        }
+    )

@@ -141,6 +141,21 @@ def test_stub_scrolls_with_direction_when_nothing_clickable():
     assert action.target_node_id == "n1"
 
 
+def test_scroll_action_without_direction_is_rejected():
+    """방향 없는 scroll은 앱이 안내할 수 없는 계약 위반이다(C3)."""
+    try:
+        GuideAction(
+            expected_result="다음 항목이 보임",
+            evidence="목록이 보임",
+            action_type=ActionType.SCROLL,
+            instruction="화면을 쓸어 주세요.",
+        )
+    except ValueError as error:
+        assert "direction" in str(error)
+    else:
+        raise AssertionError("방향 없는 scroll이 통과됐다")
+
+
 def test_stub_raises_when_stuck():
     """막힘 상태를 조용히 '기다리기'로 덮지 않는다(C6)."""
     req = NextStepRequest(goal="x", screen=Screen(elements=[]))
