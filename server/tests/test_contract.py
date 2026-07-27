@@ -1,0 +1,152 @@
+"""API 계약을 고정하는 테스트. server/CLAUDE.md "API 계약 결정"(C1~C8)에 대응한다.
+
+여기가 깨지면 앱·eval도 같이 깨진다는 뜻이므로, 실패를 무시하고 넘어가지 말 것.
+"""
+
+from app.gemini_schema import build_response_schema
+from app.llm import GUIDE_ACTION_SCHEMA, LlmError, StubLlmClient
+from app.schemas import (
+    ActionType,
+    ApiError,
+    ErrorKind,
+    GuideAction,
+    NextStepRequest,
+    Screen,
+    SwipeDirection,
+    UiElement,
+)
+
+# --- C1: propertyOrdering이 선언 순서에서 실제로 생성되는가 -------------------
+
+
+def test_property_ordering_puts_evidence_before_action():
+    """근거 -> 동작 순서. 뒤집히면 모델이 근거를 나중에 대충 채운다(HANDOFF §3-7)."""
+    ordering = GUIDE_ACTION_SCHEMA["propertyOrdering"]
+    assert ordering.index("expected_result") < ordering.index("evidence")
+    assert ordering.index("evidence") < ordering.index("action_type")
+    # 사용자 문구는 동작을 정한 뒤에 만든다.
+    assert ordering.index("action_type") < ordering.index("instruction")
+
+
+def test_property_ordering_matches_declaration_order():
+    """손으로 적은 배열이 아니라 모델 선언에서 뽑혔는지 확인한다."""
+    assert GUIDE_ACTION_SCHEMA["propertyOrdering"] == list(GuideAction.model_fields)
+
+
+def test_optional_fields_are_not_required():
+    """'해당 없음'은 빈 값이 아니라 필드 생략으로 표현한다(HANDOFF §10)."""
+    required = GUIDE_ACTION_SCHEMA["required"]
+    assert "direction" not in required
+    assert "target_node_id" not in required
+    assert {"expected_result", "evidence", "action_type", "instruction"} <= set(required)
+
+
+def test_enum_has_no_empty_string():
+    """enum에 빈 문자열이 있으면 Gemini가 400으로 거부한다."""
+    for prop in GUIDE_ACTION_SCHEMA["properties"].values():
+        assert "" not in prop.get("enum", [])
+
+
+def test_schema_builder_rejects_empty_enum_value():
+    """빈 문자열 enum을 만들려 하면 배포 전에 터져야 한다."""
+    import enum
+
+    from pydantic import BaseModel
+
+    class Bad(enum.StrEnum):
+        NONE = ""
+
+    class Model(BaseModel):
+        x: Bad
+
+    try:
+        build_response_schema(Model)
+    except ValueError as e:
+        assert "빈 문자열" in str(e)
+    else:
+        raise AssertionError("빈 문자열 enum이 통과됐다")
+
+
+# --- C6: 액션 집합 -----------------------------------------------------------
+
+
+def test_action_type_values():
+    """HANDOFF에서 관찰된 액션만 둔다. 기다리기는 앱 폴링 담당이라 없다."""
+    assert {a.value for a in ActionType} == {
+        "tap",
+        "scroll",
+        "type",
+        "open_quick_settings",
+        "done",
+    }
+
+
+# --- C4 / C5: 상태를 어디에 두는가 -------------------------------------------
+
+
+def test_scroll_metadata_lives_on_element():
+    fields = UiElement.model_fields
+    assert {"scroll_axis", "next_swipe_direction", "prev_swipe_direction"} <= set(fields)
+
+
+def test_page_position_lives_on_screen_not_element():
+    """페이지는 화면 단위 상태다. 요소마다 두면 '아무거나 집는' 실수를 재현한다(HANDOFF §2)."""
+    assert {"current_page", "total_pages"} <= set(Screen.model_fields)
+    assert "current_page" not in UiElement.model_fields
+    assert "total_pages" not in UiElement.model_fields
+
+
+# --- C7 / C8: 요청·에러 ------------------------------------------------------
+
+
+def test_request_carries_client_version():
+    req = NextStepRequest(goal="x", screen=Screen(), client_version="0.1.0")
+    assert req.client_version == "0.1.0"
+    # 낡은 앱이 안 보낼 수도 있으므로 선택 필드여야 한다.
+    assert NextStepRequest(goal="x", screen=Screen()).client_version is None
+
+
+def test_api_error_can_carry_retry_and_request_id():
+    err = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="rate limited",
+        retry_after_seconds=30,
+        request_id="abc",
+    )
+    assert err.retry_after_seconds == 30
+    assert err.request_id == "abc"
+
+
+# --- C3: scroll에는 방향이 있어야 실행 가능하다 -------------------------------
+
+
+def test_stub_scrolls_with_direction_when_nothing_clickable():
+    req = NextStepRequest(
+        goal="설정 찾기",
+        screen=Screen(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="목록",
+                    clickable=False,
+                    can_scroll_forward=True,
+                    next_swipe_direction=SwipeDirection.UP,
+                )
+            ]
+        ),
+    )
+    action = StubLlmClient().reason(req)
+    assert action.action_type is ActionType.SCROLL
+    assert action.direction is SwipeDirection.UP
+    assert action.target_node_id == "n1"
+
+
+def test_stub_raises_when_stuck():
+    """막힘 상태를 조용히 '기다리기'로 덮지 않는다(C6)."""
+    req = NextStepRequest(goal="x", screen=Screen(elements=[]))
+    try:
+        StubLlmClient().reason(req)
+    except LlmError as e:
+        assert e.kind is ErrorKind.SERVER
+    else:
+        raise AssertionError("막힌 상태인데 액션을 돌려줬다")

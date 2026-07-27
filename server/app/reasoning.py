@@ -38,7 +38,7 @@ def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
     TODO: evidence가 실제 label과 매칭되는지 검사(SPEC §11 열린 결정).
     지금은 근거 필드가 비지 않았는지만 본다(HANDOFF: 빈 evidence로 done 거부한 실측 사례).
     """
-    if action.action is not ActionType.DONE:
+    if action.action_type is not ActionType.DONE:
         return False
     return bool(action.evidence.strip()) and bool(action.expected_result.strip())
 
