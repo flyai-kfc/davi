@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config import settings
@@ -13,6 +15,48 @@ from .reasoning import next_step
 from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
 
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
+# Uvicorn 기본 핸들러를 상속해 별도 logging 설정 없이 서버 콘솔에 출력한다.
+request_logger = logging.getLogger("uvicorn.error.davi.requests")
+
+_NEXT_STEP_PATH = "/v1/next-step"
+_MAX_LOG_VALUE_LENGTH = 200
+
+
+def _safe_log_value(value: object) -> str:
+    """사용자 입력을 한 줄 로그에 안전하게 넣는다."""
+    if value is None:
+        return "-"
+    one_line = " ".join(str(value).splitlines())
+    if len(one_line) > _MAX_LOG_VALUE_LENGTH:
+        return f"{one_line[:_MAX_LOG_VALUE_LENGTH]}…"
+    return one_line
+
+
+@app.middleware("http")
+async def log_next_step_request(request: Request, call_next):
+    """추론 요청의 메타데이터만 한 줄로 남긴다. 화면 label 원문은 기록하지 않는다."""
+    if request.url.path != _NEXT_STEP_PATH:
+        return await call_next(request)
+
+    started_at = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        metadata = getattr(request.state, "next_step_metadata", {})
+        duration_ms = (time.perf_counter() - started_at) * 1000
+        request_logger.info(
+            "next_step package_name=%s element_count=%s goal=%s "
+            "client_version=%s status_code=%s duration_ms=%.2f",
+            _safe_log_value(metadata.get("package_name")),
+            metadata.get("element_count", 0),
+            _safe_log_value(metadata.get("goal")),
+            _safe_log_value(metadata.get("client_version")),
+            status_code,
+            duration_ms,
+        )
 
 
 @app.get("/health")
@@ -21,7 +65,13 @@ def health() -> dict:
 
 
 @app.post("/v1/next-step", response_model=NextStepResponse)
-def post_next_step(req: NextStepRequest) -> NextStepResponse | JSONResponse:
+def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse | JSONResponse:
+    request.state.next_step_metadata = {
+        "package_name": req.screen.package_name,
+        "element_count": len(req.screen.elements),
+        "goal": req.goal,
+        "client_version": req.client_version,
+    }
     try:
         return next_step(req, get_llm_client())
     except LlmError as e:
