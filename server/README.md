@@ -2,7 +2,19 @@
 
 FastAPI. [마스킹된 화면 + 목표] → 다음 안내 하나. 전용 규칙은 `CLAUDE.md`, 방향은 `../SPEC.md`.
 
-## 빠른 시작 (Python 3.12 고정 — `py -3.12`)
+## 빠른 시작 (Python 3.12 고정)
+
+macOS/Linux:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python3.12 -m pip install -r requirements-dev.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+Windows:
 
 ```bash
 py -3.12 -m venv .venv
@@ -15,11 +27,31 @@ uvicorn app.main:app --reload
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 
-실기기 접속은 터널로(`../SPEC.md` §7):
+## 실기기 접속용 터널
+
+이번 사이클은 로컬 서버를 Cloudflare Quick Tunnel로 외부에 노출한다(`../SPEC.md` §7).
+먼저 위 절차로 서버를 `127.0.0.1:8000`에 실행하고, 다른 터미널에서 다음을 실행한다.
+
+macOS(Homebrew):
 
 ```bash
-# 예: cloudflared tunnel --url http://localhost:8000   또는   ngrok http 8000
+brew install cloudflared
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
+
+출력된 `https://<랜덤>.trycloudflare.com` 주소로 다음을 확인한다.
+
+1. 실기기 브라우저에서 `<터널 URL>/health`를 열어 `{"status":"ok", ...}` 응답을 확인한다.
+2. `app-android/local.properties`의 `DAVI_SERVER_URL`에 터널 URL을 넣고 앱을 다시 빌드한다.
+3. 앱에서 요청을 보내 서버 콘솔의 `next_step` 로그 한 줄을 확인한다.
+
+```properties
+DAVI_SERVER_URL=https://<랜덤>.trycloudflare.com
+```
+
+요청 로그에는 `package_name`, 요소 개수, `goal`, `client_version`, HTTP 상태,
+처리 시간만 기록한다. 화면 요소의 `label` 원문은 기록하지 않는다.
+Quick Tunnel URL은 실행할 때마다 바뀔 수 있으므로 재실행 후 앱 설정도 갱신한다.
 
 ## 검사
 
@@ -48,6 +80,8 @@ pytest
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태 매핑.
+- `/v1/next-step` 요청 로깅 — 패키지명·요소 개수·목표·클라이언트 버전·처리 시간만
+  한 줄로 기록한다. 화면 `label` 원문은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
 - `app/config.py` — 환경변수 로딩. `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
