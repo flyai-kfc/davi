@@ -6,10 +6,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 **빌드는 Android Studio에서만.** 이 개발 환경은 Gradle이 loopback을 못 열어 CLI 빌드가 실패한다
 (`HANDOFF.md` §3-15). Android Studio로 `app-android/` 폴더를 연다.
 
-- **Gradle Wrapper jar(`gradle/wrapper/gradle-wrapper.jar`)와 `gradlew` 스크립트는 현재 없다.** 나중에 추가한다.
-  `gradle-wrapper.properties`만 있어 Android Studio에서 여는 데는 문제가 없지만, `./gradlew`로는 실행할 수 없다.
-  추가하려면 Gradle이 설치된 환경에서 `gradle wrapper --gradle-version 8.13`.
-  추가한 뒤에는 CI(`.github/workflows/ci.yml`)를 `gradle` → `./gradlew`로 바꾸고 wrapper 검증 스텝을 켠다.
+- **Gradle Wrapper가 있다.** `./gradlew`로 빌드하는 것이 기준이다(CI도 이걸 쓴다). Gradle 9.5.0.
+  단 **이 개발 PC에서는 CLI 빌드가 여전히 안 된다** — `Unable to establish loopback connection`(HANDOFF §3-15).
+  즉 wrapper가 생겼어도 로컬 빌드는 Android Studio에서 한다. `./gradlew`가 실제로 도는 곳은 CI다.
+- `gradle/gradle-daemon-jvm.properties`가 데몬 JVM을 **Java 21 / JetBrains**로 고정한다.
+  다른 JDK로 열면 Gradle이 해당 JDK를 자동으로 내려받는다.
+- `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
+  이 속성이 깨지지 않게 유지할 것 — 깨지면 리눅스 CI에서 실행되지 않는다.
 - AGP/Gradle/Kotlin 버전은 `gradle/libs.versions.toml`의 **시작 버전**이다. Studio가 업그레이드를 제안하면 따라도 된다.
 
 ## 설정 (local.properties — gitignore됨)

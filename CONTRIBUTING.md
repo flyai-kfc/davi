@@ -51,8 +51,12 @@ CI와 같은 것을 돌린다.
 cd server && ruff check . && ruff format --check . && pytest
 ```
 
-앱은 Android Studio에서 빌드·실행한다. 이 개발 환경은 Gradle CLI 빌드가 안 된다(HANDOFF §3-15).
-`gradle-wrapper.jar`는 아직 저장소에 없어서 `./gradlew`도 쓸 수 없다.
+앱은 **Android Studio에서 빌드·실행한다.** Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
+개발 PC에 따라 Gradle CLI가 loopback 연결을 못 열어 실패할 수 있다(HANDOFF §3-15). 그 경우 Studio를 쓴다.
+
+`gradlew`는 실행 비트와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`가 강제). Windows에서 이 속성이
+깨지면 리눅스 CI에서 실행되지 않으니, wrapper 파일을 건드린 PR은 `git ls-files --stage app-android/gradlew`가
+`100755`인지 확인한다.
 
 ## 개인정보
 

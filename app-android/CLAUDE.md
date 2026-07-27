@@ -22,7 +22,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
-- **빌드는 Android Studio에서만.** 이 개발 환경은 Gradle이 loopback을 못 열어 CLI 빌드가 실패한다(`HANDOFF.md` §3-15). Kotlin·리소스만 고쳤으면 Sync 없이 **Run**으로 반영.
+- **로컬 빌드는 Android Studio에서.** wrapper(`./gradlew`)가 저장소에 있지만 이 개발 PC는 Gradle이 loopback을 못 열어 CLI 빌드가 실패한다(`HANDOFF.md` §3-15). `./gradlew`가 실제로 도는 곳은 CI다. Kotlin·리소스만 고쳤으면 Sync 없이 **Run**으로 반영.
+- **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
 - **API 키를 앱에 넣지 않는다.** 서버 터널 URL만 주입(BuildConfig 또는 설정 화면). 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는 **되살리지 않는다**(§5-2).
 - 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 확인: `adb shell settings get secure enabled_accessibility_services`.
 - adb 서버 버전 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server` → `adb devices`.

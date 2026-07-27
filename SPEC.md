@@ -78,7 +78,7 @@
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle (버전 카탈로그) | 빌드는 Android Studio에서만(§3-15, 이 환경은 Gradle CLI 불가). |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 로컬 빌드는 Android Studio에서(§3-15, 개발 PC에서 Gradle CLI가 loopback 실패). `./gradlew`는 CI에서 돈다. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). 출시 전이라 교체 가능. |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정(§10, litellm 3.11+ 필요). |
@@ -100,8 +100,10 @@ davi/
 ├─ app-android/                    ← Kotlin 앱 (기기측 실행기)
 │  ├─ CLAUDE.md · README.md · .gitignore
 │  ├─ settings.gradle.kts · build.gradle.kts · gradle.properties
+│  ├─ gradlew · gradlew.bat        ← Wrapper (CI가 쓰는 빌드 진입점)
 │  ├─ gradle/libs.versions.toml    ← 버전 카탈로그
-│  ├─ gradle/wrapper/gradle-wrapper.properties
+│  ├─ gradle/gradle-daemon-jvm.properties  ← 데몬 JVM 고정 (Java 21 / JetBrains)
+│  ├─ gradle/wrapper/gradle-wrapper.{properties,jar}
 │  └─ app/
 │     ├─ build.gradle.kts · proguard-rules.pro
 │     └─ src/main/

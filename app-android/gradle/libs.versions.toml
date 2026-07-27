@@ -2,8 +2,8 @@
 # 아래는 시작 버전이다. Android Studio가 최신 AGP/Gradle 업그레이드를 제안하면 따라도 된다.
 
 [versions]
-agp = "8.13.2"
-kotlin = "2.1.0"
+agp = "9.3.1"
+kotlin = "2.2.10"
 coreKtx = "1.15.0"
 appcompat = "1.7.0"
 material = "1.12.0"
