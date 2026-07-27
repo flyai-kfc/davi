@@ -32,6 +32,8 @@ object UiTreeSerializer {
 
     private const val MAX_LABEL_CHARS = 120
 
+    private val WHITESPACE = Regex("\\s+")
+
     /**
      * 자기 넓이가 화면의 이 비율을 넘으면 "누를 수 있는 대상"이 아니라 컨테이너로 본다.
      * 이런 노드에는 자손 텍스트를 합치지 않는다.
@@ -81,11 +83,22 @@ object UiTreeSerializer {
         if (node.isClickable) {
             val merge = shouldMergeDescendants(node, screenArea)
             val label = if (merge) mergedLabel(node) else ownText(node).orEmpty()
-            out.add(element(node, label, counter))
-            // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
-            childrenAbsorbed = merge
+            // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
+            // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
+            if (label.isNotBlank()) {
+                out.add(element(node, label, counter))
+                // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
+                childrenAbsorbed = merge
+            }
         } else if (!absorbed) {
-            ownText(node)?.let { out.add(element(node, it, counter)) }
+            val own = ownText(node)
+            if (own != null) {
+                out.add(element(node, own, counter))
+                // 시계처럼 자기 글자가 이미 자손의 요약인 **작은** 노드는 자손을 또 내보내지 않는다
+                // (실측: 잠금화면 시계가 '오후12:23' + 낱개 숫자 '1','2','2','3'으로 5개가 됐다).
+                // 큰 컨테이너는 흡수하지 않는다 — 그러면 그 안의 아이콘을 통째로 잃는다.
+                if (shouldMergeDescendants(node, screenArea)) childrenAbsorbed = true
+            }
         }
 
         for (i in 0 until node.childCount) {
@@ -102,7 +115,9 @@ object UiTreeSerializer {
         val r = boundsOf(node)
         return UiElement(
             nodeId = "n${counter[0]}",
-            label = label.take(MAX_LABEL_CHARS),
+            // 줄바꿈·중복 공백을 한 칸으로 눌러 로그와 프롬프트를 읽을 수 있게 만든다
+            // (실측: 키패드 라벨이 "6\n,ㄷ,ㅌ\n,M,N,O" 처럼 여러 줄로 나왔다).
+            label = label.replace(WHITESPACE, " ").trim().take(MAX_LABEL_CHARS),
             role = roleOf(node),
             clickable = node.isClickable,
             bounds = listOf(r.left, r.top, r.right, r.bottom),

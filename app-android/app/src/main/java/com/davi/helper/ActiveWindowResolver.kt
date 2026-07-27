@@ -19,7 +19,7 @@ import android.view.accessibility.AccessibilityWindowInfo
  */
 object ActiveWindowResolver {
 
-    /** 이보다 작은 창은 상태표시줄·토스트 따위로 보고 후보에서 뺀다(화면 넓이 대비 비율). */
+    /** 이보다 작은 창은 상태표시줄·네비게이션바 따위로 보고 후보에서 뺀다(실제 화면 대비 비율). */
     private const val MIN_AREA_RATIO = 0.15
 
     fun resolve(service: AccessibilityService): AccessibilityNodeInfo? {
@@ -31,18 +31,22 @@ object ActiveWindowResolver {
             .mapNotNull { window -> window.root?.let { window to it } }
             .filter { (_, root) -> root.packageName?.toString() != ownPackage }
 
-        if (candidates.isEmpty()) {
-            // windows를 못 읽는 상황(권한/타이밍)에서의 폴백.
-            return service.rootInActiveWindow
-        }
-
-        val screenArea = candidates.maxOf { (window, _) -> area(window) }.coerceAtLeast(1L)
+        // 기준은 **실제 디스플레이 크기**여야 한다. 후보 중 가장 큰 창을 기준으로 삼으면,
+        // 앱 창의 root가 null이라 후보에서 빠졌을 때 남은 네비게이션바가 "화면 전체"로 둔갑해
+        // 그걸 사용자 화면으로 잘못 고른다. (실측: 홈 화면에서 런처 root가 null이라 네비바 3개
+        // 요소가 화면으로 잡혔다. HANDOFF §12 "홈 화면 dump는 종종 실패한다"와 같은 현상.)
+        val displayArea = displayArea(service)
 
         return candidates
-            .filter { (window, _) -> area(window).toDouble() / screenArea >= MIN_AREA_RATIO }
+            .filter { (window, _) -> area(window).toDouble() / displayArea >= MIN_AREA_RATIO }
             .maxByOrNull { (window, _) -> area(window) }
             ?.second
             ?: service.rootInActiveWindow
+    }
+
+    private fun displayArea(service: AccessibilityService): Long {
+        val metrics = service.resources.displayMetrics
+        return (metrics.widthPixels.toLong() * metrics.heightPixels.toLong()).coerceAtLeast(1L)
     }
 
     private fun area(window: AccessibilityWindowInfo): Long {
