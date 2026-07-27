@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 
 /**
  * 접근성 트리 -> LLM용 요소 목록.
@@ -35,6 +36,26 @@ object UiTreeSerializer {
     private val WHITESPACE = Regex("\\s+")
 
     /**
+     * 런처 페이지 인디케이터(dot)의 content-desc. 예: "6 페이지 중 2 페이지입니다."
+     *
+     * 삼성 런처는 홈·앱서랍 모두 `scrollable` 노드를 0개 노출하므로(HANDOFF §3-2)
+     * **현재/전체 페이지를 알 수 있는 유일한 경로가 이것뿐이다**(§3-3).
+     *
+     * 한국어 문구에 묶여 있다. 다국어는 SPEC §11의 열린 결정이다.
+     */
+    private val PAGE_DOT_RE = Regex("""(\d+)\s*페이지\s*중\s*(\d+)\s*페이지""")
+
+    private const val ROLE_PAGE_DOT = "page_dot"
+
+    /** 직렬화 한 번 동안의 누적 상태. 파라미터가 늘어나는 것을 막는다. */
+    private class Ctx(val screenArea: Long) {
+        val elements = mutableListOf<UiElement>()
+        var counter = 0
+        var currentPage: Int? = null
+        var totalPages: Int? = null
+    }
+
+    /**
      * 자기 넓이가 화면의 이 비율을 넘으면 "누를 수 있는 대상"이 아니라 컨테이너로 본다.
      * 이런 노드에는 자손 텍스트를 합치지 않는다.
      *
@@ -49,15 +70,16 @@ object UiTreeSerializer {
         val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
             .coerceAtLeast(1L)
 
-        val elements = mutableListOf<UiElement>()
-        val counter = intArrayOf(0)
-        walk(root, elements, counter, screenArea, absorbed = false, depth = 0)
+        val ctx = Ctx(screenArea)
+        walk(root, ctx, absorbed = false, depth = 0)
 
-        val truncated = elements.size > MAX_ELEMENTS
+        val truncated = ctx.elements.size > MAX_ELEMENTS
         return Result(
             screen = Screen(
                 packageName = root.packageName?.toString().orEmpty(),
-                elements = if (truncated) elements.take(MAX_ELEMENTS) else elements,
+                elements = if (truncated) ctx.elements.take(MAX_ELEMENTS) else ctx.elements,
+                currentPage = ctx.currentPage,
+                totalPages = ctx.totalPages,
             ),
             truncated = truncated,
         )
@@ -69,62 +91,170 @@ object UiTreeSerializer {
      */
     private fun walk(
         node: AccessibilityNodeInfo?,
-        out: MutableList<UiElement>,
-        counter: IntArray,
-        screenArea: Long,
+        ctx: Ctx,
         absorbed: Boolean,
         depth: Int,
     ) {
-        if (node == null || depth > MAX_DEPTH || out.size > MAX_ELEMENTS) return
+        if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
         if (!node.isVisibleToUser) return
 
         var childrenAbsorbed = absorbed
 
-        if (node.isClickable) {
-            val merge = shouldMergeDescendants(node, screenArea)
-            val label = if (merge) mergedLabel(node) else ownText(node).orEmpty()
+        val ownTextValue = ownText(node)
+        val isPageDot = ownTextValue != null && parsePageDot(ownTextValue) != null
+        var emitted = false
+
+        if (isPageDot) {
+            readPageDot(ownTextValue!!, node, ctx)
+            ctx.elements.add(
+                element(node, ownTextValue, ctx, role = ROLE_PAGE_DOT, clickable = false),
+            )
+            emitted = true
+        } else if (node.isClickable) {
+            val merge = shouldMergeDescendants(node, ctx.screenArea)
+            val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             if (label.isNotBlank()) {
-                out.add(element(node, label, counter))
+                ctx.elements.add(element(node, label, ctx))
+                emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
             }
         } else if (!absorbed) {
-            val own = ownText(node)
-            if (own != null) {
-                out.add(element(node, own, counter))
+            if (ownTextValue != null) {
+                ctx.elements.add(element(node, ownTextValue, ctx))
+                emitted = true
                 // 시계처럼 자기 글자가 이미 자손의 요약인 **작은** 노드는 자손을 또 내보내지 않는다
                 // (실측: 잠금화면 시계가 '오후12:23' + 낱개 숫자 '1','2','2','3'으로 5개가 됐다).
                 // 큰 컨테이너는 흡수하지 않는다 — 그러면 그 안의 아이콘을 통째로 잃는다.
-                if (shouldMergeDescendants(node, screenArea)) childrenAbsorbed = true
+                if (shouldMergeDescendants(node, ctx.screenArea)) childrenAbsorbed = true
             }
         }
 
-        for (i in 0 until node.childCount) {
-            walk(node.getChild(i), out, counter, screenArea, childrenAbsorbed, depth + 1)
+        // 스크롤 컨테이너는 글자도 없고 클릭도 안 돼서 위 조건에 하나도 안 걸린다.
+        // 그런데 스크롤 상태는 **잎이 아니라 컨테이너에** 있다. 안 내보내면 모델은 화면이
+        // 더 넘어가는지조차 모르고, 넘기라고 정해도 무엇을 쓸어야 하는지 가리킬 수단이 없다.
+        // (실측: 설정 앱에서 scroll 메타가 한 건도 안 나왔다.)
+        if (!emitted && hasScrollActions(node)) {
+            ctx.elements.add(element(node, "", ctx))
         }
+
+        for (i in 0 until node.childCount) {
+            walk(node.getChild(i), ctx, childrenAbsorbed, depth + 1)
+        }
+    }
+
+    /**
+     * 페이지 dot 하나를 읽어 화면 단위 페이지 위치를 채운다.
+     *
+     * **`selected`인 dot만 현재 페이지로 삼는다.** 홈에는 "N 페이지 중 M 페이지" 노드가
+     * 페이지마다 따로 있어서, 아무거나 집으면 틀린 값이 나온다(HANDOFF §2에서 폐기한 길).
+     * 전체 페이지 수는 어느 dot에서 읽어도 같으므로 처음 본 값을 쓴다.
+     */
+    private fun readPageDot(text: String, node: AccessibilityNodeInfo, ctx: Ctx) {
+        val dot = parsePageDot(text) ?: return
+        if (ctx.totalPages == null) ctx.totalPages = dot.total
+        if (node.isSelected) ctx.currentPage = dot.current
+    }
+
+    /** "6 페이지 중 2 페이지입니다." -> total=6, current=2. 목킹 없이 테스트하려고 분리했다. */
+    internal data class PageDot(val total: Int, val current: Int)
+
+    internal fun parsePageDot(text: String): PageDot? {
+        val m = PAGE_DOT_RE.find(text) ?: return null
+        val total = m.groupValues[1].toIntOrNull() ?: return null
+        val current = m.groupValues[2].toIntOrNull() ?: return null
+        return PageDot(total, current)
     }
 
     private fun element(
         node: AccessibilityNodeInfo,
         label: String,
-        counter: IntArray,
+        ctx: Ctx,
+        role: String? = null,
+        clickable: Boolean? = null,
     ): UiElement {
-        counter[0]++
+        ctx.counter++
         val r = boundsOf(node)
+        val scroll = scrollStateOf(node, r)
         return UiElement(
-            nodeId = "n${counter[0]}",
+            nodeId = "n${ctx.counter}",
             // 줄바꿈·중복 공백을 한 칸으로 눌러 로그와 프롬프트를 읽을 수 있게 만든다
             // (실측: 키패드 라벨이 "6\n,ㄷ,ㅌ\n,M,N,O" 처럼 여러 줄로 나왔다).
             // 정규화된 label을 외부 서버로 보내기 전에 여기서 반드시 1차 마스킹한다(SPEC §2).
             // 길이 제한보다 먼저 마스킹해야 잘린 개인정보 조각이 정규식 매칭을 피하지 않는다.
             label = PrivacyMasker.maskText(label.replace(WHITESPACE, " ").trim())
                 .take(MAX_LABEL_CHARS),
-            role = roleOf(node),
-            clickable = node.isClickable,
+            role = role ?: roleOf(node),
+            // 페이지 dot은 clickable=true지만 약 50x50px이라 시니어가 조준할 수 없다.
+            // 탭 대상이 아니라 **정보원**으로만 쓴다(HANDOFF §3-3)는 결정을 여기서 못박는다.
+            clickable = clickable ?: node.isClickable,
             bounds = listOf(r.left, r.top, r.right, r.bottom),
+            canScrollForward = scroll?.forward,
+            canScrollBackward = scroll?.backward,
+            scrollAxis = scroll?.axis?.wire,
+            nextSwipeDirection = scroll?.axis?.next,
+            prevSwipeDirection = scroll?.axis?.prev,
         )
+    }
+
+    /**
+     * 스와이프 방향은 **손가락이 움직이는 방향**이다. "무엇이 보이게 되는지"가 아니다.
+     * 목록 아래를 더 보려면 손가락은 위로 올린다 -> 세로축의 next 는 up.
+     */
+    internal enum class Axis(
+        val wire: ScrollAxis,
+        val next: SwipeDirection,
+        val prev: SwipeDirection,
+    ) {
+        VERTICAL(ScrollAxis.VERTICAL, SwipeDirection.UP, SwipeDirection.DOWN),
+        HORIZONTAL(ScrollAxis.HORIZONTAL, SwipeDirection.LEFT, SwipeDirection.RIGHT),
+    }
+
+    private class ScrollState(val forward: Boolean, val backward: Boolean, val axis: Axis)
+
+    /**
+     * 스크롤 상태. 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
+     * 스크롤 끝을 몰라 엉뚱한 방향을 안내하던 문제가 이 값들로 풀린다.
+     */
+    private fun hasScrollActions(node: AccessibilityNodeInfo): Boolean =
+        node.actionList.any {
+            it.id == AccessibilityAction.ACTION_SCROLL_FORWARD.id ||
+                it.id == AccessibilityAction.ACTION_SCROLL_BACKWARD.id
+        }
+
+    private fun scrollStateOf(node: AccessibilityNodeInfo, bounds: Rect): ScrollState? {
+        val actions = node.actionList.mapTo(HashSet()) { it.id }
+        val forward = AccessibilityAction.ACTION_SCROLL_FORWARD.id in actions
+        val backward = AccessibilityAction.ACTION_SCROLL_BACKWARD.id in actions
+        if (!forward && !backward) return null
+
+        val horizontal = AccessibilityAction.ACTION_SCROLL_LEFT.id in actions ||
+            AccessibilityAction.ACTION_SCROLL_RIGHT.id in actions
+        val vertical = AccessibilityAction.ACTION_SCROLL_UP.id in actions ||
+            AccessibilityAction.ACTION_SCROLL_DOWN.id in actions
+
+        return ScrollState(
+            forward,
+            backward,
+            resolveAxis(horizontal, vertical, bounds.width(), bounds.height()),
+        )
+    }
+
+    /** 목킹 없이 테스트하려고 Android 타입 없이 받는다. */
+    internal fun resolveAxis(
+        horizontal: Boolean,
+        vertical: Boolean,
+        width: Int,
+        height: Int,
+    ): Axis = when {
+        horizontal && !vertical -> Axis.HORIZONTAL
+        vertical && !horizontal -> Axis.VERTICAL
+        // 방향 액션을 노출하지 않는 뷰가 많다. 그럴 때만 모양으로 추정한다
+        // (가로로 넘기는 것은 대개 화면만큼 넓고 낮다).
+        width > height -> Axis.HORIZONTAL
+        else -> Axis.VERTICAL
     }
 
     /** 자기가 들고 있는 글자. text 우선, 없으면 contentDescription. */
