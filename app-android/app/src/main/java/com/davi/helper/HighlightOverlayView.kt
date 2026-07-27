@@ -57,12 +57,19 @@ class HighlightOverlayView(context: Context) : View(context) {
         canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
 
         // 테두리가 대상 가장자리를 덮지 않도록 선 두께의 절반만큼 바깥으로 물린다.
+        // 단 화면 밖으로 나가면 그만큼 잘리므로, 그릴 수 있는 범위 안으로 당긴다
+        // (실측: 네비게이션바 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다).
         val half = STROKE_WIDTH_PX / 2f
+        val minX = locationOnScreen[0] + half
+        val minY = locationOnScreen[1] + half
+        val maxX = locationOnScreen[0] + width - half
+        val maxY = locationOnScreen[1] + height - half
+
         canvas.drawRoundRect(
-            target.left - half,
-            target.top - half,
-            target.right + half,
-            target.bottom + half,
+            (target.left - half).coerceAtLeast(minX),
+            (target.top - half).coerceAtLeast(minY),
+            (target.right + half).coerceAtMost(maxX),
+            (target.bottom + half).coerceAtMost(maxY),
             CORNER_RADIUS_PX,
             CORNER_RADIUS_PX,
             strokePaint,
