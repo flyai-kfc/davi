@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from functools import cache
 from typing import Any
 
 import httpx
@@ -281,7 +282,10 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
+@cache
 def get_llm_client() -> LlmClient:
+    """설정은 프로세스 기동 시 고정되므로 HTTP 연결 풀도 프로세스 동안 재사용한다."""
+
     if settings.davi_use_stub_llm:
         return StubLlmClient()
     return GeminiLlmClient(settings.gemini_api_key, settings.davi_model)

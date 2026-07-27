@@ -2,7 +2,7 @@ import json
 
 import httpx
 import pytest
-from app.llm import GUIDE_ACTION_SCHEMA, GeminiLlmClient, LlmError
+from app.llm import GUIDE_ACTION_SCHEMA, GeminiLlmClient, LlmError, get_llm_client
 from app.schemas import ErrorKind, NextStepRequest, Screen, UiElement
 
 
@@ -148,3 +148,12 @@ def test_gemini_classifies_invalid_model_output_as_parse_error():
         client.reason(_request())
 
     assert raised.value.kind is ErrorKind.PARSE
+
+
+def test_get_llm_client_reuses_one_connection_pool():
+    get_llm_client.cache_clear()
+
+    first = get_llm_client()
+    second = get_llm_client()
+
+    assert first is second
