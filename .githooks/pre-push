@@ -1,0 +1,31 @@
+#!/bin/sh
+# main 직접 푸시를 막는다.
+#
+# 왜 필요한가: 무료 조직 + private 저장소라 GitHub 브랜치 보호를 걸 수 없다
+# (403 "Upgrade to GitHub Pro..."). 서버가 안 막아주니 각자 로컬에서 막는다.
+# CONTRIBUTING.md "저장소 설정" 참고.
+#
+# 설치:  git config core.hooksPath .githooks
+# 우회:  git push --no-verify   (정말 필요할 때만)
+
+PROTECTED="refs/heads/main"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    if [ "$remote_ref" = "$PROTECTED" ]; then
+        echo "" >&2
+        echo "  거부: main에 직접 푸시하지 않는다." >&2
+        echo "" >&2
+        echo "  feature 브랜치 -> PR -> 리뷰 1인 -> merge 로 진행한다." >&2
+        echo "  브랜치명 규칙: <타입>/<범위>-<요약>   예) feat/server-completion-verify" >&2
+        echo "" >&2
+        echo "  지금 작업을 브랜치로 옮기려면:" >&2
+        echo "    git switch -c feat/<범위>-<요약>" >&2
+        echo "    git push -u origin HEAD" >&2
+        echo "" >&2
+        echo "  (의도적으로 넘기려면 git push --no-verify)" >&2
+        echo "" >&2
+        exit 1
+    fi
+done
+
+exit 0
