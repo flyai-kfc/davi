@@ -15,8 +15,9 @@ py -3.12 -m pytest
 macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 사용한다. `harness.py`는 fixture별 결과와
 전체 `total/passed/failed`를 JSON으로 출력하고 하나라도 실패하면 종료 코드 1을 반환한다.
 
-CI의 기존 `eval 하니스 스모크`도 같은 `python harness.py`를 실행하므로 별도 API 키나 secret 없이
-fixture 로딩, PII 검사, 요청 스키마, 입력 보존, 스텁 파이프라인을 항상 검사한다.
+CI는 별도 API 키나 secret 없이 `python -m pytest`, Ruff 린트·포맷 검사와
+`python harness.py` 스모크를 모두 실행한다. 실제 fixture의 로딩, PII 검사, 요청 스키마,
+입력 보존, 스텁 파이프라인뿐 아니라 PII 탐지·원문 비노출 같은 음성 경로도 항상 검사한다.
 
 다른 디렉터리를 검사하려면 다음처럼 지정한다.
 
@@ -84,7 +85,8 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
 
 ## 익명화와 PII 검사
 
-fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 전체 JSON을 다시 검사한다.
+fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 전체 JSON의 key와 value를 다시
+검사한다.
 
 - 이메일
 - 주민등록번호
@@ -95,7 +97,9 @@ fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 �
 - `device_id`, API 키, raw 모델 응답 필드와 흔한 API 키 형태
 
 검사는 `server/app/masking.py:mask_text`를 재사용해 앱/서버의 다섯 정규식과 같이 움직인다. 실패
-메시지에는 JSON 경로만 표시하고 발견한 원문은 표시하지 않는다.
+메시지에는 안전한 JSON 경로만 표시하고 발견한 원문은 표시하지 않는다. key 자체가 민감하거나
+경로로 안전하게 표현할 수 없으면 `<redacted-key>`로 치환한다. 스키마 검증 오류의 필드 경로에도
+같은 규칙을 적용한다.
 
 정규식은 사람 이름이나 커스텀 앱 이름을 판별할 수 없다. 따라서 그런 label은 `일반 앱 1`처럼
 의미 품질에 영향을 최소화하는 일반 label로 사람이 치환하고, `source.anonymization`에 무엇을

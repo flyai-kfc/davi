@@ -113,6 +113,19 @@ jobs:
         working-directory: server
         run: pytest
 
+      # #30의 음성 경로(PII 탐지·원문 비노출·스키마 거부)는 하니스 스모크만으로 검증할 수 없다.
+      - name: eval 린트
+        working-directory: eval
+        run: ruff check harness.py tests
+
+      - name: eval 포맷 검사
+        working-directory: eval
+        run: ruff format --check harness.py tests
+
+      - name: eval 테스트
+        working-directory: eval
+        run: python -m pytest
+
       # eval이 server를 직접 import하는 구조라, 그 경계가 깨지지 않았는지 확인한다.
       - name: eval 하니스 스모크
         working-directory: eval

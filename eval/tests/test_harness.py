@@ -4,8 +4,19 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from harness import FIXTURES, FixtureError, load_fixture, load_fixtures, run_suite
+import harness
+from harness import (
+    FIXTURES,
+    FixtureDocument,
+    FixtureError,
+    _validation_locations,
+    find_sensitive_paths,
+    load_fixture,
+    load_fixtures,
+    run_suite,
+)
 
 
 def _fixture_payload() -> dict:
@@ -103,6 +114,48 @@ def test_sensitive_fields_are_rejected_without_logging_values(tmp_path: Path):
 
     assert "private-device-value" not in str(raised.value)
     assert "$.input.device_id" in str(raised.value)
+
+
+def test_sensitive_json_key_is_detected_without_exposing_key():
+    sensitive_key = "contact@example.com"
+
+    findings = find_sensitive_paths({sensitive_key: "safe"})
+
+    assert findings == ["$.<redacted-key>"]
+    assert sensitive_key not in " ".join(findings)
+
+
+def test_envelope_validation_location_redacts_sensitive_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    sensitive_key = "contact@example.com"
+    payload = _fixture_payload()
+    payload[sensitive_key] = "safe"
+    path = _write_fixture(tmp_path, "invalid-envelope.json", payload)
+    monkeypatch.setattr(
+        harness, "assert_no_sensitive_data", lambda *_args, **_kwargs: None
+    )
+
+    with pytest.raises(FixtureError) as raised:
+        load_fixture(path)
+
+    message = str(raised.value)
+    assert sensitive_key not in message
+    assert "$.<redacted-key>" in message
+    assert "fixture 형식 오류" in message
+
+
+def test_validation_location_helper_redacts_sensitive_key():
+    sensitive_key = "contact@example.com"
+    payload = _fixture_payload()
+    payload[sensitive_key] = "safe"
+
+    with pytest.raises(ValidationError) as raised:
+        FixtureDocument.model_validate(payload)
+
+    locations = _validation_locations(raised.value)
+    assert sensitive_key not in locations
+    assert locations == "$.<redacted-key>"
 
 
 def test_suite_returns_per_fixture_and_overall_results(tmp_path: Path):

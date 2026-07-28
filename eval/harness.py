@@ -41,7 +41,9 @@ from app.schemas import (
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _MASK_TOKEN = "•••"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_SAFE_PATH_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_REDACTED_KEY = "<redacted-key>"
 _SECRET_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     re.compile(r"\bsk-[0-9A-Za-z_-]{20,}\b"),
@@ -136,7 +138,7 @@ def run_fixture(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def find_sensitive_paths(value: Any) -> list[str]:
-    """fixture JSON 전체에서 민감한 값의 경로만 찾는다.
+    """fixture JSON 전체에서 민감한 key와 값의 안전한 경로만 찾는다.
 
     반환값과 예외에는 실제 값을 절대 포함하지 않는다.
     """
@@ -146,8 +148,8 @@ def find_sensitive_paths(value: Any) -> list[str]:
     def visit(current: Any, path: str) -> None:
         if isinstance(current, dict):
             for key, child in current.items():
-                child_path = f"{path}.{key}"
-                if key.lower() in _FORBIDDEN_KEYS:
+                child_path = _child_path(path, key)
+                if key.lower() in _FORBIDDEN_KEYS or _is_sensitive_text(key):
                     findings.append(child_path)
                 visit(child, child_path)
             return
@@ -160,11 +162,7 @@ def find_sensitive_paths(value: Any) -> list[str]:
         # 계좌번호 정규식은 YYYY-MM-DD도 잡는다. 스키마가 날짜로 검증하는 출처 필드만 예외다.
         if path == "$.source.captured_at" and _ISO_DATE.fullmatch(current):
             return
-        if (
-            _MASK_TOKEN in current
-            or mask_text(current) != current
-            or any(pattern.search(current) for pattern in _SECRET_PATTERNS)
-        ):
+        if _is_sensitive_text(current):
             findings.append(path)
 
     visit(value, "$")
@@ -355,13 +353,34 @@ def run_suite(fixtures_dir: Path = FIXTURES) -> dict[str, Any]:
 
 
 def _validation_locations(error: ValidationError) -> str:
-    locations = []
+    locations: list[str] = []
     for item in error.errors(
         include_url=False, include_context=False, include_input=False
     ):
-        location = ".".join(str(part) for part in item["loc"]) or "$"
-        locations.append(location)
+        path = "$"
+        for part in item["loc"]:
+            if isinstance(part, int):
+                path = f"{path}[{part}]"
+            else:
+                path = _child_path(path, str(part))
+        locations.append(path)
     return ", ".join(sorted(set(locations))) or "$"
+
+
+def _child_path(path: str, key: str) -> str:
+    """검사 결과에 JSON key 원문이 새지 않는 자식 경로를 만든다."""
+
+    if not _SAFE_PATH_KEY.fullmatch(key) or _is_sensitive_text(key):
+        return f"{path}.{_REDACTED_KEY}"
+    return f"{path}.{key}"
+
+
+def _is_sensitive_text(value: str) -> bool:
+    return (
+        _MASK_TOKEN in value
+        or mask_text(value) != value
+        or any(pattern.search(value) for pattern in _SECRET_PATTERNS)
+    )
 
 
 def _canonical_json(value: Any) -> str:
