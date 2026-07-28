@@ -27,6 +27,35 @@ uvicorn app.main:app --reload
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 
+## 실행 프로필
+
+`DAVI_ENV`는 서버의 실행 경계를 정한다. 값이 없으면 로컬·테스트 호환을 위해
+`development`이며, 배포 환경은 반드시 `production`을 명시한다.
+
+| 설정 | development | production |
+|---|---|---|
+| `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
+| `DAVI_USE_STUB_LLM=false` | non-empty `GEMINI_API_KEY` 필수 | non-empty `GEMINI_API_KEY` 필수 |
+| `DAVI_DEV_ACCESS_TOKEN` | 허용(#57의 공용 개발 endpoint용) | 설정 시 기동 실패 |
+| 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
+
+검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+
+`/health` 응답도 프로필에 따라 다르다.
+
+development:
+
+```json
+{"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true}
+```
+
+production:
+
+```json
+{"status":"ok"}
+```
+
 ## 실기기 접속용 터널
 
 이번 사이클은 로컬 서버를 Cloudflare Quick Tunnel로 외부에 노출한다(`../SPEC.md` §7).
@@ -49,8 +78,8 @@ cloudflared tunnel --url http://127.0.0.1:8000
 DAVI_SERVER_URL=https://<랜덤>.trycloudflare.com
 ```
 
-요청 로그에는 `package_name`, 요소 개수, `goal`, `client_version`, HTTP 상태,
-처리 시간만 기록한다. 화면 요소의 `label` 원문은 기록하지 않는다.
+요청 로그에는 request ID, `package_name`, 요소 개수, `client_version`, HTTP 상태,
+처리 시간만 기록한다. `goal`, 화면 `label`, 최근 안내, 요청 본문, access token은 기록하지 않는다.
 Quick Tunnel URL은 실행할 때마다 바뀔 수 있으므로 재실행 후 앱 설정도 갱신한다.
 
 ## 검사
@@ -72,7 +101,7 @@ pytest
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
 | `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
-| `app/config.py` | 환경변수. 모델명·도그푸딩 기기 화이트리스트. |
+| `app/config.py` | 실행 프로필·환경변수와 fail-fast 검증. |
 
 ## 지금 무엇이 진짜인가
 
@@ -82,8 +111,8 @@ pytest
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
-- `/v1/next-step` 요청 로깅 — 패키지명·요소 개수·목표·클라이언트 버전·처리 시간만
-  한 줄로 기록한다. 화면 `label` 원문은 기록하지 않는다.
+- `/v1/next-step` 요청 로깅 — request ID·패키지명·요소 개수·클라이언트 버전·HTTP 상태·
+  처리 시간만 한 줄로 기록한다. 사용자 입력인 목표·화면 `label`·최근 안내와 token은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
 - `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
@@ -92,7 +121,8 @@ pytest
   HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
 - Gemini 실호출 스모크(2026-07-27) — `.env`의 `gemini-3.5-flash-lite`로 마스킹된 샘플 화면을 호출해
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
-- `app/config.py` — 환경변수 로딩. `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
+- `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.
+  `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — 근거 필드가 비었는지만 본다. evidence·label 매칭 검사는 미정(SPEC §11).

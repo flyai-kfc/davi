@@ -24,7 +24,7 @@ _MAX_LOG_VALUE_LENGTH = 200
 
 
 def _safe_log_value(value: object) -> str:
-    """사용자 입력을 한 줄 로그에 안전하게 넣는다."""
+    """허용된 운영 메타데이터를 한 줄·상한 길이로 제한한다."""
     if value is None:
         return "-"
     one_line = " ".join(str(value).splitlines())
@@ -35,10 +35,11 @@ def _safe_log_value(value: object) -> str:
 
 @app.middleware("http")
 async def log_next_step_request(request: Request, call_next):
-    """추론 요청의 메타데이터만 한 줄로 남긴다. 화면 label 원문은 기록하지 않는다."""
+    """추론 요청의 비식별 운영 메타데이터만 한 줄로 남긴다."""
     if request.url.path != _NEXT_STEP_PATH:
         return await call_next(request)
 
+    request.state.request_id = uuid.uuid4().hex
     started_at = time.perf_counter()
     status_code = 500
     try:
@@ -49,11 +50,11 @@ async def log_next_step_request(request: Request, call_next):
         metadata = getattr(request.state, "next_step_metadata", {})
         duration_ms = (time.perf_counter() - started_at) * 1000
         request_logger.info(
-            "next_step package_name=%s element_count=%s goal=%s "
+            "next_step request_id=%s package_name=%s element_count=%s "
             "client_version=%s status_code=%s duration_ms=%.2f",
+            request.state.request_id,
             _safe_log_value(metadata.get("package_name")),
             metadata.get("element_count", 0),
-            _safe_log_value(metadata.get("goal")),
             _safe_log_value(metadata.get("client_version")),
             status_code,
             duration_ms,
@@ -62,7 +63,14 @@ async def log_next_step_request(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "model": settings.davi_model, "stub_llm": settings.davi_use_stub_llm}
+    if settings.davi_env == "production":
+        return {"status": "ok"}
+    return {
+        "status": "ok",
+        "environment": settings.davi_env,
+        "model": settings.davi_model,
+        "stub_llm": settings.davi_use_stub_llm,
+    }
 
 
 @app.post("/v1/next-step", response_model=NextStepResponse)
@@ -70,7 +78,6 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
     request.state.next_step_metadata = {
         "package_name": req.screen.package_name,
         "element_count": len(req.screen.elements),
-        "goal": req.goal,
         "client_version": req.client_version,
     }
     try:
@@ -78,7 +85,7 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
     except LlmError as e:
         # 앱이 사용자에게 다르게 안내하도록 kind를 그대로 전달(HANDOFF §5, LlmException).
         # message는 디버그용이며 시니어에게 그대로 보여주지 않는다(C8).
-        error = api_error_for(e, uuid.uuid4().hex)
+        error = api_error_for(e, request.state.request_id)
         return JSONResponse(
             status_code=http_status_for(e),
             content=error.model_dump(),
