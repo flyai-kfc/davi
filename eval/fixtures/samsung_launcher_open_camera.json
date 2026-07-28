@@ -1,6 +1,6 @@
 {
-  "id": "samsung-launcher-open-camera",
-  "description": "실기기 관통에서 캡처한 삼성 런처 홈의 익명화 화면",
+  "id": "samsung-launcher-one-page-home",
+  "description": "페이지 dot이 없는 삼성 런처 1페이지 홈의 익명화 화면",
   "source": {
     "kind": "anonymized_real_device",
     "captured_at": "2026-07-27",
