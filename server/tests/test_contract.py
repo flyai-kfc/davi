@@ -71,12 +71,17 @@ def test_schema_builder_rejects_empty_enum_value():
 
 
 def test_action_type_values():
-    """HANDOFF에서 관찰된 액션만 둔다. 기다리기는 앱 폴링 담당이라 없다."""
+    """실기기에서 관찰된 액션만 둔다. 기다리기는 앱 폴링 담당이라 없다(C6).
+
+    전역 제스처는 근거가 나온 것만 하나씩 올린다(C9) — 홈·뒤로는 아직 없다.
+    여기에 값을 더하려면 실기기 로그를 근거로 들고 와야 한다.
+    """
     assert {a.value for a in ActionType} == {
         "tap",
         "scroll",
         "type",
         "open_quick_settings",
+        "open_app_drawer",
         "done",
     }
 
@@ -154,6 +159,37 @@ def test_scroll_action_without_direction_is_rejected():
         assert "direction" in str(error)
     else:
         raise AssertionError("방향 없는 scroll이 통과됐다")
+
+
+# --- C9·C10: 실기기 근거로 들어온 계약 ----------------------------------------
+
+
+def test_app_drawer_action_is_offered_to_the_model():
+    """앱서랍이 선택지에 없으면 홈에 아이콘 없는 앱은 영원히 못 찾는다(C9).
+
+    Gemini 구조화 출력의 enum은 이 선언에서 나온다. 값이 빠지면 모델이 고를 수가 없어,
+    실기기에서 관찰된 스크롤 무한 반복이 그대로 재현된다.
+    """
+    assert ActionType.OPEN_APP_DRAWER.value == "open_app_drawer"
+    action_type = GUIDE_ACTION_SCHEMA["properties"]["action_type"]
+    assert "open_app_drawer" in action_type["enum"]
+
+
+def test_app_drawer_action_needs_no_target():
+    """화면 요소가 아니라 제스처다. target_node_id 없이 만들어져야 한다(C9)."""
+    action = GuideAction(
+        expected_result="앱 목록이 열린다",
+        evidence="홈에 찾는 앱 아이콘이 없음",
+        action_type=ActionType.OPEN_APP_DRAWER,
+        instruction="화면 가운데를 위로 쓸어올려 주세요.",
+    )
+    assert action.target_node_id is None
+
+
+def test_screen_distinguishes_no_scrollable_from_unknown():
+    """False(없다)와 None(앱이 안 채웠다)이 섞이면 안 된다(C10)."""
+    assert Screen().has_scrollable_element is None
+    assert Screen(has_scrollable_element=False).has_scrollable_element is False
 
 
 def test_stub_raises_when_stuck():
