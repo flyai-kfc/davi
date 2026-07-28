@@ -1,0 +1,129 @@
+{
+  "id": "samsung-launcher-open-camera",
+  "description": "실기기 관통에서 캡처한 삼성 런처 홈의 익명화 화면",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-07-27",
+    "issue": 28,
+    "device_model": "SM-S921N",
+    "os_version": "Android 16",
+    "ui_version": "One UI 8.5",
+    "anonymization": [
+      "n3과 n4의 식별 가능한 커스텀 앱 label만 일반 label로 치환",
+      "device_id와 모델 원문 응답은 포함하지 않음"
+    ],
+    "observed_model_action": {
+      "action_type": "tap",
+      "target_node_id": "n8",
+      "instruction": "카메라 아이콘을 눌러주세요."
+    }
+  },
+  "input": {
+    "goal": "open camera app",
+    "screen": {
+      "package_name": "com.sec.android.app.launcher",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "폴더",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            56,
+            155,
+            298,
+            427
+          ]
+        },
+        {
+          "node_id": "n2",
+          "label": "YouTube",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            52,
+            695,
+            296,
+            969
+          ]
+        },
+        {
+          "node_id": "n3",
+          "label": "일반 앱 1",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            541,
+            693,
+            786,
+            968
+          ]
+        },
+        {
+          "node_id": "n4",
+          "label": "일반 앱 2",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            295,
+            967,
+            541,
+            1243
+          ]
+        },
+        {
+          "node_id": "n5",
+          "label": "전화",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            46,
+            1898,
+            292,
+            2165
+          ]
+        },
+        {
+          "node_id": "n6",
+          "label": "메시지",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            292,
+            1900,
+            539,
+            2167
+          ]
+        },
+        {
+          "node_id": "n7",
+          "label": "브라우저",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            539,
+            1901,
+            787,
+            2169
+          ]
+        },
+        {
+          "node_id": "n8",
+          "label": "카메라",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [
+            787,
+            1902,
+            1035,
+            2170
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}
