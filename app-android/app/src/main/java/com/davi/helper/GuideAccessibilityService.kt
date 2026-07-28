@@ -109,6 +109,9 @@ class GuideAccessibilityService : AccessibilityService() {
                             TAG,
                             "action=${action.actionType.name.lowercase()} " +
                                 "target=${action.targetNodeId ?: "-"} " +
+                                // scroll은 방향이 곧 안내다. 로그에 없으면 방향이 맞았는지
+                                // 실기기에서 확인할 길이 없다(#37).
+                                "direction=${action.direction?.name?.lowercase() ?: "-"} " +
                                 "history=${session.recentInstructions.size} " +
                                 "instruction=${action.instruction}",
                         )
