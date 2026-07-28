@@ -15,6 +15,15 @@ from .schemas import NextStepRequest, UiElement
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
 MAX_HISTORY = 10
 
+# 관측 사실만 적는다. false를 "넘길 수 없다"로 읽으면 틀린다 — 삼성 런처 홈은 페이지가 여러 장이어도
+# scrollable 노드가 0개다(HANDOFF §3-2). "그러니 앱서랍을 열어라" 같은 전환 규칙은 여기 넣지 않는다.
+# 그건 이력을 보는 가드레일의 몫이고(C11), 프롬프트에 같은 판단을 또 박으면 가드끼리 덮어써
+# 불안정했던 §5-4 전례를 프롬프트와 가드레일 사이에서 재현한다.
+SCROLLABLE_OBSERVED = "스크롤: 스크롤 가능한 요소가 관측되었습니다"
+SCROLLABLE_NOT_OBSERVED = (
+    "스크롤: 스크롤 가능한 요소가 관측되지 않았습니다(화면을 넘길 수 없다는 뜻은 아닙니다)"
+)
+
 
 def build_prompt(req: NextStepRequest) -> str:
     """마스킹된 현재 화면을 다음 한 단계 안내 프롬프트로 만든다."""
@@ -26,7 +35,7 @@ def build_prompt(req: NextStepRequest) -> str:
 
 목표: {req.goal}
 현재 앱 패키지: {req.screen.package_name or "알 수 없음"}
-{_page_context(req)}최근에 했던 안내:
+{_page_context(req)}{_scroll_context(req)}최근에 했던 안내:
 {_recent_instructions(req)}
 현재 화면 요소:
 {_screen_elements(req)}
@@ -55,6 +64,19 @@ def _page_context(req: NextStepRequest) -> str:
     if req.screen.current_page is None or req.screen.total_pages is None:
         return ""
     return f"페이지: 전체 {req.screen.total_pages}쪽 중 {req.screen.current_page}쪽\n"
+
+
+def _scroll_context(req: NextStepRequest) -> str:
+    """관측된 스크롤 상태. 앱이 채우지 않았으면(None) 아무 말도 하지 않는다.
+
+    없는 것을 "없다"로 단정하면 낡은 앱의 침묵이 관측 사실로 둔갑한다. 페이지 줄 바로 뒤에
+    두는 이유는 홈과 앱서랍이 둘 다 `false`라 page 메타가 있어야 갈라지기 때문이다(#37 실측).
+    """
+
+    observed = req.screen.has_scrollable_element
+    if observed is None:
+        return ""
+    return f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
 
 
 def _screen_elements(req: NextStepRequest) -> str:
