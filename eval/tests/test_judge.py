@@ -139,15 +139,26 @@ def test_real_candidate_and_judge_use_separate_structured_requests():
 
     assert len(requests) == 2
     assert report["status"] == "passed"
-    assert report["summary"] == {"total": 1, "passed": 1, "failed": 0, "skipped": 0}
-    assert report["fixtures"] == [
-        {
-            "id": "samsung-launcher-open-camera",
-            "status": "passed",
-            "candidate": {"action_type": "tap"},
-            "judge": {"verdict": "equivalent"},
-        }
-    ]
+    assert report["summary"] == {"total": 4, "passed": 1, "failed": 0, "skipped": 3}
+    by_id = {item["id"]: item for item in report["fixtures"]}
+    assert by_id["samsung-launcher-one-page-home"] == {
+        "id": "samsung-launcher-one-page-home",
+        "status": "passed",
+        "candidate": {"action_type": "tap"},
+        "judge": {"verdict": "equivalent"},
+    }
+    assert {
+        item["id"] for item in report["fixtures"] if item["status"] == "skipped"
+    } == {
+        "samsung-launcher-alphabetical-app-drawer",
+        "samsung-launcher-grid-app-drawer",
+        "samsung-launcher-multi-page-home",
+    }
+    assert all(
+        item.get("reason") == "관측 기준 안내 없음"
+        for item in report["fixtures"]
+        if item["status"] == "skipped"
+    )
 
 
 def test_judge_prompt_keeps_injection_text_out_of_system_instruction(tmp_path):
@@ -196,7 +207,8 @@ def test_enabled_http_error_is_failure_without_response_body():
 
     serialized = json.dumps(report, ensure_ascii=False)
     assert report["status"] == "failed"
-    assert report["fixtures"][0]["error"] == EvalErrorKind.HTTP.value
+    failed = next(item for item in report["fixtures"] if item["status"] == "failed")
+    assert failed["error"] == EvalErrorKind.HTTP.value
     assert private_body not in serialized
 
 
@@ -212,7 +224,8 @@ def test_enabled_parse_error_is_failure_without_model_text():
 
     serialized = json.dumps(report, ensure_ascii=False)
     assert report["status"] == "failed"
-    assert report["fixtures"][0]["error"] == EvalErrorKind.PARSE.value
+    failed = next(item for item in report["fixtures"] if item["status"] == "failed")
+    assert failed["error"] == EvalErrorKind.PARSE.value
     assert private_text not in serialized
 
 
@@ -233,7 +246,8 @@ def test_incorrect_judge_verdict_fails_and_hides_reason():
 
     serialized = json.dumps(report, ensure_ascii=False)
     assert report["status"] == "failed"
-    assert report["fixtures"][0]["judge"] == {"verdict": "incorrect"}
+    failed = next(item for item in report["fixtures"] if item["status"] == "failed")
+    assert failed["judge"] == {"verdict": "incorrect"}
     assert private_reason not in serialized
 
 

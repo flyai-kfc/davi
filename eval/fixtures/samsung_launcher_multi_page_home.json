@@ -1,0 +1,141 @@
+{
+  "id": "samsung-launcher-multi-page-home",
+  "description": "페이지 dot이 있는 삼성 런처 다중 페이지 홈의 익명화 화면",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-07-28",
+    "issue": 47,
+    "device_model": "SM-S921N",
+    "os_version": "Android 16",
+    "ui_version": "One UI 8.5",
+    "anonymization": [
+      "날씨·검색 위젯과 식별 가능성이 있는 label을 순서 기반 일반 요소로 치환",
+      "device_id와 모델 응답은 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "open camera app",
+    "screen": {
+      "package_name": "com.sec.android.app.launcher",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "일반 요소 1",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [319, 718, 759, 1224]
+        },
+        {
+          "node_id": "n2",
+          "label": "일반 요소 2",
+          "role": "ImageView",
+          "clickable": true,
+          "bounds": [70, 1322, 1008, 1466]
+        },
+        {
+          "node_id": "n3",
+          "label": "일반 요소 3",
+          "role": "ImageButton",
+          "clickable": true,
+          "bounds": [70, 1322, 214, 1466]
+        },
+        {
+          "node_id": "n4",
+          "label": "일반 요소 4",
+          "role": "ImageButton",
+          "clickable": true,
+          "bounds": [720, 1322, 864, 1466]
+        },
+        {
+          "node_id": "n5",
+          "label": "일반 요소 5",
+          "role": "ImageButton",
+          "clickable": true,
+          "bounds": [864, 1322, 1008, 1466]
+        },
+        {
+          "node_id": "n6",
+          "label": "전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1535, 290, 1817]
+        },
+        {
+          "node_id": "n7",
+          "label": "Play 스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1535, 539, 1817]
+        },
+        {
+          "node_id": "n8",
+          "label": "Google",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 1535, 788, 1817]
+        },
+        {
+          "node_id": "n9",
+          "label": "Microsoft",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 1535, 1037, 1817]
+        },
+        {
+          "node_id": "n10",
+          "label": "일반 요소 6",
+          "role": "FrameLayout",
+          "clickable": true,
+          "bounds": [465, 1854, 515, 1904]
+        },
+        {
+          "node_id": "n11",
+          "label": "일반 요소 7",
+          "role": "page_dot",
+          "bounds": [515, 1854, 565, 1904]
+        },
+        {
+          "node_id": "n12",
+          "label": "2 페이지 중 2 페이지입니다.",
+          "role": "page_dot",
+          "bounds": [565, 1854, 615, 1904]
+        },
+        {
+          "node_id": "n13",
+          "label": "에이닷 전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [39, 1924, 289, 2196]
+        },
+        {
+          "node_id": "n14",
+          "label": "메시지",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [289, 1924, 539, 2196]
+        },
+        {
+          "node_id": "n15",
+          "label": "브라우저",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 1924, 789, 2196]
+        },
+        {
+          "node_id": "n16",
+          "label": "카메라",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 1924, 1039, 2196]
+        }
+      ],
+      "current_page": 1,
+      "total_pages": 2,
+      "has_scrollable_element": false
+    }
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

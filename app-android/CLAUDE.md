@@ -54,9 +54,12 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **`adb shell input text`는 한글을 못 넣는다.** 목표 입력은 기기에서 직접 치거나 다른 경로로.
 - **중지 버튼 좌표는 스크롤 위치에 따라 달라진다.** 좌표를 외워 탭하지 말고 직전 캡처로 확인한다. 빗나가면 세션이 계속 돌며 모델 쿼터를 쓴다(실제로 두 번 겪었다).
 
-## 기기 함정 (검증 기기 SM-S918N / One UI 8.5 기준, `HANDOFF.md` §3)
+## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준, `HANDOFF.md` §3)
 - 설정 앱 위에는 오버레이가 안 그려진다 → 헤드업 알림 폴백.
-- 삼성 런처는 홈/앱서랍 모두 scrollable 노드 0개 → 페이지 넘김은 페이지 dot을 정보원으로.
+- 삼성 런처의 page/scroll 노출은 구성에 따라 다르다(SM-S921N 실측): 1페이지 홈은 dot이
+  없고, 다중 페이지 홈·격자 앱서랍은 page dot과 `scrollable=false`가 함께 오며, 가나다순
+  앱서랍은 page 없이 `scrollable=true`인 세로 목록이다. 앱 규칙으로 일반화하지 않고
+  `../eval/fixtures/`의 구성별 입력으로 보존한다(#47).
 - 오버레이 좌표는 `FLAG_LAYOUT_IN_SCREEN` 없이는 상태표시줄만큼 어긋난다.
 - 안내문이 키보드를 가리면 접근성 `windows`의 `TYPE_INPUT_METHOD` top 위에 배치.
 - 한 instruction에 동작 두 개 금지("홈 누르고 위로 쓸어올리세요").

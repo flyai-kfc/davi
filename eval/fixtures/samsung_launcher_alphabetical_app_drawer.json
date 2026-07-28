@@ -1,0 +1,250 @@
+{
+  "id": "samsung-launcher-alphabetical-app-drawer",
+  "description": "세로 스크롤하는 삼성 런처 가나다순 앱서랍의 익명화 화면",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-07-28",
+    "issue": 47,
+    "device_model": "SM-S921N",
+    "os_version": "Android 16",
+    "ui_version": "One UI 8.5",
+    "anonymization": [
+      "식별 가능성이 있는 앱과 메뉴 label을 순서 기반 일반 요소로 치환",
+      "device_id와 모델 응답은 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "open camera app",
+    "screen": {
+      "package_name": "com.sec.android.app.launcher",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "일반 요소 1",
+          "role": "GridView",
+          "bounds": [0, 91, 1080, 2010],
+          "can_scroll_forward": true,
+          "can_scroll_backward": false,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "up",
+          "prev_swipe_direction": "down"
+        },
+        {
+          "node_id": "n2",
+          "label": "Google",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 247, 290, 520]
+        },
+        {
+          "node_id": "n3",
+          "label": "Microsoft",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 247, 539, 520]
+        },
+        {
+          "node_id": "n4",
+          "label": "Samsung",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 247, 789, 520]
+        },
+        {
+          "node_id": "n5",
+          "label": "일반 요소 2",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 247, 1038, 520]
+        },
+        {
+          "node_id": "n6",
+          "label": "일반 요소 3",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 520, 290, 793]
+        },
+        {
+          "node_id": "n7",
+          "label": "갤러리",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 520, 539, 793]
+        },
+        {
+          "node_id": "n8",
+          "label": "게이밍 허브",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 520, 789, 793]
+        },
+        {
+          "node_id": "n9",
+          "label": "계산기",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 520, 1038, 793]
+        },
+        {
+          "node_id": "n10",
+          "label": "일반 요소 4",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 793, 290, 1066]
+        },
+        {
+          "node_id": "n11",
+          "label": "일반 요소 5",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 793, 539, 1066]
+        },
+        {
+          "node_id": "n12",
+          "label": "메시지",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 793, 789, 1066]
+        },
+        {
+          "node_id": "n13",
+          "label": "설정",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 793, 1038, 1066]
+        },
+        {
+          "node_id": "n14",
+          "label": "스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1066, 290, 1339]
+        },
+        {
+          "node_id": "n15",
+          "label": "시계",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1066, 539, 1339]
+        },
+        {
+          "node_id": "n16",
+          "label": "일반 요소 6",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 1066, 789, 1339]
+        },
+        {
+          "node_id": "n17",
+          "label": "에이닷 전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 1066, 1038, 1339]
+        },
+        {
+          "node_id": "n18",
+          "label": "연락처",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1339, 290, 1612]
+        },
+        {
+          "node_id": "n19",
+          "label": "원스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1339, 539, 1612]
+        },
+        {
+          "node_id": "n20",
+          "label": "월렛",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 1339, 789, 1612]
+        },
+        {
+          "node_id": "n21",
+          "label": "전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 1339, 1038, 1612]
+        },
+        {
+          "node_id": "n22",
+          "label": "카메라",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1612, 290, 1885]
+        },
+        {
+          "node_id": "n23",
+          "label": "캘린더",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1612, 539, 1885]
+        },
+        {
+          "node_id": "n24",
+          "label": "팁",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 1612, 789, 1885]
+        },
+        {
+          "node_id": "n25",
+          "label": "일반 요소 7",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 1612, 1038, 1885]
+        },
+        {
+          "node_id": "n26",
+          "label": "일반 요소 8",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1885, 290, 2010]
+        },
+        {
+          "node_id": "n27",
+          "label": "Global Goals",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1885, 539, 2010]
+        },
+        {
+          "node_id": "n28",
+          "label": "Notes",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [540, 1885, 789, 2010]
+        },
+        {
+          "node_id": "n29",
+          "label": "일반 요소 9",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [789, 1885, 1038, 2010]
+        },
+        {
+          "node_id": "n30",
+          "label": "검색",
+          "role": "LinearLayout",
+          "clickable": true,
+          "bounds": [30, 2010, 888, 2166]
+        },
+        {
+          "node_id": "n31",
+          "label": "일반 요소 10",
+          "role": "ImageView",
+          "clickable": true,
+          "bounds": [888, 2022, 1020, 2154]
+        }
+      ],
+      "has_scrollable_element": true
+    }
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

@@ -111,6 +111,26 @@ fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 �
 바꿨는지 남긴다. 원본 화면 트리, 개인 기기 식별값, API 키, 모델 원문 응답은 fixture나 실행
 로그에 넣지 않는다.
 
+## 삼성 런처 구성 fixture
+
+SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 관측값을 별도 fixture로
+보존한다(#47).
+
+| fixture | page | `has_scrollable_element` | 구분 근거 |
+|---|---:|---:|---|
+| `samsung_launcher_open_camera.json` | 없음 | 미기록 | 기존 실기기 캡처의 전체 8개 요소, page dot 없음 |
+| `samsung_launcher_multi_page_home.json` | 1/2 | `false` | 홈 page dot 2개 |
+| `samsung_launcher_grid_app_drawer.json` | 1/2 | `false` | 가로 페이징 앱서랍 page dot 2개 |
+| `samsung_launcher_alphabetical_app_drawer.json` | 없음 | `true` | `vertical` 스크롤 컨테이너 1개 |
+
+1페이지 홈은 `has_scrollable_element` 계약이 앱에 연결되기 전 캡처라 선택 필드를 그대로
+생략했다. 나머지 세 fixture는 최신 앱 직렬화 결과를 사용한다. 위 표는 삼성 런처 전체에 대한
+제품 규칙이 아니라 특정 기기·설정에서 관측한 입력이다.
+
+새로 캡처한 세 구성은 실제 모델을 호출하지 않았으므로 `source.observed_model_action`을
+추측해 넣지 않았다. 키가 있는 judge 실행에서도 이 fixture들은 호출 없이 `skipped`되고, 실제
+관측 행동이 생긴 fixture만 후보 모델 + judge의 픽스처당 2회 호출 대상이 된다.
+
 ## 평가 계층
 
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존

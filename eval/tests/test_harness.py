@@ -172,7 +172,7 @@ def test_suite_returns_per_fixture_and_overall_results(tmp_path: Path):
     }
 
 
-def test_repository_device_fixture_preserves_complete_anonymized_tree():
+def test_repository_one_page_home_preserves_complete_anonymized_tree():
     fixture = load_fixture(FIXTURES / "samsung_launcher_open_camera.json")
     elements = fixture.request.screen.elements
 
@@ -193,3 +193,48 @@ def test_repository_device_fixture_preserves_complete_anonymized_tree():
     assert observed is not None
     assert observed.target_node_id == "n8"
     assert "target_node_id" not in fixture.document.expected.model_fields_set
+
+
+def test_repository_launcher_fixtures_preserve_observed_layout_variants():
+    fixtures = {
+        item.document.id: item
+        for item in load_fixtures()
+        if item.request.screen.package_name == "com.sec.android.app.launcher"
+    }
+
+    assert {
+        "samsung-launcher-one-page-home",
+        "samsung-launcher-multi-page-home",
+        "samsung-launcher-grid-app-drawer",
+        "samsung-launcher-alphabetical-app-drawer",
+    } <= fixtures.keys()
+
+    one_page = fixtures["samsung-launcher-one-page-home"].request.screen
+    assert one_page.current_page is None
+    assert one_page.total_pages is None
+    assert one_page.has_scrollable_element is None
+    assert all(element.role != "page_dot" for element in one_page.elements)
+
+    multi_page = fixtures["samsung-launcher-multi-page-home"].request.screen
+    assert len(multi_page.elements) == 16
+    assert (multi_page.current_page, multi_page.total_pages) == (1, 2)
+    assert multi_page.has_scrollable_element is False
+    assert sum(element.role == "page_dot" for element in multi_page.elements) == 2
+
+    grid = fixtures["samsung-launcher-grid-app-drawer"].request.screen
+    assert len(grid.elements) == 28
+    assert (grid.current_page, grid.total_pages) == (1, 2)
+    assert grid.has_scrollable_element is False
+    assert sum(element.role == "page_dot" for element in grid.elements) == 2
+    assert all(element.scroll_axis is None for element in grid.elements)
+
+    alphabetical = fixtures["samsung-launcher-alphabetical-app-drawer"].request.screen
+    assert len(alphabetical.elements) == 31
+    assert alphabetical.current_page is None
+    assert alphabetical.total_pages is None
+    assert alphabetical.has_scrollable_element is True
+    scrollable = [element for element in alphabetical.elements if element.scroll_axis]
+    assert len(scrollable) == 1
+    assert scrollable[0].scroll_axis.value == "vertical"
+    assert scrollable[0].can_scroll_forward is True
+    assert scrollable[0].can_scroll_backward is False

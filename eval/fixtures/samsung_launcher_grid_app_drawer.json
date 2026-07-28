@@ -1,0 +1,225 @@
+{
+  "id": "samsung-launcher-grid-app-drawer",
+  "description": "가로 페이징하는 삼성 런처 격자 정렬 앱서랍의 익명화 화면",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-07-28",
+    "issue": 47,
+    "device_model": "SM-S921N",
+    "os_version": "Android 16",
+    "ui_version": "One UI 8.5",
+    "anonymization": [
+      "식별 가능성이 있는 앱과 메뉴 label을 순서 기반 일반 요소로 치환",
+      "device_id와 모델 응답은 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "open camera app",
+    "screen": {
+      "package_name": "com.sec.android.app.launcher",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "Samsung",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 238, 290, 513]
+        },
+        {
+          "node_id": "n2",
+          "label": "Google",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 238, 539, 513]
+        },
+        {
+          "node_id": "n3",
+          "label": "Microsoft",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 238, 788, 513]
+        },
+        {
+          "node_id": "n4",
+          "label": "Play 스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 238, 1037, 513]
+        },
+        {
+          "node_id": "n5",
+          "label": "원스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 513, 290, 788]
+        },
+        {
+          "node_id": "n6",
+          "label": "에이닷 전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 513, 539, 788]
+        },
+        {
+          "node_id": "n7",
+          "label": "T world",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 513, 788, 788]
+        },
+        {
+          "node_id": "n8",
+          "label": "T 멤버십",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 513, 1037, 788]
+        },
+        {
+          "node_id": "n9",
+          "label": "월렛",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 788, 290, 1063]
+        },
+        {
+          "node_id": "n10",
+          "label": "스토어",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 788, 539, 1063]
+        },
+        {
+          "node_id": "n11",
+          "label": "전화",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 788, 788, 1063]
+        },
+        {
+          "node_id": "n12",
+          "label": "메시지",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 788, 1037, 1063]
+        },
+        {
+          "node_id": "n13",
+          "label": "카메라",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1063, 290, 1338]
+        },
+        {
+          "node_id": "n14",
+          "label": "갤러리",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1063, 539, 1338]
+        },
+        {
+          "node_id": "n15",
+          "label": "시계",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 1063, 788, 1338]
+        },
+        {
+          "node_id": "n16",
+          "label": "연락처",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 1063, 1037, 1338]
+        },
+        {
+          "node_id": "n17",
+          "label": "설정",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1338, 290, 1613]
+        },
+        {
+          "node_id": "n18",
+          "label": "팁",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1338, 539, 1613]
+        },
+        {
+          "node_id": "n19",
+          "label": "캘린더",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 1338, 788, 1613]
+        },
+        {
+          "node_id": "n20",
+          "label": "YT Music",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 1338, 1037, 1613]
+        },
+        {
+          "node_id": "n21",
+          "label": "계산기",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [41, 1613, 290, 1888]
+        },
+        {
+          "node_id": "n22",
+          "label": "Notes",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [290, 1613, 539, 1888]
+        },
+        {
+          "node_id": "n23",
+          "label": "게이밍 허브",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [539, 1613, 788, 1888]
+        },
+        {
+          "node_id": "n24",
+          "label": "Global Goals",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [788, 1613, 1037, 1888]
+        },
+        {
+          "node_id": "n25",
+          "label": "2 페이지 중 1 페이지입니다.",
+          "role": "page_dot",
+          "bounds": [490, 1910, 540, 1960]
+        },
+        {
+          "node_id": "n26",
+          "label": "2 페이지 중 2 페이지입니다.",
+          "role": "page_dot",
+          "bounds": [540, 1910, 590, 1960]
+        },
+        {
+          "node_id": "n27",
+          "label": "검색",
+          "role": "LinearLayout",
+          "clickable": true,
+          "bounds": [30, 2010, 888, 2166]
+        },
+        {
+          "node_id": "n28",
+          "label": "일반 요소 1",
+          "role": "ImageView",
+          "clickable": true,
+          "bounds": [888, 2022, 1020, 2154]
+        }
+      ],
+      "current_page": 1,
+      "total_pages": 2,
+      "has_scrollable_element": false
+    }
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}
