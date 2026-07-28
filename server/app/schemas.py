@@ -108,7 +108,8 @@ class NextStepRequest(BaseModel):
     goal: str
     screen: Screen
     device_id: str | None = None
-    # 반복 안내 방지용 최근 안내 이력(최대 MAX_HISTORY). HANDOFF §3-10.
+    # 반복 안내 방지용 최근 안내 이력. 오래된 것이 앞에 온다. HANDOFF §3-10.
+    # 서버는 프롬프트에 넣을 때 MAX_HISTORY개로 자른다 — 앱이 더 보내도 계약 위반은 아니다.
     recent_instructions: list[str] = Field(default_factory=list)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None

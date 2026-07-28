@@ -82,6 +82,72 @@ class GuideSessionTest {
     }
 
     @Test
+    fun `안내 이력이 순서대로 쌓인다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction("카카오톡을 누르세요.")
+        GuideSession.recordInstruction("  친구 목록을 누르세요.  ")
+
+        assertEquals(
+            listOf("카카오톡을 누르세요.", "친구 목록을 누르세요."),
+            GuideSession.recentInstructions(),
+        )
+    }
+
+    /** 반복 자체가 모델에게 주는 신호다. 중복이라고 지우면 그 신호가 사라진다. */
+    @Test
+    fun `같은 안내가 반복돼도 그대로 남는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction("화면을 넘기세요.")
+        GuideSession.recordInstruction("화면을 넘기세요.")
+
+        assertEquals(2, GuideSession.recentInstructions().size)
+    }
+
+    @Test
+    fun `상한을 넘으면 오래된 것부터 버린다`() {
+        GuideSession.start("카카오톡 열기")
+
+        repeat(13) { GuideSession.recordInstruction("안내 $it") }
+
+        val history = GuideSession.recentInstructions()
+        assertEquals(10, history.size)
+        assertEquals("안내 3", history.first())
+        assertEquals("안내 12", history.last())
+    }
+
+    @Test
+    fun `빈 안내는 기록하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction("   ")
+
+        assertTrue(GuideSession.recentInstructions().isEmpty())
+    }
+
+    /** 이력이 남으면 다음 목표의 프롬프트에 엉뚱한 안내가 섞인다. */
+    @Test
+    fun `중지하면 이력도 비워진다`() {
+        GuideSession.start("카카오톡 열기")
+        GuideSession.recordInstruction("카카오톡을 누르세요.")
+
+        GuideSession.stop()
+
+        assertTrue(GuideSession.recentInstructions().isEmpty())
+    }
+
+    @Test
+    fun `새 목표로 시작하면 이력이 비워진다`() {
+        GuideSession.start("카카오톡 열기")
+        GuideSession.recordInstruction("카카오톡을 누르세요.")
+
+        GuideSession.start("카메라 열기")
+
+        assertTrue(GuideSession.recentInstructions().isEmpty())
+    }
+
+    @Test
     fun `리스너를 떼면 더 이상 받지 않는다`() {
         val seen = mutableListOf<String?>()
         val listener = GuideSession.Listener { seen += it }

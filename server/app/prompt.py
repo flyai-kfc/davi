@@ -11,6 +11,10 @@ from typing import Any
 
 from .schemas import NextStepRequest, UiElement
 
+# 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
+# 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
+MAX_HISTORY = 10
+
 
 def build_prompt(req: NextStepRequest) -> str:
     """마스킹된 현재 화면을 다음 한 단계 안내 프롬프트로 만든다."""
@@ -43,7 +47,7 @@ def fallback_prompt(prompt: str, response_schema: dict[str, Any]) -> str:
 
 
 def _recent_instructions(req: NextStepRequest) -> str:
-    recent = "\n".join(f"- {instruction}" for instruction in req.recent_instructions[-10:])
+    recent = "\n".join(f"- {i}" for i in req.recent_instructions[-MAX_HISTORY:])
     return recent or "- 없음"
 
 

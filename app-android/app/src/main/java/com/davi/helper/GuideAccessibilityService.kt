@@ -89,12 +89,15 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         apiExecutor.execute {
+            // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
+            val history = GuideSession.recentInstructions()
             try {
                 when (
                     val result = client.nextStep(
                         NextStepRequest(
                             goal = goal,
                             screen = screen,
+                            recentInstructions = history,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
                     )
@@ -105,6 +108,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             TAG,
                             "action=${action.actionType.name.lowercase()} " +
                                 "target=${action.targetNodeId ?: "-"} " +
+                                "history=${history.size} " +
                                 "instruction=${action.instruction}",
                         )
                         mainHandler.post { applyAction(screen, action, goal) }
@@ -140,6 +144,9 @@ class GuideAccessibilityService : AccessibilityService() {
             GuideSession.stop() // 리스너가 오버레이를 지운다
             return
         }
+
+        // 목표가 그대로일 때만 기록한다. 중지 뒤 늦게 온 응답이 다음 세션 이력에 섞이면 안 된다.
+        GuideSession.recordInstruction(action.instruction)
 
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
