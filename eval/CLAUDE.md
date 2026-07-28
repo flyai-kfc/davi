@@ -1,7 +1,8 @@
 # CLAUDE.md — eval (평가 하니스)
 
-Python 3.12. 기기와 API 키 없이 `[화면 fixture → 다음 안내]` 회귀를 검증한다. 공통 규칙은
-루트 `../CLAUDE.md`, 전략은 `../SPEC.md` §8을 따른다.
+Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증한다. **입력 회귀는 API 키 없이
+항상 돌고**, 실제 모델과 LLM judge는 키가 있을 때만 돈다. 층 구분은 `../SPEC.md` §8,
+공통 규칙은 루트 `../CLAUDE.md`.
 
 ## 이 폴더의 책임
 
@@ -35,6 +36,11 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
 - 골든패스 exact-match는 동등하거나 더 나은 경로도 오답 처리한다(PoC2 FAIL 4건이 전부 이
   착시였다). `judge.py`는 화면·목표·관측 안내·후보 안내를 보고 equivalent/better/incorrect로
   판정한다.
+- **judge의 기준(`observed_model_action`)은 정답이 아니라 관측이다.** 실기기에서 모델이 실제로
+  고른 것일 뿐 옳았다는 보장이 없다. 지금 fixture는 기준이 맞았지만, **실패 화면을 fixture로
+  넣기 시작하면 기준 자체가 틀린 경우가 생긴다**(#30이 그걸 목표로 한다). 그때 올바른 후보가
+  틀린 기준과 다르다는 이유로 `incorrect`가 될 수 있다 — 실패 fixture를 처음 넣는 시점에
+  기준을 사람이 검토했는지 표시할 방법을 같이 정한다.
 - 반복 액션 fake LLM은 #36 범위다.
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
