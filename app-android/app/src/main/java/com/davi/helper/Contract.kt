@@ -34,6 +34,12 @@ data class Screen(
     /** 페이지 위치는 화면 단위 상태다(C5). 페이지 dot에서 읽는다(HANDOFF §3-3). */
     @SerialName("current_page") val currentPage: Int? = null,
     @SerialName("total_pages") val totalPages: Int? = null,
+    /**
+     * 스크롤 가능한 요소가 화면에 하나라도 있었는가(C10).
+     * `true` 있음 / `false` 하나도 없음 / `null` 아직 안 채움.
+     * **`false`와 `null`은 다르다** — 앱이 채우는 것은 #37이다.
+     */
+    @SerialName("has_scrollable_element") val hasScrollableElement: Boolean? = null,
 )
 
 @Serializable
@@ -69,8 +75,8 @@ data class GuideAction(
  * **키**만 무시할 뿐 값은 막아주지 못하고, `action_type`은 기본값 없는 필수 필드라
  * `coerceInputValues`로도 못 덮는다. 즉 한 글자만 어긋나도 그 액션이 오는 순간 안내가 끊긴다.
  *
- * 값의 근거는 `server/CLAUDE.md`의 "API 계약 결정" C6이다. 전역 동작(뒤로/홈)은 아직 이슈 #10에서
- * 검토 중이므로 여기 없다. 추가하려면 **서버부터** 바꾸고 양쪽을 함께 움직인다.
+ * 값의 근거는 `server/CLAUDE.md`의 "API 계약 결정" C6·C9다. 전역 제스처는 실기기 로그로 필요성이
+ * 확인된 것만 하나씩 들어온다 — 뒤로/홈은 아직 근거가 없어 여기 없다.
  * 어긋나면 `server/tests/test_contract_drift.py`가 CI에서 잡는다.
  */
 @Serializable
@@ -79,6 +85,9 @@ enum class ActionType {
     @SerialName("scroll") SCROLL,
     @SerialName("type") TYPE,
     @SerialName("open_quick_settings") OPEN_QUICK_SETTINGS,
+
+    /** 화면 요소가 아니라 제스처다. `target_node_id`가 없으므로 강조 없이 안내문만 뜬다(#35). */
+    @SerialName("open_app_drawer") OPEN_APP_DRAWER,
     @SerialName("done") DONE,
 }
 

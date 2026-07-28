@@ -25,13 +25,23 @@ class ActionType(StrEnum):
 
     HANDOFF에서 실제로 관찰된 것만 둔다(C6). "기다리기"는 없다 —
     정체 판정은 앱의 시간 기반 폴링이 담당하므로 LLM이 고를 액션이 아니다.
-    전역 제스처(홈/뒤로)는 실기기 로그로 필요성이 확인되면 추가한다(보류).
+
+    전역 제스처는 **실기기 로그로 필요성이 확인된 것만** 하나씩 넣는다(C9). 미리 여러 개 넣으면
+    모델이 쓸 데 없이 고른다. 홈/뒤로는 아직 근거가 없어 여전히 보류다.
     """
 
     TAP = "tap"
     SCROLL = "scroll"
     TYPE = "type"
     OPEN_QUICK_SETTINGS = "open_quick_settings"
+    # 화면 요소로 표현되지 않는 제스처다. 앱서랍은 위로 쓸어올려야 열리고 트리에 아무 노드도 없다.
+    # 이게 없으면 홈에 아이콘이 없는 앱이 목표일 때 모델의 선택지에 정답이 아예 없다(#35).
+    #
+    # **언제 쓸지는 프롬프트에 규칙으로 박지 않는다.** "홈에서 안 보이면 앱서랍"은 자주 쓰는 앱이
+    # 홈에 있다는 현실과 어긋나고, 조건을 붙여도 소용없다 — 삼성 런처 홈은 페이지가 여러 장이어도
+    # scrollable 노드가 0개라(HANDOFF §3-2) "넘겨서 찾을 수 있는 홈"과 "넘겨도 소용없는 홈"을
+    # 지금 계약으로는 구분할 수 없다. 전환 판단은 이력을 보는 가드레일의 일이다(#36, §5-4).
+    OPEN_APP_DRAWER = "open_app_drawer"
     DONE = "done"
 
 
@@ -85,6 +95,13 @@ class Screen(BaseModel):
     elements: list[UiElement] = Field(default_factory=list)
     current_page: int | None = None
     total_pages: int | None = None
+    # 스크롤 가능한 요소가 화면에 하나라도 있었는가(C10). 세 가지 상태를 구분한다:
+    #   True  = 있다 / False = 하나도 없다 / None = 앱이 이 값을 채우지 않는다(낡은 앱)
+    # 요소를 훑어 유추하면 False와 None이 섞인다. 삼성 런처 홈은 scrollable 노드가 0개인데
+    # (실측 2026-07-27) 그 침묵을 모델이 "넘길 수 있다"로 읽어 같은 스크롤 안내를 8회 반복했다.
+    # **없다는 것도 상태다.** 이름은 "화면이 스크롤된다"가 아니라 관찰한 사실 그대로 붙인다 —
+    # 접근성 트리에 스크롤 노드가 없어도 실제로는 넘어가는 화면이 있다(런처 페이징).
+    has_scrollable_element: bool | None = None
 
 
 class NextStepRequest(BaseModel):
