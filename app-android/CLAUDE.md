@@ -47,6 +47,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - 접근성에 안 보이는 속성(`selected`, 정확한 bounds)은 `adb shell uiautomator dump`. XML은 UTF-8로 읽기.
 - 로그가 비어 있으면 "안 돌았다"는 뜻. 앱 프로세스 생존은 `FreecessHandler ... com.davi.helper`로 확인.
 
+### 도구 함정 (2026-07-28 실측)
+셸·adb 쪽 함정이라 기기와 무관하다. 기기 동작 지식은 여기 적지 말고 픽스처로 쌓는다(#47).
+- **Git Bash에서 adb에 `/sdcard/...`를 넘길 땐 `MSYS_NO_PATHCONV=1`.** 없으면 MSYS가 경로를 Windows 경로로 바꿔 파일을 못 찾는다.
+- **PowerShell `>`가 `adb exec-out screencap` 바이너리를 깨뜨린다.** 인코딩이 끼어든다 → `adb shell screencap -p /sdcard/x.png` + `adb pull`.
+- **`adb shell input text`는 한글을 못 넣는다.** 목표 입력은 기기에서 직접 치거나 다른 경로로.
+- **중지 버튼 좌표는 스크롤 위치에 따라 달라진다.** 좌표를 외워 탭하지 말고 직전 캡처로 확인한다. 빗나가면 세션이 계속 돌며 모델 쿼터를 쓴다(실제로 두 번 겪었다).
+
 ## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준, `HANDOFF.md` §3)
 - 설정 앱 위에는 오버레이가 안 그려진다 → 헤드업 알림 폴백.
 - 삼성 런처의 page/scroll 노출은 구성에 따라 다르다(SM-S921N 실측): 1페이지 홈은 dot이
