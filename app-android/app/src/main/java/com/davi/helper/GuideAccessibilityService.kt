@@ -57,7 +57,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
         // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
-        val goal = GuideSession.goal ?: return
+        val session = GuideSession.active() ?: return
 
         // 접근성 이벤트는 초당 수십 번 온다. 디바운스하지 않으면 로그를 읽을 수 없다.
         val now = SystemClock.uptimeMillis()
@@ -78,10 +78,10 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         logScreen(result)
-        requestNextStep(result.screen, goal)
+        requestNextStep(result.screen, session)
     }
 
-    private fun requestNextStep(screen: Screen, goal: String) {
+    private fun requestNextStep(screen: Screen, session: GuideSession.Active) {
         if (!requestInFlight.compareAndSet(false, true)) return
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
@@ -93,8 +93,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 when (
                     val result = client.nextStep(
                         NextStepRequest(
-                            goal = goal,
+                            goal = session.goal,
                             screen = screen,
+                            // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
+                            recentInstructions = session.recentInstructions,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
                     )
@@ -105,9 +107,10 @@ class GuideAccessibilityService : AccessibilityService() {
                             TAG,
                             "action=${action.actionType.name.lowercase()} " +
                                 "target=${action.targetNodeId ?: "-"} " +
+                                "history=${session.recentInstructions.size} " +
                                 "instruction=${action.instruction}",
                         )
-                        mainHandler.post { applyAction(screen, action, goal) }
+                        mainHandler.post { applyAction(screen, action, session) }
                     }
 
                     is NextStepResult.ApiFailure -> Log.w(
@@ -129,17 +132,23 @@ class GuideAccessibilityService : AccessibilityService() {
      * 서버가 준 안내 하나를 화면에 반영한다. **앱은 어떤 UI 동작도 수행하지 않는다** — 강조와
      * 안내문만 그리고, 실제 조작은 사용자가 한다(SPEC §2).
      *
-     * 메인 스레드에서만 부른다. 응답이 늦게 오는 사이 사용자가 중지했거나 다른 목표로 다시 시작할
-     * 수 있으므로, 요청을 보낼 때의 목표와 지금 세션의 목표가 같을 때만 그린다.
+     * 메인 스레드에서만 부른다. 응답이 늦게 오는 사이 사용자가 중지했거나 다시 시작할 수 있으므로,
+     * **요청을 보낸 세대가 아직 현재 세션일 때만** 반영한다. 목표 문자열 비교로는 부족하다 —
+     * 중지 후 같은 목표로 다시 시작하면 문자열이 같아 이전 응답이 그대로 통과한다.
      */
-    private fun applyAction(screen: Screen, action: GuideAction, goal: String) {
-        if (GuideSession.goal != goal) return
+    private fun applyAction(screen: Screen, action: GuideAction, session: GuideSession.Active) {
+        if (!GuideSession.isCurrent(session.generation)) {
+            Log.i(TAG, "stale response dropped goal=${session.goal}")
+            return
+        }
 
         if (action.actionType == ActionType.DONE) {
-            Log.i(TAG, "session done goal=$goal")
+            Log.i(TAG, "session done goal=${session.goal}")
             GuideSession.stop() // 리스너가 오버레이를 지운다
             return
         }
+
+        GuideSession.recordInstruction(session.generation, action.instruction)
 
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }

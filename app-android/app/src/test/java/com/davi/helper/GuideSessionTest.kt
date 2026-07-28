@@ -3,6 +3,7 @@ package com.davi.helper
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -19,6 +20,10 @@ class GuideSessionTest {
     fun reset() {
         GuideSession.stop()
     }
+
+    private fun currentGeneration(): Long = GuideSession.active()!!.generation
+
+    private fun history(): List<String> = GuideSession.active()?.recentInstructions.orEmpty()
 
     @Test
     fun `시작하면 공백을 제거한 목표가 남는다`() {
@@ -79,6 +84,126 @@ class GuideSessionTest {
         }
 
         assertTrue(seen.isEmpty())
+    }
+
+    @Test
+    fun `안내 이력이 순서대로 쌓인다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
+        GuideSession.recordInstruction(currentGeneration(), "  친구 목록을 누르세요.  ")
+
+        assertEquals(
+            listOf("카카오톡을 누르세요.", "친구 목록을 누르세요."),
+            history(),
+        )
+    }
+
+    /** 반복 자체가 모델에게 주는 신호다. 중복이라고 지우면 그 신호가 사라진다. */
+    @Test
+    fun `같은 안내가 반복돼도 그대로 남는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction(currentGeneration(), "화면을 넘기세요.")
+        GuideSession.recordInstruction(currentGeneration(), "화면을 넘기세요.")
+
+        assertEquals(2, history().size)
+    }
+
+    @Test
+    fun `상한을 넘으면 오래된 것부터 버린다`() {
+        GuideSession.start("카카오톡 열기")
+
+        repeat(13) { GuideSession.recordInstruction(currentGeneration(), "안내 $it") }
+
+        val history = history()
+        assertEquals(10, history.size)
+        assertEquals("안내 3", history.first())
+        assertEquals("안내 12", history.last())
+    }
+
+    @Test
+    fun `빈 안내는 기록하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction(currentGeneration(), "   ")
+
+        assertTrue(history().isEmpty())
+    }
+
+    /** 이력이 남으면 다음 세션의 프롬프트에 엉뚱한 안내가 섞인다. */
+    @Test
+    fun `중지 후 같은 목표로 다시 시작해도 이력은 비어 있다`() {
+        GuideSession.start("카카오톡 열기")
+        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
+
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        assertTrue(history().isEmpty())
+    }
+
+    @Test
+    fun `새 목표로 시작하면 이력이 비워진다`() {
+        GuideSession.start("카카오톡 열기")
+        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
+
+        GuideSession.start("카메라 열기")
+
+        assertTrue(history().isEmpty())
+    }
+
+    // --- 늦게 도착한 응답 (PR #44 리뷰) ------------------------------------------
+    //
+    // 목표 문자열 비교만으로는 못 거른다. 중지 후 **같은 목표로** 다시 시작하면 문자열이 같아
+    // 이전 세션의 응답이 그대로 통과한다 — 이전 화면 bounds로 강조하거나, done이면 새 세션을 끝낸다.
+
+    @Test
+    fun `중지 후 같은 목표로 다시 시작하면 세대가 달라진다`() {
+        GuideSession.start("카카오톡 열기")
+        val before = currentGeneration()
+
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        assertEquals("카카오톡 열기", GuideSession.goal)
+        assertNotEquals(before, currentGeneration())
+    }
+
+    @Test
+    fun `이전 세대는 더 이상 현재 세션이 아니다`() {
+        GuideSession.start("카카오톡 열기")
+        val stale = currentGeneration()
+
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        assertFalse(GuideSession.isCurrent(stale))
+        assertTrue(GuideSession.isCurrent(currentGeneration()))
+    }
+
+    /** 늦게 도착한 이전 세션의 안내가 새 세션 이력에 섞이면 안 된다. */
+    @Test
+    fun `이전 세대의 안내는 기록되지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        val stale = currentGeneration()
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordInstruction(stale, "이전 세션의 안내입니다.")
+
+        assertTrue(history().isEmpty())
+    }
+
+    /** 세션이 없는 동안 도착한 응답도 버린다. */
+    @Test
+    fun `중지된 뒤에는 어떤 세대도 현재가 아니다`() {
+        GuideSession.start("카카오톡 열기")
+        val generation = currentGeneration()
+
+        GuideSession.stop()
+
+        assertFalse(GuideSession.isCurrent(generation))
     }
 
     @Test
