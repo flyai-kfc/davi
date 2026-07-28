@@ -120,7 +120,8 @@
           ]
         }
       ]
-    }
+    },
+    "recent_actions": []
   },
   "expected": {
     "stub_outcome": "success",

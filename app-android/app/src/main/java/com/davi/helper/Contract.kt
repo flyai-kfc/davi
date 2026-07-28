@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
- * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C8)을 먼저 읽고 양쪽을 같이 고친다.
+ * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C11)을 먼저 읽고 양쪽을 같이 고친다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -36,8 +36,8 @@ data class Screen(
     @SerialName("total_pages") val totalPages: Int? = null,
     /**
      * 스크롤 가능한 요소가 화면에 하나라도 있었는가(C10).
-     * `true` 있음 / `false` 하나도 없음 / `null` 아직 안 채움.
-     * **`false`와 `null`은 다르다** — 앱이 채우는 것은 #37이다.
+     * `true` 있음 / `false` 하나도 없음 / `null` 낡은 앱이 아직 안 채움.
+     * **`false`와 `null`은 다르다.** 현재 serializer는 보이는 트리 순회를 끝내고 항상 채운다.
      */
     @SerialName("has_scrollable_element") val hasScrollableElement: Boolean? = null,
 )
@@ -48,6 +48,11 @@ data class NextStepRequest(
     val screen: Screen,
     @SerialName("device_id") val deviceId: String? = null,
     @SerialName("recent_instructions") val recentInstructions: List<String> = emptyList(),
+    /**
+     * 반복 가드 전용 구조화 이력. 안내 문장과 역할을 섞지 않는다(C11).
+     * 활성 [GuideSession] 안에서만 최대 10개를 보관하므로 서버 상태나 기기 식별자가 필요 없다.
+     */
+    @SerialName("recent_actions") val recentActions: List<RecentAction> = emptyList(),
     @SerialName("client_version") val clientVersion: String? = null,
 )
 
@@ -56,6 +61,11 @@ data class NextStepResponse(
     val action: GuideAction,
     val model: String,
     val verified: Boolean = false,
+    /**
+     * 서버가 label 없이 계산한 현재 화면 구조 서명. 낡은 서버 응답과의 비대칭을 위해 선택 필드다.
+     * 앱은 내용을 해석하거나 만들지 않고, 표시한 행동과 함께 다음 요청으로 되돌려 보낸다.
+     */
+    @SerialName("screen_signature") val screenSignature: String? = null,
 )
 
 @Serializable
@@ -66,6 +76,14 @@ data class GuideAction(
     val direction: SwipeDirection? = null,
     @SerialName("target_node_id") val targetNodeId: String? = null,
     val instruction: String,
+)
+
+@Serializable
+data class RecentAction(
+    @SerialName("screen_signature") val screenSignature: String,
+    @SerialName("action_type") val actionType: ActionType,
+    val direction: SwipeDirection? = null,
+    @SerialName("target_node_id") val targetNodeId: String? = null,
 )
 
 /**

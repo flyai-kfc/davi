@@ -97,6 +97,8 @@ class GuideAccessibilityService : AccessibilityService() {
                             screen = screen,
                             // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
                             recentInstructions = session.recentInstructions,
+                            // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
+                            recentActions = session.recentActions,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
                     )
@@ -110,7 +112,14 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "history=${session.recentInstructions.size} " +
                                 "instruction=${action.instruction}",
                         )
-                        mainHandler.post { applyAction(screen, action, session) }
+                        mainHandler.post {
+                            applyAction(
+                                screen,
+                                action,
+                                result.response.screenSignature,
+                                session,
+                            )
+                        }
                     }
 
                     is NextStepResult.ApiFailure -> Log.w(
@@ -136,7 +145,12 @@ class GuideAccessibilityService : AccessibilityService() {
      * **요청을 보낸 세대가 아직 현재 세션일 때만** 반영한다. 목표 문자열 비교로는 부족하다 —
      * 중지 후 같은 목표로 다시 시작하면 문자열이 같아 이전 응답이 그대로 통과한다.
      */
-    private fun applyAction(screen: Screen, action: GuideAction, session: GuideSession.Active) {
+    private fun applyAction(
+        screen: Screen,
+        action: GuideAction,
+        screenSignature: String?,
+        session: GuideSession.Active,
+    ) {
         if (!GuideSession.isCurrent(session.generation)) {
             Log.i(TAG, "stale response dropped goal=${session.goal}")
             return
@@ -149,6 +163,7 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         GuideSession.recordInstruction(session.generation, action.instruction)
+        GuideSession.recordAction(session.generation, screenSignature, action)
 
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }

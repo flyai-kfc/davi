@@ -32,7 +32,7 @@ class GuideApiClientTest {
     fun `posts the contract and parses a guide action`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","action_type":"tap","target_node_id":"n1","instruction":"카카오톡을 누르세요."},"model":"stub","verified":false}""",
+                """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","action_type":"tap","target_node_id":"n1","instruction":"카카오톡을 누르세요."},"model":"stub","verified":false,"screen_signature":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
             ),
         )
 
@@ -43,6 +43,7 @@ class GuideApiClientTest {
         assertEquals(ActionType.TAP, result.response.action.actionType)
         assertEquals("n1", result.response.action.targetNodeId)
         assertEquals("카카오톡을 누르세요.", result.response.action.instruction)
+        assertEquals("a".repeat(64), result.response.screenSignature)
 
         val request = server.takeRequest()
         assertEquals("POST", request.method)
@@ -51,6 +52,8 @@ class GuideApiClientTest {
         val payload = Json.parseToJsonElement(body).jsonObject
         assertEquals("카카오톡 열기", payload["goal"]?.jsonPrimitive?.content)
         assertTrue(body.contains("\"label\":\"•••\""))
+        assertTrue(body.contains("\"recent_actions\""))
+        assertTrue(body.contains("\"screen_signature\":\"${"b".repeat(64)}\""))
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -112,6 +115,13 @@ class GuideApiClientTest {
                     clickable = true,
                     bounds = listOf(1, 2, 3, 4),
                 ),
+            ),
+        ),
+        recentActions = listOf(
+            RecentAction(
+                screenSignature = "b".repeat(64),
+                actionType = ActionType.TAP,
+                targetNodeId = "n1",
             ),
         ),
         clientVersion = "0.1.0",

@@ -79,3 +79,21 @@ def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_
         "계약은 앱·서버·평가 셋이 동시에 무는 지점이다. 한쪽만 고치지 말 것 "
         "(server/CLAUDE.md 'API 계약 결정')."
     )
+
+
+def test_repeat_guard_fields_exist_on_both_sides(contract_source: str) -> None:
+    """enum 외의 새 요청/응답 필드도 한쪽만 고치는 드리프트를 막는다(C11)."""
+
+    assert '@SerialName("recent_actions") val recentActions: List<RecentAction>' in contract_source
+    assert contract_source.count('@SerialName("screen_signature") val screenSignature: String') == 2
+
+    from app.schemas import NextStepRequest, NextStepResponse, RecentAction
+
+    assert "recent_actions" in NextStepRequest.model_fields
+    assert "screen_signature" in NextStepResponse.model_fields
+    assert {
+        "screen_signature",
+        "action_type",
+        "direction",
+        "target_node_id",
+    } == set(RecentAction.model_fields)

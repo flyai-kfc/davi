@@ -37,6 +37,7 @@ object GuideSession {
         val generation: Long,
         val goal: String,
         val recentInstructions: List<String>,
+        val recentActions: List<RecentAction>,
     )
 
     /**
@@ -44,7 +45,15 @@ object GuideSession {
      * 그 사이에 세션이 바뀌어 이전 목표에 새 세대가 붙을 수 있고, 그러면 이 가드가 뚫린다.
      */
     @Synchronized
-    fun active(): Active? = goal?.let { Active(generation, it, instructions.toList()) }
+    fun active(): Active? =
+        goal?.let {
+            Active(
+                generation = generation,
+                goal = it,
+                recentInstructions = instructions.toList(),
+                recentActions = actions.toList(),
+            )
+        }
 
     /** 이 세대가 아직 현재 세션인가. 늦게 도착한 응답을 버릴지 판정한다. */
     @Synchronized
@@ -65,6 +74,14 @@ object GuideSession {
      * 서비스의 네트워크 스레드가 읽고 메인 스레드가 쓰므로 접근을 잠금으로 막는다.
      */
     private val instructions = ArrayDeque<String>()
+
+    /**
+     * 서버 반복 가드에 보내는 구조화 행동 이력.
+     *
+     * 화면 서명은 서버가 label 없이 계산해 응답에 실은 값을 그대로 보관한다. 따라서 앱이 화면
+     * 원문을 해시하거나 별도 식별자를 만들지 않는다. 세션 generation이 바뀌면 함께 폐기한다.
+     */
+    private val actions = ArrayDeque<RecentAction>()
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
     fun start(goal: String) {
@@ -89,6 +106,28 @@ object GuideSession {
         }
     }
 
+    /**
+     * 사용자에게 실제로 표시한 행동만 기록한다.
+     *
+     * 낡은 서버는 화면 서명을 주지 않으므로 기록하지 않는다. 이전 세대의 늦은 응답도
+     * [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
+     */
+    @Synchronized
+    fun recordAction(generation: Long, screenSignature: String?, action: GuideAction) {
+        if (!isCurrent(generation) || screenSignature == null) return
+        actions.addLast(
+            RecentAction(
+                screenSignature = screenSignature,
+                actionType = action.actionType,
+                direction = action.direction,
+                targetNodeId = action.targetNodeId,
+            ),
+        )
+        while (actions.size > MAX_HISTORY) {
+            actions.removeFirst()
+        }
+    }
+
     /** 사용자가 중지했거나 서버가 `done`을 줬다. 둘의 상태 결과는 같다. */
     fun stop() = update(null)
 
@@ -109,6 +148,7 @@ object GuideSession {
             // 세대가 달라지고, 그 사이에 떠 있던 응답이 새 세션에 섞이지 않는다.
             generation++
             instructions.clear()
+            actions.clear()
         }
         listeners.forEach { it.onSessionChanged(next) }
     }

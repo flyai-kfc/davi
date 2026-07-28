@@ -75,6 +75,8 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
 - `input`은 `server/app/schemas.py:NextStepRequest`의 JSON 표현이다. 최신 계약의 선택 필드는
   생략할 수 있다. 로더는 실제로 적힌 필드만 직렬화 왕복해 알 수 없는 필드나 묵시적 타입 변환으로
   입력이 손실되지 않는지도 확인한다.
+- `recent_instructions`는 모델 프롬프트용 문장 이력이고, `recent_actions`는 서버 반복 가드용
+  구조화 이력이다. fixture는 세션 시작 화면이므로 빈 `recent_actions`를 명시하거나 생략할 수 있다.
 - `source.observed_model_action`은 실기기 실호출에서 관측한 구조화 메타데이터다. 원문 모델 응답을
   저장하는 곳이 아니며, 스텁 기대값으로 채점하지 않는다.
 - 모든 fixture의 암묵적 기대값은 `PII 없음`, `fixture 형식 적합`, `NextStepRequest 적합`,
@@ -112,7 +114,8 @@ fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 �
 ## 평가 계층
 
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존
-2. 항상 실행: 결정론적 fake LLM 반복 가드 회귀(#36)
+2. 항상 실행: 결정론적 fake LLM 반복 가드 회귀(#36). 실기기 fixture를 로더로 읽고 같은
+   `screen_signature + action_type + direction + target_node_id`의 세 번째 후보를 검사한다.
 3. API 키가 있을 때만: 실제 모델 + LLM judge(#42)
 
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture

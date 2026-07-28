@@ -1,7 +1,7 @@
 """앱 <-> 서버 계약. 이 스키마가 곧 API 계약이다(테스트로 고정한다).
 
 이 파일은 앱·서버·eval 셋이 동시에 무는 지점이라 바꾸면 세 곳이 함께 움직인다.
-결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C8) 참고.
+결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C11) 참고.
 
 두 가지 규칙을 지킨다(HANDOFF §10 실측):
 - **근거 필드가 먼저 온다.** GuideAction의 필드 선언 순서가 곧 Gemini `propertyOrdering`이고,
@@ -104,6 +104,26 @@ class Screen(BaseModel):
     has_scrollable_element: bool | None = None
 
 
+class RecentAction(BaseModel):
+    """같은 세션에서 직전에 실제 표시한 행동의 구조화 기록.
+
+    ``screen_signature``는 서버가 응답에 넣어 준 구조 기반 서명을 앱이 그대로 되돌려 보낸다.
+    화면 label이나 안내 문장은 포함하지 않는다. 문장 이력은 모델 프롬프트용
+    ``recent_instructions``와 역할을 분리한다(C11).
+    """
+
+    screen_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    action_type: ActionType
+    direction: SwipeDirection | None = None
+    target_node_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_scroll_direction(self) -> Self:
+        if self.action_type is ActionType.SCROLL and self.direction is None:
+            raise ValueError("scroll 이력에는 direction이 필요하다")
+        return self
+
+
 class NextStepRequest(BaseModel):
     goal: str
     screen: Screen
@@ -111,6 +131,9 @@ class NextStepRequest(BaseModel):
     # 반복 안내 방지용 최근 안내 이력. 오래된 것이 앞에 온다. HANDOFF §3-10.
     # 서버는 프롬프트에 넣을 때 MAX_HISTORY개로 자른다 — 앱이 더 보내도 계약 위반은 아니다.
     recent_instructions: list[str] = Field(default_factory=list)
+    # 반복 가드 전용 구조화 이력. 서버 상태 대신 활성 앱 세션이 보관하고, 오래된 것이 앞에 온다.
+    # 앱과 서버 모두 10개로 제한해 요청 크기와 세션 메모리에 상한을 둔다(C11).
+    recent_actions: list[RecentAction] = Field(default_factory=list, max_length=10)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
 
@@ -147,6 +170,8 @@ class NextStepResponse(BaseModel):
     action: GuideAction
     model: str
     verified: bool = False
+    # label을 제외한 현재 화면 구조의 SHA-256. 앱은 행동 이력에 붙여 다음 요청에서 그대로 돌려준다.
+    screen_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ErrorKind(StrEnum):

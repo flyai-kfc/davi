@@ -65,4 +65,40 @@ class UiTreeSerializerTest {
         assertEquals(SwipeDirection.LEFT, UiTreeSerializer.Axis.HORIZONTAL.next)
         assertEquals(SwipeDirection.RIGHT, UiTreeSerializer.Axis.HORIZONTAL.prev)
     }
+
+    @Test
+    fun `스크롤 가능 요소 관측은 트리 전체에서 누적한다`() {
+        assertEquals(
+            false,
+            UiTreeSerializer.observeScrollable(
+                seen = false,
+                isScrollable = false,
+                hasScrollActions = false,
+            ),
+        )
+        assertEquals(
+            true,
+            UiTreeSerializer.observeScrollable(
+                seen = false,
+                isScrollable = true,
+                hasScrollActions = false,
+            ),
+        )
+        assertEquals(
+            true,
+            UiTreeSerializer.observeScrollable(
+                seen = false,
+                isScrollable = false,
+                hasScrollActions = true,
+            ),
+        )
+        assertEquals(
+            true,
+            UiTreeSerializer.observeScrollable(
+                seen = true,
+                isScrollable = false,
+                hasScrollActions = false,
+            ),
+        )
+    }
 }

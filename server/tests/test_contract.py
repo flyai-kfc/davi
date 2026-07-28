@@ -11,6 +11,8 @@ from app.schemas import (
     ErrorKind,
     GuideAction,
     NextStepRequest,
+    NextStepResponse,
+    RecentAction,
     Screen,
     SwipeDirection,
     UiElement,
@@ -109,6 +111,69 @@ def test_request_carries_client_version():
     assert req.client_version == "0.1.0"
     # 낡은 앱이 안 보낼 수도 있으므로 선택 필드여야 한다.
     assert NextStepRequest(goal="x", screen=Screen()).client_version is None
+
+
+def test_request_keeps_structured_action_history_separate_from_instructions():
+    signature = "a" * 64
+    action = RecentAction(
+        screen_signature=signature,
+        action_type=ActionType.SCROLL,
+        direction=SwipeDirection.UP,
+        target_node_id="n1",
+    )
+    req = NextStepRequest(
+        goal="x",
+        screen=Screen(),
+        recent_instructions=["문장 이력"],
+        recent_actions=[action],
+    )
+
+    assert req.recent_instructions == ["문장 이력"]
+    assert req.recent_actions == [action]
+
+
+def test_recent_action_rejects_non_digest_screen_signature():
+    try:
+        RecentAction(screen_signature="raw screen label", action_type=ActionType.TAP)
+    except ValueError as error:
+        assert "screen_signature" in str(error)
+    else:
+        raise AssertionError("화면 원문으로 쓸 수 있는 서명이 통과됐다")
+
+
+def test_recent_action_history_has_a_request_size_bound():
+    action = RecentAction(
+        screen_signature="a" * 64,
+        action_type=ActionType.TAP,
+        target_node_id="n1",
+    )
+
+    try:
+        NextStepRequest(
+            goal="x",
+            screen=Screen(),
+            recent_actions=[action] * 11,
+        )
+    except ValueError as error:
+        assert "recent_actions" in str(error)
+    else:
+        raise AssertionError("행동 이력 상한을 넘긴 요청이 통과됐다")
+
+
+def test_response_carries_server_generated_screen_signature():
+    response = NextStepResponse(
+        action=GuideAction(
+            expected_result="완료",
+            evidence="근거",
+            action_type=ActionType.TAP,
+            target_node_id="n1",
+            instruction="누르세요.",
+        ),
+        model="stub",
+        screen_signature="b" * 64,
+    )
+
+    assert response.screen_signature == "b" * 64
 
 
 def test_api_error_can_carry_retry_and_request_id():
