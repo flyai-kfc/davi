@@ -25,6 +25,18 @@ class GuideSessionTest {
 
     private fun history(): List<String> = GuideSession.active()?.recentInstructions.orEmpty()
 
+    private fun actionHistory(): List<RecentAction> = GuideSession.active()?.recentActions.orEmpty()
+
+    private fun sampleAction(targetNodeId: String = "n1") =
+        GuideAction(
+            expectedResult = "목표 화면",
+            evidence = "구조화 근거",
+            actionType = ActionType.SCROLL,
+            direction = SwipeDirection.UP,
+            targetNodeId = targetNodeId,
+            instruction = "화면을 넘기세요.",
+        )
+
     @Test
     fun `시작하면 공백을 제거한 목표가 남는다`() {
         GuideSession.start("  카카오톡 열기  ")
@@ -123,6 +135,33 @@ class GuideSessionTest {
     }
 
     @Test
+    fun `구조화 행동 이력도 순서와 상한을 지킨다`() {
+        GuideSession.start("카카오톡 열기")
+        val generation = currentGeneration()
+
+        repeat(13) { index ->
+            GuideSession.recordAction(
+                generation,
+                index.toString().padStart(64, '0'),
+                sampleAction(targetNodeId = "n$index"),
+            )
+        }
+
+        assertEquals(10, actionHistory().size)
+        assertEquals("n3", actionHistory().first().targetNodeId)
+        assertEquals("n12", actionHistory().last().targetNodeId)
+    }
+
+    @Test
+    fun `화면 서명이 없는 낡은 서버 응답은 행동 이력에 넣지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordAction(currentGeneration(), null, sampleAction())
+
+        assertTrue(actionHistory().isEmpty())
+    }
+
+    @Test
     fun `빈 안내는 기록하지 않는다`() {
         GuideSession.start("카카오톡 열기")
 
@@ -136,11 +175,13 @@ class GuideSessionTest {
     fun `중지 후 같은 목표로 다시 시작해도 이력은 비어 있다`() {
         GuideSession.start("카카오톡 열기")
         GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
+        GuideSession.recordAction(currentGeneration(), "a".repeat(64), sampleAction())
 
         GuideSession.stop()
         GuideSession.start("카카오톡 열기")
 
         assertTrue(history().isEmpty())
+        assertTrue(actionHistory().isEmpty())
     }
 
     @Test
@@ -193,6 +234,19 @@ class GuideSessionTest {
         GuideSession.recordInstruction(stale, "이전 세션의 안내입니다.")
 
         assertTrue(history().isEmpty())
+    }
+
+    /** 늦은 응답의 행동도 새 세션 서버 가드 이력에 섞이면 안 된다. */
+    @Test
+    fun `이전 세대의 행동은 기록되지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        val stale = currentGeneration()
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordAction(stale, "b".repeat(64), sampleAction())
+
+        assertTrue(actionHistory().isEmpty())
     }
 
     /** 세션이 없는 동안 도착한 응답도 버린다. */

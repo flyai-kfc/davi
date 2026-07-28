@@ -117,7 +117,7 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 |---|---|
 | `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림), MainActivity, 접근성 서비스 |
 | `.../MainActivity.kt` | 온보딩 + 목표 입력, 안내 세션 시작·중지 |
-| `.../GuideSession.kt` | 안내 세션 하나(목표). 인메모리 — 영속화하지 않는다 |
+| `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동). 인메모리 — 영속화하지 않는다 |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
@@ -140,7 +140,9 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **관통에서 드러난 것 (다음 작업의 근거)**
-- ~~**같은 안내를 반복한다.**~~ 앱이 `recent_instructions`를 채우게 했다(#31). 완화 정도는 실사용 로그로 다시 본다 — 반복을 코드로 끊는 것은 서버 가드레일(#36)이다.
+- ~~**같은 안내를 반복한다.**~~ 문장 이력은 모델 프롬프트에 유지하고, 별도의
+  `recent_actions`를 서버 `_apply_guardrails`가 비교한다(#36). 앱은 서버가 label 없이 만든
+  화면 서명과 구조화 행동을 활성 세션에 최대 10개만 보관하며 세션 재시작 때 비운다.
 - **앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.** 카메라 전환 직후 `elements=1`인 화면이 서버로 갔다. 시간 기반 정체·안정화 판정이 필요하다.
 - 권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다.
 - 정체 감지, 오버레이 불가 화면(설정 앱)의 헤드업 폴백은 아직 없다.

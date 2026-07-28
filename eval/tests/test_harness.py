@@ -186,6 +186,7 @@ def test_repository_device_fixture_preserves_complete_anonymized_tree():
     assert elements[3].label == "일반 앱 2"
     assert elements[7].label == "카메라"
     assert elements[7].bounds == [787, 1902, 1035, 2170]
+    assert fixture.request.recent_actions == []
 
     # 실호출 n8 선택은 source 관측값일 뿐, Stub exact-match 기대값이 아니다.
     observed = fixture.document.source.observed_model_action

@@ -15,7 +15,8 @@ import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
  * 라벨이 "시계 텍스트"가 되어 모델이 시계를 조작 대상으로 고른다(HANDOFF §3-9).
  * 그래서 [shouldMergeDescendants]가 큰 컨테이너를 걸러낸다.
  *
- * 이번 이슈(#4)는 최소 필드만 채운다: node_id / label / role / clickable / bounds.
+ * 화면 요소와 스크롤/page 상태를 함께 채운다. `has_scrollable_element`는 보이는 트리 전체에서
+ * 스크롤 가능 노드나 scroll action을 하나라도 관측했는지를 나타낸다(C10).
  */
 object UiTreeSerializer {
 
@@ -53,6 +54,7 @@ object UiTreeSerializer {
         var counter = 0
         var currentPage: Int? = null
         var totalPages: Int? = null
+        var hasScrollableElement = false
     }
 
     /**
@@ -80,6 +82,7 @@ object UiTreeSerializer {
                 elements = if (truncated) ctx.elements.take(MAX_ELEMENTS) else ctx.elements,
                 currentPage = ctx.currentPage,
                 totalPages = ctx.totalPages,
+                hasScrollableElement = ctx.hasScrollableElement,
             ),
             truncated = truncated,
         )
@@ -97,6 +100,13 @@ object UiTreeSerializer {
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
         if (!node.isVisibleToUser) return
+
+        val hasScrollActions = hasScrollActions(node)
+        ctx.hasScrollableElement = observeScrollable(
+            seen = ctx.hasScrollableElement,
+            isScrollable = node.isScrollable,
+            hasScrollActions = hasScrollActions,
+        )
 
         var childrenAbsorbed = absorbed
 
@@ -136,7 +146,7 @@ object UiTreeSerializer {
         // 그런데 스크롤 상태는 **잎이 아니라 컨테이너에** 있다. 안 내보내면 모델은 화면이
         // 더 넘어가는지조차 모르고, 넘기라고 정해도 무엇을 쓸어야 하는지 가리킬 수단이 없다.
         // (실측: 설정 앱에서 scroll 메타가 한 건도 안 나왔다.)
-        if (!emitted && hasScrollActions(node)) {
+        if (!emitted && hasScrollActions) {
             ctx.elements.add(element(node, "", ctx))
         }
 
@@ -223,6 +233,13 @@ object UiTreeSerializer {
             it.id == AccessibilityAction.ACTION_SCROLL_FORWARD.id ||
                 it.id == AccessibilityAction.ACTION_SCROLL_BACKWARD.id
         }
+
+    /** 보이는 노드를 순회하며 한 번 본 `true`가 뒤의 일반 노드 때문에 사라지지 않게 한다. */
+    internal fun observeScrollable(
+        seen: Boolean,
+        isScrollable: Boolean,
+        hasScrollActions: Boolean,
+    ): Boolean = seen || isScrollable || hasScrollActions
 
     private fun scrollStateOf(node: AccessibilityNodeInfo, bounds: Rect): ScrollState? {
         val actions = node.actionList.mapTo(HashSet()) { it.id }
