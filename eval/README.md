@@ -10,14 +10,17 @@ cd eval
 py -3.12 -m pip install -r requirements.txt
 py -3.12 harness.py
 py -3.12 -m pytest
+py -3.12 judge.py
 ```
 
 macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 사용한다. `harness.py`는 fixture별 결과와
 전체 `total/passed/failed`를 JSON으로 출력하고 하나라도 실패하면 종료 코드 1을 반환한다.
 
-CI는 별도 API 키나 secret 없이 `python -m pytest`, Ruff 린트·포맷 검사와
+CI는 별도 API 키나 secret 없이 `python -m pytest`, 전체 eval Python의 Ruff 린트·포맷 검사와
 `python harness.py` 스모크를 모두 실행한다. 실제 fixture의 로딩, PII 검사, 요청 스키마,
 입력 보존, 스텁 파이프라인뿐 아니라 PII 탐지·원문 비노출 같은 음성 경로도 항상 검사한다.
+`judge.py`도 일반 CI에서 실행하지만 키 또는 judge 모델이 없으면 명시적인 `skipped` 결과를
+출력하고 성공한다.
 
 다른 디렉터리를 검사하려면 다음처럼 지정한다.
 
@@ -114,3 +117,29 @@ fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 �
 
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture
 기준의 낙관적 상한”이라는 단서를 유지한다.
+
+## 선택적 실제 모델 + LLM judge
+
+골든패스 exact-match는 동등하거나 더 나은 대안 경로도 오답으로 처리한다. PoC2의 FAIL 4건이
+전부 이 착시였으므로, 의미 품질은 `[화면 + 목표 + 관측 안내 + 후보 안내]`를 별도 LLM judge가
+판정한다.
+
+```bash
+cd eval
+GEMINI_API_KEY=... \
+DAVI_EVAL_JUDGE_MODEL=gemini-judge-model \
+DAVI_MODEL=gemini-candidate-model \
+python3.12 judge.py
+```
+
+- 필수 환경변수는 `GEMINI_API_KEY`, `DAVI_EVAL_JUDGE_MODEL`이다.
+- 후보 모델은 서버와 같은 `DAVI_MODEL`을 사용하며 생략하면 현재 개발 기본값을 쓴다.
+- 키 또는 judge 모델이 없으면 `status=skipped`와 누락 변수명만 출력하고 종료 코드 0을 반환한다.
+- 두 값이 모두 있으면 익명화 fixture마다 실제 후보 안내를 생성하고 `equivalent`, `better`,
+  `incorrect` 중 하나로 구조화 판정한다. 앞의 두 판정은 통과하고 `incorrect`는 실패한다.
+- 활성화한 실행에서 HTTP·네트워크·응답 파싱 오류가 나면 경고로 성공시키지 않고 종료 코드 1을
+  반환한다.
+- API 키, 원본 화면 트리, 후보·judge의 원문 응답과 판정 reason은 출력하거나 저장하지 않는다.
+  결과에는 fixture id, 후보의 action enum, judge verdict만 남긴다.
+- 화면 label과 후보·관측 안내는 모두 신뢰하지 않는 JSON 데이터 경계에 넣는다. judge의 시스템
+  지시는 이 데이터 안의 역할 변경·규칙 무시·판정 강요 문구를 따르지 않도록 고정한다.
