@@ -85,6 +85,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample("a", 0)
         tracker.onSample("a", 100)
         tracker.markSent("a", 100)
+        tracker.markFinished()
 
         val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
         assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1))
@@ -97,6 +98,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample("a", 0)
         tracker.onSample("a", 100)
         tracker.markSent("a", 100)
+        tracker.markFinished()
         tracker.onSample("a", 100 + ScreenStabilityTracker.STUCK_AFTER_MS)
 
         assertEquals(Decision.WAIT, tracker.onSample("b", 20_000))
@@ -110,6 +112,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample("a", 100)
         tracker.markSent("a", 100)
         tracker.markFailed()
+        tracker.markFinished()
 
         val retryAt = 100 + ScreenStabilityTracker.RETRY_BASE_MS
         assertEquals(Decision.SEND, tracker.onSample("a", retryAt))
@@ -123,6 +126,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample("a", 100)
         tracker.markSent("a", 100)
         tracker.markFailed()
+        tracker.markFinished()
 
         assertEquals(Decision.IDLE, tracker.onSample("a", 200))
         assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
@@ -148,6 +152,74 @@ class ScreenStabilityTrackerTest {
         tracker.markSucceeded()
 
         assertEquals(0L, tracker.backoffMs())
+    }
+
+    @Test
+    fun `진행 중인 요청이 있으면 새 화면을 보내지 않는다`() {
+        // A가 도는 동안 B를 SEND로 내면, 호출자는 "보냈다"고 기록하는데 실제 요청은
+        // in-flight 가드에 막혀 나가지 않는다 → B의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+
+        tracker.onSample("b", 200)
+
+        assertEquals(Decision.IDLE, tracker.onSample("b", 300))
+    }
+
+    @Test
+    fun `요청이 끝나면 그동안 바뀐 화면을 보낸다`() {
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+        tracker.onSample("b", 200)
+        tracker.onSample("b", 300)
+
+        tracker.markFinished()
+
+        assertEquals(Decision.SEND, tracker.onSample("b", 400))
+    }
+
+    @Test
+    fun `보내지 못한 화면은 전송으로 기록되지 않는다`() {
+        // 호출자는 요청이 실제로 시작됐을 때만 markSent를 부른다. 그 계약이 지켜지면
+        // 막혔던 화면은 다음 기회에 그대로 다시 나간다.
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+        tracker.onSample("b", 200)
+        assertEquals(Decision.IDLE, tracker.onSample("b", 300))
+
+        tracker.markFinished()
+
+        assertEquals(Decision.SEND, tracker.onSample("b", 400))
+        tracker.markSent("b", 400)
+        assertEquals(Decision.IDLE, tracker.onSample("b", 500))
+    }
+
+    @Test
+    fun `응답을 기다리는 중에는 정체로 보지 않는다`() {
+        // 느린 응답과 멈춘 화면은 다르다. 기다리는 동안 "화면이 그대로예요"라고 말하면 헷갈린다.
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+
+        val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt))
+
+        tracker.markFinished()
+
+        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt))
+    }
+
+    @Test
+    fun `응답이 도착한 시점의 화면을 대조할 수 있다`() {
+        tracker.onSample("a", 0)
+        assertEquals("a", tracker.currentSignature())
+
+        tracker.onSample("b", 100)
+
+        assertEquals("b", tracker.currentSignature())
     }
 
     @Test

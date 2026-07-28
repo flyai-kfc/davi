@@ -130,8 +130,11 @@ class GuideAccessibilityService : AccessibilityService() {
 
             ScreenStabilityTracker.Decision.SEND -> {
                 logScreen(result)
-                stability.markSent(signature, now)
-                requestNextStep(result.screen, session)
+                // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
+                // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
+                if (requestNextStep(result.screen, signature, session)) {
+                    stability.markSent(signature, now)
+                }
                 scheduleSample(POLL_MS)
             }
 
@@ -160,11 +163,16 @@ class GuideAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun requestNextStep(screen: Screen, session: GuideSession.Active) {
-        if (!requestInFlight.compareAndSet(false, true)) return
+    /** @return 요청이 실제로 시작됐는가. 시작하지 못했으면 호출자가 "보냈다"고 기록하면 안 된다. */
+    private fun requestNextStep(
+        screen: Screen,
+        signature: String,
+        session: GuideSession.Active,
+    ): Boolean {
+        if (!requestInFlight.compareAndSet(false, true)) return false
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
-            return
+            return false
         }
 
         apiExecutor.execute {
@@ -197,6 +205,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         mainHandler.post {
                             applyAction(
                                 screen,
+                                signature,
                                 action,
                                 result.response.screenSignature,
                                 session,
@@ -229,8 +238,14 @@ class GuideAccessibilityService : AccessibilityService() {
                 }
             } finally {
                 requestInFlight.set(false)
+                // 요청이 도는 동안 화면이 바뀌었을 수 있다. 다음 폴링까지 기다리지 않고 바로 다시 뜬다.
+                mainHandler.post {
+                    stability.markFinished()
+                    scheduleSample(SETTLE_MS)
+                }
             }
         }
+        return true
     }
 
     /**
@@ -254,6 +269,7 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun applyAction(
         screen: Screen,
+        requestSignature: String,
         action: GuideAction,
         screenSignature: String?,
         session: GuideSession.Active,
@@ -263,13 +279,23 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
+        // 전송은 성공했으니 백오프는 푼다. 화면이 바뀌었는지는 그다음 문제다.
+        stability.markSucceeded()
+
+        // 세대만 보면 같은 세션 안에서 A 화면의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
+        // 버리면 다음 샘플이 B를 새로 물어본다.
+        val current = stability.currentSignature()
+        if (current != null && current != requestSignature) {
+            Log.i(TAG, "screen changed while waiting, response dropped")
+            return
+        }
+
         if (action.actionType == ActionType.DONE) {
             Log.i(TAG, "session done goal=${session.goal}")
             GuideSession.stop() // 리스너가 오버레이를 지운다
             return
         }
 
-        stability.markSucceeded()
         GuideSession.recordInstruction(session.generation, action.instruction)
         GuideSession.recordAction(session.generation, screenSignature, action)
 

@@ -57,6 +57,7 @@ class ScreenStabilityTracker(
     private var stuckReported = false
     private var failures = 0
     private var lastAttemptMs = 0L
+    private var requestOutstanding = false
 
     fun onSample(signature: String, nowMs: Long): Decision {
         if (signature != lastSample) {
@@ -68,11 +69,18 @@ class ScreenStabilityTracker(
         if (heldSamples < holdSamples) return Decision.WAIT
 
         if (signature != sentSignature) {
+            // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
+            // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
+            // 영영 오지 않는다(PR #61 리뷰 P1). 응답이 끝나면 [markFinished]가 다시 열어 준다.
+            if (requestOutstanding) return Decision.IDLE
             // 실패한 화면을 폴링 주기마다 다시 때리면 서버가 죽어 있을 때 초당 한 번씩 두드린다.
             // 무료 티어는 15 RPM이다(HANDOFF §10). 실기기에서 실제로 이 루프를 만들어 봤다.
             if (failures > 0 && nowMs - lastAttemptMs < backoffMs()) return Decision.IDLE
             return Decision.SEND
         }
+
+        // 응답을 기다리는 중이면 멈춘 게 아니다. 느린 응답을 정체로 말하면 사용자를 헷갈리게 한다.
+        if (requestOutstanding) return Decision.IDLE
 
         // 같은 화면을 다시 물어보지 않는다. 무료 티어 15 RPM이라 폴링이 곧 호출량이다(#39).
         if (!stuckReported && nowMs - sentAtMs >= stuckAfterMs) {
@@ -82,17 +90,30 @@ class ScreenStabilityTracker(
         return Decision.IDLE
     }
 
+    /** **요청이 실제로 나갔을 때만** 부른다. 보낸 셈 치면 그 화면의 안내가 영영 오지 않는다. */
     fun markSent(signature: String, nowMs: Long) {
         sentSignature = signature
         sentAtMs = nowMs
         lastAttemptMs = nowMs
         stuckReported = false
+        requestOutstanding = true
+    }
+
+    /** 성공·실패·폐기와 무관하게 요청이 끝나면 부른다. 다음 화면이 다시 나갈 수 있게 연다. */
+    fun markFinished() {
+        requestOutstanding = false
     }
 
     /** 응답이 실제로 화면에 반영되면 백오프를 푼다. */
     fun markSucceeded() {
         failures = 0
     }
+
+    /**
+     * 마지막으로 뜬 샘플의 시그니처. 응답이 도착했을 때 **그 사이 화면이 바뀌었는지** 보는 데 쓴다.
+     * 세대(generation)만 보면 같은 세션 안에서 A의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
+     */
+    fun currentSignature(): String? = lastSample
 
     /**
      * 요청이 실패하면 보낸 적 없는 것으로 되돌려 다시 시도하게 한다. 그러지 않으면 네트워크가
@@ -123,6 +144,7 @@ class ScreenStabilityTracker(
         stuckReported = false
         failures = 0
         lastAttemptMs = 0L
+        requestOutstanding = false
     }
 
     companion object {
