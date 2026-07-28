@@ -4,7 +4,7 @@
 - 스키마 400 시 무스키마 재시도 폴백(스키마 하나로 앱 전체가 죽는 사고 방지).
 - 에러를 QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST로 분류.
 
-스텁 덕에 키 없이도 서버가 뜨고 eval 하니스가 돈다(DAVI_USE_STUB_LLM).
+development 스텁 덕에 키 없이도 서버가 뜨고 eval 하니스가 돈다(DAVI_USE_STUB_LLM).
 """
 
 from __future__ import annotations
@@ -222,4 +222,4 @@ def get_llm_client() -> LlmClient:
 
     if settings.davi_use_stub_llm:
         return StubLlmClient()
-    return GeminiLlmClient(settings.gemini_api_key, settings.davi_model)
+    return GeminiLlmClient(settings.gemini_api_key.get_secret_value(), settings.davi_model)

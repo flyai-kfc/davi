@@ -20,6 +20,11 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 - **`py -3.12` 고정.** 기본 python이 3.8이면 litellm(3.11+ 필요)에서 혼란스러운 에러(§10).
 - 로컬 uvicorn + 터널(ngrok/Cloudflare)로 실기기가 접속(`../SPEC.md` §7).
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
+- `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 배포는 `production`을 명시하고
+  실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. 잘못된 조합은
+  `config.Settings`가 import 시 거부한다.
+- 요청 로그에는 비식별 운영 메타데이터만 둔다. `goal`, 화면 label, 최근 안내, 요청 본문,
+  API 키·access token은 어떤 프로필에서도 기록하지 않는다.
 
 ## Gemini 구조화 출력 함정 (`HANDOFF.md` §10 — 실측)
 - `responseSchema.properties[*].enum`에 **빈 문자열 금지**(400 `cannot be empty`). "해당 없음"은 빈 값이 아니라 **필드 생략**(required 제외)으로.
