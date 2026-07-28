@@ -128,7 +128,18 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /** 안내문을 상자 안쪽 폭에 맞춰 자른다. 가능하면 띄어쓰기에서 끊는다. */
-    private fun wrapLines(text: String, maxWidth: Float): List<String> {
+    /**
+     * 명시적 개행을 먼저 끊고, 각 문단을 폭에 맞춰 접는다.
+     *
+     * `breakText`는 `\n`을 보통 글자로 세기 때문에 이 분리가 없으면 개행이 통째로 삼켜져
+     * 두 문장이 "…주세요.화면이"처럼 붙는다(실기기에서 확인).
+     */
+    private fun wrapLines(text: String, maxWidth: Float): List<String> =
+        text.split('\n').flatMap { paragraph ->
+            if (paragraph.isBlank()) listOf("") else wrapParagraph(paragraph, maxWidth)
+        }
+
+    private fun wrapParagraph(text: String, maxWidth: Float): List<String> {
         val lines = mutableListOf<String>()
         var remaining = text
         while (remaining.isNotEmpty()) {
