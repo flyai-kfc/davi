@@ -15,6 +15,7 @@
     <string name="btn_start">안내 시작</string>
     <string name="btn_stop">안내 중지</string>
     <string name="guide_hint">시작을 누른 뒤 하려던 앱으로 이동하면 화면 위에 안내가 뜹니다.</string>
+    <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 보세요.</string>
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 </resources>

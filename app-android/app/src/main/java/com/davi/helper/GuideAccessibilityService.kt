@@ -25,19 +25,40 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class GuideAccessibilityService : AccessibilityService() {
 
-    private var lastRunAtMs = 0L
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
     private val apiExecutor = Executors.newSingleThreadExecutor()
     private val requestInFlight = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private val stability = ScreenStabilityTracker()
+
+    /** 정체를 알릴 때 강조를 잃지 않도록 마지막 안내를 들고 있는다. */
+    private var lastGuide: Guide? = null
+
+    private data class Guide(val bounds: Rect?, val instruction: String)
+
+    /** 이벤트가 없어도 도는 샘플러. 세션이 있는 동안에만 스스로 다시 예약한다(#39). */
+    private val sampleRunnable = Runnable { sampleScreen() }
+
     /**
      * 세션이 끝나는 순간 화면에서 지운다. 다음 접근성 이벤트를 기다리면, 사용자가 중지를 눌러도
      * 화면이 가만히 있는 동안에는 강조가 그대로 남는다.
+     *
+     * 시작에는 샘플러를 깨운다. 사용자가 대상 앱으로 이동할 때까지 기다리지 않아도 되고,
+     * 이전 세션의 화면 기억을 끌고 가지 않는다.
      */
     private val sessionListener = GuideSession.Listener { goal ->
-        if (goal == null) mainHandler.post { overlay?.clear() }
+        mainHandler.post {
+            stability.reset()
+            lastGuide = null
+            if (goal == null) {
+                mainHandler.removeCallbacks(sampleRunnable)
+                overlay?.clear()
+            } else {
+                scheduleSample(SETTLE_MS)
+            }
+        }
     }
 
     override fun onServiceConnected() {
@@ -52,33 +73,91 @@ class GuideAccessibilityService : AccessibilityService() {
         )
     }
 
+    /**
+     * 이벤트는 이제 "지금 볼 만하다"는 신호일 뿐이다. 판단은 샘플러가 한다.
+     *
+     * 이벤트에만 기대면 목록 끝처럼 **이벤트가 아예 안 오는 상황**에서 안내가 멈춘다
+     * (`HANDOFF.md` §3-4 실측, SPEC §4). 반대로 전환 직후에는 이벤트가 몰아쳐서
+     * 덜 그려진 트리가 그대로 나간다(#32). 그래서 이벤트는 샘플을 **미루면서** 예약한다 —
+     * 연속된 이벤트는 한 번으로 합쳐지고, 마지막 이벤트 뒤 [SETTLE_MS]가 지나야 샘플을 뜬다.
+     */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !isInteresting(event.eventType)) return
 
         // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
-        val session = GuideSession.active() ?: return
+        if (GuideSession.active() == null) return
 
-        // 접근성 이벤트는 초당 수십 번 온다. 디바운스하지 않으면 로그를 읽을 수 없다.
-        val now = SystemClock.uptimeMillis()
-        if (now - lastRunAtMs < DEBOUNCE_MS) return
-        lastRunAtMs = now
+        scheduleSample(SETTLE_MS)
+    }
+
+    private fun scheduleSample(delayMs: Long) {
+        mainHandler.removeCallbacks(sampleRunnable)
+        mainHandler.postDelayed(sampleRunnable, delayMs)
+    }
+
+    /**
+     * 화면을 한 번 떠서 [ScreenStabilityTracker]에 묻고, 답에 따라 움직인 뒤 다음 샘플을 예약한다.
+     *
+     * 메인 스레드 전용이다(접근성 콜백과 같은 스레드). 트래커 상태를 여기서만 만지므로 잠금이 필요 없다.
+     */
+    private fun sampleScreen() {
+        val session = GuideSession.active() ?: return
 
         val root = ActiveWindowResolver.resolve(this)
         if (root == null) {
-            // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지운다.
+            // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
             Log.w(TAG, "active root=null")
             overlay?.clear()
+            scheduleSample(POLL_MS)
             return
         }
 
         val result = runCatching { UiTreeSerializer.serialize(root) }.getOrElse {
             Log.e(TAG, "serialize failed", it)
+            scheduleSample(POLL_MS)
             return
         }
 
-        logScreen(result)
-        requestNextStep(result.screen, session)
+        val signature = ScreenSignature.of(result.screen)
+        val now = SystemClock.uptimeMillis()
+        when (stability.onSample(signature, now)) {
+            ScreenStabilityTracker.Decision.WAIT -> {
+                // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).
+                Log.d(TAG, "settling pkg=${result.screen.packageName} elements=${result.screen.elements.size}")
+                scheduleSample(SETTLE_MS)
+            }
+
+            ScreenStabilityTracker.Decision.SEND -> {
+                logScreen(result)
+                stability.markSent(signature, now)
+                requestNextStep(result.screen, session)
+                scheduleSample(POLL_MS)
+            }
+
+            ScreenStabilityTracker.Decision.STUCK -> {
+                Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
+                showStuckNotice()
+                scheduleSample(POLL_MS)
+            }
+
+            ScreenStabilityTracker.Decision.IDLE -> scheduleSample(POLL_MS)
+        }
+    }
+
+    /**
+     * 안내한 대로 했는데 화면이 그대로일 때. **서버를 다시 부르지 않는다** — 폴링이 곧 호출량이고
+     * 무료 티어는 15 RPM이다(#39). 강조와 원래 안내는 그대로 두고 한 줄만 덧붙인다.
+     * 동작을 새로 시키는 문장이 아니라서 "한 instruction에 두 동작" 금지(`HANDOFF.md` §3-14)에 걸리지 않는다.
+     *
+     * 최종 문구는 안내 상태 표시(#29)에서 다시 정한다.
+     */
+    private fun showStuckNotice() {
+        val guide = lastGuide ?: return
+        overlay?.showGuide(
+            guide.bounds,
+            "${guide.instruction}\n${getString(R.string.guide_stuck)}",
+        )
     }
 
     private fun requestNextStep(screen: Screen, session: GuideSession.Active) {
@@ -125,18 +204,43 @@ class GuideAccessibilityService : AccessibilityService() {
                         }
                     }
 
-                    is NextStepResult.ApiFailure -> Log.w(
-                        TAG,
-                        "api_error kind=${result.error.kind.name} status=${result.statusCode}",
-                    )
+                    is NextStepResult.ApiFailure -> {
+                        Log.w(
+                            TAG,
+                            "api_error kind=${result.error.kind.name} status=${result.statusCode}",
+                        )
+                        retryThisScreen()
+                    }
 
-                    is NextStepResult.HttpFailure -> Log.w(TAG, "http_error status=${result.statusCode}")
-                    is NextStepResult.NetworkFailure -> Log.w(TAG, "network_error", result.exception)
-                    is NextStepResult.ParseFailure -> Log.w(TAG, "response_parse_error", result.exception)
+                    is NextStepResult.HttpFailure -> {
+                        Log.w(TAG, "http_error status=${result.statusCode}")
+                        retryThisScreen()
+                    }
+
+                    is NextStepResult.NetworkFailure -> {
+                        Log.w(TAG, "network_error", result.exception)
+                        retryThisScreen()
+                    }
+
+                    is NextStepResult.ParseFailure -> {
+                        Log.w(TAG, "response_parse_error", result.exception)
+                        retryThisScreen()
+                    }
                 }
             } finally {
                 requestInFlight.set(false)
             }
+        }
+    }
+
+    /**
+     * 요청이 실패한 화면은 "안 보낸 것"으로 되돌려 다음 샘플이 다시 시도하게 한다.
+     * 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬지만, 이제 화면이 그대로면 이벤트도 오지 않는다.
+     */
+    private fun retryThisScreen() {
+        mainHandler.post {
+            stability.markFailed()
+            Log.i(TAG, "retry backoff=${stability.backoffMs()}ms")
         }
     }
 
@@ -165,6 +269,7 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
+        stability.markSucceeded()
         GuideSession.recordInstruction(session.generation, action.instruction)
         GuideSession.recordAction(session.generation, screenSignature, action)
 
@@ -179,10 +284,9 @@ class GuideAccessibilityService : AccessibilityService() {
         } else {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
-        overlay?.showGuide(
-            bounds?.let { Rect(it[0], it[1], it[2], it[3]) },
-            action.instruction,
-        )
+        val rect = bounds?.let { Rect(it[0], it[1], it[2], it[3]) }
+        lastGuide = Guide(rect, action.instruction)
+        overlay?.showGuide(rect, action.instruction)
     }
 
     private fun logScreen(result: UiTreeSerializer.Result) {
@@ -233,6 +337,7 @@ class GuideAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
         // 아무 일도 일어나지 않는 상태가 된다.
+        mainHandler.removeCallbacks(sampleRunnable)
         GuideSession.removeListener(sessionListener)
         GuideSession.stop()
         // 창을 걷지 않으면 서비스가 꺼진 뒤에도 유령 오버레이가 화면에 남는다.
@@ -246,8 +351,17 @@ class GuideAccessibilityService : AccessibilityService() {
     companion object {
         const val TAG = "GuideSvc"
 
-        /** HANDOFF의 첫 추정치와 같은 값. 실사용하며 근거를 갖고 다시 정할 것. */
-        private const val DEBOUNCE_MS = 700L
+        /**
+         * 이벤트가 몰아친 뒤 이만큼 조용해야 화면을 뜬다. 전환 애니메이션 중에는 샘플이 계속
+         * 달라지므로 이 값이 곧 "안정 판정 간격"이 된다(#32).
+         */
+        private const val SETTLE_MS = 350L
+
+        /**
+         * 안정된 뒤의 감시 주기. **폴링이 곧 호출량은 아니다** — 화면이 그대로면 서버를 부르지 않고
+         * 트리만 다시 뜬다(#39). HANDOFF의 첫 추정치와 같은 값이며 근거를 갖고 다시 정할 것.
+         */
+        private const val POLL_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
     }
