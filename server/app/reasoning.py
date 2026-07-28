@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .config import settings
 from .llm import LlmClient
-from .masking import mask_screen_model
+from .masking import mask_screen_model, mask_text
 from .schemas import ActionType, GuideAction, NextStepRequest, NextStepResponse
 
 
@@ -46,8 +46,16 @@ def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
 def next_step(req: NextStepRequest, llm: LlmClient) -> NextStepResponse:
     """앱 요청 하나 -> 다음 안내 하나. 파이프라인의 진입점."""
     # 2차 마스킹 그물: 모델에 넘기기 전에 한 번 더(1차는 앱에서 이미 수행).
-    masked_screen = mask_screen_model(req.screen)
-    masked = req.model_copy(update={"screen": masked_screen})
+    #
+    # 이력도 함께 훑는다. 1차가 놓친 값이 label에 있었다면 모델이 그걸 instruction에 인용하고,
+    # 앱은 그 문장을 이력에 담아 매 요청마다 다시 보낸다 — 화면은 넘어가도 이력은 남으므로
+    # 놓친 값이 계속 재전송된다. 그물은 들어오는 모든 텍스트에 걸려야 의미가 있다(SPEC §2).
+    masked = req.model_copy(
+        update={
+            "screen": mask_screen_model(req.screen),
+            "recent_instructions": [mask_text(i) for i in req.recent_instructions],
+        }
+    )
 
     _plan(masked)  # TODO: 계획 결과를 실행에 반영
     action = llm.reason(masked)
