@@ -193,7 +193,9 @@ class GuideAccessibilityService : AccessibilityService() {
         Log.i(
             TAG,
             "screen pkg=${screen.packageName} elements=${screen.elements.size} " +
-                "clickable=$clickableCount$page" + if (result.truncated) " (truncated)" else "",
+                "clickable=$clickableCount " +
+                "scrollable=${screen.hasScrollableElement ?: "?"}$page" +
+                if (result.truncated) " (truncated)" else "",
         )
         screen.elements.take(MAX_LOGGED_ELEMENTS).forEach { e ->
             Log.d(

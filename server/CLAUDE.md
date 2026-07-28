@@ -57,7 +57,11 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   세 번째 후보부터 fallback을 검토한다.
 - 현재 안전한 fallback은 실기기 근거가 있는
   `com.sec.android.app.launcher + has_scrollable_element=false + scroll 반복`의
-  `open_app_drawer` 전환뿐이다.
+  `open_app_drawer` 전환뿐이다. 앱서랍도 앞의 두 조건이 같으므로 page 메타가 하나라도 있는
+  런처 화면에는 적용하지 않는다.
+- label을 제외한 서명은 구조·좌표가 같고 내용만 바뀐 화면을 구분하지 못한다. 현재의 좁은
+  런처 fallback 밖에서 화면 동일성의 보편적 근거로 재사용하지 않는다. 서명 알고리즘 변경은
+  진행 중 이력을 불일치시켜 카운트를 끊는 fail-safe 방향이다.
   막힘을 성공으로 오인시키므로 `done`은 사용하지 않는다.
 - 앱이 사용자에게 실제로 표시한 행동만 기록한다. 세션 중지·목표 변경·같은 목표 재시작 때
   instruction/action 이력을 함께 비우며, 이전 generation의 늦은 응답은 기록·표시·`done`

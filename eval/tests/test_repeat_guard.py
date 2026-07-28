@@ -105,6 +105,25 @@ def test_structural_screen_change_resets_the_consecutive_count():
     assert response.action.action_type is ActionType.SCROLL
 
 
+def test_launcher_app_drawer_with_page_metadata_keeps_valid_scroll():
+    fake = SequenceLlmClient(_scroll(index) for index in range(MAX_IDENTICAL_ACTIONS))
+    history: list[RecentAction] = []
+    app_drawer = _launcher_request().screen.model_copy(
+        update={"current_page": 1, "total_pages": 3}
+    )
+    returned: list[ActionType] = []
+
+    for _ in range(MAX_IDENTICAL_ACTIONS):
+        response = next_step(
+            _launcher_request(history, screen=app_drawer),
+            fake,
+        )
+        returned.append(response.action.action_type)
+        history.append(_record(response))
+
+    assert returned == [ActionType.SCROLL] * MAX_IDENTICAL_ACTIONS
+
+
 def test_volatile_label_changes_do_not_hide_the_repeat():
     fake = SequenceLlmClient([_scroll(1), _scroll(2), _scroll(3)])
     history: list[RecentAction] = []

@@ -67,6 +67,11 @@ def _should_open_app_drawer(action: GuideAction, req: NextStepRequest) -> bool:
         return False
     if req.screen.package_name not in _APP_DRAWER_FALLBACK_PACKAGES:
         return False
+    # 삼성 앱서랍도 같은 package + has_scrollable_element=False다. 앱서랍에는 page 정보가
+    # 관측되므로, 이미 페이지가 있는 런처 화면의 올바른 scroll을 앱서랍 열기로 덮지 않는다.
+    # 일부 메타만 온 경우도 안전하게 가드를 적용하지 않는다.
+    if req.screen.current_page is not None or req.screen.total_pages is not None:
+        return False
 
     current_signature = _screen_signature(req.screen)
     candidate = _action_semantics(action)
@@ -100,6 +105,11 @@ def _screen_signature(screen: Screen) -> str:
     label은 서버가 이미 받는 값이지만 해시만 장기간 남아도 흔한 문자열은 역추정할 수 있다.
     그래서 label의 원문·해시·길이 모두 제외한다. 시계·배터리 텍스트 변화도 같은 화면으로 본다.
     대신 package/page/요소 순서·역할·좌표·상호작용/스크롤 상태가 바뀌면 서명이 바뀐다.
+
+    이 선택은 구조·좌표가 같고 내용만 바뀐 화면을 구분하지 못한다. 목록 항목이 label만 바뀌면
+    실제 화면 변화가 있어도 같은 서명이다. 따라서 이 서명만으로 모든 화면 동일성을 주장하거나
+    현재의 좁은 런처 fallback 밖에 재사용하면 안 된다. 알고리즘이 바뀌면 앱이 보관한 이전
+    서명과 새 서명이 달라 진행 중 반복 카운트가 끊기지만, 가드가 발동하지 않는 fail-safe 방향이다.
     """
 
     structure = {
