@@ -82,10 +82,27 @@ def test_lazy_but_real_evidence_still_passes():
     assert _verified("지도", _screen("지도", "사진", "설정"))
 
 
-def test_screen_without_comparable_labels_is_not_failed():
-    """대조할 것이 없으면 검사할 수 없다. 없는 것을 근거로 거짓 판정을 만들지 않는다."""
+def test_screen_without_any_label_is_not_failed():
+    """label이 하나도 없으면 검사할 수 없다. 없는 것을 근거로 거짓 판정을 만들지 않는다."""
 
-    assert _verified("다 되었습니다", _screen("", "1"))
+    assert _verified("다 되었습니다", _screen("", ""))
+
+
+def test_non_latin_labels_are_still_compared():
+    """한자·키릴 label이 정규화에서 통째로 사라지면 검사가 조용히 꺼진다(PR #62 리뷰 2번)."""
+
+    assert not _verified("아무 말이나 지어냅니다", _screen("微信", "設定"))
+    assert not _verified("아무 말이나 지어냅니다", _screen("Настройки", "Камера"))
+    assert _verified("設定 화면이 보임", _screen("微信", "設定"))
+
+
+def test_screen_of_single_character_labels_is_still_compared():
+    """숫자 키패드처럼 전부 한 글자면, 검사를 끄는 대신 그것들로 대조한다."""
+
+    keypad = _screen("1", "2", "3", "0")
+
+    assert not _verified("결제가 완료되었습니다", keypad)
+    assert _verified("3을 눌렀습니다", keypad)
 
 
 def test_empty_evidence_is_not_verified():

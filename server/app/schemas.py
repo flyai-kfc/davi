@@ -146,7 +146,7 @@ class GuideAction(BaseModel):
     """
 
     expected_result: str = Field(description="목표만 보고 정한 최종 상태")
-    evidence: str = Field(description="현재 화면 label 인용 등 근거")
+    evidence: str = Field(description="현재 화면 요소의 label 하나를 그대로 옮겨 적은 근거")
     action_type: ActionType = Field(description="다음에 할 동작")
     direction: SwipeDirection | None = Field(
         default=None,

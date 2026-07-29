@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 from app.llm import LlmClient
-from app.reasoning import next_step
+from app.reasoning import (
+    _MIN_EVIDENCE_LABEL_CHARS,
+    _normalize_for_evidence,
+    next_step,
+)
 from app.schemas import ActionType, GuideAction, NextStepRequest
 
 from harness import FIXTURES, load_fixture
@@ -39,7 +43,19 @@ def request_from_device() -> NextStepRequest:
 
 
 def _first_label(req: NextStepRequest) -> str:
-    label = next((e.label for e in req.screen.elements if len(e.label) >= 2), None)
+    """코드가 대조에 쓰는 것과 **같은 기준**으로 고른다.
+
+    테스트가 원문 길이로 고르면, 정규화 후에야 짧아지는 label(`→ ←`, `1.`)이 첫 요소인 픽스처가
+    들어왔을 때 코드는 설계대로인데 테스트만 깨진다(PR #62 리뷰 5번).
+    """
+    label = next(
+        (
+            e.label
+            for e in req.screen.elements
+            if len(_normalize_for_evidence(e.label)) >= _MIN_EVIDENCE_LABEL_CHARS
+        ),
+        None,
+    )
     assert label is not None, f"{_FIXTURE}에 대조할 label이 없다"
     return label
 
@@ -57,11 +73,15 @@ def test_fabricated_evidence_is_not_verified(request_from_device):
 
 
 def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device):
-    """실기기 화면의 label을 인용한 근거는 통과한다 — 정당한 완료를 막지 않는다."""
+    """실기기 화면의 label을 인용한 근거는 통과한다 — 정당한 완료를 막지 않는다.
 
-    quoted = _first_label(request_from_device)
-    response = next_step(
-        request_from_device, DoneLlmClient(f"화면에 {quoted} 이(가) 보임")
-    )
+    **목표가 실제로 달성된 화면으로 맞춘다.** 픽스처의 원래 목표(`open camera app`)를 그대로 두면
+    런처 홈에서 `done`이 통과하는 조기 종료 시나리오를 기대 동작으로 굳히게 된다 — 나중에 그걸
+    조이면 이 테스트가 회귀처럼 깨진다(PR #62 리뷰 4번). 그 한계는 `SPEC.md` §4에 적혀 있다.
+    """
+    reached_goal = request_from_device.model_copy(update={"goal": "홈 화면으로 가기"})
+    quoted = _first_label(reached_goal)
+
+    response = next_step(reached_goal, DoneLlmClient(f"홈 화면에 {quoted} 이(가) 보임"))
 
     assert response.verified
