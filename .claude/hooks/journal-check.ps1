@@ -3,6 +3,8 @@ Stop 훅: 직전 턴에서 발표 특기 마일스톤(방향 전환·아키텍�
 확정됐는지 haiku 단발 세션으로 판정하고, 맞으면 세션에 팀 일지(davi-journal) 기록을 지시한다.
 실패는 전부 조용히 통과(fail-open) — 일지 판정이 개발 턴을 막으면 안 된다.
 PS 5.1 주의: 이 파일은 UTF-8 BOM으로 저장해야 한다(한글 주석 파스 에러).
+Windows 전용이다(cmd /c·%TEMP% 의존, 훅 shell=powershell). macOS Claude 사용자가 생기면
+그 환경에서 검증하며 bash로 이식할 것 — 검증 없는 크로스플랫폼화는 하지 않는다.
 #>
 $ErrorActionPreference = 'Stop'
 try {
