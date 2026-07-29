@@ -83,6 +83,50 @@ object GuideSession {
      */
     private val actions = ArrayDeque<RecentAction>()
 
+    /**
+     * 이 세션에서 **연속으로** 무시한 미검증 `done` 수. done이 아닌 안내가 실제로 표시되면
+     * 0으로 돌아간다 — 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다.
+     */
+    private var unverifiedDones = 0
+
+    /** `done` 응답 하나를 세션이 어떻게 처리할지. [onDone]이 돌려준다. */
+    enum class DoneOutcome {
+        /** 검증된 완료. 세션은 이미 끝났다. */
+        STOP,
+
+        /** 미검증 완료. 세션을 두고 같은 화면을 다시 물어본다. */
+        RETRY,
+
+        /** 미검증 완료가 [MAX_UNVERIFIED_DONE]에 닿았다. 더 묻지 말고 사용자에게 확인을 넘긴다. */
+        LIMIT_REACHED,
+    }
+
+    /**
+     * 서버의 `done` 응답 하나를 판정한다. 서버발로 세션이 끝나는 유일한 경로다.
+     *
+     * `verified=false`인 done은 완료 검증(#54)이 화면 근거를 못 찾은 것이라 종료 신호로 믿지
+     * 않는다(#55). 대신 몇 번 다시 물었는지 세고, 상한부터는 [DoneOutcome.LIMIT_REACHED]로
+     * 사용자에게 넘긴다. **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다
+     * (server/CLAUDE.md C11이 fallback에서 done을 배제한 것과 같은 근거).
+     *
+     * 판정과 종료를 한자리에 둔 것은 "미검증 done이 세션을 끝내지 않는다"를 JVM 테스트로
+     * 고정하기 위해서다. 이전 세대의 늦은 done은 여기서도 버린다(null).
+     */
+    fun onDone(generation: Long, verified: Boolean): DoneOutcome? {
+        val outcome = synchronized(this) {
+            if (!isCurrent(generation)) return null
+            if (verified) {
+                DoneOutcome.STOP
+            } else {
+                unverifiedDones++
+                if (unverifiedDones >= MAX_UNVERIFIED_DONE) DoneOutcome.LIMIT_REACHED else DoneOutcome.RETRY
+            }
+        }
+        // stop()은 리스너를 부르므로 잠금 밖에서(클래스 규칙: 리스너는 잠금 안에서 부르지 않는다).
+        if (outcome == DoneOutcome.STOP) stop()
+        return outcome
+    }
+
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
     fun start(goal: String) {
         val trimmed = goal.trim()
@@ -98,6 +142,8 @@ object GuideSession {
     @Synchronized
     fun recordInstruction(generation: Long, instruction: String) {
         if (!isCurrent(generation)) return
+        // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
+        unverifiedDones = 0
         val trimmed = instruction.trim()
         if (trimmed.isEmpty()) return
         instructions.addLast(trimmed)
@@ -149,9 +195,17 @@ object GuideSession {
             generation++
             instructions.clear()
             actions.clear()
+            unverifiedDones = 0
         }
         listeners.forEach { it.onSessionChanged(next) }
     }
 
     private const val MAX_HISTORY = 10
+
+    /**
+     * 미검증 done을 이만큼 받으면 다시 묻지 않고 사용자에게 알린다. 재시도 하나가 곧 모델 호출
+     * 하나이고(무료 티어 15 RPM), 같은 화면에 같은 요청이라 답이 바뀔 여지도 작아 크게 둘 수
+     * 없다. 다른 시간 상수처럼 첫 추정치다 — 실사용 로그로 다시 정한다.
+     */
+    const val MAX_UNVERIFIED_DONE = 3
 }

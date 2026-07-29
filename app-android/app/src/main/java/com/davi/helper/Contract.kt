@@ -60,6 +60,10 @@ data class NextStepRequest(
 data class NextStepResponse(
     val action: GuideAction,
     val model: String,
+    /**
+     * 완료 검증(#54) 결과. `done`일 때만 의미가 있다.
+     * `false`인 `done`은 세션을 끝내지 않는다 — [GuideSession.onDone]이 소비한다(#55).
+     */
     val verified: Boolean = false,
     /**
      * 서버가 label 없이 계산한 현재 화면 구조 서명. 낡은 서버 응답과의 비대칭을 위해 선택 필드다.

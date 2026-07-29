@@ -203,13 +203,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "instruction=${action.instruction}",
                         )
                         mainHandler.post {
-                            applyAction(
-                                screen,
-                                signature,
-                                action,
-                                result.response.screenSignature,
-                                session,
-                            )
+                            applyAction(screen, signature, result.response, session)
                         }
                     }
 
@@ -270,8 +264,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun applyAction(
         screen: Screen,
         requestSignature: String,
-        action: GuideAction,
-        screenSignature: String?,
+        response: NextStepResponse,
         session: GuideSession.Active,
     ) {
         if (!GuideSession.isCurrent(session.generation)) {
@@ -290,14 +283,35 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
+        val action = response.action
         if (action.actionType == ActionType.DONE) {
-            Log.i(TAG, "session done goal=${session.goal}")
-            GuideSession.stop() // 리스너가 오버레이를 지운다
+            when (GuideSession.onDone(session.generation, response.verified)) {
+                GuideSession.DoneOutcome.STOP ->
+                    Log.i(TAG, "session done goal=${session.goal}") // 리스너가 오버레이를 지운다
+
+                GuideSession.DoneOutcome.RETRY -> {
+                    // 완료 검증(#54)이 화면 근거를 못 찾은 done이다. 조기 종료일 수 있으니 세션을
+                    // 두고, 보낸 적 없는 화면으로 되돌려 백오프 뒤 같은 화면을 다시 묻는다(#55).
+                    // 이게 없으면 화면이 그대로인 한 다음 요청이 영영 없다 — 무시가 곧 정지다.
+                    stability.markFailed()
+                    Log.i(TAG, "done unverified, retry backoff=${stability.backoffMs()}ms")
+                }
+
+                GuideSession.DoneOutcome.LIMIT_REACHED -> {
+                    // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
+                    // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 문구는 #29에서 다시 정한다.
+                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
+                    lastGuide = null // STUCK 알림이 이 문구를 덮지 않도록
+                    overlay?.showGuide(null, getString(R.string.guide_done_unconfirmed))
+                }
+
+                null -> Log.i(TAG, "stale response dropped goal=${session.goal}")
+            }
             return
         }
 
         GuideSession.recordInstruction(session.generation, action.instruction)
-        GuideSession.recordAction(session.generation, screenSignature, action)
+        GuideSession.recordAction(session.generation, response.screenSignature, action)
 
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
