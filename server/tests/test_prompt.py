@@ -5,7 +5,13 @@ from app.prompt import (
     build_prompt,
     fallback_prompt,
 )
-from app.schemas import NextStepRequest, Screen, SwipeDirection, UiElement
+from app.schemas import (
+    GuideAction,
+    NextStepRequest,
+    Screen,
+    SwipeDirection,
+    UiElement,
+)
 
 
 def _request(**screen_fields) -> NextStepRequest:
@@ -52,6 +58,20 @@ def test_prompt_asks_for_evidence_that_the_verifier_can_check():
     assert EVIDENCE_INSTRUCTION in prompt
     assert "그대로 포함" in EVIDENCE_INSTRUCTION
     assert "이어서 쓰세요" in EVIDENCE_INSTRUCTION
+
+
+def test_schema_description_of_evidence_agrees_with_the_prompt():
+    """필드 설명은 주석이 아니라 responseSchema를 타고 모델에게 간다.
+
+    무스키마 폴백에서는 스키마 JSON이 프롬프트 본문에 통째로 붙으므로, 둘이 어긋나면 한 프롬프트에
+    정반대 지시가 같이 들어간다. 필드에 붙은 설명이 더 셀 수 있어 더 위험하다.
+    """
+
+    described = GuideAction.model_fields["evidence"].description or ""
+
+    assert "그대로 포함" in described
+    assert "이어" in described
+    assert "짧" not in described
 
 
 def test_prompt_states_that_no_scrollable_element_was_observed():
