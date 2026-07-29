@@ -62,11 +62,10 @@ $lastAsst
     finally { Pop-Location; $env:DAVI_JOURNAL_JUDGE = ''; Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 
     if ($verdict -match 'JOURNAL') {
-        $out = @{
-            decision = 'block'
-            reason   = 'Stop 훅 판정: 이번 턴에 발표 특기 마일스톤이 확정·공유된 것으로 보인다. davi-journal 스킬 규칙대로 팀 일지(~/davi-journal)에 작업자 태그와 함께 기록하고 커밋·푸시하라. 이미 일지에 같은 항목이 있으면 기록하지 말고 그대로 종료하라.'
-        } | ConvertTo-Json -Compress
-        [Console]::Out.Write($out)
+        # asyncRewake 계약: 백그라운드 훅이 exit 2로 끝나면 하니스가 세션을 깨우고
+        # 아래 출력을 지시문으로 전달한다. 동기(block JSON) 방식은 턴마다 +11~17초라 버렸다.
+        [Console]::Error.Write('Stop 훅 판정: 이번 턴에 발표 특기 마일스톤이 확정·공유된 것으로 보인다. davi-journal 스킬 규칙대로 팀 일지(~/davi-journal)에 작업자 태그와 함께 기록하고 커밋·푸시하라. 이미 일지에 같은 항목이 있으면 기록하지 말고 그대로 종료하라.')
+        exit 2
     }
     exit 0
 }
