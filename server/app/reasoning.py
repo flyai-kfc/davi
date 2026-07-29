@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 from .config import settings
 from .llm import LlmClient
@@ -29,6 +30,16 @@ from .schemas import (
 # 8회보다 일찍 끊는 보수적인 시작값이다.
 MAX_IDENTICAL_ACTIONS = 3
 _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
+
+# 근거 대조 전에 양쪽에서 지우는 것: 구두점·공백 등 의미를 바꾸지 않는 문자.
+#
+# **글자는 문자 종류를 가리지 않고 남긴다.** 한글·라틴만 남기면 label이 한자·가나·키릴인 화면
+# (微信, 設定, Настройки)에서 정규화 결과가 통째로 비어 검사가 조용히 꺼진다(PR #62 리뷰 2번).
+_EVIDENCE_NOISE = re.compile(r"[^\w]+", re.UNICODE)
+
+# 한 글자 label(아이콘·숫자)은 우연 일치가 잦아 우선 제외한다. 다만 화면 전체가 한 글자 label뿐이면
+# (숫자 키패드 등) 검사를 끄는 대신 그것들로라도 대조한다.
+_MIN_EVIDENCE_LABEL_CHARS = 2
 
 
 def _plan(req: NextStepRequest) -> list[str]:
@@ -143,14 +154,50 @@ def _screen_signature(screen: Screen) -> str:
 
 
 def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
-    """완료 판정 2차 검증. expected_result vs evidence, 목표-상대적으로.
+    """완료 판정 2차 검증. 근거가 **화면에 있는 것인지**까지 본다(SPEC §4 결정).
 
-    TODO: evidence가 실제 label과 매칭되는지 검사(SPEC §11 열린 결정).
-    지금은 근거 필드가 비지 않았는지만 본다(HANDOFF: 빈 evidence로 done 거부한 실측 사례).
+    두 근거 필드는 `GuideAction`의 필수 필드라 구조화 출력이 항상 채운다. 비었는지만 보면
+    `done`은 언제나 통과했다(빈 evidence로 done을 거부한 실측 사례는 그 앞 단계에서 걸린 것이다).
+
+    **충분한 근거인지는 판정하지 않는다.** `evidence='지도'`처럼 흔한 단어 하나로 형식만 채우는
+    성의 없는 근거도(HANDOFF §9) 그 단어가 화면에 있으면 통과한다 — 임계값을 근거 없이 정하면
+    정당한 완료를 막는다. 이 함수는 `verified` 플래그만 정확하게 만들고 안내를 막지 않는다.
     """
     if action.action_type is not ActionType.DONE:
         return False
-    return bool(action.evidence.strip()) and bool(action.expected_result.strip())
+    if not action.evidence.strip() or not action.expected_result.strip():
+        return False
+    return _evidence_quotes_screen(action.evidence, req.screen)
+
+
+def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
+    """근거가 화면 label 중 하나를 실제로 물고 있는가.
+
+    label은 2차 마스킹을 거친 값이다 — 모델이 본 것과 같은 값으로 비교해야 한다.
+    한국어는 조사가 붙어 토큰 일치가 깨지므로(`카카오톡` vs `카카오톡이`) **label이 근거 안에
+    들어 있는지**를 본다. 구두점·띄어쓰기는 양쪽에서 지운다: 실측된 좋은 근거
+    `'Wi-Fi, 사용 중, AITECHLAB 연결됨'`은 쉼표만 다르고 label과 같은 문자열이다(HANDOFF §9).
+    """
+    normalized_evidence = _normalize_for_evidence(evidence)
+    if not normalized_evidence:
+        return False
+
+    labels = [_normalize_for_evidence(element.label) for element in screen.elements]
+    present = [label for label in labels if label]
+    if not present:
+        # 화면에 label이 하나도 없으면 검사할 수 없다.
+        # 없는 것을 근거로 거짓 판정을 만들지 않는다(SPEC §4).
+        return True
+
+    # 한 글자 label은 아이콘·숫자라 아무 문장에나 우연히 걸린다. 다만 화면이 전부 한 글자면
+    # (숫자 키패드 등) 검사를 끄는 대신 그것들로 대조한다 — 끄면 지어낸 근거가 그대로 통과한다.
+    comparable = [label for label in present if len(label) >= _MIN_EVIDENCE_LABEL_CHARS] or present
+
+    return any(label in normalized_evidence for label in comparable)
+
+
+def _normalize_for_evidence(text: str) -> str:
+    return _EVIDENCE_NOISE.sub("", text.casefold())
 
 
 def next_step(req: NextStepRequest, llm: LlmClient) -> NextStepResponse:

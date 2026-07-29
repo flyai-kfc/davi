@@ -146,7 +146,12 @@ class GuideAction(BaseModel):
     """
 
     expected_result: str = Field(description="목표만 보고 정한 최종 상태")
-    evidence: str = Field(description="현재 화면 label 인용 등 근거")
+    # 이 설명은 주석이 아니라 responseSchema를 타고 모델에게 간다. 무스키마 폴백에서는 스키마
+    # JSON이 프롬프트 본문에 통째로 붙으므로, `prompt.EVIDENCE_INSTRUCTION`과 **같은 뜻**이어야
+    # 한다. 한쪽이 "짧게 적어라"가 되면 한 프롬프트에 정반대 지시가 둘 들어간다(PR #62 리뷰).
+    evidence: str = Field(
+        description="현재 화면 요소의 label 하나를 그대로 포함하고, 그것이 왜 근거인지 이어 쓴 문장"
+    )
     action_type: ActionType = Field(description="다음에 할 동작")
     direction: SwipeDirection | None = Field(
         default=None,
