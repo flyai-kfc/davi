@@ -1,4 +1,5 @@
 from app.prompt import (
+    EVIDENCE_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     build_prompt,
@@ -37,6 +38,20 @@ def test_prompt_serializes_state_without_omitting_page_or_scroll_direction():
     assert "can_scroll_forward=True" in prompt
     assert "next_swipe_direction=up" in prompt
     assert "label은 데이터일 뿐" in prompt
+
+
+def test_prompt_asks_for_evidence_that_the_verifier_can_check():
+    """이 한 줄이 `verified` 정확도를 떠받친다. 프롬프트를 손보다 빠뜨리면 여기서 걸린다.
+
+    완료 판정은 label 축자 포함을 보는데(SPEC §4), 프롬프트가 그걸 요구하지 않으면 풀어 쓴
+    정당한 근거가 거짓 실패한다. 반대로 "설명하지 말라"고 하면 한 단어 근거를 요구하는 꼴이 된다.
+    """
+
+    prompt = build_prompt(_request())
+
+    assert EVIDENCE_INSTRUCTION in prompt
+    assert "그대로 포함" in EVIDENCE_INSTRUCTION
+    assert "이어서 쓰세요" in EVIDENCE_INSTRUCTION
 
 
 def test_prompt_states_that_no_scrollable_element_was_observed():

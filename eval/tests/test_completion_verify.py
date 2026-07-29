@@ -25,12 +25,15 @@ _FIXTURE = "samsung_launcher_open_camera.json"
 class DoneLlmClient(LlmClient):
     """언제나 `done`을 내는 fake. 근거 문장만 갈아 끼운다."""
 
-    def __init__(self, evidence: str) -> None:
+    def __init__(
+        self, evidence: str, expected_result: str = "카메라가 열려 있다"
+    ) -> None:
         self._evidence = evidence
+        self._expected_result = expected_result
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         return GuideAction(
-            expected_result="카메라가 열려 있다",
+            expected_result=self._expected_result,
             evidence=self._evidence,
             action_type=ActionType.DONE,
             instruction="다 되었습니다.",
@@ -82,6 +85,14 @@ def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device)
     reached_goal = request_from_device.model_copy(update={"goal": "홈 화면으로 가기"})
     quoted = _first_label(reached_goal)
 
-    response = next_step(reached_goal, DoneLlmClient(f"홈 화면에 {quoted} 이(가) 보임"))
+    # `expected_result`도 바뀐 목표에 맞춘다. 지금 단언에는 영향이 없지만, 목표와 대조하는 검사가
+    # 들어오면 이 픽스처가 틀린 데이터가 된다(PR #62 리뷰).
+    response = next_step(
+        reached_goal,
+        DoneLlmClient(
+            f"홈 화면에 {quoted} 이(가) 보임",
+            expected_result="홈 화면이 보인다",
+        ),
+    )
 
     assert response.verified
