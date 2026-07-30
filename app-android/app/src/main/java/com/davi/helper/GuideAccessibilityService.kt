@@ -383,8 +383,12 @@ class GuideAccessibilityService : AccessibilityService() {
             eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
 
     override fun onInterrupt() {
+        // 시스템이 접근성 피드백 중단을 요청해도 서비스·세션은 계속 살 수 있다. root=null 경로와
+        // 같이 표시 상태도 함께 내려야 다음 유효 샘플이 재표시한다 — clear만 하면 display가
+        // "떠 있음"으로 남아 활성 세션의 오버레이가 영구히 빈다(PR #63 리뷰 3차 P1).
         Log.w(TAG, "interrupted")
         overlay?.clear()
+        display.onCleared()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
