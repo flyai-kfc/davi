@@ -78,9 +78,10 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 앱에서 목표를 입력 → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
 목표를 달성하면 서버가 `done`을 주고 오버레이가 사라진다.
 
-접근성 서비스가 연결되면 `GuideSvc`의 `connected ... dogfoodDeviceId=<16자 해시>`가
-도그푸딩 화이트리스트 등록 값이다(#41 — 서버 `.env`의 `DAVI_DOGFOOD_DEVICE_IDS`,
-절차는 `../server/README.md` "도그푸딩 raw 보존"). release 빌드는 이 값을 계산하지도 보내지도 않는다.
+**옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)는 접근성 서비스 연결 시
+`GuideSvc`의 `connected ... dogfoodDeviceId=<16자 해시>`로 도그푸딩 화이트리스트 등록 값을
+찍는다(#41 — 서버 `.env`의 `DAVI_DOGFOOD_DEVICE_IDS`, 절차는 `../server/README.md`
+"도그푸딩 raw 보존"). 옵트인 없는 빌드와 release는 이 값을 계산하지도 보내지도 않는다.
 
 배선이 확인되면 **실호출**로 한 번 더 돌린다. `.env`를 고치지 않고 환경변수로 덮어쓴다.
 
@@ -115,6 +116,8 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 DAVI_DEBUG_SERVER_URL=http://192.168.x.y:8000
 # 같은 Wi-Fi 공용 development 서버가 요구하는 32자 이상 토큰.
 DAVI_DEBUG_ACCESS_TOKEN=<shared development token>
+# 공기계(도그푸딩) 빌드 머신에서만: 기기 해시 계산·전송 옵트인(#41). 개인 기기 빌드엔 넣지 않는다.
+DAVI_DOGFOOD=true
 ```
 
 두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,

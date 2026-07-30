@@ -70,7 +70,9 @@ class GuideAccessibilityService : AccessibilityService() {
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
         )
-        dogfoodDeviceId = if (BuildConfig.DEBUG) {
+        // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
+        // 막을 수 있다(#77 리뷰). null이면 로그에 '-'가 찍히고 요청 필드도 통째로 빠진다.
+        dogfoodDeviceId = if (BuildConfig.DOGFOOD_OPT_IN) {
             DogfoodDeviceId.hash(
                 Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID),
             )
