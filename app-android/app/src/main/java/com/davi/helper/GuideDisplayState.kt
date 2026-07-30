@@ -66,8 +66,13 @@ class GuideDisplayState {
      * 돌려주고 "떠 있음"으로 되돌린다 — 상한 안내가 앱 전환 한 번에 영영 사라지는 구멍의
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
+     *
+     * [screenStable]이 false(추적기 판정 WAIT)면 **아무것도 하지 않는다** — 전환 중 덜 그려진
+     * 과도기 트리(#32 실측)의 서명은 화면의 정체가 아니라서, 그걸 근거로 폐기하면 안정된
+     * 원래 화면이 돌아왔을 때 되살릴 안내가 이미 없다(4차 리뷰 P1).
      */
-    fun redisplay(currentSignature: String): Content? {
+    fun redisplay(currentSignature: String, screenStable: Boolean): Content? {
+        if (!screenStable) return null
         val current = guide ?: return null
         if (visible) return null
         if (guideSignature != currentSignature) {

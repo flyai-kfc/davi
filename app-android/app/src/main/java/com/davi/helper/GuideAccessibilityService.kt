@@ -120,17 +120,20 @@ class GuideAccessibilityService : AccessibilityService() {
         }
 
         val signature = ScreenSignature.of(result.screen)
+        val now = SystemClock.uptimeMillis()
+        val decision = stability.onSample(signature, now)
 
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
-        // 같은 화면(서명 일치)에서만 되살린다 — 다른 화면이면 폐기하고 새 요청에 맡긴다(2차 리뷰 P1).
-        display.redisplay(signature)?.let {
+        // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
+        // 단 **안정 판정 뒤에만** — 과도기(WAIT) 샘플의 서명으로 폐기하면 #32의 덜 그려진
+        // 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1).
+        display.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)?.let {
             Log.i(TAG, "redisplay guide")
             draw(it)
         }
-        val now = SystemClock.uptimeMillis()
-        when (stability.onSample(signature, now)) {
+        when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
                 // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).
                 Log.d(TAG, "settling pkg=${result.screen.packageName} elements=${result.screen.elements.size}")

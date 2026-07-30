@@ -26,7 +26,7 @@ class GuideDisplayStateTest {
 
         state.onCleared() // 사용자가 '안내 중지'를 찾아 우리 앱을 열었다(root=null 청소)
 
-        assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA))
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA, true))
     }
 
     /** 이전 화면의 안내가 다른 화면 위에 그려지면 안 된다(2차 리뷰 P1, #61 P1과 같은 계급). */
@@ -35,7 +35,7 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        assertNull(state.redisplay(sigB))
+        assertNull(state.redisplay(sigB, true))
     }
 
     /** 다른 화면을 본 순간 이전 안내는 폐기된다 — 원래 화면에 돌아와도 안 되살린다. */
@@ -44,9 +44,9 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        state.redisplay(sigB) // 폐기 지점
+        state.redisplay(sigB, true) // 폐기 지점
 
-        assertNull(state.redisplay(sigA))
+        assertNull(state.redisplay(sigA, true))
     }
 
     @Test
@@ -57,7 +57,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(listOf(0, 0, 10, 10), "카메라를 누르세요."),
-            state.redisplay(sigA),
+            state.redisplay(sigA, true),
         )
     }
 
@@ -66,7 +66,7 @@ class GuideDisplayStateTest {
     fun `떠 있는 동안에는 재표시하지 않는다`() {
         state.showCapNotice(sigA, capNotice)
 
-        assertNull(state.redisplay(sigA))
+        assertNull(state.redisplay(sigA, true))
     }
 
     @Test
@@ -74,9 +74,9 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        state.redisplay(sigA)
+        state.redisplay(sigA, true)
 
-        assertNull(state.redisplay(sigA))
+        assertNull(state.redisplay(sigA, true))
     }
 
     /** 상한 안내는 행동 지시가 아니라서 "한 번 더 해 보세요"가 붙으면 앞뒤가 안 맞는다. */
@@ -105,13 +105,13 @@ class GuideDisplayStateTest {
 
         state.reset()
 
-        assertNull(state.redisplay(sigA))
+        assertNull(state.redisplay(sigA, true))
         assertNull(state.stuckContent(stuck))
     }
 
     @Test
     fun `안내가 없으면 재표시도 정체 알림도 없다`() {
-        assertNull(state.redisplay(sigA))
+        assertNull(state.redisplay(sigA, true))
         assertNull(state.stuckContent(stuck))
     }
 
@@ -136,6 +136,48 @@ class GuideDisplayStateTest {
 
         state.onCleared()
 
-        assertEquals(GuideDisplayState.Content(null, "새 안내"), state.redisplay(sigB))
+        assertEquals(GuideDisplayState.Content(null, "새 안내"), state.redisplay(sigB, true))
+    }
+
+    // --- 안정화 상태 머신과의 결합(4차 리뷰 P1) ---------------------------------
+    //
+    // 전환 직후에는 덜 그려진 과도기 트리가 온다(#32 실측). 그 서명은 화면의 정체가 아니므로
+    // WAIT 판정 샘플로 보존 안내를 폐기하면, 안정된 원래 화면이 와도 되살릴 것이 없다.
+
+    @Test
+    fun `과도기(WAIT) 샘플은 보존 안내를 폐기하지 않는다`() {
+        state.showCapNotice(sigA, capNotice)
+        state.onCleared()
+
+        assertNull(state.redisplay(sigB, false)) // 과도기 — 재표시도 폐기도 없음
+
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA, true))
+    }
+
+    /** 리뷰가 요구한 시퀀스: A 안내 → clear → 과도기 B(WAIT) → A(WAIT) → A(IDLE) 재표시. */
+    @Test
+    fun `과도기를 지나 안정된 원래 화면에서 재표시된다 - 추적기 결합`() {
+        val tracker = ScreenStabilityTracker()
+        // 서비스 sampleScreen의 배선 그대로: 판정을 먼저 얻고, WAIT가 아닐 때만 재표시/폐기.
+        fun sync(signature: String, at: Long): GuideDisplayState.Content? {
+            val decision = tracker.onSample(signature, at)
+            return state.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)
+        }
+
+        // A 안정 → 요청 → 응답으로 상한 안내 표시(서비스의 SEND→applyAction에 해당)
+        tracker.onSample(sigA, 0)
+        tracker.onSample(sigA, 100)
+        tracker.markSent(sigA, 100)
+        tracker.markFinished()
+        state.showCapNotice(sigA, capNotice)
+
+        state.onCleared() // root=null 또는 onInterrupt
+
+        assertNull(sync(sigB, 200)) // 과도기 B — WAIT, 폐기 금지
+        assertNull(sync(sigA, 300)) // A 복귀 첫 샘플 — 아직 WAIT
+        assertEquals( // A 안정(IDLE) — 재표시
+            GuideDisplayState.Content(null, capNotice),
+            sync(sigA, 400),
+        )
     }
 }
