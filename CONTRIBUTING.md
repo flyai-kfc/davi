@@ -17,7 +17,7 @@ git config core.hooksPath .githooks
 | 폴더 | 준비 |
 |---|---|
 | `server/` | `py -3.12 -m venv .venv` → `pip install -r requirements-dev.txt` → `copy .env.example .env` ([server/README.md](server/README.md)) |
-| `app-android/` | Android Studio로 `app-android/` 폴더를 연다. `local.properties`에 `DAVI_SERVER_URL` ([app-android/README.md](app-android/README.md)) |
+| `app-android/` | Android Studio로 `app-android/` 폴더를 연다. `local.properties`에 `DAVI_DEBUG_SERVER_URL` ([app-android/README.md](app-android/README.md)) |
 | `eval/` | `pip install -r requirements.txt` → `py -3.12 harness.py` ([eval/README.md](eval/README.md)) |
 
 `reference/` 는 이전 PoC 코드다. **읽기 전용이고 gitignore된다.** 수정·복사·이동하지 않는다.
