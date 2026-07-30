@@ -5,12 +5,13 @@ description: davi 팀 개발일지 기록. 발표·회고에서 특기할 만한
 
 # davi-journal — 팀 개발일지
 
-발표·회고용 팀 일지를 `~/davi-journal`(조직 프라이빗 레포 `flyai-kfc/davi-journal`의
-클론)에 남긴다. **davi 모노레포에는 일지 본문을 쓰지 않는다** — 여기 있는 건 스킬 코드뿐이다.
-클론이 없으면 먼저:
+발표·회고용 팀 일지를 **davi 저장소의 형제 폴더** `..\davi-journal`(조직 프라이빗 레포
+`flyai-kfc/davi-journal`의 클론 — 각자 워크스페이스에서 davi 옆)에 남긴다.
+**davi 모노레포에는 일지 본문을 쓰지 않는다** — 여기 있는 건 스킬 코드뿐이다.
+아래 경로는 전부 davi 저장소 루트 기준이다. 클론이 없으면 먼저:
 
 ```powershell
-gh repo clone flyai-kfc/davi-journal "$HOME\davi-journal"
+gh repo clone flyai-kfc/davi-journal ..\davi-journal
 ```
 
 ## 언제 쓰나 — 문턱이 높다
@@ -30,7 +31,8 @@ gh repo clone flyai-kfc/davi-journal "$HOME\davi-journal"
 ## 어떻게 쓰나
 
 1. 작업자 로그인 확인: `gh api user -q .login` (실패 시 `git config user.name`)
-2. 오늘 로컬 날짜의 `journal/YYYY-MM-DD.md`가 없으면 아래 형식으로 생성, 있으면 **맨 아래에 어펜드**:
+2. 오늘 로컬 날짜의 `..\davi-journal\journal\YYYY-MM-DD.md`가 없으면 아래 형식으로 생성,
+   있으면 **맨 아래에 어펜드**:
 
 ```markdown
 ---
@@ -56,10 +58,10 @@ authors: [GunderGie]
 4. 커밋 → pull → 푸시. **pull은 커밋 뒤에** 한다(쓰기 전에 하면 미커밋 변경과 충돌한다):
 
 ```powershell
-git -C "$HOME\davi-journal" add -A
-git -C "$HOME\davi-journal" commit -m "journal: <날짜> <제목>"
-git -C "$HOME\davi-journal" pull --rebase
-git -C "$HOME\davi-journal" push
+git -C ..\davi-journal add -A
+git -C ..\davi-journal commit -m "journal: <날짜> <제목>"
+git -C ..\davi-journal pull --rebase
+git -C ..\davi-journal push
 ```
 
 같은 날짜 파일을 두 사람이 동시에 어펜드해 rebase가 충돌하면, 원격 항목 아래에 내 항목을
