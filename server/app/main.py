@@ -24,6 +24,7 @@ request_logger = logging.getLogger("uvicorn.error.davi.requests")
 _NEXT_STEP_PATH = "/v1/next-step"
 _MAX_LOG_VALUE_LENGTH = 200
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
+_REQUEST_ID_HEADER = "X-Request-ID"
 dev_rate_limiter = SlidingWindowRateLimiter()
 
 
@@ -109,6 +110,8 @@ async def log_next_step_request(request: Request, call_next):
         response = _development_access_error(request)
         if response is None:
             response = await call_next(request)
+        # 본문 계약을 늘리지 않고 네이티브 클라이언트가 서버 로그와 대조할 수 있게 한다.
+        response.headers[_REQUEST_ID_HEADER] = request.state.request_id
         status_code = response.status_code
         return response
     finally:

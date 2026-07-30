@@ -11,11 +11,16 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from .schemas import Screen
 
 _TOKEN = "•••"
+
+# 새 텍스트 필드를 2차 마스킹 대상으로 추가할 때 이 목록만 확장한다.
+# dict/model 어댑터가 아래의 같은 순회 규칙을 공유하므로 한쪽만 빠지지 않는다.
+_MASKED_ELEMENT_TEXT_FIELDS = ("label",)
 
 # (이름, 정규식) — 오탐을 줄이려 형태가 뚜렷한 것부터. 필요 시 추가.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -40,11 +45,33 @@ def mask_text(text: str) -> str:
     return text
 
 
+def _mask_element_text_fields[ElementT](
+    elements: list[ElementT],
+    *,
+    read_field: Callable[[ElementT, str], str],
+    copy_with_updates: Callable[[ElementT, dict[str, str]], ElementT],
+) -> list[ElementT]:
+    """입력 표현과 무관하게 요소의 민감 텍스트 필드를 한 규칙으로 순회한다."""
+
+    return [
+        copy_with_updates(
+            element,
+            {
+                field_name: mask_text(read_field(element, field_name))
+                for field_name in _MASKED_ELEMENT_TEXT_FIELDS
+            },
+        )
+        for element in elements
+    ]
+
+
 def mask_screen(screen: dict[str, Any]) -> dict[str, Any]:
     """Screen dict의 모든 element label을 마스킹한 새 dict를 돌려준다(비파괴)."""
-    elements = [
-        {**el, "label": mask_text(el.get("label", ""))} for el in screen.get("elements", [])
-    ]
+    elements = _mask_element_text_fields(
+        screen.get("elements", []),
+        read_field=lambda element, field_name: element.get(field_name, ""),
+        copy_with_updates=lambda element, updates: {**element, **updates},
+    )
     return {**screen, "elements": elements}
 
 
@@ -53,9 +80,10 @@ def mask_screen_model(screen: Screen) -> Screen:
 
     return screen.model_copy(
         update={
-            "elements": [
-                element.model_copy(update={"label": mask_text(element.label)})
-                for element in screen.elements
-            ]
+            "elements": _mask_element_text_fields(
+                screen.elements,
+                read_field=lambda element, field_name: getattr(element, field_name),
+                copy_with_updates=lambda element, updates: element.model_copy(update=updates),
+            )
         }
     )

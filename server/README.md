@@ -27,6 +27,13 @@ uvicorn app.main:app --reload
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 
+`POST /v1/next-step`의 모든 응답에는 32자리 비식별 `X-Request-ID` 헤더가 붙는다.
+성공 응답도 이 값을 서버 로그의 `request_id`와 대조할 수 있으며, 오류 응답에서는 본문의
+`request_id`와도 같다. 응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
+Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
+origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
+향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
+
 ## 실행 프로필
 
 `DAVI_ENV`는 서버의 실행 경계를 정한다. 값이 없으면 로컬·테스트 호환을 위해
@@ -161,7 +168,8 @@ pytest
 ## 지금 무엇이 진짜인가
 
 **동작하는 구현** (테스트로 덮인 것 포함)
-- `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴. `tests/test_masking.py` 3건.
+- `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
+  dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
 - `app/schemas.py` — 계약 모델 전체. C1~C8 반영 완료, `tests/test_contract.py`가 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.

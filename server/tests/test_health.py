@@ -38,10 +38,12 @@ def test_development_health_includes_diagnostics():
     }
 
 
-def test_production_health_only_includes_status(monkeypatch):
-    monkeypatch.setattr(settings, "davi_env", "production")
-    monkeypatch.setattr(settings, "davi_use_stub_llm", False)
-    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("server-side-key"))
+def test_production_health_only_includes_status(set_runtime_profile):
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+    )
 
     r = client.get("/health")
 
@@ -66,6 +68,20 @@ def test_next_step_stub_returns_action():
     assert body["action"]["expected_result"]
     # scroll이 아니면 방향은 생략된다.
     assert body["action"]["direction"] is None
+    assert re.fullmatch(r"[0-9a-f]{32}", r.headers["X-Request-ID"])
+
+
+def test_request_id_header_does_not_implicitly_open_a_browser_cors_contract():
+    r = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"Origin": "https://browser-client.example"},
+    )
+
+    # 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있지만, 브라우저 origin은 아직 허용하지 않는다.
+    assert re.fullmatch(r"[0-9a-f]{32}", r.headers["X-Request-ID"])
+    assert "Access-Control-Allow-Origin" not in r.headers
+    assert "Access-Control-Expose-Headers" not in r.headers
 
 
 def test_development_token_is_required_when_configured(monkeypatch):
@@ -82,8 +98,10 @@ def test_development_token_is_required_when_configured(monkeypatch):
     assert missing.status_code == 401
     assert missing.json()["kind"] == "AUTH"
     assert missing.json()["request_id"]
+    assert missing.headers["X-Request-ID"] == missing.json()["request_id"]
     assert wrong.status_code == 401
     assert wrong.json()["kind"] == "AUTH"
+    assert wrong.headers["X-Request-ID"] == wrong.json()["request_id"]
 
 
 def test_remote_client_is_denied_when_token_is_not_configured(monkeypatch):
@@ -136,6 +154,7 @@ def test_development_rate_limit_is_global_and_returns_retry_after(monkeypatch):
     assert limited.json()["kind"] == "QUOTA"
     assert limited.json()["retry_after_seconds"] >= 1
     assert limited.json()["request_id"]
+    assert limited.headers["X-Request-ID"] == limited.json()["request_id"]
     assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
 
 
@@ -169,6 +188,7 @@ def test_next_step_stuck_returns_classified_error(caplog):
     body = r.json()
     assert body["kind"] == "SERVER"
     assert body["request_id"]
+    assert r.headers["X-Request-ID"] == body["request_id"]
     assert any(
         f"request_id={body['request_id']}" in record.getMessage()
         for record in caplog.records
@@ -176,10 +196,16 @@ def test_next_step_stuck_returns_classified_error(caplog):
     )
 
 
-def test_production_next_step_logs_only_safe_metadata(caplog, monkeypatch):
-    monkeypatch.setattr(settings, "davi_env", "production")
-    monkeypatch.setattr(settings, "davi_use_stub_llm", False)
-    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("server-side-key"))
+def test_production_next_step_logs_only_safe_metadata(
+    caplog,
+    monkeypatch,
+    set_runtime_profile,
+):
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+    )
     monkeypatch.setattr(main_module, "get_llm_client", StubLlmClient)
 
     secret_goal = "민감한 목표 원문"
@@ -226,7 +252,9 @@ def test_production_next_step_logs_only_safe_metadata(caplog, monkeypatch):
     assert "client_version=0.1.0" in message
     assert "status_code=200" in message
     assert "duration_ms=" in message
-    assert re.search(r"request_id=[0-9a-f]{32}(?:\s|$)", message)
+    request_id = r.headers["X-Request-ID"]
+    assert re.fullmatch(r"[0-9a-f]{32}", request_id)
+    assert f"request_id={request_id}" in message
     assert "goal=" not in message
     assert secret_goal not in message
     assert secret_label not in message
