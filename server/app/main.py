@@ -14,6 +14,7 @@ from .config import settings
 from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .llm import get_llm_client
+from .raw_store import raw_store_dir, store_raw_exchange
 from .reasoning import next_step
 from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
 
@@ -96,6 +97,36 @@ def _development_auth_error(request: Request) -> JSONResponse:
     )
 
 
+def _store_raw_if_dogfood(
+    req: NextStepRequest,
+    status_code: int,
+    payload: NextStepResponse | ApiError,
+    request: Request,
+) -> None:
+    """화이트리스트 기기의 왕복만 픽스처 채널에 보존한다(#41).
+
+    운영 로그와 별개 채널이다(CLAUDE.md 실행 절). 실패 응답(ApiError)도 봉투에 담는다 —
+    실패 화면이 픽스처의 주 수집 대상이다. 저장 실패가 안내를 막으면 안 되므로
+    오류는 비식별 메타만 남기고 삼킨다.
+    """
+    if not settings.should_store_raw(req.device_id):
+        return
+    try:
+        store_raw_exchange(
+            raw_store_dir(settings.davi_dogfood_raw_dir),
+            request.state.request_id,
+            status_code,
+            req,
+            payload,
+        )
+    except OSError as exc:
+        request_logger.warning(
+            "raw_store_failed request_id=%s error=%s",
+            request.state.request_id,
+            type(exc).__name__,
+        )
+
+
 @app.middleware("http")
 async def log_next_step_request(request: Request, call_next):
     """추론 요청의 비식별 운영 메타데이터만 한 줄로 남긴다."""
@@ -146,13 +177,16 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         "client_version": req.client_version,
     }
     try:
-        return next_step(req, get_llm_client())
+        response = next_step(req, get_llm_client())
     except LlmError as e:
         # 앱이 사용자에게 다르게 안내하도록 kind를 그대로 전달(HANDOFF §5, LlmException).
         # message는 디버그용이며 시니어에게 그대로 보여주지 않는다(C8).
         error = api_error_for(e, request.state.request_id)
+        _store_raw_if_dogfood(req, http_status_for(e), error, request)
         return JSONResponse(
             status_code=http_status_for(e),
             content=error.model_dump(),
             headers=retry_after_header(e) or None,
         )
+    _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
+    return response
