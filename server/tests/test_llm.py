@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-from app.config import settings
 from app.llm import (
     GUIDE_ACTION_SCHEMA,
     GeminiLlmClient,
@@ -11,7 +10,6 @@ from app.llm import (
     get_llm_client,
 )
 from app.schemas import ErrorKind, NextStepRequest, Screen, UiElement
-from pydantic import SecretStr
 
 
 def _request() -> NextStepRequest:
@@ -179,13 +177,14 @@ def test_get_llm_client_reuses_one_connection_pool():
     assert first is second
 
 
-def test_get_llm_client_uses_new_settings_after_cache_clear(monkeypatch):
+def test_get_llm_client_uses_new_settings_after_cache_clear(set_runtime_profile):
     assert isinstance(get_llm_client(), StubLlmClient)
 
-    monkeypatch.setattr(settings, "davi_use_stub_llm", False)
-    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("server-side-key"))
-    monkeypatch.setattr(settings, "davi_model", "gemini-test")
-    get_llm_client.cache_clear()
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_model="gemini-test",
+    )
 
     client = get_llm_client()
 
