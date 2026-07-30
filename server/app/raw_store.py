@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,9 @@ def store_raw_exchange(
     """왕복 봉투를 파일 하나로 저장하고 경로를 돌려준다. 실패 응답(ApiError)도 봉투 대상이다."""
     stored_at = datetime.now(UTC)
     directory.mkdir(parents=True, exist_ok=True)
+    # 접근 범위는 각 머신의 소유자다(SPEC §3). 이미 있던 넓은 권한도 매번 보정한다.
+    # Windows에는 POSIX mode 비트가 없어 사실상 무시되지만 무해하다.
+    os.chmod(directory, 0o700)
     target = directory / f"{stored_at:%Y%m%dT%H%M%S%f}Z_{request_id}.json"
     envelope = {
         "stored_at": stored_at.isoformat(),
@@ -41,8 +45,8 @@ def store_raw_exchange(
         "request": request.model_dump(mode="json"),
         "response": response.model_dump(mode="json"),
     }
-    target.write_text(
-        json.dumps(envelope, ensure_ascii=False, indent=1) + "\n",
-        encoding="utf-8",
-    )
+    # 파일은 생성 시점부터 소유자 전용(0600)이어야 한다 — 쓰고 나서 조이면 틈이 생긴다.
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(envelope, ensure_ascii=False, indent=1) + "\n")
     return target

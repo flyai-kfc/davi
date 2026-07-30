@@ -141,16 +141,19 @@ PID·로그 파일은 600이다. 로그는 일 단위로 이어 쓰고 시작 �
 
 `DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만
 `DAVI_DOGFOOD_RAW_DIR`(기본 `server/.dogfood-raw/`, gitignore)에 요청+응답 봉투 JSON으로
-저장한다. **영구 보존**이며 자동 삭제가 없다 — 정리는 수동. 실패 응답(ApiError)도 저장한다 —
-실패 화면이 픽스처의 주 수집 대상이다. 운영 로그와 **별개 채널**이라 요청 로그의 비식별
-원칙은 그대로다(CLAUDE.md 실행 절).
+저장한다. **영구 보존**이며 자동 삭제가 없다 — 정리는 수동. 디렉터리는 0700, 파일은 0600으로
+생성한다(접근 범위 = 각 머신 소유자, SPEC §3). **LLM 단계의 실패 응답**(`LlmError` →
+4xx/5xx `ApiError`)도 저장한다 — 실패 화면이 픽스처의 주 수집 대상이다. 미들웨어에서 끊기는
+401/429는 엔드포인트에 도달하지 않아 저장되지 않는다. 운영 로그와 **별개 채널**이라 요청
+로그의 비식별 원칙은 그대로다(CLAUDE.md 실행 절).
 
-- 등록 값은 앱 debug 빌드가 계산하는 `ANDROID_ID`의 SHA-256 앞 16자다. 접근성 서비스 연결 시
-  `adb logcat -s GuideSvc`의 `dogfoodDeviceId=`로 찍힌다. `adb shell settings get secure
-  android_id`는 셸 스코프 값이라(Android 8+ 서명키별) 이 값을 얻을 수 없다.
+- 등록 값은 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)가 계산하는
+  `ANDROID_ID`의 SHA-256 앞 16자다. 접근성 서비스 연결 시 `adb logcat -s GuideSvc`의
+  `dogfoodDeviceId=`로 찍힌다. `adb shell settings get secure android_id`는 셸 스코프
+  값이라(Android 8+ 서명키별) 이 값을 얻을 수 없다.
 - 다른 debug 키스토어로 빌드하면 해시가 바뀐다. 화이트리스트가 리스트이니 새 값을 추가하면 된다.
-- 개인 기기는 등록하지 않는다 — 공기계(SM-S921N)만(SPEC §3). release 빌드는 값을 계산하지도
-  보내지도 않는다.
+- 개인 기기는 옵트인하지도 등록하지도 않는다 — 공기계(SM-S921N)만(SPEC §3). 옵트인 없는
+  빌드와 release는 값을 계산하지도 보내지도 않는다.
 
 ## 검사
 

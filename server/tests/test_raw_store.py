@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 
+import pytest
+from app import main as main_module
 from app.config import settings
+from app.errors import LlmError
 from app.main import app
 from app.raw_store import raw_store_dir
+from app.schemas import ErrorKind
 from fastapi.testclient import TestClient
 
 client = TestClient(app, client=("127.0.0.1", 50000))
@@ -77,6 +83,54 @@ def test_store_failure_does_not_break_the_request(monkeypatch, tmp_path):
     response = client.post("/v1/next-step", json=_payload(WHITELISTED))
 
     assert response.status_code == 200
+
+
+def test_llm_failure_exchange_is_stored(monkeypatch, tmp_path):
+    """엔드포인트에 도달한 LLM 실패도 봉투로 남는다 — 실패 화면이 주 수집 대상이다."""
+    monkeypatch.setattr(settings, "davi_dogfood_device_ids", WHITELISTED)
+    monkeypatch.setattr(settings, "davi_dogfood_raw_dir", str(tmp_path))
+
+    def _fail(req, llm_client):
+        raise LlmError(ErrorKind.PARSE, "probe failure")
+
+    monkeypatch.setattr(main_module, "next_step", _fail)
+
+    response = client.post("/v1/next-step", json=_payload(WHITELISTED))
+
+    assert response.status_code == 502
+    files = list(tmp_path.glob("*.json"))
+    assert len(files) == 1
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert envelope["status"] == 502
+    assert envelope["response"]["kind"] == "PARSE"
+    assert envelope["request"]["goal"] == "카메라 열기"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows에는 POSIX 권한 비트가 없다")
+def test_store_modes_are_owner_only(monkeypatch, tmp_path):
+    """영구 보존물의 접근 범위는 각 머신의 소유자다(SPEC §3) — 디렉터리 0700, 파일 0600."""
+    raw_dir = tmp_path / "raw"
+    monkeypatch.setattr(settings, "davi_dogfood_device_ids", WHITELISTED)
+    monkeypatch.setattr(settings, "davi_dogfood_raw_dir", str(raw_dir))
+
+    assert client.post("/v1/next-step", json=_payload(WHITELISTED)).status_code == 200
+
+    assert stat.S_IMODE(raw_dir.stat().st_mode) == 0o700
+    stored = next(raw_dir.glob("*.json"))
+    assert stat.S_IMODE(stored.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows에는 POSIX 권한 비트가 없다")
+def test_existing_wide_directory_is_tightened(monkeypatch, tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    os.chmod(raw_dir, 0o755)
+    monkeypatch.setattr(settings, "davi_dogfood_device_ids", WHITELISTED)
+    monkeypatch.setattr(settings, "davi_dogfood_raw_dir", str(raw_dir))
+
+    assert client.post("/v1/next-step", json=_payload(WHITELISTED)).status_code == 200
+
+    assert stat.S_IMODE(raw_dir.stat().st_mode) == 0o700
 
 
 def test_relative_raw_dir_resolves_under_server_root():
