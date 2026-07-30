@@ -89,8 +89,9 @@ RPD 리셋은 한국시간 17:00이다(`../HANDOFF.md` §10). 확인이 끝나�
 
 **평문 HTTP는 디버그 빌드에서만 열려 있다.** targetSdk 36은 평문 통신을 기본 차단하므로
 `http://127.0.0.1:8000`으로 붙으면 `CLEARTEXT communication ... not permitted`로 막힌다.
-`app/src/debug/`의 `network_security_config.xml`이 평문을 열고, Gradle이 실제 고정 endpoint를
-로컬 주소 또는 RFC1918 사설 IPv4 literal로 제한한다. **릴리스 빌드는 여전히 평문이 막혀 있다.**
+Gradle이 debug 빌드마다 `network_security_config.xml`을 생성해 실제 고정 endpoint의 host
+하나에만 평문을 열고, 그 host도 로컬 주소 또는 RFC1918 사설 IPv4 literal로 제한한다.
+**릴리스 빌드는 여전히 평문이 막혀 있다.**
 
 ### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
 

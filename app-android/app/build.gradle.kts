@@ -1,4 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import java.net.URI
 import java.util.Properties
 
@@ -6,6 +12,32 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+}
+
+abstract class GenerateDebugNetworkSecurityConfig : DefaultTask() {
+    @get:Input
+    abstract val debugHost: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val output = outputDirectory.file("xml/network_security_config.xml").get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <!-- build.gradle.kts가 생성한다. 직접 수정하지 않는다. -->
+            <network-security-config>
+                <base-config cleartextTrafficPermitted="false" />
+                <domain-config cleartextTrafficPermitted="true">
+                    <domain includeSubdomains="false">${debugHost.get()}</domain>
+                </domain-config>
+            </network-security-config>
+            """.trimIndent() + "\n",
+        )
+    }
 }
 
 // debug 서버 URL·개발 접근 토큰만 local.properties(또는 일회성 환경변수)에서 읽는다(#57).
@@ -53,8 +85,8 @@ val parsedDebugUrl = runCatching { URI(debugServerUrl) }.getOrElse {
     throw GradleException("DAVI_DEBUG_SERVER_URL이 올바른 URL이 아닙니다.")
 }
 val debugScheme = parsedDebugUrl.scheme?.lowercase().orEmpty()
-val debugHost = parsedDebugUrl.host?.lowercase().orEmpty()
-if (debugScheme != "http" || debugHost.isEmpty()) {
+val debugServerHost = parsedDebugUrl.host?.lowercase().orEmpty()
+if (debugScheme != "http" || debugServerHost.isEmpty()) {
     throw GradleException("DAVI_DEBUG_SERVER_URL은 사설 IPv4를 사용하는 http 절대 URL이어야 합니다.")
 }
 if (parsedDebugUrl.rawUserInfo != null || parsedDebugUrl.rawQuery != null || parsedDebugUrl.rawFragment != null) {
@@ -63,11 +95,11 @@ if (parsedDebugUrl.rawUserInfo != null || parsedDebugUrl.rawQuery != null || par
 if (parsedDebugUrl.port != 8000 || parsedDebugUrl.rawPath !in setOf("", "/")) {
     throw GradleException("DAVI_DEBUG_SERVER_URL은 경로 없이 8000 포트를 사용해야 합니다.")
 }
-if (!isPrivateOrLocalIpv4(debugHost)) {
+if (!isPrivateOrLocalIpv4(debugServerHost)) {
     throw GradleException("debug 평문 HTTP는 사설 IPv4·loopback 주소에만 사용할 수 있습니다.")
 }
 val localOnlyHosts = setOf("127.0.0.1", "localhost", "10.0.2.2")
-if (debugHost !in localOnlyHosts && debugAccessToken.isEmpty()) {
+if (debugServerHost !in localOnlyHosts && debugAccessToken.isEmpty()) {
     throw GradleException("사설 Wi-Fi debug 서버에는 DAVI_DEBUG_ACCESS_TOKEN이 필요합니다.")
 }
 if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
@@ -75,6 +107,18 @@ if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
 }
 
 val releaseServerUrl = "https://example.invalid"
+val generatedDebugNetworkSecurityDir =
+    layout.buildDirectory.dir("generated/res/network-security/debug")
+
+// debug도 고정 서버 host 하나에만 평문 HTTP를 연다. network security XML은 빌드 설정을
+// 치환하지 않으므로, 위에서 검증한 사설 IPv4·loopback literal을 리소스로 생성한다.
+val generateDebugNetworkSecurityConfig =
+    tasks.register<GenerateDebugNetworkSecurityConfig>("generateDebugNetworkSecurityConfig") {
+        group = "build setup"
+        description = "debug 서버 host만 허용하는 network security config 생성"
+        debugHost.set(debugServerHost)
+        outputDirectory.set(generatedDebugNetworkSecurityDir)
+    }
 
 android {
     namespace = "com.davi.helper"
@@ -117,6 +161,15 @@ android {
         buildConfig = true
         // UI 컨벤션: 화면은 XML 레이아웃 + ViewBinding (app-android/CLAUDE.md)
         viewBinding = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(
+            generateDebugNetworkSecurityConfig,
+            GenerateDebugNetworkSecurityConfig::outputDirectory,
+        )
     }
 }
 

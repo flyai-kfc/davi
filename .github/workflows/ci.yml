@@ -79,6 +79,17 @@ jobs:
       - name: debug/release 빌드 + 단위 테스트
         run: ./gradlew assembleDebug assembleRelease test
 
+      - name: debug 평문 허용 host 제한
+        env:
+          DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          ./gradlew generateDebugNetworkSecurityConfig
+          config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
+          grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
+          grep -q '<domain includeSubdomains="false">192.168.1.2</domain>' "$config"
+          test "$(grep -c 'cleartextTrafficPermitted="true"' "$config")" -eq 1
+
       - name: release에서 development 설정 거부
         env:
           DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000

@@ -41,6 +41,9 @@ uvicorn app.main:app --reload
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
 검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
+`DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
+토큰 없는 LAN 요청이 통과하지 않는다.
 모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
 
 `/health` 응답도 프로필에 따라 다르다.

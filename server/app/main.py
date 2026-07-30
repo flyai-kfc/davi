@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from ipaddress import ip_address
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -37,26 +38,30 @@ def _safe_log_value(value: object) -> str:
 
 
 def _development_access_error(request: Request) -> JSONResponse | None:
-    """설정된 development 토큰과 팀 전체 요청 제한을 검사한다."""
+    """실제 원격 요청의 토큰과 팀 전체 요청 제한을 검사한다.
+
+    ``DAVI_BIND_HOST``는 공식 스크립트가 선언한 값일 뿐, uvicorn CLI의 실제 ``--host``를
+    증명하지 못한다. 그래서 토큰이 비어 있더라도 실제 client 주소가 loopback이 아니면
+    fail-closed로 막는다. 스크립트를 우회해 0.0.0.0에 직접 띄우는 경우도 이 경계에서 닫힌다.
+    """
 
     if settings.davi_env != "development":
         return None
 
     expected = settings.davi_dev_access_token.get_secret_value().strip()
     if not expected:
-        return None
+        client_host = request.client.host if request.client else ""
+        try:
+            is_loopback = ip_address(client_host).is_loopback
+        except ValueError:
+            is_loopback = False
+        if is_loopback:
+            return None
+        return _development_auth_error(request)
 
     supplied = request.headers.get(_DEV_TOKEN_HEADER)
     if not token_matches(expected, supplied):
-        error = ApiError(
-            kind=ErrorKind.AUTH,
-            message="development access denied",
-            request_id=request.state.request_id,
-        )
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=error.model_dump(),
-        )
+        return _development_auth_error(request)
 
     decision = dev_rate_limiter.check(
         settings.davi_dev_rate_limit_requests,
@@ -76,6 +81,18 @@ def _development_access_error(request: Request) -> JSONResponse | None:
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content=error.model_dump(),
         headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _development_auth_error(request: Request) -> JSONResponse:
+    error = ApiError(
+        kind=ErrorKind.AUTH,
+        message="development access denied",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=error.model_dump(),
     )
 
 

@@ -8,7 +8,9 @@ from app.main import app
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-client = TestClient(app)
+# 토큰 없는 development 기본값은 loopback 전용이다. TestClient의 기본 ``testclient`` host는
+# 실제 IP가 아니므로, 평소 테스트는 운영의 로컬 개발 요청과 같은 loopback으로 명시한다.
+client = TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _next_step_payload() -> dict:
@@ -82,6 +84,27 @@ def test_development_token_is_required_when_configured(monkeypatch):
     assert missing.json()["request_id"]
     assert wrong.status_code == 401
     assert wrong.json()["kind"] == "AUTH"
+
+
+def test_remote_client_is_denied_when_token_is_not_configured(monkeypatch):
+    """실제 bind가 선언과 달라도 원격 요청은 토큰 없이 통과하지 못한다."""
+    monkeypatch.setattr(settings, "davi_bind_host", "127.0.0.1")
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(""))
+    remote_client = TestClient(app, client=("192.168.1.23", 50000))
+
+    response = remote_client.post("/v1/next-step", json=_next_step_payload())
+
+    assert response.status_code == 401
+    assert response.json()["kind"] == "AUTH"
+    assert response.json()["request_id"]
+
+
+def test_loopback_client_is_allowed_when_token_is_not_configured(monkeypatch):
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(""))
+
+    response = client.post("/v1/next-step", json=_next_step_payload())
+
+    assert response.status_code == 200
 
 
 def test_development_token_allows_next_step(monkeypatch):
