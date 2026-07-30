@@ -55,22 +55,23 @@ authors: [GunderGie]
 
 3. **작업자 태그는 필수다** — 항목 제목 뒤 `` `@<login>` ``, frontmatter `authors:` 목록에
    없으면 추가. 해당 없는 본문 필드는 생략한다.
-4. 커밋 → pull → 푸시. **이번에 쓴 일지 파일만 pathspec으로 stage한다** — `add -A`는 저장소에
-   남아 있던 무관한 변경(사용자 초안 등)까지 자동 전송한다(PR #65 리뷰 P1). `status`에 무관한
-   변경이 보여도 건드리지 말고 그대로 둔다. **pull은 커밋 뒤에** 한다(쓰기 전에 하면 미커밋
-   변경과 충돌한다):
+4. 커밋 → pull → 푸시. **add와 commit 둘 다 이번에 쓴 일지 파일 pathspec으로 제한한다** —
+   `add`만 좁히면 사용자가 미리 stage해 둔 무관 파일이 index에 남아 맨 `commit -m`에 그대로
+   실린다(PR #65 리뷰 P1 2차). pathspec commit은 그 파일들을 index에 남겨 두고 대상만
+   커밋한다(실측 확인). 무관한 변경은 staged든 아니든 건드리지 않는다:
 
 ```powershell
 git -C ..\davi-journal status --short
 git -C ..\davi-journal add journal/<YYYY-MM-DD>.md
-git -C ..\davi-journal commit -m "journal: <날짜> <제목>"
+git -C ..\davi-journal commit -m "journal: <날짜> <제목>" -- journal/<YYYY-MM-DD>.md
 git -C ..\davi-journal pull --rebase
 git -C ..\davi-journal push
 ```
 
-rebase가 충돌하면 자동으로 풀지 않는다 — `git rebase --abort`로 되돌리고 커밋만 남긴 채
-사용자에게 알린다(자동 실행 경로의 임의 병합은 위험하다). 푸시 실패(권한·오프라인)도
-커밋만 남기고 알린다.
+**pull은 커밋 뒤에** 한다(쓰기 전에 하면 미커밋 변경과 충돌한다). pull --rebase가 거부되거나
+(사용자의 staged 변경이 남아 있으면 거부된다) rebase가 충돌하면 자동으로 풀지 않는다 —
+충돌이면 `git rebase --abort`로 되돌리고, 어느 쪽이든 커밋만 남긴 채 사용자에게 알린다
+(자동 실행 경로의 임의 병합은 위험하다). 푸시 실패(권한·오프라인)도 커밋만 남기고 알린다.
 
 5. 기록 후 사용자에게 **한 줄로** 무엇을 남겼는지 알린다.
 
