@@ -13,6 +13,8 @@ __pycache__/
 venv/
 .pytest_cache/
 eval/runs/
+# 공용 development 서버 PID·일 단위 로그(#57)
+server/.shared-dev/
 
 # Android (app-android/)
 *.iml

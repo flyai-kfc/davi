@@ -7,15 +7,12 @@
   (실측: SM-S921N / Android 16). 터널(https)로 붙을 땐 안 겪지만, USB로 붙은 기기를
   `adb reverse`로 붙이면 바로 이걸 만난다.
 
-  이 파일은 `src/debug/`에만 있으므로 **릴리스 빌드는 평문이 계속 막혀 있다.**
+  Android network security XML은 RFC1918 CIDR을 표현할 수 없다. 따라서 debug 변형 자체는
+  평문을 허용하되, Gradle이 BuildConfig.SERVER_URL을 사설 IPv4·loopback literal로 제한한다.
+  앱은 이 고정 URL로만 요청한다. 이 파일은 `src/debug/`에만 있고 main manifest는
+  usesCleartextTraffic=false이므로 **릴리스 빌드는 평문이 계속 막혀 있다.**
   실제 배포에서 화면 데이터를 평문으로 보내는 일이 없어야 한다(SPEC §2).
 -->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <!-- adb reverse로 붙은 호스트 PC -->
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-        <!-- 에뮬레이터에서 본 호스트 PC (BuildConfig.SERVER_URL 기본값) -->
-        <domain includeSubdomains="false">10.0.2.2</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

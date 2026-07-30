@@ -11,6 +11,19 @@ from pydantic import SecretStr
 client = TestClient(app)
 
 
+def _next_step_payload() -> dict:
+    return {
+        "goal": "카카오톡 열기",
+        "client_version": "0.1.0",
+        "screen": {
+            "package_name": "com.sec.android.app.launcher",
+            "elements": [
+                {"node_id": "n1", "label": "카카오톡", "clickable": True},
+            ],
+        },
+    }
+
+
 def test_development_health_includes_diagnostics():
     r = client.get("/health")
 
@@ -35,19 +48,12 @@ def test_production_health_only_includes_status(monkeypatch):
 
 
 def test_next_step_stub_returns_action():
-    payload = {
-        "goal": "카카오톡 열기",
-        "client_version": "0.1.0",
-        "screen": {
-            "package_name": "com.sec.android.app.launcher",
-            "current_page": 2,
-            "total_pages": 4,
-            "elements": [
-                {"node_id": "n1", "label": "카카오톡", "clickable": True},
-                {"node_id": "n2", "label": "시계", "clickable": False},
-            ],
-        },
-    }
+    payload = _next_step_payload()
+    payload["screen"]["current_page"] = 2
+    payload["screen"]["total_pages"] = 4
+    payload["screen"]["elements"].append(
+        {"node_id": "n2", "label": "시계", "clickable": False},
+    )
     r = client.post("/v1/next-step", json=payload)
     assert r.status_code == 200
     body = r.json()
@@ -58,6 +64,77 @@ def test_next_step_stub_returns_action():
     assert body["action"]["expected_result"]
     # scroll이 아니면 방향은 생략된다.
     assert body["action"]["direction"] is None
+
+
+def test_development_token_is_required_when_configured(monkeypatch):
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+
+    missing = client.post("/v1/next-step", json=_next_step_payload())
+    wrong = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": "w" * 32},
+    )
+
+    assert missing.status_code == 401
+    assert missing.json()["kind"] == "AUTH"
+    assert missing.json()["request_id"]
+    assert wrong.status_code == 401
+    assert wrong.json()["kind"] == "AUTH"
+
+
+def test_development_token_allows_next_step(monkeypatch):
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+
+    response = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": token},
+    )
+
+    assert response.status_code == 200
+
+
+def test_development_rate_limit_is_global_and_returns_retry_after(monkeypatch):
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+    monkeypatch.setattr(settings, "davi_dev_rate_limit_requests", 2)
+    headers = {"X-Davi-Dev-Token": token}
+
+    first = client.post("/v1/next-step", json=_next_step_payload(), headers=headers)
+    second = client.post("/v1/next-step", json=_next_step_payload(), headers=headers)
+    limited = client.post("/v1/next-step", json=_next_step_payload(), headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["kind"] == "QUOTA"
+    assert limited.json()["retry_after_seconds"] >= 1
+    assert limited.json()["request_id"]
+    assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
+
+
+def test_development_access_token_is_not_logged(caplog, monkeypatch):
+    token = "private-development-token-value-123"
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.davi.requests"):
+        response = client.post(
+            "/v1/next-step",
+            json=_next_step_payload(),
+            headers={"X-Davi-Dev-Token": token},
+        )
+
+    assert response.status_code == 200
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "uvicorn.error.davi.requests"
+    ]
+    assert messages
+    assert all(token not in message for message in messages)
 
 
 def test_next_step_stuck_returns_classified_error(caplog):

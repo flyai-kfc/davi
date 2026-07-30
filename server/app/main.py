@@ -6,14 +6,15 @@ import logging
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .llm import get_llm_client
 from .reasoning import next_step
-from .schemas import NextStepRequest, NextStepResponse
+from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
 
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
 # Uvicorn 기본 핸들러를 상속해 별도 logging 설정 없이 서버 콘솔에 출력한다.
@@ -21,6 +22,8 @@ request_logger = logging.getLogger("uvicorn.error.davi.requests")
 
 _NEXT_STEP_PATH = "/v1/next-step"
 _MAX_LOG_VALUE_LENGTH = 200
+_DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
+dev_rate_limiter = SlidingWindowRateLimiter()
 
 
 def _safe_log_value(value: object) -> str:
@@ -33,6 +36,49 @@ def _safe_log_value(value: object) -> str:
     return one_line
 
 
+def _development_access_error(request: Request) -> JSONResponse | None:
+    """설정된 development 토큰과 팀 전체 요청 제한을 검사한다."""
+
+    if settings.davi_env != "development":
+        return None
+
+    expected = settings.davi_dev_access_token.get_secret_value().strip()
+    if not expected:
+        return None
+
+    supplied = request.headers.get(_DEV_TOKEN_HEADER)
+    if not token_matches(expected, supplied):
+        error = ApiError(
+            kind=ErrorKind.AUTH,
+            message="development access denied",
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=error.model_dump(),
+        )
+
+    decision = dev_rate_limiter.check(
+        settings.davi_dev_rate_limit_requests,
+        settings.davi_dev_rate_limit_window_seconds,
+    )
+    if decision.allowed:
+        return None
+
+    retry_after = decision.retry_after_seconds or 1
+    error = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="development request limit exceeded",
+        retry_after_seconds=retry_after,
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=error.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 @app.middleware("http")
 async def log_next_step_request(request: Request, call_next):
     """추론 요청의 비식별 운영 메타데이터만 한 줄로 남긴다."""
@@ -43,7 +89,9 @@ async def log_next_step_request(request: Request, call_next):
     started_at = time.perf_counter()
     status_code = 500
     try:
-        response = await call_next(request)
+        response = _development_access_error(request)
+        if response is None:
+            response = await call_next(request)
         status_code = response.status_code
         return response
     finally:

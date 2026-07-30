@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+
+# start/stop/status가 공유하는 경로와 PID 검증. macOS 기본 Bash 3.2에서 동작해야 한다.
+
+SHARED_DEV_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHARED_DEV_SERVER_DIR="$(cd "$SHARED_DEV_SCRIPT_DIR/.." && pwd)"
+SHARED_DEV_STATE_DIR="$SHARED_DEV_SERVER_DIR/.shared-dev"
+SHARED_DEV_LOG_DIR="$SHARED_DEV_STATE_DIR/logs"
+SHARED_DEV_PID_FILE="$SHARED_DEV_STATE_DIR/server.pid"
+SHARED_DEV_PORT=8000
+SHARED_DEV_HEALTH_URL="http://127.0.0.1:${SHARED_DEV_PORT}/health"
+
+shared_dev_die() {
+    printf '오류: %s\n' "$*" >&2
+    exit 1
+}
+
+shared_dev_prepare_dirs() {
+    mkdir -p "$SHARED_DEV_LOG_DIR"
+    chmod 700 "$SHARED_DEV_STATE_DIR" "$SHARED_DEV_LOG_DIR"
+}
+
+shared_dev_read_pid() {
+    if [[ ! -f "$SHARED_DEV_PID_FILE" ]]; then
+        return 1
+    fi
+    local pid
+    pid="$(tr -d '[:space:]' < "$SHARED_DEV_PID_FILE")"
+    if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    printf '%s\n' "$pid"
+}
+
+shared_dev_process_cwd() {
+    local pid="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1
+        return
+    fi
+    if [[ -e "/proc/$pid/cwd" ]]; then
+        readlink "/proc/$pid/cwd"
+    fi
+}
+
+shared_dev_is_managed_process() {
+    local pid="$1"
+    kill -0 "$pid" 2>/dev/null || return 1
+    local command_line process_cwd
+    command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    process_cwd="$(shared_dev_process_cwd "$pid")"
+    [[ "$command_line" == *"uvicorn app.main:app"* ]] || return 1
+    [[ "$command_line" == *"--port ${SHARED_DEV_PORT}"* ]] || return 1
+    [[ "$process_cwd" == "$SHARED_DEV_SERVER_DIR" ]]
+}
+
+shared_dev_private_ipv4() {
+    local interface_name address candidate
+    interface_name="$(route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')"
+    if [[ -n "$interface_name" ]]; then
+        address="$(ipconfig getifaddr "$interface_name" 2>/dev/null || true)"
+        if shared_dev_is_private_ipv4 "$address"; then
+            printf '%s\n' "$address"
+            return 0
+        fi
+    fi
+
+    for candidate in en0 en1; do
+        address="$(ipconfig getifaddr "$candidate" 2>/dev/null || true)"
+        if shared_dev_is_private_ipv4 "$address"; then
+            printf '%s\n' "$address"
+            return 0
+        fi
+    done
+    return 1
+}
+
+shared_dev_is_private_ipv4() {
+    local address="$1"
+    local first second third fourth
+    [[ "$address" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+    first="${BASH_REMATCH[1]}"
+    second="${BASH_REMATCH[2]}"
+    third="${BASH_REMATCH[3]}"
+    fourth="${BASH_REMATCH[4]}"
+    [[ "$first" -le 255 && "$second" -le 255 && "$third" -le 255 && "$fourth" -le 255 ]] || return 1
+    [[ "$first" -eq 10 ]] && return 0
+    [[ "$first" -eq 172 && "$second" -ge 16 && "$second" -le 31 ]] && return 0
+    [[ "$first" -eq 192 && "$second" -eq 168 ]] && return 0
+    return 1
+}
+
+shared_dev_port_in_use() {
+    lsof -nP -iTCP:"$SHARED_DEV_PORT" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+shared_dev_env_file() {
+    if [[ -n "${DAVI_SHARED_DEV_ENV_FILE:-}" ]]; then
+        printf '%s\n' "$DAVI_SHARED_DEV_ENV_FILE"
+        return
+    fi
+    printf '%s/davi/shared-dev.env\n' "${XDG_CONFIG_HOME:-"$HOME/.config"}"
+}
+
+shared_dev_file_mode() {
+    local path="$1"
+    stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null
+}
+
+shared_dev_load_token() {
+    local env_file="$1"
+    local token
+    token="$(
+        sed -n 's/^[[:space:]]*DAVI_DEV_ACCESS_TOKEN[[:space:]]*=[[:space:]]*//p' "$env_file" \
+            | tail -n 1
+    )"
+    case "$token" in
+        \"*\") token="${token#\"}"; token="${token%\"}" ;;
+        \'*\') token="${token#\'}"; token="${token%\'}" ;;
+    esac
+    [[ -n "$token" ]] || return 1
+    printf '%s\n' "$token"
+}

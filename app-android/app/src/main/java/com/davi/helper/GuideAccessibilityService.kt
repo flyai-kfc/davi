@@ -64,7 +64,10 @@ class GuideAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
-        guideApiClient = GuideApiClient(BuildConfig.SERVER_URL)
+        guideApiClient = GuideApiClient(
+            BuildConfig.SERVER_URL,
+            devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+        )
         GuideSession.addListener(sessionListener)
         Log.i(
             TAG,

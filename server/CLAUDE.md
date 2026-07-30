@@ -18,11 +18,14 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 
 ## 실행
 - **`py -3.12` 고정.** 기본 python이 3.8이면 litellm(3.11+ 필요)에서 혼란스러운 에러(§10).
-- 로컬 uvicorn + 터널(ngrok/Cloudflare)로 실기기가 접속(`../SPEC.md` §7).
+- 개인 USB 검증은 loopback+`adb reverse`, 팀 공용 검증은 같은 사설 Wi-Fi의 전용 맥북으로
+  접속한다(`../SPEC.md` §7, `scripts/start-shared-dev.sh`). 인터넷에 공개하지 않는다.
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. 잘못된 조합은
   `config.Settings`가 import 시 거부한다.
+- development를 loopback 밖에 바인딩할 때는 32자 이상 `DAVI_DEV_ACCESS_TOKEN`이 필수다.
+  공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 Gemini 쿼터를 보호한다.
 - 요청 로그에는 비식별 운영 메타데이터만 둔다. `goal`, 화면 label, 최근 안내, 요청 본문,
   API 키·access token은 어떤 프로필에서도 기록하지 않는다.
 

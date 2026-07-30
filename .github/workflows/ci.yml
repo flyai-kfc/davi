@@ -43,7 +43,7 @@ jobs:
               - 'app-android/app/src/main/java/com/davi/helper/Contract.kt'
 
   android:
-    name: Android (assembleDebug + test)
+    name: Android (debug/release APK + test)
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
@@ -76,8 +76,20 @@ jobs:
       - name: Gradle 셋업
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 빌드 + 단위 테스트
-        run: ./gradlew assembleDebug test
+      - name: debug/release 빌드 + 단위 테스트
+        run: ./gradlew assembleDebug assembleRelease test
+
+      - name: release에서 development 설정 거부
+        env:
+          DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "release 빌드 전에" <<<"$output"
 
   backend:
     name: Backend (ruff + pytest)

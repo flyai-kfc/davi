@@ -21,12 +21,14 @@ sealed interface NextStepResult {
 class GuideApiClient(
     serverUrl: String,
     private val httpClient: OkHttpClient = defaultHttpClient(),
+    devAccessToken: String? = null,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
     },
 ) {
     private val endpoint = "${serverUrl.trimEnd('/')}/v1/next-step"
+    private val devAccessToken = devAccessToken?.trim()?.takeIf { it.isNotEmpty() }
 
     fun nextStep(request: NextStepRequest): NextStepResult {
         val payload = try {
@@ -34,10 +36,11 @@ class GuideApiClient(
         } catch (exception: Exception) {
             return NextStepResult.ParseFailure(exception)
         }
-        val httpRequest = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(endpoint)
             .post(payload.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        devAccessToken?.let { requestBuilder.header(DEV_TOKEN_HEADER, it) }
+        val httpRequest = requestBuilder.build()
 
         return try {
             httpClient.newCall(httpRequest).execute().use { response ->
@@ -63,6 +66,7 @@ class GuideApiClient(
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        const val DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
