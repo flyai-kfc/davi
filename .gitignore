@@ -15,6 +15,8 @@ venv/
 eval/runs/
 # 공용 development 서버 PID·일 단위 로그(#57)
 server/.shared-dev/
+# 도그푸딩 raw 봉투(#41) — 영구 보존, 커밋 금지
+server/.dogfood-raw/
 
 # Android (app-android/)
 *.iml
