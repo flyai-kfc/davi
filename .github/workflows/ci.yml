@@ -149,8 +149,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DAVI_EVAL_JUDGE_MODEL: ${{ vars.DAVI_EVAL_JUDGE_MODEL }}
-          DAVI_MODEL: ${{ vars.DAVI_MODEL }}
-        run: python judge.py
+          DAVI_MODEL_OPTIONAL: ${{ vars.DAVI_MODEL }}
+        run: |
+          if [ -n "$DAVI_MODEL_OPTIONAL" ]; then
+            export DAVI_MODEL="$DAVI_MODEL_OPTIONAL"
+          fi
+          python judge.py
 
   # 브랜치 보호의 필수 체크로 지정할 잡. 위 잡들이 조건부라 skipped가 되는데,
   # skipped는 필수 체크를 통과시키지 못하므로 여기서 한 번 집계한다.
