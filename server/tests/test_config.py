@@ -71,6 +71,15 @@ def test_development_real_llm_requires_api_key():
         _settings(davi_use_stub_llm=False)
 
 
+def test_gemini_api_key_is_normalized_before_use():
+    configured = _settings(
+        davi_use_stub_llm=False,
+        gemini_api_key="  server-side-key\n",
+    )
+
+    assert configured.gemini_api_key.get_secret_value() == "server-side-key"
+
+
 def test_model_cannot_be_blank():
     with pytest.raises(ValidationError, match="DAVI_MODEL"):
         _settings(davi_model=" ")

@@ -39,6 +39,11 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
+- `GuideAction` 한 객체의 정상 출력에 충분한 여유를 두고 `maxOutputTokens=1024`로 장문 응답의
+  지연·비용 상한을 고정한다. schema 400 무스키마 폴백과 복구 재시도에도 같은 상한을 쓴다.
+- `scroll`인데 `direction`이 빠지면 화면 메타로 앞/뒤 방향을 추측하지 않는다. 같은 schema 모드에서
+  방향을 명시하도록 **한 번만 재요청**하고, 다시 빠지면 PARSE로 실패한다. 로그에는 응답 원문 대신
+  `scroll_direction_missing` 진단 코드만 남긴다.
 - 무료 티어 rate limit: flash-lite ≈ 15 RPM / 1,000 RPD. 429 `prepayment credits are depleted`는 사용량 초과가 아니라 결제 경로 문제일 수 있다. RPD 리셋은 한국시간 17:00.
 
 ## API 계약 결정 (2026-07-24 리뷰 → **2026-07-28 C1~C11 반영 완료**)
