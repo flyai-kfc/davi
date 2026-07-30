@@ -44,7 +44,14 @@ def _action_response(action_type: str = "tap", direction: str | None = None) -> 
     }
     if direction is not None:
         action["direction"] = direction
-    return {"candidates": [{"content": {"parts": [{"text": json.dumps(action)}]}}]}
+    return {
+        "candidates": [
+            {
+                "finishReason": "STOP",
+                "content": {"parts": [{"text": json.dumps(action)}]},
+            }
+        ]
+    }
 
 
 def _client(handler) -> GeminiLlmClient:
@@ -229,6 +236,35 @@ def test_gemini_classifies_invalid_model_output_as_parse_error(caplog):
     assert [record.getMessage() for record in caplog.records] == [
         "gemini_parse_error reason=invalid_json action=fail"
     ]
+
+
+def test_gemini_classifies_max_tokens_without_logging_response_text(caplog):
+    truncated_text = '{"expected_result":"sensitive-model-fragment"'
+    client = _client(
+        lambda _: httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "MAX_TOKENS",
+                        "content": {"parts": [{"text": truncated_text}]},
+                    }
+                ]
+            },
+        )
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"),
+        pytest.raises(LlmError) as raised,
+    ):
+        client.reason(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert raised.value.message == "Gemini 응답이 출력 토큰 상한에서 잘림"
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages == ["gemini_response_error reason=max_output_tokens action=fail"]
+    assert all(truncated_text not in message for message in messages)
 
 
 def test_get_llm_client_reuses_one_connection_pool():

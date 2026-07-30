@@ -41,6 +41,8 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
 - `GuideAction` 한 객체의 정상 출력에 충분한 여유를 두고 `maxOutputTokens=1024`로 장문 응답의
   지연·비용 상한을 고정한다. schema 400 무스키마 폴백과 복구 재시도에도 같은 상한을 쓴다.
+  후보가 `finishReason=MAX_TOKENS`로 끝나면 잘린 JSON을 일반 `invalid_json`으로 뭉개지 않고
+  `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - `scroll`인데 `direction`이 빠지면 화면 메타로 앞/뒤 방향을 추측하지 않는다. 같은 schema 모드에서
   방향을 명시하도록 **한 번만 재요청**하고, 다시 빠지면 PARSE로 실패한다. 로그에는 응답 원문 대신
   `scroll_direction_missing` 진단 코드만 남긴다.

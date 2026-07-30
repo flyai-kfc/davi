@@ -36,6 +36,7 @@ _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _DEFAULT_RETRY_AFTER_SECONDS = 60
 # GuideAction은 짧은 JSON 한 객체다. 정상 응답의 여유는 충분히 두되 장문 폭주는 여기서 자른다.
 _MAX_OUTPUT_TOKENS = 1024
+_MAX_TOKENS_FINISH_REASON = "MAX_TOKENS"
 _DIRECTION_RETRY_INSTRUCTION = (
     "이전 응답은 action_type이 scroll인데 direction이 빠져 유효하지 않았습니다. "
     "direction을 up, down, left, right 중 하나로 반드시 포함해 JSON 객체 하나만 다시 반환하세요."
@@ -236,9 +237,16 @@ def _response_text(response: httpx.Response) -> str:
     try:
         payload = response.json()
         candidates = payload["candidates"]
-        parts = candidates[0]["content"]["parts"]
+        candidate = candidates[0]
+        if candidate.get("finishReason") == _MAX_TOKENS_FINISH_REASON:
+            llm_logger.warning("gemini_response_error reason=max_output_tokens action=fail")
+            raise LlmError(
+                ErrorKind.PARSE,
+                "Gemini 응답이 출력 토큰 상한에서 잘림",
+            )
+        parts = candidate["content"]["parts"]
         text = "".join(part["text"] for part in parts if "text" in part)
-    except (IndexError, KeyError, TypeError, ValueError) as error:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as error:
         raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
     if not text.strip():
         raise LlmError(ErrorKind.PARSE, "Gemini 응답 텍스트가 비어 있음")
