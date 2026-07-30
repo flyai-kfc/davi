@@ -16,25 +16,33 @@ class GuideDisplayState {
 
     private var guide: Content? = null
 
+    /**
+     * 안내가 속한 화면의 서명. 재표시는 **같은 화면에서만** 한다 — 서명 없이 되살리면
+     * 이전 화면의 안내가 다른 화면 위에 그려진다(PR #63 2차 리뷰 P1, #61 P1과 같은 계급).
+     */
+    private var guideSignature: String? = null
+
     /** 정체(STUCK) 접미사를 붙여도 되는가. 상한 안내는 행동 지시가 아니라서 붙이지 않는다. */
     private var stuckSuffixAllowed = true
 
     /** 오버레이에 실제로 떠 있는가. root=null 청소가 지우면 내용은 남기고 이것만 내린다. */
     private var visible = false
 
-    /** 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
-    fun show(bounds: List<Int>?, text: String): Content {
+    /** [signature] 화면에 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
+    fun show(signature: String, bounds: List<Int>?, text: String): Content {
         val content = Content(bounds, text)
         guide = content
+        guideSignature = signature
         stuckSuffixAllowed = true
         visible = true
         return content
     }
 
-    /** 미검증 done 상한 안내를 표시한다(#55). STUCK 접미사를 붙이지 않는다. */
-    fun showCapNotice(text: String): Content {
+    /** [signature] 화면에 미검증 done 상한 안내를 표시한다(#55). STUCK 접미사를 붙이지 않는다. */
+    fun showCapNotice(signature: String, text: String): Content {
         val content = Content(null, text)
         guide = content
+        guideSignature = signature
         stuckSuffixAllowed = false
         visible = true
         return content
@@ -48,17 +56,24 @@ class GuideDisplayState {
     /** 세션이 끝나거나 바뀌었다. 이전 세션의 안내를 재표시하면 안 된다. */
     fun reset() {
         guide = null
+        guideSignature = null
         stuckSuffixAllowed = true
         visible = false
     }
 
     /**
-     * 유효한 화면 샘플에서 다시 그려야 할 내용. 지워진 안내가 있으면 돌려주고 "떠 있음"으로
-     * 되돌린다 — 상한 안내가 앱 전환 한 번에 영영 사라지는 구멍의 회복 경로다(PR #63 리뷰 P1).
+     * [currentSignature] 화면에서 다시 그려야 할 내용. 지워진 안내가 **같은 화면의 것이면**
+     * 돌려주고 "떠 있음"으로 되돌린다 — 상한 안내가 앱 전환 한 번에 영영 사라지는 구멍의
+     * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
+     * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      */
-    fun redisplay(): Content? {
+    fun redisplay(currentSignature: String): Content? {
         val current = guide ?: return null
         if (visible) return null
+        if (guideSignature != currentSignature) {
+            reset()
+            return null
+        }
         visible = true
         return current
     }

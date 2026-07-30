@@ -119,15 +119,16 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
+        val signature = ScreenSignature.of(result.screen)
+
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
-        display.redisplay()?.let {
+        // 같은 화면(서명 일치)에서만 되살린다 — 다른 화면이면 폐기하고 새 요청에 맡긴다(2차 리뷰 P1).
+        display.redisplay(signature)?.let {
             Log.i(TAG, "redisplay guide")
             draw(it)
         }
-
-        val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
         when (stability.onSample(signature, now)) {
             ScreenStabilityTracker.Decision.WAIT -> {
@@ -315,7 +316,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 문구는 #29에서 다시 정한다.
                     // 이 안내는 STUCK 접미사 없이 유지되고, 지워져도 재표시된다(PR #63 리뷰 P1).
                     Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
-                    draw(display.showCapNotice(getString(R.string.guide_done_unconfirmed)))
+                    draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
                 }
 
                 null -> Log.i(TAG, "stale response dropped goal=${session.goal}")
@@ -337,7 +338,8 @@ class GuideAccessibilityService : AccessibilityService() {
         } else {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
-        draw(display.show(bounds, action.instruction))
+        // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
+        draw(display.show(requestSignature, bounds, action.instruction))
     }
 
     private fun logScreen(result: UiTreeSerializer.Result) {
