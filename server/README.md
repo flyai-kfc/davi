@@ -180,7 +180,8 @@ pytest
   `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
-- `reasoning._verify_done` — 근거 필드가 비었는지만 본다. evidence·label 매칭 검사는 미정(SPEC §11).
+- `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,
+  SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
 
 **껍데기** (호출하면 아무 일도 없거나 raise)
 - `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. 하위 태스크 분해 없음.
