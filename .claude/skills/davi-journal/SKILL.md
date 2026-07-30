@@ -55,17 +55,22 @@ authors: [GunderGie]
 
 3. **작업자 태그는 필수다** — 항목 제목 뒤 `` `@<login>` ``, frontmatter `authors:` 목록에
    없으면 추가. 해당 없는 본문 필드는 생략한다.
-4. 커밋 → pull → 푸시. **pull은 커밋 뒤에** 한다(쓰기 전에 하면 미커밋 변경과 충돌한다):
+4. 커밋 → pull → 푸시. **이번에 쓴 일지 파일만 pathspec으로 stage한다** — `add -A`는 저장소에
+   남아 있던 무관한 변경(사용자 초안 등)까지 자동 전송한다(PR #65 리뷰 P1). `status`에 무관한
+   변경이 보여도 건드리지 말고 그대로 둔다. **pull은 커밋 뒤에** 한다(쓰기 전에 하면 미커밋
+   변경과 충돌한다):
 
 ```powershell
-git -C ..\davi-journal add -A
+git -C ..\davi-journal status --short
+git -C ..\davi-journal add journal/<YYYY-MM-DD>.md
 git -C ..\davi-journal commit -m "journal: <날짜> <제목>"
 git -C ..\davi-journal pull --rebase
 git -C ..\davi-journal push
 ```
 
-같은 날짜 파일을 두 사람이 동시에 어펜드해 rebase가 충돌하면, 원격 항목 아래에 내 항목을
-붙이는 쪽으로 풀고 계속한다. 푸시가 실패하면(권한·오프라인) 커밋만 남기고 사용자에게 알린다.
+rebase가 충돌하면 자동으로 풀지 않는다 — `git rebase --abort`로 되돌리고 커밋만 남긴 채
+사용자에게 알린다(자동 실행 경로의 임의 병합은 위험하다). 푸시 실패(권한·오프라인)도
+커밋만 남기고 알린다.
 
 5. 기록 후 사용자에게 **한 줄로** 무엇을 남겼는지 알린다.
 
