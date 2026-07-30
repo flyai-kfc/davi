@@ -110,6 +110,27 @@ class GuideApiClientTest {
         assertEquals(SwipeDirection.UP, result.response.action.direction)
     }
 
+    /** 도그푸딩 해시(#41)는 있을 때만 실린다 — 등록 안 된 기기는 필드 자체가 나가지 않는다. */
+    @Test
+    fun `sends device_id only when the dogfood hash is present`() {
+        repeat(2) {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false}""",
+                ),
+            )
+        }
+        val client = GuideApiClient(server.url("/").toString())
+
+        client.nextStep(sampleRequest().copy(deviceId = "ba7816bf8f01cfea"))
+        client.nextStep(sampleRequest())
+
+        assertTrue(
+            server.takeRequest().body.readUtf8().contains("\"device_id\":\"ba7816bf8f01cfea\""),
+        )
+        assertFalse(server.takeRequest().body.readUtf8().contains("device_id"))
+    }
+
     /** kind 값은 서버 `ErrorKind`와 같아야 한다. 여기 쓰는 SERVER는 서버가 막혔을 때 주는 값이다. */
     @Test
     fun `parses server api errors by kind`() {

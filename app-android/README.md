@@ -78,6 +78,10 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 앱에서 목표를 입력 → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
 목표를 달성하면 서버가 `done`을 주고 오버레이가 사라진다.
 
+접근성 서비스가 연결되면 `GuideSvc`의 `connected ... dogfoodDeviceId=<16자 해시>`가
+도그푸딩 화이트리스트 등록 값이다(#41 — 서버 `.env`의 `DAVI_DOGFOOD_DEVICE_IDS`,
+절차는 `../server/README.md` "도그푸딩 raw 보존"). release 빌드는 이 값을 계산하지도 보내지도 않는다.
+
 배선이 확인되면 **실호출**로 한 번 더 돌린다. `.env`를 고치지 않고 환경변수로 덮어쓴다.
 
 ```powershell
