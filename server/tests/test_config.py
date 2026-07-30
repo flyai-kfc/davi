@@ -88,6 +88,15 @@ def test_valid_production_profile():
     assert configured.gemini_api_key.get_secret_value() == "server-side-key"
 
 
+def test_runtime_profile_fixture_rejects_impossible_production_stub(set_runtime_profile):
+    with pytest.raises(ValidationError, match="DAVI_USE_STUB_LLM=false"):
+        set_runtime_profile(
+            davi_env="production",
+            davi_use_stub_llm=True,
+            gemini_api_key="server-side-key",
+        )
+
+
 def test_development_lan_bind_requires_access_token():
     with pytest.raises(ValidationError, match="DAVI_DEV_ACCESS_TOKEN"):
         _settings(davi_bind_host="0.0.0.0")
