@@ -21,6 +21,11 @@ class Settings(BaseSettings):
 
     # 공용 개발 endpoint 보호용 토큰(#57). production에서는 설정 자체를 금지한다.
     davi_dev_access_token: SecretStr = SecretStr("")
+    # 공식 실행 스크립트가 uvicorn --host와 같은 값으로 설정한다.
+    davi_bind_host: str = "127.0.0.1"
+    # 같은 Wi-Fi 팀 전체가 공유하는 인프로세스 제한. Gemini 무료 티어(약 15 RPM)보다 낮게 둔다.
+    davi_dev_rate_limit_requests: int = 10
+    davi_dev_rate_limit_window_seconds: int = 60
 
     # 도그푸딩 기기에서만 raw 트리 로그 보존(SPEC §3). 콤마 구분 device id.
     davi_dogfood_device_ids: str = ""
@@ -32,13 +37,31 @@ class Settings(BaseSettings):
     def validate_runtime_profile(self) -> Self:
         api_key = self.gemini_api_key.get_secret_value().strip()
         dev_access_token = self.davi_dev_access_token.get_secret_value().strip()
+        bind_host = self.davi_bind_host.strip().lower()
+        model = self.davi_model.strip()
 
         if self.davi_env == "production" and self.davi_use_stub_llm:
             raise ValueError("production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
         if not self.davi_use_stub_llm and not api_key:
             raise ValueError("실제 LLM을 사용하려면 GEMINI_API_KEY가 필요합니다")
+        if not model:
+            raise ValueError("DAVI_MODEL은 비어 있을 수 없습니다")
         if self.davi_env == "production" and dev_access_token:
             raise ValueError("production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
+        if dev_access_token and len(dev_access_token) < 32:
+            raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
+        if self.davi_env == "production" and bind_host not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("production은 loopback 주소에만 바인딩할 수 있습니다")
+        if (
+            self.davi_env == "development"
+            and bind_host not in {"127.0.0.1", "localhost", "::1"}
+            and not dev_access_token
+        ):
+            raise ValueError("development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN이 필요합니다")
+        if self.davi_dev_rate_limit_requests <= 0:
+            raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_dev_rate_limit_window_seconds <= 0:
+            raise ValueError("DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
         return self
 
     @property

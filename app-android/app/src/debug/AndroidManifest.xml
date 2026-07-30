@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   디버그 전용 매니페스트. main 매니페스트와 병합되며, 여기 있는 설정은 릴리스에 들어가지 않는다.
-  로컬 개발 서버(평문 HTTP)에 붙기 위한 예외만 둔다 — 이유는 network_security_config.xml 주석에.
+  로컬 개발 서버(평문 HTTP)에 붙기 위한 예외만 둔다. network_security_config.xml은
+  build.gradle.kts가 검증된 debug 서버 host 하나를 넣어 생성한다.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:networkSecurityConfig="@xml/network_security_config" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
 </manifest>

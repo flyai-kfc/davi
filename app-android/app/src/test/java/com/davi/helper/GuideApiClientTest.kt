@@ -57,6 +57,39 @@ class GuideApiClientTest {
         assertFalse(body.contains("secret@example.com"))
     }
 
+    @Test
+    fun `adds the development access token header when configured`() {
+        val token = "t".repeat(32)
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+            ),
+        )
+
+        GuideApiClient(
+            server.url("/").toString(),
+            devAccessToken = token,
+        ).nextStep(sampleRequest())
+
+        assertEquals(token, server.takeRequest().getHeader("X-Davi-Dev-Token"))
+    }
+
+    @Test
+    fun `omits the development access token header when empty`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+            ),
+        )
+
+        GuideApiClient(
+            server.url("/").toString(),
+            devAccessToken = "   ",
+        ).nextStep(sampleRequest())
+
+        assertEquals(null, server.takeRequest().getHeader("X-Davi-Dev-Token"))
+    }
+
     /**
      * scroll은 서버가 "누를 게 없을 때" 실제로 돌려주는 액션이다.
      * 앱 enum에 이 값이 없던 시절 이 응답이 오면 파싱이 통째로 터졌다(이슈 #17).

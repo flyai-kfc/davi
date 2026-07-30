@@ -43,7 +43,7 @@ jobs:
               - 'app-android/app/src/main/java/com/davi/helper/Contract.kt'
 
   android:
-    name: Android (assembleDebug + test)
+    name: Android (debug/release APK + test)
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
@@ -76,8 +76,31 @@ jobs:
       - name: Gradle 셋업
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 빌드 + 단위 테스트
-        run: ./gradlew assembleDebug test
+      - name: debug/release 빌드 + 단위 테스트
+        run: ./gradlew assembleDebug assembleRelease test
+
+      - name: debug 평문 허용 host 제한
+        env:
+          DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          ./gradlew generateDebugNetworkSecurityConfig
+          config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
+          grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
+          grep -q '<domain includeSubdomains="false">192.168.1.2</domain>' "$config"
+          test "$(grep -c 'cleartextTrafficPermitted="true"' "$config")" -eq 1
+
+      - name: release에서 development 설정 거부
+        env:
+          DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "release 빌드 전에" <<<"$output"
 
   backend:
     name: Backend (ruff + pytest)
@@ -137,8 +160,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DAVI_EVAL_JUDGE_MODEL: ${{ vars.DAVI_EVAL_JUDGE_MODEL }}
-          DAVI_MODEL: ${{ vars.DAVI_MODEL }}
-        run: python judge.py
+          DAVI_MODEL_OPTIONAL: ${{ vars.DAVI_MODEL }}
+        run: |
+          if [ -n "$DAVI_MODEL_OPTIONAL" ]; then
+            export DAVI_MODEL="$DAVI_MODEL_OPTIONAL"
+          fi
+          python judge.py
 
   # 브랜치 보호의 필수 체크로 지정할 잡. 위 잡들이 조건부라 skipped가 되는데,
   # skipped는 필수 체크를 통과시키지 못하므로 여기서 한 번 집계한다.

@@ -36,10 +36,14 @@ uvicorn app.main:app --reload
 |---|---|---|
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
 | `DAVI_USE_STUB_LLM=false` | non-empty `GEMINI_API_KEY` 필수 | non-empty `GEMINI_API_KEY` 필수 |
-| `DAVI_DEV_ACCESS_TOKEN` | 허용(#57의 공용 개발 endpoint용) | 설정 시 기동 실패 |
+| `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
+| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 `0.0.0.0` | loopback만 허용 |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
 검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
+`DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
+토큰 없는 LAN 요청이 통과하지 않는다.
 모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
 
 `/health` 응답도 프로필에 따라 다르다.
@@ -56,31 +60,82 @@ production:
 {"status":"ok"}
 ```
 
-## 실기기 접속용 터널
+## 같은 Wi-Fi 공용 development 서버
 
-이번 사이클은 로컬 서버를 Cloudflare Quick Tunnel로 외부에 노출한다(`../SPEC.md` §7).
-먼저 위 절차로 서버를 `127.0.0.1:8000`에 실행하고, 다른 터미널에서 다음을 실행한다.
+전용 맥북과 Android debug 기기가 같은 사설 Wi-Fi에 있을 때만 쓰는 개발 경로다(#57).
+인터넷에 공개하지 않으며 production 실행·상시 무인 운영의 대체가 아니다.
 
-macOS(Homebrew):
+### 최초 한 번 준비
+
+1. `server/.env`에 실제 Gemini 설정을 둔다.
+
+   ```dotenv
+   DAVI_ENV=development
+   DAVI_USE_STUB_LLM=false
+   GEMINI_API_KEY=<서버에만 보관>
+   DAVI_MODEL=gemini-3.5-flash-lite
+   ```
+
+2. 32자 이상 임의 토큰을 만들고 **저장소 밖**에 저장한다.
+
+   ```bash
+   mkdir -p ~/.config/davi
+   python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
+   # 출력값을 아래 파일의 <token> 자리에 직접 붙인다.
+   printf 'DAVI_DEV_ACCESS_TOKEN=<token>\n' > ~/.config/davi/shared-dev.env
+   chmod 600 ~/.config/davi/shared-dev.env
+   ```
+
+   명령 이력에 실제 토큰을 인자로 넣지 않는다. 다른 경로를 쓰려면
+   `DAVI_SHARED_DEV_ENV_FILE`로 지정한다.
+   일회성 자동 검증에서는 이미 설정된 `DAVI_DEV_ACCESS_TOKEN` 환경변수가 파일보다 우선한다.
+   토큰을 명령행 인자로 직접 적지는 않는다.
+
+3. macOS **시스템 설정 → 네트워크 → 방화벽 → 옵션**에서
+   `server/.venv/bin/python`의 들어오는 연결을 허용한다. 사설 네트워크에서만 허용하고,
+   공유기의 게스트 Wi-Fi/AP isolation이 켜져 있으면 기기끼리 통신할 수 없으므로 해제한다.
+4. 시작 스크립트가 출력하는 사설 IPv4를 사용한다. 주소가 자주 바뀌면 공유기 관리 화면에서
+   맥북의 Wi-Fi MAC 주소에 DHCP 예약을 설정한다. 공유기마다 메뉴 이름은
+   `DHCP 예약`, `고정 할당`, `Address Reservation` 등으로 다르다.
+
+### 매일 아침 → 저녁
 
 ```bash
-brew install cloudflared
-cloudflared tunnel --url http://127.0.0.1:8000
+cd server
+./scripts/start-shared-dev.sh
+./scripts/status-shared-dev.sh
 ```
 
-출력된 `https://<랜덤>.trycloudflare.com` 주소로 다음을 확인한다.
-
-1. 실기기 브라우저에서 `<터널 URL>/health`를 열어 `{"status":"ok", ...}` 응답을 확인한다.
-2. `app-android/local.properties`의 `DAVI_SERVER_URL`에 터널 URL을 넣고 앱을 다시 빌드한다.
-3. 앱에서 요청을 보내 서버 콘솔의 `next_step` 로그 한 줄을 확인한다.
+시작 명령은 `.env`, Python 3.12 venv, 실제 LLM, 외부 토큰 파일 권한, 포트 충돌과 사설 IPv4를
+검사한 뒤 worker 하나를 `0.0.0.0:8000`에 띄운다. 출력된 값을 각 개발자의
+`app-android/local.properties`에 넣고 debug APK를 다시 빌드한다.
 
 ```properties
-DAVI_SERVER_URL=https://<랜덤>.trycloudflare.com
+DAVI_DEBUG_SERVER_URL=http://192.168.x.y:8000
+DAVI_DEBUG_ACCESS_TOKEN=<shared-dev.env와 같은 값>
 ```
 
-요청 로그에는 request ID, `package_name`, 요소 개수, `client_version`, HTTP 상태,
-처리 시간만 기록한다. `goal`, 화면 `label`, 최근 안내, 요청 본문, access token은 기록하지 않는다.
-Quick Tunnel URL은 실행할 때마다 바뀔 수 있으므로 재실행 후 앱 설정도 갱신한다.
+저녁에는 반드시 해당 스크립트가 기록한 PID만 종료한다. `pkill`은 쓰지 않는다.
+
+```bash
+cd server
+./scripts/stop-shared-dev.sh
+```
+
+PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
+PID·로그 파일은 600이다. 로그는 일 단위로 이어 쓰고 시작 시 7일보다 오래된 파일을 정리한다.
+요청 로그에는 request ID, 패키지명, 요소 개수, 클라이언트 버전, HTTP 상태와 처리 시간만 남긴다.
+목표·화면 label·최근 안내·요청 본문·API 키·개발 토큰은 기록하지 않는다.
+
+### 장애 확인 순서
+
+1. `./scripts/status-shared-dev.sh` — PID와 local health
+2. `curl http://127.0.0.1:8000/health` — `stub_llm:false` 확인
+3. 기기와 맥북이 같은 Wi-Fi인지, 게스트 네트워크/AP isolation이 아닌지 확인
+4. macOS 방화벽에서 `.venv/bin/python` 수신 허용 확인
+5. 앱을 다시 빌드했는지와 URL의 현재 사설 IPv4 확인
+6. HTTP 401이면 토큰 불일치, 429이면 `Retry-After`만큼 기다린다
+7. `server/.shared-dev/logs/<오늘>.log`에서 비식별 request ID와 상태 코드만 확인
 
 ## 검사
 

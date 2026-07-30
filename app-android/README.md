@@ -71,7 +71,7 @@ cd server; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 -
 # 2) 기기 -> 호스트 PC 포트 연결. 터널 대신 이걸 쓴다
 adb reverse tcp:8000 tcp:8000
 
-# 3) local.properties 에 DAVI_SERVER_URL=http://127.0.0.1:8000 을 넣고 설치
+# 3) local.properties 에 DAVI_DEBUG_SERVER_URL=http://127.0.0.1:8000 을 넣고 설치
 cd app-android; ./scripts/dev-install.ps1 -ClearLog
 ```
 
@@ -89,8 +89,9 @@ RPD 리셋은 한국시간 17:00이다(`../HANDOFF.md` §10). 확인이 끝나�
 
 **평문 HTTP는 디버그 빌드에서만 열려 있다.** targetSdk 36은 평문 통신을 기본 차단하므로
 `http://127.0.0.1:8000`으로 붙으면 `CLEARTEXT communication ... not permitted`로 막힌다.
-`app/src/debug/`의 `network_security_config.xml`이 로컬 주소(127.0.0.1 / localhost / 10.0.2.2)에만
-예외를 준다. **릴리스 빌드는 여전히 평문이 막혀 있다.**
+Gradle이 debug 빌드마다 `network_security_config.xml`을 생성해 실제 고정 endpoint의 host
+하나에만 평문을 열고, 그 host도 로컬 주소 또는 RFC1918 사설 IPv4 literal로 제한한다.
+**릴리스 빌드는 여전히 평문이 막혀 있다.**
 
 ### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
 
@@ -106,11 +107,28 @@ GuideSvc: session done goal=open camera app
 ## 설정 (local.properties — gitignore됨)
 ```properties
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
-# 서버 터널 URL. 없으면 기본값 http://10.0.2.2:8000 (에뮬레이터→호스트 PC).
-# 실기기는 cloudflared/ngrok 터널 URL을 넣는다(../server/README.md).
-DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
+# 없으면 기본값 http://10.0.2.2:8000 (에뮬레이터→호스트 PC).
+DAVI_DEBUG_SERVER_URL=http://192.168.x.y:8000
+# 같은 Wi-Fi 공용 development 서버가 요구하는 32자 이상 토큰.
+DAVI_DEBUG_ACCESS_TOKEN=<shared development token>
 ```
-`DAVI_SERVER_URL`은 `BuildConfig.SERVER_URL`로 주입된다. **API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
+
+두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
+`10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
+없다. 사설 Wi-Fi 주소에는 토큰이 필수다.
+공개 endpoint나 터널은 이 debug 개발 경로에서 허용하지 않으며, release에는 어느 개발 값도
+들어가지 않는다.
+
+일회성 자동 검증은 파일에 토큰을 기록하지 않도록 같은 이름의 환경변수를 사용할 수 있다.
+`local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
+개발 설정으로 취급한다.
+
+release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 빌드되고 평문 HTTP를
+거부한다. `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이
+남아 있으면 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
+**Gemini API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
+
+같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
 
 ## 구성
 | 경로 | 역할 |
@@ -130,7 +148,7 @@ DAVI_SERVER_URL=https://<your-tunnel>.trycloudflare.com
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
-- Gradle 구성(버전 카탈로그, viewBinding, `BuildConfig.SERVER_URL` 주입), 매니페스트, 접근성 서비스 등록.
+- Gradle 구성(버전 카탈로그, viewBinding, debug 전용 서버 URL·개발 토큰 주입), 매니페스트, 접근성 서비스 등록.
 - `MainActivity` + `GuideSession` — 두 권한이 있을 때만 목표를 입력해 안내를 시작·중지한다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
