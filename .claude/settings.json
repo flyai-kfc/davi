@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR/.claude/hooks/journal-check.ps1\"; exit $LASTEXITCODE",
+            "shell": "powershell",
+            "timeout": 90,
+            "asyncRewake": true,
+            "rewakeSummary": "팀 일지 기록 필요 판정",
+            "statusMessage": "팀 일지 마일스톤 판정 중"
+          }
+        ]
+      }
+    ]
+  }
+}
