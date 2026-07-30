@@ -33,10 +33,8 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private val stability = ScreenStabilityTracker()
 
-    /** 정체를 알릴 때 강조를 잃지 않도록 마지막 안내를 들고 있는다. */
-    private var lastGuide: Guide? = null
-
-    private data class Guide(val bounds: Rect?, val instruction: String)
+    /** 무엇이 보여야 하는지의 판정. 재표시·정체 접미사 규칙이 여기 있다(PR #63 리뷰 P1). */
+    private val display = GuideDisplayState()
 
     /** 이벤트가 없어도 도는 샘플러. 세션이 있는 동안에만 스스로 다시 예약한다(#39). */
     private val sampleRunnable = Runnable { sampleScreen() }
@@ -51,7 +49,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private val sessionListener = GuideSession.Listener { goal ->
         mainHandler.post {
             stability.reset()
-            lastGuide = null
+            display.reset()
             if (goal == null) {
                 mainHandler.removeCallbacks(sampleRunnable)
                 overlay?.clear()
@@ -107,8 +105,10 @@ class GuideAccessibilityService : AccessibilityService() {
         val root = ActiveWindowResolver.resolve(this)
         if (root == null) {
             // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
+            // 내용은 display가 기억한다 — 유효 화면으로 돌아오면 아래 redisplay가 되살린다.
             Log.w(TAG, "active root=null")
             overlay?.clear()
+            display.onCleared()
             scheduleSample(POLL_MS)
             return
         }
@@ -121,7 +121,19 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
-        when (stability.onSample(signature, now)) {
+        val decision = stability.onSample(signature, now)
+
+        // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
+        // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
+        // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
+        // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
+        // 단 **안정 판정 뒤에만** — 과도기(WAIT) 샘플의 서명으로 폐기하면 #32의 덜 그려진
+        // 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1).
+        display.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)?.let {
+            Log.i(TAG, "redisplay guide")
+            draw(it)
+        }
+        when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
                 // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).
                 Log.d(TAG, "settling pkg=${result.screen.packageName} elements=${result.screen.elements.size}")
@@ -152,15 +164,18 @@ class GuideAccessibilityService : AccessibilityService() {
      * 안내한 대로 했는데 화면이 그대로일 때. **서버를 다시 부르지 않는다** — 폴링이 곧 호출량이고
      * 무료 티어는 15 RPM이다(#39). 강조와 원래 안내는 그대로 두고 한 줄만 덧붙인다.
      * 동작을 새로 시키는 문장이 아니라서 "한 instruction에 두 동작" 금지(`HANDOFF.md` §3-14)에 걸리지 않는다.
+     * 상한 안내에는 접미사를 붙이지 않고 원문을 유지한다 — 덮어쓰지도, 잃지도 않는다(PR #63 리뷰 P1).
      *
      * 최종 문구는 안내 상태 표시(#29)에서 다시 정한다.
      */
     private fun showStuckNotice() {
-        val guide = lastGuide ?: return
-        overlay?.showGuide(
-            guide.bounds,
-            "${guide.instruction}\n${getString(R.string.guide_stuck)}",
-        )
+        display.stuckContent(getString(R.string.guide_stuck))?.let { draw(it) }
+    }
+
+    /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
+    private fun draw(content: GuideDisplayState.Content) {
+        val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
+        overlay?.showGuide(rect, content.text)
     }
 
     /** @return 요청이 실제로 시작됐는가. 시작하지 못했으면 호출자가 "보냈다"고 기록하면 안 된다. */
@@ -203,13 +218,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "instruction=${action.instruction}",
                         )
                         mainHandler.post {
-                            applyAction(
-                                screen,
-                                signature,
-                                action,
-                                result.response.screenSignature,
-                                session,
-                            )
+                            applyAction(screen, signature, result.response, session)
                         }
                     }
 
@@ -270,8 +279,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun applyAction(
         screen: Screen,
         requestSignature: String,
-        action: GuideAction,
-        screenSignature: String?,
+        response: NextStepResponse,
         session: GuideSession.Active,
     ) {
         if (!GuideSession.isCurrent(session.generation)) {
@@ -290,14 +298,37 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
+        val action = response.action
         if (action.actionType == ActionType.DONE) {
-            Log.i(TAG, "session done goal=${session.goal}")
-            GuideSession.stop() // 리스너가 오버레이를 지운다
+            when (GuideSession.onDone(session.generation, response.verified)) {
+                GuideSession.DoneOutcome.STOP ->
+                    Log.i(TAG, "session done goal=${session.goal}") // 리스너가 오버레이를 지운다
+
+                GuideSession.DoneOutcome.RETRY -> {
+                    // 완료 검증(#54)이 화면 근거를 못 찾은 done이다. 조기 종료일 수 있으니 세션을
+                    // 두고, 보낸 적 없는 화면으로 되돌려 백오프 뒤 같은 화면을 다시 묻는다(#55).
+                    // 이게 없으면 화면이 그대로인 한 다음 요청이 영영 없다 — 무시가 곧 정지다.
+                    // 이 백오프는 사실상 2초 고정이다 — 위 markSucceeded()가 failures를 매번
+                    // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
+                    stability.markFailed()
+                    Log.i(TAG, "done unverified, retry backoff=${stability.backoffMs()}ms")
+                }
+
+                GuideSession.DoneOutcome.LIMIT_REACHED -> {
+                    // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
+                    // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 문구는 #29에서 다시 정한다.
+                    // 이 안내는 STUCK 접미사 없이 유지되고, 지워져도 재표시된다(PR #63 리뷰 P1).
+                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
+                    draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
+                }
+
+                null -> Log.i(TAG, "stale response dropped goal=${session.goal}")
+            }
             return
         }
 
         GuideSession.recordInstruction(session.generation, action.instruction)
-        GuideSession.recordAction(session.generation, screenSignature, action)
+        GuideSession.recordAction(session.generation, response.screenSignature, action)
 
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
@@ -310,9 +341,8 @@ class GuideAccessibilityService : AccessibilityService() {
         } else {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
-        val rect = bounds?.let { Rect(it[0], it[1], it[2], it[3]) }
-        lastGuide = Guide(rect, action.instruction)
-        overlay?.showGuide(rect, action.instruction)
+        // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
+        draw(display.show(requestSignature, bounds, action.instruction))
     }
 
     private fun logScreen(result: UiTreeSerializer.Result) {
@@ -356,8 +386,12 @@ class GuideAccessibilityService : AccessibilityService() {
             eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
 
     override fun onInterrupt() {
+        // 시스템이 접근성 피드백 중단을 요청해도 서비스·세션은 계속 살 수 있다. root=null 경로와
+        // 같이 표시 상태도 함께 내려야 다음 유효 샘플이 재표시한다 — clear만 하면 display가
+        // "떠 있음"으로 남아 활성 세션의 오버레이가 영구히 빈다(PR #63 리뷰 3차 P1).
         Log.w(TAG, "interrupted")
         overlay?.clear()
+        display.onCleared()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {

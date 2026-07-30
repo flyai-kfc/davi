@@ -260,6 +260,94 @@ class GuideSessionTest {
         assertFalse(GuideSession.isCurrent(generation))
     }
 
+    // --- done 판정 (#55) --------------------------------------------------------
+    //
+    // `verified`는 계약에만 있고 소비되지 않았다 — done이면 검증과 무관하게 세션이 끝났다.
+    // 조기 종료를 막으라고 만든 필드이므로, 미검증 done은 세션 종료로 쓰지 않는다.
+
+    @Test
+    fun `검증된 done은 세션을 끝낸다`() {
+        GuideSession.start("카메라 열기")
+
+        val outcome = GuideSession.onDone(currentGeneration(), verified = true)
+
+        assertEquals(GuideSession.DoneOutcome.STOP, outcome)
+        assertFalse(GuideSession.isActive)
+    }
+
+    @Test
+    fun `미검증 done은 세션을 끝내지 않는다`() {
+        GuideSession.start("카메라 열기")
+
+        val outcome = GuideSession.onDone(currentGeneration(), verified = false)
+
+        assertEquals(GuideSession.DoneOutcome.RETRY, outcome)
+        assertTrue(GuideSession.isActive)
+    }
+
+    /** 상한에서도 done으로 끝내지 않는다 — 막힘을 성공으로 오인시킨다(C11과 같은 근거). */
+    @Test
+    fun `미검증 done이 상한에 닿으면 사용자에게 넘기고 세션은 유지된다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
+        assertEquals(GuideSession.DoneOutcome.LIMIT_REACHED, GuideSession.onDone(generation, false))
+        assertTrue(GuideSession.isActive)
+    }
+
+    /** 상한 뒤에 또 와도(화면이 바뀌어 재질의된 경우) 재시도로 되돌아가지 않는다. */
+    @Test
+    fun `상한 이후의 미검증 done도 사용자에게 넘긴다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        repeat(3) { GuideSession.onDone(generation, false) }
+
+        assertEquals(GuideSession.DoneOutcome.LIMIT_REACHED, GuideSession.onDone(generation, false))
+    }
+
+    /** 연속이 아니라 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다. */
+    @Test
+    fun `다른 안내가 표시되면 미검증 done 연속이 끊긴다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, false)
+        GuideSession.onDone(generation, false)
+
+        GuideSession.recordInstruction(generation, "카메라를 누르세요.")
+
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
+    }
+
+    /** 늦게 도착한 이전 세션의 done은 검증 여부와 무관하게 새 세션을 건드리면 안 된다. */
+    @Test
+    fun `이전 세대의 done은 판정하지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val stale = currentGeneration()
+        GuideSession.stop()
+        GuideSession.start("카메라 열기")
+
+        assertNull(GuideSession.onDone(stale, verified = true))
+        assertTrue(GuideSession.isActive)
+    }
+
+    @Test
+    fun `중지 후 다시 시작하면 미검증 done 카운트도 비워진다`() {
+        GuideSession.start("카메라 열기")
+        val before = currentGeneration()
+        GuideSession.onDone(before, false)
+        GuideSession.onDone(before, false)
+
+        GuideSession.stop()
+        GuideSession.start("카메라 열기")
+
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(currentGeneration(), false),
+        )
+    }
+
     @Test
     fun `리스너를 떼면 더 이상 받지 않는다`() {
         val seen = mutableListOf<String?>()
