@@ -27,9 +27,9 @@ uvicorn app.main:app --reload
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 
-`POST /v1/next-step`의 모든 응답에는 32자리 비식별 `X-Request-ID` 헤더가 붙는다.
-성공 응답도 이 값을 서버 로그의 `request_id`와 대조할 수 있으며, 오류 응답에서는 본문의
-`request_id`와도 같다. 응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
+`POST /v1/next-step`의 성공 응답과 앱 계약으로 분류해 반환하는 오류 응답에는 32자리 비식별
+`X-Request-ID` 헤더가 붙는다. 성공 응답도 이 값을 서버 로그의 `request_id`와 대조할 수 있으며,
+오류 응답에서는 본문의 `request_id`와도 같다. 응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
 향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
