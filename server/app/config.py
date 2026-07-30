@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,9 +33,16 @@ class Settings(BaseSettings):
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
 
+    @field_validator("gemini_api_key", mode="after")
+    @classmethod
+    def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
+        """검증한 키와 실제 HTTP 헤더에 쓰는 키가 같은 값이게 한다."""
+
+        return SecretStr(value.get_secret_value().strip())
+
     @model_validator(mode="after")
     def validate_runtime_profile(self) -> Self:
-        api_key = self.gemini_api_key.get_secret_value().strip()
+        api_key = self.gemini_api_key.get_secret_value()
         dev_access_token = self.davi_dev_access_token.get_secret_value().strip()
         bind_host = self.davi_bind_host.strip().lower()
         model = self.davi_model.strip()

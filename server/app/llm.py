@@ -9,6 +9,8 @@ development 스텁 덕에 키 없이도 서버가 뜨고 eval 하니스가 돈�
 
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import Mapping
 from functools import cache
 from typing import Any
@@ -32,6 +34,14 @@ from .schemas import (
 GUIDE_ACTION_SCHEMA = build_response_schema(GuideAction)
 _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _DEFAULT_RETRY_AFTER_SECONDS = 60
+# GuideAction은 짧은 JSON 한 객체다. 정상 응답의 여유는 충분히 두되 장문 폭주는 여기서 자른다.
+_MAX_OUTPUT_TOKENS = 1024
+_MAX_TOKENS_FINISH_REASON = "MAX_TOKENS"
+_DIRECTION_RETRY_INSTRUCTION = (
+    "이전 응답은 action_type이 scroll인데 direction이 빠져 유효하지 않았습니다. "
+    "direction을 up, down, left, right 중 하나로 반드시 포함해 JSON 객체 하나만 다시 반환하세요."
+)
+llm_logger = logging.getLogger("uvicorn.error.davi.llm")
 
 
 class LlmClient:
@@ -48,6 +58,10 @@ class _GeminiHttpError(Exception):
         super().__init__(f"Gemini API HTTP {status_code}")
         self.status_code = status_code
         self.retry_after_seconds = retry_after_seconds
+
+
+class _MissingScrollDirectionError(Exception):
+    """scroll 응답만 한 번 복구하기 위해 일반 파싱 실패와 구분하는 내부 예외."""
 
 
 class StubLlmClient(LlmClient):
@@ -114,24 +128,50 @@ class GeminiLlmClient(LlmClient):
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         prompt = build_prompt(req)
+        active_prompt = prompt
+        with_schema = True
         try:
-            response_text = self._call_once(prompt, with_schema=True)
+            response_text = self._call_once(active_prompt, with_schema=with_schema)
         except _GeminiHttpError as error:
             if error.status_code != 400:
                 raise self._to_llm_error(error) from error
             # Gemini가 responseSchema를 거부한 경우에만, 계약을 프롬프트로 옮겨 한 번 복구한다.
+            active_prompt = fallback_prompt(prompt, GUIDE_ACTION_SCHEMA)
+            with_schema = False
             try:
-                response_text = self._call_once(
-                    fallback_prompt(prompt, GUIDE_ACTION_SCHEMA),
-                    with_schema=False,
-                )
+                response_text = self._call_once(active_prompt, with_schema=with_schema)
             except _GeminiHttpError as fallback_error:
                 raise self._to_llm_error(fallback_error) from fallback_error
 
-        return self._parse_action(response_text)
+        try:
+            return self._parse_action(response_text)
+        except _MissingScrollDirectionError:
+            # 방향을 화면 상태로 추측하면 앞/뒤 의도를 바꿀 수 있다. 원문은 로그에 남기지 않고
+            # 같은 schema 모드로 한 번만 재요청해 비용과 지연을 제한한다.
+            llm_logger.warning("gemini_parse_recovery reason=scroll_direction_missing action=retry")
+            try:
+                retry_text = self._call_once(
+                    f"{active_prompt}\n\n{_DIRECTION_RETRY_INSTRUCTION}",
+                    with_schema=with_schema,
+                )
+            except _GeminiHttpError as retry_error:
+                raise self._to_llm_error(retry_error) from retry_error
+            try:
+                return self._parse_action(retry_text)
+            except _MissingScrollDirectionError as retry_parse_error:
+                llm_logger.warning(
+                    "gemini_parse_recovery reason=scroll_direction_missing action=fail"
+                )
+                raise LlmError(
+                    ErrorKind.PARSE,
+                    "Gemini scroll 응답에 direction이 없음 (1회 재시도 실패)",
+                ) from retry_parse_error
 
     def _call_once(self, prompt: str, *, with_schema: bool) -> str:
-        generation_config: dict[str, Any] = {"responseMimeType": "application/json"}
+        generation_config: dict[str, Any] = {
+            "responseMimeType": "application/json",
+            "maxOutputTokens": _MAX_OUTPUT_TOKENS,
+        }
         if with_schema:
             generation_config["responseSchema"] = GUIDE_ACTION_SCHEMA
         payload = {
@@ -158,8 +198,20 @@ class GeminiLlmClient(LlmClient):
 
     def _parse_action(self, response_text: str) -> GuideAction:
         try:
-            return GuideAction.model_validate_json(_strip_json_fence(response_text))
+            payload = json.loads(_strip_json_fence(response_text))
         except (ValueError, TypeError) as error:
+            llm_logger.warning("gemini_parse_error reason=invalid_json action=fail")
+            raise LlmError(ErrorKind.PARSE, "Gemini 응답이 GuideAction 계약과 맞지 않음") from error
+        if (
+            isinstance(payload, dict)
+            and payload.get("action_type") == ActionType.SCROLL
+            and not payload.get("direction")
+        ):
+            raise _MissingScrollDirectionError
+        try:
+            return GuideAction.model_validate(payload)
+        except (ValueError, TypeError) as error:
+            llm_logger.warning("gemini_parse_error reason=invalid_guide_action action=fail")
             raise LlmError(ErrorKind.PARSE, "Gemini 응답이 GuideAction 계약과 맞지 않음") from error
 
     @staticmethod
@@ -185,9 +237,16 @@ def _response_text(response: httpx.Response) -> str:
     try:
         payload = response.json()
         candidates = payload["candidates"]
-        parts = candidates[0]["content"]["parts"]
+        candidate = candidates[0]
+        if candidate.get("finishReason") == _MAX_TOKENS_FINISH_REASON:
+            llm_logger.warning("gemini_response_error reason=max_output_tokens action=fail")
+            raise LlmError(
+                ErrorKind.PARSE,
+                "Gemini 응답이 출력 토큰 상한에서 잘림",
+            )
+        parts = candidate["content"]["parts"]
         text = "".join(part["text"] for part in parts if "text" in part)
-    except (IndexError, KeyError, TypeError, ValueError) as error:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as error:
         raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
     if not text.strip():
         raise LlmError(ErrorKind.PARSE, "Gemini 응답 텍스트가 비어 있음")
