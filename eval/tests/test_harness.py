@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-import harness
 from harness import (
     FIXTURES,
     FixtureDocument,
     FixtureError,
+    _date_paths,
     _validation_locations,
     find_sensitive_paths,
     load_fixture,
@@ -79,6 +80,41 @@ def test_loader_rejects_unknown_or_coerced_input_fields(tmp_path: Path):
         load_fixture(path)
 
 
+def test_schema_date_field_allows_exact_iso_date(tmp_path: Path):
+    path = _write_fixture(tmp_path, "dated.json", _fixture_payload())
+
+    fixture = load_fixture(path)
+
+    assert fixture.document.source.captured_at.isoformat() == "2026-07-27"
+
+
+def test_iso_date_in_plain_string_field_is_not_exempt(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["description"] = "2026-07-27"
+    path = _write_fixture(tmp_path, "date-shaped-text.json", payload)
+
+    with pytest.raises(FixtureError) as raised:
+        load_fixture(path)
+
+    message = str(raised.value)
+    assert "2026-07-27" not in message
+    assert "$.description" in message
+    assert "민감 데이터" in message
+
+
+def test_date_paths_follow_validated_date_types_in_new_nested_fields():
+    typed_fixture = {
+        "source": {"captured_at": date(2026, 7, 27)},
+        "metadata": {"reviewed_at": date(2026, 7, 31)},
+        "description": "2026-07-31",
+    }
+
+    assert _date_paths(typed_fixture) == {
+        "$.source.captured_at",
+        "$.metadata.reviewed_at",
+    }
+
+
 @pytest.mark.parametrize(
     "sensitive",
     [
@@ -125,16 +161,11 @@ def test_sensitive_json_key_is_detected_without_exposing_key():
     assert sensitive_key not in " ".join(findings)
 
 
-def test_envelope_validation_location_redacts_sensitive_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_envelope_validation_location_redacts_sensitive_key(tmp_path: Path):
     sensitive_key = "contact@example.com"
     payload = _fixture_payload()
     payload[sensitive_key] = "safe"
     path = _write_fixture(tmp_path, "invalid-envelope.json", payload)
-    monkeypatch.setattr(
-        harness, "assert_no_sensitive_data", lambda *_args, **_kwargs: None
-    )
 
     with pytest.raises(FixtureError) as raised:
         load_fixture(path)

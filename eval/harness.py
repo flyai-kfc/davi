@@ -137,13 +137,19 @@ def run_fixture(payload: dict[str, Any]) -> dict[str, Any]:
     return resp.model_dump(mode="json")
 
 
-def find_sensitive_paths(value: Any) -> list[str]:
+def find_sensitive_paths(
+    value: Any,
+    *,
+    allowed_iso_date_paths: set[str] | None = None,
+) -> list[str]:
     """fixture JSON 전체에서 민감한 key와 값의 안전한 경로만 찾는다.
 
+    ISO 날짜는 호출자가 스키마 검증 결과로 확인한 날짜 필드에서만 예외로 허용한다.
     반환값과 예외에는 실제 값을 절대 포함하지 않는다.
     """
 
     findings: list[str] = []
+    allowed_dates = allowed_iso_date_paths or set()
 
     def visit(current: Any, path: str) -> None:
         if isinstance(current, dict):
@@ -159,8 +165,9 @@ def find_sensitive_paths(value: Any) -> list[str]:
             return
         if not isinstance(current, str):
             return
-        # 계좌번호 정규식은 YYYY-MM-DD도 잡는다. 스키마가 날짜로 검증하는 출처 필드만 예외다.
-        if path == "$.source.captured_at" and _ISO_DATE.fullmatch(current):
+        # 계좌번호 정규식은 YYYY-MM-DD도 잡는다. 경로 이름이 아니라 실제 스키마의 date 타입으로
+        # 확인된 필드만 예외로 둬서 일반 문자열 필드의 날짜 모양 PII를 놓치지 않는다.
+        if path in allowed_dates and _ISO_DATE.fullmatch(current):
             return
         if _is_sensitive_text(current):
             findings.append(path)
@@ -169,10 +176,22 @@ def find_sensitive_paths(value: Any) -> list[str]:
     return findings
 
 
-def assert_no_sensitive_data(value: Any, *, filename: str) -> None:
+def assert_no_sensitive_data(
+    value: Any,
+    *,
+    filename: str,
+    allowed_iso_date_paths: set[str] | None = None,
+) -> None:
     """민감한 원문을 숨긴 채 PII 검사 실패를 보고한다."""
 
-    paths = sorted(set(find_sensitive_paths(value)))
+    paths = sorted(
+        set(
+            find_sensitive_paths(
+                value,
+                allowed_iso_date_paths=allowed_iso_date_paths,
+            )
+        )
+    )
     if not paths:
         return
     joined = ", ".join(paths)
@@ -189,8 +208,6 @@ def load_fixture(path: Path) -> LoadedFixture:
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise FixtureError(f"{path.name}: JSON을 읽을 수 없음 (원문 생략)") from error
 
-    assert_no_sensitive_data(raw, filename=path.name)
-
     try:
         document = FixtureDocument.model_validate(raw)
     except ValidationError as error:
@@ -206,6 +223,16 @@ def load_fixture(path: Path) -> LoadedFixture:
         raise FixtureError(
             f"{path.name}: NextStepRequest 스키마 오류: {locations} (입력값 생략)"
         ) from error
+
+    # PII 스캔은 원본 JSON을 대상으로 하되, 날짜 예외는 검증된 모델의 실제 date 값에서 도출한다.
+    # FixtureDocument.input은 raw dict이므로 최신 요청 모델의 typed dump로 바꿔 함께 순회한다.
+    typed_fixture = document.model_dump(mode="python")
+    typed_fixture["input"] = request.model_dump(mode="python")
+    assert_no_sensitive_data(
+        raw,
+        filename=path.name,
+        allowed_iso_date_paths=_date_paths(typed_fixture),
+    )
 
     # Pydantic의 기본 동작은 알 수 없는 필드를 무시하고 일부 타입을 coercion한다. fixture가 조용히
     # 손실되지 않도록, 사용자가 실제로 적은 필드만 JSON 모드로 왕복해 바이트 타입까지 비교한다.
@@ -373,6 +400,27 @@ def _child_path(path: str, key: str) -> str:
     if not _SAFE_PATH_KEY.fullmatch(key) or _is_sensitive_text(key):
         return f"{path}.{_REDACTED_KEY}"
     return f"{path}.{key}"
+
+
+def _date_paths(value: Any) -> set[str]:
+    """검증된 Python 값에서 date 타입인 JSON 경로만 모은다."""
+
+    paths: set[str] = set()
+
+    def visit(current: Any, path: str) -> None:
+        if isinstance(current, date):
+            paths.add(path)
+            return
+        if isinstance(current, dict):
+            for key, child in current.items():
+                visit(child, _child_path(path, key))
+            return
+        if isinstance(current, list):
+            for index, child in enumerate(current):
+                visit(child, f"{path}[{index}]")
+
+    visit(value, "$")
+    return paths
 
 
 def _is_sensitive_text(value: str) -> bool:
