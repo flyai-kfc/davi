@@ -2,11 +2,15 @@ package com.davi.helper
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
+import android.view.ViewGroup
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import com.davi.helper.databinding.ActivityMainBinding
 
 /**
@@ -30,6 +34,24 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // targetSdk 35+는 edge-to-edge 강제라 manifest의 adjustResize만으로는 창이 안 줄어든다.
+        // 인셋을 **마진**으로 반영해 ScrollView 크기 자체를 줄인다 — 그래야 onSizeChanged가 불리고,
+        // "리사이즈 때 포커스된 뷰를 화면 안에 유지"하는 프레임워크 로직이 입력칸을 키보드 위로
+        // 올린다. 패딩 방식은 ScrollView의 가시 영역 계산이 패딩을 무시해 스크롤이 안 됐다
+        // (#78 — SM-S921N 실측: fitsSystemWindows·인셋 패딩·requestRectangleOnScreen 모두 실패).
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime(),
+            )
+            view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                leftMargin = bars.left
+                topMargin = bars.top
+                rightMargin = bars.right
+                bottomMargin = bars.bottom
+            }
+            WindowInsetsCompat.CONSUMED
+        }
 
         binding.btnAccessibility.setOnClickListener { openAccessibilitySettings() }
         binding.btnOverlay.setOnClickListener { openOverlaySettings() }
