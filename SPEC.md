@@ -213,7 +213,7 @@
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정. 원래 근거는 litellm(3.11+)이었으나 그건 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`(3.11+)를 쓴다. |
 | 서버 도구 | **pip + requirements.txt**, **ruff**(린트+포맷), **pytest** | 도구 설정은 `server/pyproject.toml`, 의존성은 `requirements*.txt`. 타입체커는 두지 않는다(필요해지면 mypy 추가). |
-| 평가 하니스 | **Python** (서버 코드 직접 import) | 픽스처 로더·PII 검사는 **API 키 없이 항상** 돈다. 실제 모델 호출과 LLM-judge는 키가 있을 때만(§8). `litellm`은 빠졌다 — judge도 `httpx`로 직접 붙였고, 평가 호출의 실패·출력 정책이 서비스 호출과 달라 서버 클라이언트를 재사용하지 않는다. |
+| 평가 하니스 | **Python** (서버 코드 직접 import) | 픽스처 로더·PII 검사는 **API 키 없이 항상** 돈다. 실제 모델 호출과 LLM-judge는 키가 있을 때만(§8). `litellm`은 빠졌다 — judge도 `httpx`로 직접 붙였고, 평가 호출의 실패·출력 정책이 서비스 호출과 달라 서버 클라이언트를 재사용하지 않는다. 단, 후보 텍스트 추출·출력 상한 종료 판별·JSON fence 제거는 순수 프로토콜 보조 로직으로 공유한다. |
 | 모델 | **gemini-3.5-flash-lite** (잠정) | **확정값이 아니라 개발용 기본값이다.** 모델 선택은 평가 체계(LLM-judge)가 서기 전에는 근거 없이 정할 수 없으므로, 그때까지 HANDOFF 인계값으로 개발하고 **이후 실험으로 확정**한다(§11). 코드 상수가 아니라 환경변수 `DAVI_MODEL`이라 교체 비용은 한 줄이다. |
 
 **워크스페이스 도구(pnpm/Turborepo)는 도입하지 않는다.** 관리할 JS 패키지가 0개다.

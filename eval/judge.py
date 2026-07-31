@@ -29,6 +29,11 @@ _SERVER = Path(__file__).resolve().parent.parent / "server"
 sys.path.insert(0, str(_SERVER))
 
 from app.config import settings
+from app.gemini_response import (
+    GeminiCandidateError,
+    extract_candidate_text,
+    strip_json_fence,
+)
 from app.gemini_schema import build_response_schema
 from app.prompt import build_prompt
 from app.reasoning import next_step
@@ -205,10 +210,11 @@ class GeminiEvalHttpClient:
             )
 
         try:
+            payload = response.json()
             return response_model.model_validate_json(
-                _strip_json_fence(_response_text(response))
+                strip_json_fence(extract_candidate_text(payload))
             )
-        except (TypeError, ValueError) as error:
+        except (GeminiCandidateError, TypeError, ValueError) as error:
             raise EvalJudgeError(
                 EvalErrorKind.PARSE,
                 "Gemini 선택 평가 응답이 구조화 계약과 맞지 않음",
@@ -372,34 +378,6 @@ def _validate_model_name(model: str) -> None:
             EvalErrorKind.CONFIGURATION,
             "선택 평가 모델 이름 형식 오류",
         )
-
-
-def _response_text(response: httpx.Response) -> str:
-    try:
-        payload = response.json()
-        parts = payload["candidates"][0]["content"]["parts"]
-        text = "".join(part["text"] for part in parts if "text" in part)
-    except (IndexError, KeyError, TypeError, ValueError) as error:
-        raise EvalJudgeError(
-            EvalErrorKind.PARSE,
-            "Gemini 선택 평가 응답에 텍스트 후보가 없음",
-        ) from error
-    if not text.strip():
-        raise EvalJudgeError(
-            EvalErrorKind.PARSE,
-            "Gemini 선택 평가 응답 텍스트가 비어 있음",
-        )
-    return text
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if not stripped.startswith("```"):
-        return stripped
-    lines = stripped.splitlines()
-    if len(lines) >= 3 and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1]).strip()
-    return stripped
 
 
 def main(argv: list[str] | None = None) -> int:

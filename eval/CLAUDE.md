@@ -12,6 +12,8 @@ Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증
   fixture에서 생략 가능해야 하며, 알 수 없는 필드가 조용히 버려지면 실패해야 한다.
 - 실제 후보 모델과 LLM judge는 `judge.py`의 별도 HTTP 경계로 호출한다. 키나 judge 모델이
   없으면 명시적으로 skip하고, 활성화된 실행의 HTTP·파싱 오류와 오답 판정은 실패한다.
+- HTTP·실패·출력 정책은 서버와 분리하되, Gemini 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON
+  fence 제거는 `server/app/gemini_response.py`의 순수 프로토콜 보조 로직을 공유한다.
 - 실기기 캡처는 사람이 먼저 익명화한다. 실제 개인정보, 원본 트리, `device_id`, API 키, 모델
   원문 응답을 저장소나 실행 로그에 남기지 않는다.
 

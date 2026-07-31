@@ -172,6 +172,8 @@ python3.12 judge.py
   `incorrect` 중 하나로 구조화 판정한다. 앞의 두 판정은 통과하고 `incorrect`는 실패한다.
 - 활성화한 실행에서 HTTP·네트워크·응답 파싱 오류가 나면 경고로 성공시키지 않고 종료 코드 1을
   반환한다.
+- 후보·judge HTTP 호출과 오류 보고 정책은 eval에 두고, Gemini 후보 텍스트 추출·출력 상한 종료
+  판별·JSON fence 제거만 서버의 순수 프로토콜 보조 로직과 공유한다.
 - API 키, 원본 화면 트리, 후보·judge의 원문 응답과 판정 reason은 출력하거나 저장하지 않는다.
   결과에는 fixture id, 후보의 action enum, judge verdict만 남긴다.
 - 화면 label과 후보·관측 안내는 모두 신뢰하지 않는 JSON 데이터 경계에 넣는다. judge의 시스템

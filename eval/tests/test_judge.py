@@ -18,13 +18,20 @@ from judge import (
 )
 
 
-def _gemini_response(payload: dict | str) -> httpx.Response:
+def _gemini_response(
+    payload: dict | str,
+    *,
+    finish_reason: str | None = None,
+) -> httpx.Response:
     text = (
         payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
     )
+    candidate = {"content": {"parts": [{"text": text}]}}
+    if finish_reason is not None:
+        candidate["finishReason"] = finish_reason
     return httpx.Response(
         200,
-        json={"candidates": [{"content": {"parts": [{"text": text}]}}]},
+        json={"candidates": [candidate]},
     )
 
 
@@ -353,6 +360,29 @@ def test_enabled_parse_error_is_failure_without_model_text(tmp_path: Path):
     assert report["status"] == "failed"
     failed = next(item for item in report["fixtures"] if item["status"] == "failed")
     assert failed["error"] == EvalErrorKind.PARSE.value
+    assert private_text not in serialized
+
+
+def test_enabled_max_tokens_is_parse_failure_without_model_text(tmp_path: Path):
+    _write_fixture(tmp_path)
+    private_text = '{"expected_result":"private truncated text"'
+
+    report = run_judge_suite(
+        _config(),
+        tmp_path,
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _: _gemini_response(
+                    private_text,
+                    finish_reason="MAX_TOKENS",
+                )
+            )
+        ),
+    )
+
+    serialized = json.dumps(report, ensure_ascii=False)
+    assert report["status"] == "failed"
+    assert report["fixtures"][0]["error"] == EvalErrorKind.PARSE.value
     assert private_text not in serialized
 
 
