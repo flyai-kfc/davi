@@ -106,6 +106,11 @@ if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
     throw GradleException("DAVI_DEBUG_ACCESS_TOKEN은 32자 이상이어야 합니다.")
 }
 
+// 도그푸딩 옵트인(#41 리뷰). true인 debug 빌드만 기기 해시를 계산·로그·전송한다.
+// 켜는 곳: 공기계(SM-S921N)용 빌드를 만드는 머신의 local.properties. 기본은 꺼짐 —
+// 서버 화이트리스트는 저장만 거를 뿐 전송 자체는 여기서만 막을 수 있다.
+val dogfoodOptIn = debugSetting("DAVI_DOGFOOD") == "true"
+
 val releaseServerUrl = "https://example.invalid"
 val generatedDebugNetworkSecurityDir =
     layout.buildDirectory.dir("generated/res/network-security/debug")
@@ -134,12 +139,14 @@ android {
         // release의 안전한 기본값. 실제 제품 endpoint는 별도 배포 이슈에서 정한다.
         buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
         buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
+        buildConfigField("boolean", "DOGFOOD_OPT_IN", "false")
     }
 
     buildTypes {
         debug {
             buildConfigField("String", "SERVER_URL", debugServerUrl.asBuildConfigString())
             buildConfigField("String", "DEV_ACCESS_TOKEN", debugAccessToken.asBuildConfigString())
+            buildConfigField("boolean", "DOGFOOD_OPT_IN", dogfoodOptIn.toString())
         }
         release {
             isMinifyEnabled = false

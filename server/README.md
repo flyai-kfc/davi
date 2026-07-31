@@ -144,6 +144,24 @@ PID·로그 파일은 600이다. 로그는 일 단위로 이어 쓰고 시작 �
 6. HTTP 401이면 토큰 불일치, 429이면 `Retry-After`만큼 기다린다
 7. `server/.shared-dev/logs/<오늘>.log`에서 비식별 request ID와 상태 코드만 확인
 
+## 도그푸딩 raw 보존 (#41)
+
+`DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만
+`DAVI_DOGFOOD_RAW_DIR`(기본 `server/.dogfood-raw/`, gitignore)에 요청+응답 봉투 JSON으로
+저장한다. **영구 보존**이며 자동 삭제가 없다 — 정리는 수동. 디렉터리는 0700, 파일은 0600으로
+생성한다(접근 범위 = 각 머신 소유자, SPEC §3). **LLM 단계의 실패 응답**(`LlmError` →
+4xx/5xx `ApiError`)도 저장한다 — 실패 화면이 픽스처의 주 수집 대상이다. 미들웨어에서 끊기는
+401/429는 엔드포인트에 도달하지 않아 저장되지 않는다. 운영 로그와 **별개 채널**이라 요청
+로그의 비식별 원칙은 그대로다(CLAUDE.md 실행 절).
+
+- 등록 값은 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)가 계산하는
+  `ANDROID_ID`의 SHA-256 앞 16자다. 접근성 서비스 연결 시 `adb logcat -s GuideSvc`의
+  `dogfoodDeviceId=`로 찍힌다. `adb shell settings get secure android_id`는 셸 스코프
+  값이라(Android 8+ 서명키별) 이 값을 얻을 수 없다.
+- 다른 debug 키스토어로 빌드하면 해시가 바뀐다. 화이트리스트가 리스트이니 새 값을 추가하면 된다.
+- 개인 기기는 옵트인하지도 등록하지도 않는다 — 공기계(SM-S921N)만(SPEC §3). 옵트인 없는
+  빌드와 release는 값을 계산하지도 보내지도 않는다.
+
 ## 검사
 
 ```bash
@@ -185,7 +203,8 @@ pytest
 - Gemini 실호출 스모크(2026-07-27) — `.env`의 `gemini-3.5-flash-lite`로 마스킹된 샘플 화면을 호출해
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
 - `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.
-  `should_store_raw()`는 동작하지만 **아직 호출하는 곳이 없다**(로그 저장 미구현).
+- `app/raw_store.py` — 도그푸딩 화이트리스트 왕복의 봉투 저장(#41). `/v1/next-step`이
+  `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 5건. 위 "도그푸딩 raw 보존" 절.
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,

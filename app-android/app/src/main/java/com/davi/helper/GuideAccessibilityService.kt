@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import java.util.concurrent.Executors
@@ -27,6 +28,9 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+
+    /** 도그푸딩 화이트리스트용 해시(#41). debug에서만 값이 있고 release는 항상 null이다. */
+    private var dogfoodDeviceId: String? = null
     private val apiExecutor = Executors.newSingleThreadExecutor()
     private val requestInFlight = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -66,11 +70,22 @@ class GuideAccessibilityService : AccessibilityService() {
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
         )
+        // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
+        // 막을 수 있다(#77 리뷰). null이면 로그에 '-'가 찍히고 요청 필드도 통째로 빠진다.
+        dogfoodDeviceId = if (BuildConfig.DOGFOOD_OPT_IN) {
+            DogfoodDeviceId.hash(
+                Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID),
+            )
+        } else {
+            null
+        }
         GuideSession.addListener(sessionListener)
+        // dogfoodDeviceId는 화이트리스트 등록의 유일한 추출 경로다(DogfoodDeviceId 참고).
         Log.i(
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
-                "overlayPermission=${overlay?.canDraw()}",
+                "overlayPermission=${overlay?.canDraw()} " +
+                "dogfoodDeviceId=${dogfoodDeviceId ?: "-"}",
         )
     }
 
@@ -200,6 +215,8 @@ class GuideAccessibilityService : AccessibilityService() {
                         NextStepRequest(
                             goal = session.goal,
                             screen = screen,
+                            // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
+                            deviceId = dogfoodDeviceId,
                             // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
                             recentInstructions = session.recentInstructions,
                             // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.

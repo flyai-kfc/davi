@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     davi_dev_rate_limit_requests: int = 10
     davi_dev_rate_limit_window_seconds: int = 60
 
-    # 도그푸딩 기기에서만 raw 트리 로그 보존(SPEC §3). 콤마 구분 device id.
+    # 도그푸딩 기기에서만 raw 트리 로그 보존(SPEC §3). 콤마 구분 device id(앱이 찍는 16자 해시).
     davi_dogfood_device_ids: str = ""
+    # raw 봉투 저장 위치(#41). 상대 경로는 server/ 루트 기준. 영구 보존, 정리는 수동.
+    davi_dogfood_raw_dir: str = ".dogfood-raw"
 
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
@@ -69,6 +71,8 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")
         if self.davi_dev_rate_limit_window_seconds <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
+        if not self.davi_dogfood_raw_dir.strip():
+            raise ValueError("DAVI_DOGFOOD_RAW_DIR은 비어 있을 수 없습니다")
         return self
 
     @property
