@@ -1,8 +1,8 @@
 # CLAUDE.md — eval (평가 하니스)
 
 Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증한다. **입력 회귀는 API 키 없이
-항상 돌고**, 실제 모델과 LLM judge는 키가 있을 때만 돈다. 층 구분은 `../SPEC.md` §8,
-공통 규칙은 루트 `../CLAUDE.md`.
+항상 돌고**, 실제 모델과 LLM judge는 별도 주간·수동 관측에서만 돈다. 층 구분은 `../SPEC.md`
+§8, 공통 규칙은 루트 `../CLAUDE.md`.
 
 ## 이 폴더의 책임
 
@@ -48,3 +48,14 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   시퀀스로 같은 화면·같은 행동 반복, 화면 변화, 행동 의미 변화, 세션 재시작을 키 없이 검증한다.
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
+
+## 실제 judge 운영 정책
+
+- PR과 일반 `main` CI의 필수 게이트는 키 없는 fixture·PII·fake LLM 회귀뿐이다. `judge.py`는
+  keyless skip 계약만 확인하며 secret을 주입하지 않는다.
+- 실제 후보 모델 + judge는 별도 `Eval judge observation` 워크플로에서 한국시간 월요일 09:00
+  주 1회와 `workflow_dispatch` 수동 실행으로만 돈다. PR에는 트리거되지 않아 병합을 막지 않는다.
+- `accepted` fixture를 이름순으로 최대 10개 실행한다. fixture당 후보 + judge 2회이므로 정상
+  완료 기준 실행당 최대 20회 호출이다. 상한 밖 fixture는 HTTP 호출 없이 skip한다.
+- HTTP·인증·파싱 실패와 `incorrect`는 관측 워크플로를 실패시켜 눈에 띄게 하되, 이 워크플로를
+  브랜치 보호의 필수 체크로 지정하지 않는다. 반복성과 표본이 쌓이기 전에는 PR 게이트로 올리지 않는다.

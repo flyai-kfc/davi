@@ -55,7 +55,11 @@ def _config(**overrides: str) -> JudgeConfig:
     return JudgeConfig(**values)
 
 
-def _fixture_payload(*, reference_status: str | None = "accepted") -> dict:
+def _fixture_payload(
+    *,
+    reference_status: str | None = "accepted",
+    fixture_id: str = "judge-test-screen",
+) -> dict:
     source = {
         "kind": "anonymized_real_device",
         "captured_at": "2026-07-27",
@@ -79,7 +83,7 @@ def _fixture_payload(*, reference_status: str | None = "accepted") -> dict:
             )
         source["observed_model_action_review"] = review
     return {
-        "id": "judge-test-screen",
+        "id": fixture_id,
         "description": "익명화된 평가 화면",
         "source": source,
         "input": {
@@ -104,9 +108,13 @@ def _write_fixture(
     directory: Path,
     *,
     reference_status: str | None = "accepted",
+    fixture_id: str = "judge-test-screen",
     name: str = "fixture.json",
 ) -> None:
-    payload = _fixture_payload(reference_status=reference_status)
+    payload = _fixture_payload(
+        reference_status=reference_status,
+        fixture_id=fixture_id,
+    )
     (directory / name).write_text(
         json.dumps(payload, ensure_ascii=False),
         encoding="utf-8",
@@ -168,6 +176,36 @@ def test_enabled_failure_report_returns_nonzero(
     report = json.loads(capsys.readouterr().out)
     assert exit_code == 1
     assert report["status"] == "failed"
+
+
+def test_cli_passes_fixture_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+):
+    captured: dict[str, int] = {}
+
+    def fake_suite(*_args, **kwargs):
+        captured["max_fixtures"] = kwargs["max_fixtures"]
+        return {
+            "status": "passed",
+            "summary": {"total": 0, "passed": 0, "failed": 0, "skipped": 0},
+        }
+
+    monkeypatch.setattr(judge, "run_judge_suite", fake_suite)
+
+    exit_code = main(
+        [
+            "--fixtures-dir",
+            str(tmp_path),
+            "--max-fixtures",
+            "3",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured == {"max_fixtures": 3}
+    assert json.loads(capsys.readouterr().out)["status"] == "passed"
 
 
 def test_real_candidate_and_judge_use_separate_structured_requests(tmp_path: Path):
@@ -290,6 +328,67 @@ def test_unaccepted_reference_skips_without_http(
         "passed": 0,
         "failed": 0,
         "skipped": 1,
+    }
+
+
+def test_max_fixtures_caps_accepted_references(tmp_path: Path):
+    _write_fixture(tmp_path, fixture_id="first-screen", name="a.json")
+    _write_fixture(tmp_path, fixture_id="second-screen", name="b.json")
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        body = json.loads(request.content)
+        if "systemInstruction" not in body:
+            return _gemini_response(_candidate_action())
+        return _gemini_response({"reason": "유효한 다음 단계", "verdict": "equivalent"})
+
+    report = run_judge_suite(
+        _config(),
+        tmp_path,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        max_fixtures=1,
+    )
+
+    assert len(requests) == 2
+    assert report["status"] == "passed"
+    assert report["summary"] == {
+        "total": 2,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 1,
+    }
+    assert report["fixtures"][1] == {
+        "id": "second-screen",
+        "status": "skipped",
+        "reason": "실행당 평가 fixture 상한",
+    }
+
+
+@pytest.mark.parametrize("max_fixtures", [0, 11])
+def test_invalid_max_fixtures_fails_without_http(
+    tmp_path: Path,
+    max_fixtures: int,
+):
+    called = False
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return _gemini_response({})
+
+    report = run_judge_suite(
+        _config(),
+        tmp_path,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        max_fixtures=max_fixtures,
+    )
+
+    assert called is False
+    assert report == {
+        "status": "failed",
+        "error": EvalErrorKind.CONFIGURATION.value,
+        "summary": {"total": 0, "passed": 0, "failed": 1, "skipped": 0},
     }
 
 

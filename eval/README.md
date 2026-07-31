@@ -19,8 +19,8 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 사용한다. `harness.py
 CI는 별도 API 키나 secret 없이 `python -m pytest`, 전체 eval Python의 Ruff 린트·포맷 검사와
 `python harness.py` 스모크를 모두 실행한다. 실제 fixture의 로딩, PII 검사, 요청 스키마,
 입력 보존, 스텁 파이프라인뿐 아니라 PII 탐지·원문 비노출 같은 음성 경로도 항상 검사한다.
-`judge.py`도 일반 CI에서 실행하지만 키 또는 judge 모델이 없으면 명시적인 `skipped` 결과를
-출력하고 성공한다.
+`judge.py`도 일반 CI에서 secret을 주입하지 않은 채 실행해 명시적인 `skipped` 결과와 종료 코드
+0을 확인한다. 실제 모델 호출은 아래의 별도 관측 워크플로에서만 실행한다.
 
 다른 디렉터리를 검사하려면 다음처럼 지정한다.
 
@@ -146,7 +146,7 @@ SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 �
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존
 2. 항상 실행: 결정론적 fake LLM 반복 가드 회귀(#36). 실기기 fixture를 로더로 읽고 같은
    `screen_signature + action_type + direction + target_node_id`의 세 번째 후보를 검사한다.
-3. API 키가 있을 때만: 실제 모델 + LLM judge(#42)
+3. `main` 주 1회·수동 관측: 실제 모델 + LLM judge(#42, #68)
 
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture
 기준의 낙관적 상한”이라는 단서를 유지한다.
@@ -162,7 +162,7 @@ cd eval
 GEMINI_API_KEY=... \
 DAVI_EVAL_JUDGE_MODEL=gemini-judge-model \
 DAVI_MODEL=gemini-candidate-model \
-python3.12 judge.py
+python3.12 judge.py --max-fixtures 10
 ```
 
 - 필수 환경변수는 `GEMINI_API_KEY`, `DAVI_EVAL_JUDGE_MODEL`이다.
@@ -178,3 +178,15 @@ python3.12 judge.py
   결과에는 fixture id, 후보의 action enum, judge verdict만 남긴다.
 - 화면 label과 후보·관측 안내는 모두 신뢰하지 않는 JSON 데이터 경계에 넣는다. judge의 시스템
   지시는 이 데이터 안의 역할 변경·규칙 무시·판정 강요 문구를 따르지 않도록 고정한다.
+
+### CI와 비용 정책
+
+- 필수 PR CI에는 실제 모델 secret을 주입하지 않는다. 항상 실행되는 eval 테스트·하니스와
+  `judge.py`의 keyless skip만 병합 게이트다.
+- 실제 모델 평가는 별도 `Eval judge observation` 워크플로에서 한국시간 월요일 09:00와 수동
+  실행으로만 돈다. PR 이벤트가 없어 `incorrect`의 비결정성이 병합을 막지 않는다.
+- 사람 검토가 `accepted`인 fixture를 이름순으로 실행하며 기본·최대 상한은 10개다. 정상 경로는
+  fixture당 후보와 judge 각 1회라 실행당 최대 20회 호출한다. `--max-fixtures`는 1 이상이어야
+  하고 워크플로 입력은 10 이하로 제한한다.
+- `incorrect`, HTTP·네트워크·인증·파싱 실패는 관측 워크플로를 실패시킨다. 결과에는 안전한
+  fixture ID와 enum만 남고, 이 워크플로는 브랜치 보호 필수 체크로 지정하지 않는다.

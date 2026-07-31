@@ -43,6 +43,7 @@ from harness import FIXTURES, FixtureError, ObservedModelAction, load_fixtures
 
 _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _SAFE_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_FIXTURES = 10
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 _JUDGE_SYSTEM_INSTRUCTION = """당신은 스마트폰 사용 안내의 품질을 채점하는 독립 평가자입니다.
@@ -265,6 +266,7 @@ def run_judge_suite(
     fixtures_dir: Path = FIXTURES,
     *,
     http_client: httpx.Client | None = None,
+    max_fixtures: int = _MAX_FIXTURES,
 ) -> dict[str, Any]:
     """실제 후보 모델과 judge를 실행하고 원문 없는 요약을 반환한다."""
 
@@ -278,6 +280,11 @@ def run_judge_suite(
         }
 
     try:
+        if not 1 <= max_fixtures <= _MAX_FIXTURES:
+            raise EvalJudgeError(
+                EvalErrorKind.CONFIGURATION,
+                f"선택 평가 fixture 상한은 1~{_MAX_FIXTURES}여야 함",
+            )
         _validate_model_name(config.candidate_model)
         _validate_model_name(config.judge_model)
         fixtures = load_fixtures(fixtures_dir)
@@ -296,6 +303,7 @@ def run_judge_suite(
     client = GeminiEvalHttpClient(config.api_key, http_client)
     candidate_client = _CandidateClient(client, config.candidate_model)
     results: list[dict[str, Any]] = []
+    evaluated_count = 0
     try:
         for fixture in fixtures:
             reference = fixture.document.source.observed_model_action
@@ -323,6 +331,16 @@ def run_judge_suite(
                     }
                 )
                 continue
+            if evaluated_count >= max_fixtures:
+                results.append(
+                    {
+                        "id": fixture.document.id,
+                        "status": "skipped",
+                        "reason": "실행당 평가 fixture 상한",
+                    }
+                )
+                continue
+            evaluated_count += 1
 
             try:
                 candidate = next_step(fixture.request, candidate_client).action
@@ -388,11 +406,18 @@ def main(argv: list[str] | None = None) -> int:
         default=FIXTURES,
         help="JSON fixture 디렉터리(기본: eval/fixtures)",
     )
+    parser.add_argument(
+        "--max-fixtures",
+        type=int,
+        default=_MAX_FIXTURES,
+        help=f"accepted fixture 실행 상한(1~{_MAX_FIXTURES}, 기본: {_MAX_FIXTURES})",
+    )
     args = parser.parse_args(argv)
 
     report = run_judge_suite(
         JudgeConfig.from_environment(),
         args.fixtures_dir,
+        max_fixtures=args.max_fixtures,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 1 if report["status"] == "failed" else 0
