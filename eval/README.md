@@ -50,6 +50,11 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
       "action_type": "tap",
       "target_node_id": "n8",
       "instruction": "실기기에서 관측한 익명화 안내"
+    },
+    "observed_model_action_review": {
+      "status": "accepted",
+      "reviewed_at": "2026-07-28",
+      "reviewed_in_pull_request": 43
     }
   },
   "input": {
@@ -79,6 +84,10 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
   구조화 이력이다. fixture는 세션 시작 화면이므로 빈 `recent_actions`를 명시하거나 생략할 수 있다.
 - `source.observed_model_action`은 실기기 실호출에서 관측한 구조화 메타데이터다. 원문 모델 응답을
   저장하는 곳이 아니며, 스텁 기대값으로 채점하지 않는다.
+- 관측 행동이 있으면 `source.observed_model_action_review`도 반드시 둔다. `unreviewed`는 아직
+  비교 기준으로 검토하지 않은 상태, `accepted`는 사람이 유효한 기준으로 확인한 상태,
+  `rejected`는 관측은 보존하되 기준으로 쓰지 않는 상태다. `accepted`와 `rejected`에는 검토 날짜와
+  검토가 기록된 PR 번호가 필요하며, judge는 `accepted`만 실제 호출 대상으로 삼는다.
 - 모든 fixture의 암묵적 기대값은 `PII 없음`, `fixture 형식 적합`, `NextStepRequest 적합`,
   `입력 보존`이다.
 - `expected.stub_outcome`은 `success` 또는 `error`다. 성공이면 구조적인 `action_type`, 오류면
@@ -128,8 +137,9 @@ SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 �
 제품 규칙이 아니라 특정 기기·설정에서 관측한 입력이다.
 
 새로 캡처한 세 구성은 실제 모델을 호출하지 않았으므로 `source.observed_model_action`을
-추측해 넣지 않았다. 키가 있는 judge 실행에서도 이 fixture들은 호출 없이 `skipped`되고, 실제
-관측 행동이 생긴 fixture만 후보 모델 + judge의 픽스처당 2회 호출 대상이 된다.
+추측해 넣지 않았다. 키가 있는 judge 실행에서도 이 fixture들은 호출 없이 `skipped`된다. 관측
+행동이 있더라도 사람 검토가 `accepted`로 끝난 fixture만 후보 모델 + judge의 픽스처당 2회 호출
+대상이 된다.
 
 ## 평가 계층
 

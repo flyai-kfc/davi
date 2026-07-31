@@ -16,6 +16,11 @@
       "action_type": "tap",
       "target_node_id": "n8",
       "instruction": "카메라 아이콘을 눌러주세요."
+    },
+    "observed_model_action_review": {
+      "status": "accepted",
+      "reviewed_at": "2026-07-28",
+      "reviewed_in_pull_request": 43
     }
   },
   "input": {

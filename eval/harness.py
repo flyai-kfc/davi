@@ -71,6 +71,29 @@ class ObservedModelAction(BaseModel):
     instruction: str | None = None
 
 
+class ObservedModelActionReview(BaseModel):
+    """관측 행동을 비교 기준으로 써도 되는지 사람이 검토한 상태."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["unreviewed", "accepted", "rejected"]
+    reviewed_at: date | None = None
+    reviewed_in_pull_request: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_review_provenance(self) -> ObservedModelActionReview:
+        has_provenance = (
+            self.reviewed_at is not None and self.reviewed_in_pull_request is not None
+        )
+        if self.status == "unreviewed" and (
+            self.reviewed_at is not None or self.reviewed_in_pull_request is not None
+        ):
+            raise ValueError("미검토 관측값에는 검토 근거를 쓸 수 없다")
+        if self.status != "unreviewed" and not has_provenance:
+            raise ValueError("검토된 관측값에는 검토 날짜와 PR 번호가 모두 필요하다")
+        return self
+
+
 class FixtureSource(BaseModel):
     """익명화 fixture의 출처와 사람이 확인할 관측 메타데이터."""
 
@@ -84,6 +107,15 @@ class FixtureSource(BaseModel):
     ui_version: str | None = None
     anonymization: list[str] = Field(default_factory=list)
     observed_model_action: ObservedModelAction | None = None
+    observed_model_action_review: ObservedModelActionReview | None = None
+
+    @model_validator(mode="after")
+    def validate_observation_review_pair(self) -> FixtureSource:
+        if (self.observed_model_action is None) != (
+            self.observed_model_action_review is None
+        ):
+            raise ValueError("관측 행동과 사람 검토 상태는 함께 있어야 한다")
+        return self
 
 
 class FixtureExpected(BaseModel):

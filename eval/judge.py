@@ -302,6 +302,21 @@ def run_judge_suite(
                     }
                 )
                 continue
+            review = fixture.document.source.observed_model_action_review
+            if review is None or review.status != "accepted":
+                reason = (
+                    "관측 기준 미검토"
+                    if review is None or review.status == "unreviewed"
+                    else "관측 기준 검토에서 제외됨"
+                )
+                results.append(
+                    {
+                        "id": fixture.document.id,
+                        "status": "skipped",
+                        "reason": reason,
+                    }
+                )
+                continue
 
             try:
                 candidate = next_step(fixture.request, candidate_client).action

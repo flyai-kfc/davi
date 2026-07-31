@@ -48,7 +48,7 @@ def _config(**overrides: str) -> JudgeConfig:
     return JudgeConfig(**values)
 
 
-def _fixture_payload(*, with_reference: bool = True) -> dict:
+def _fixture_payload(*, reference_status: str | None = "accepted") -> dict:
     source = {
         "kind": "anonymized_real_device",
         "captured_at": "2026-07-27",
@@ -56,12 +56,21 @@ def _fixture_payload(*, with_reference: bool = True) -> dict:
         "device_model": "test-device",
         "os_version": "test-os",
     }
-    if with_reference:
+    if reference_status is not None:
         source["observed_model_action"] = {
             "action_type": "tap",
             "target_node_id": "n8",
             "instruction": "카메라를 누르세요.",
         }
+        review = {"status": reference_status}
+        if reference_status != "unreviewed":
+            review.update(
+                {
+                    "reviewed_at": "2026-07-31",
+                    "reviewed_in_pull_request": 68,
+                }
+            )
+        source["observed_model_action_review"] = review
     return {
         "id": "judge-test-screen",
         "description": "익명화된 평가 화면",
@@ -87,10 +96,10 @@ def _fixture_payload(*, with_reference: bool = True) -> dict:
 def _write_fixture(
     directory: Path,
     *,
-    with_reference: bool = True,
+    reference_status: str | None = "accepted",
     name: str = "fixture.json",
 ) -> None:
-    payload = _fixture_payload(with_reference=with_reference)
+    payload = _fixture_payload(reference_status=reference_status)
     (directory / name).write_text(
         json.dumps(payload, ensure_ascii=False),
         encoding="utf-8",
@@ -207,7 +216,7 @@ def test_real_candidate_and_judge_use_separate_structured_requests(tmp_path: Pat
 
 
 def test_fixture_without_reference_skips_without_http(tmp_path: Path):
-    _write_fixture(tmp_path, with_reference=False)
+    _write_fixture(tmp_path, reference_status=None)
     called = False
 
     def handler(_: httpx.Request) -> httpx.Response:
@@ -232,6 +241,48 @@ def test_fixture_without_reference_skips_without_http(tmp_path: Path):
             }
         ],
         "summary": {"total": 1, "passed": 0, "failed": 0, "skipped": 1},
+    }
+
+
+@pytest.mark.parametrize(
+    ("reference_status", "reason"),
+    [
+        ("unreviewed", "관측 기준 미검토"),
+        ("rejected", "관측 기준 검토에서 제외됨"),
+    ],
+)
+def test_unaccepted_reference_skips_without_http(
+    tmp_path: Path,
+    reference_status: str,
+    reason: str,
+):
+    _write_fixture(tmp_path, reference_status=reference_status)
+    called = False
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return _gemini_response({})
+
+    report = run_judge_suite(
+        _config(),
+        tmp_path,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert called is False
+    assert report["fixtures"] == [
+        {
+            "id": "judge-test-screen",
+            "status": "skipped",
+            "reason": reason,
+        }
+    ]
+    assert report["summary"] == {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
     }
 
 

@@ -39,9 +39,9 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
 - **judge의 기준(`observed_model_action`)은 정답이 아니라 관측이다.** 실기기에서 모델이 실제로
   고른 것일 뿐 옳았다는 보장이 없다. #47의 구성별 런처 fixture는 실제 모델을 호출하지 않았으므로
   이 필드를 추측해 넣지 않는다. 기준이 없는 fixture는 `judge.py`가 호출 없이 skip한다.
-  **모델이 틀린 화면의 관측값을 넣기 시작하면 기준 자체가 틀린 경우가 생긴다.** 그때 올바른
-  후보가 틀린 기준과 다르다는 이유로 `incorrect`가 될 수 있다 — 그런 fixture를 처음 넣는
-  시점에 기준을 사람이 검토했는지 표시할 방법을 같이 정한다.
+  관측값이 있으면 `observed_model_action_review`를 함께 두고 `unreviewed`, `accepted`, `rejected`
+  중 하나로 사람 검토 상태를 명시한다. judge는 `accepted`만 비교 기준으로 사용하며 나머지는
+  호출 없이 skip한다. 검토 상태가 없는 관측값은 fixture 스키마 오류다.
 - `tests/test_repeat_guard.py`는 실기기 fixture를 #30 로더로 읽고, 문구만 다른 fake LLM
   시퀀스로 같은 화면·같은 행동 반복, 화면 변화, 행동 의미 변화, 세션 재시작을 키 없이 검증한다.
 

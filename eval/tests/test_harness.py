@@ -115,6 +115,44 @@ def test_date_paths_follow_validated_date_types_in_new_nested_fields():
     }
 
 
+def test_observed_action_requires_explicit_review_state(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action"] = {
+        "action_type": "tap",
+        "target_node_id": "n1",
+    }
+    path = _write_fixture(tmp_path, "missing-review.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
+def test_review_state_without_observed_action_is_rejected(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action_review"] = {"status": "unreviewed"}
+    path = _write_fixture(tmp_path, "review-without-action.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
+@pytest.mark.parametrize("status", ["accepted", "rejected"])
+def test_reviewed_observation_requires_date_and_pull_request(
+    tmp_path: Path,
+    status: str,
+):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action"] = {
+        "action_type": "tap",
+        "target_node_id": "n1",
+    }
+    payload["source"]["observed_model_action_review"] = {"status": status}
+    path = _write_fixture(tmp_path, f"{status}.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
 @pytest.mark.parametrize(
     "sensitive",
     [
@@ -221,8 +259,12 @@ def test_repository_one_page_home_preserves_complete_anonymized_tree():
 
     # 실호출 n8 선택은 source 관측값일 뿐, Stub exact-match 기대값이 아니다.
     observed = fixture.document.source.observed_model_action
+    review = fixture.document.source.observed_model_action_review
     assert observed is not None
+    assert review is not None
     assert observed.target_node_id == "n8"
+    assert review.status == "accepted"
+    assert review.reviewed_in_pull_request == 43
     assert "target_node_id" not in fixture.document.expected.model_fields_set
 
 
