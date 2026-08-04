@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "다시 말하기" 버튼. 목업은 채워진 버튼이 아니라 테두리만 있는 버튼이다. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/voice_bubble_bg" />
+            <stroke
+                android:width="@dimen/field_border_width"
+                android:color="@color/voice_field_border" />
+            <corners android:radius="@dimen/field_radius" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/white" />
+            <stroke
+                android:width="@dimen/field_border_width"
+                android:color="@color/voice_field_border" />
+            <corners android:radius="@dimen/field_radius" />
+        </shape>
+    </item>
+</selector>

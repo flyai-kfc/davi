@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 되묻기(SLOT_FILLING) 화면의 다비/사용자 말풍선 공통 배경. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/voice_bubble_bg" />
+    <corners android:radius="@dimen/field_radius" />
+</shape>

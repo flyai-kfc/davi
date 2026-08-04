@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 확인 카드 "아니요" 버튼 배경. 목업은 빨간 원 + 흰 X 아이콘(ic_close_white)을 겹쳐 쓴다. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="@color/voice_button_idle_pressed" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/voice_reject_bg" />
+        </shape>
+    </item>
+</selector>

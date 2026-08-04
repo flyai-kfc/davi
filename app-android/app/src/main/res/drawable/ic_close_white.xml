@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 표준 close(X) 글리프. 확인 카드의 "아니요" 원형 버튼 안에 흰색으로 그린다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18.3,5.71 L12,12.01 L5.7,5.71 L4.29,7.12 L10.59,13.42 L4.29,19.72 L5.7,21.13 L12,14.83 L18.3,21.13 L19.71,19.72 L13.41,13.42 L19.71,7.12z" />
+</vector>
