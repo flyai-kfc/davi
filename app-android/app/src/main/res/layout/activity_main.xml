@@ -1,102 +1,462 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  온보딩 화면. 시니어 대상이라 글자가 커지면 내용이 잘리기 쉬우므로 ScrollView로 감싼다
-  (시스템 글꼴을 최대로 키운 기기에서 버튼이 화면 밖으로 나가는 것을 막는다).
+  루트를 FrameLayout으로 감싸 두 레이어를 만든다: 기존 온보딩/목표입력 ScrollView(아래) +
+  음성 흐름 전체화면 오버레이(위, voice_fullscreen_overlay). 리스닝부터 확인까지는 인라인
+  위젯이 아니라 전체화면으로 보이게 해 스크롤 없이 "다음 페이지"처럼 넘어가는 느낌을 준다
+  (사용자 목업 피드백 반영).
 -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <!--
+      온보딩 화면. 시니어 대상이라 글자가 커지면 내용이 잘리기 쉬우므로 ScrollView로 감싼다
+      (시스템 글꼴을 최대로 키운 기기에서 버튼이 화면 밖으로 나가는 것을 막는다).
+    -->
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="@dimen/spacing">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-        <TextView
-            android:id="@+id/title"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/onboarding_title"
-            android:textSize="@dimen/text_title"
-            android:textStyle="bold" />
+            android:orientation="vertical"
+            android:padding="@dimen/spacing">
 
-        <TextView
-            android:id="@+id/body"
+            <!--
+              화면1: 대기(WF/VoiceButtonBefore). 제목+부제는 좌측 정렬, 탭하면
+              voice_fullscreen_overlay가 리스닝 상태로 뜬다.
+            -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/voice_idle_title"
+                android:textSize="@dimen/text_title"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_small"
+                android:text="@string/voice_idle_subtitle"
+                android:textSize="@dimen/text_body" />
+
+            <LinearLayout
+                android:id="@+id/voice_idle_view"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="@dimen/spacing"
+                android:paddingBottom="@dimen/spacing">
+
+                <ImageButton
+                    android:id="@+id/btn_voice_idle"
+                    android:layout_width="@dimen/voice_button_size"
+                    android:layout_height="@dimen/voice_button_size"
+                    android:background="@drawable/bg_circle_green"
+                    android:contentDescription="@string/voice_idle_label"
+                    android:elevation="6dp"
+                    android:src="@android:drawable/ic_btn_speak_now" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_small"
+                    android:text="@string/voice_idle_status"
+                    android:textSize="@dimen/text_body"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!--
+              온보딩(권한 설정)은 이 화면 담당이 아니다 — 다른 팀원이 별도 화면으로 만든다.
+              pfront 범위는 온보딩 이후의 메인 흐름(대기→리스닝→되묻기→최종 확인)뿐이라
+              여기엔 권한 관련 UI를 두지 않는다. 음성 흐름(화면1~4)이 유일한 시작 경로다.
+            -->
+            <Button
+                android:id="@+id/btn_stop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/btn_stop"
+                android:textSize="@dimen/text_button" />
+
+            <!--
+              개발자 전용 미리보기. 되묻기(SLOT_FILLING)·최종 확인 화면은 아직 실제 진입 조건
+              (missing_slots 판단, pback API)이 없어 이 버튼으로만 시각 검증한다. release
+              빌드에서는 MainActivity가 BuildConfig.DEBUG로 숨긴다.
+            -->
+            <LinearLayout
+                android:id="@+id/dev_preview_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/btn_dev_preview_slotfill"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/dev_preview_slotfill_button"
+                    android:textAllCaps="false"
+                    android:textSize="@dimen/text_body" />
+
+                <Button
+                    android:id="@+id/btn_dev_preview_confirm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_small"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/dev_preview_confirm_button"
+                    android:textAllCaps="false"
+                    android:textSize="@dimen/text_body" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!--
+      음성 흐름 전체화면 오버레이. 리스닝/되묻기/최종확인 세 상태 중 하나만 보이고,
+      나머지는 gone. 기본은 전체 gone(대기 화면만 보임). 세 화면 모두 같은 헤더
+      ("듣고 있어요"/"편하게 말씀해주세요")를 위에 두므로 각 화면 레이아웃에 그대로 반복한다
+      (TextView 2개뿐이라 별도 <include> 레이아웃을 만들 만큼은 아니다).
+    -->
+    <FrameLayout
+        android:id="@+id/voice_fullscreen_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <!--
+          화면2: 리스닝(WF/VoiceButtonListening). 되묻기(화면3)·최종확인(화면4)과 같은
+          채팅형 말풍선 스타일로 통일했다 — 헤더 → 다비(왼쪽, 펄스 인디케이터) →
+          실시간 받아쓰기(오른쪽, 화면을 채우듯 큰 글씨) → 다시 말하기 버튼.
+        -->
+        <FrameLayout
+            android:id="@+id/voice_listening_fullscreen"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing"
-            android:layout_marginBottom="@dimen/spacing"
-            android:lineSpacingMultiplier="1.3"
-            android:text="@string/onboarding_body"
-            android:textSize="@dimen/text_body" />
+            android:layout_height="match_parent"
+            android:background="@color/voice_confirm_screen_bg"
+            android:visibility="gone">
 
-        <Button
-            android:id="@+id/btn_accessibility"
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/voice_flow_header_title"
+                        android:textSize="@dimen/text_title"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_small"
+                        android:text="@string/voice_flow_header_subtitle"
+                        android:textSize="@dimen/text_body" />
+
+                    <!--
+                      "듣고 있다" 상태 표시. 다비의 대화 메시지가 아니라 상태 그래픽이라
+                      채팅 말풍선/아바타에 넣지 않는다(사용자 피드백) — 마이크 아이콘을
+                      중심에 두고 양옆에 음파 막대를 대칭으로 그려 통용되는 "녹음 중" 모양으로
+                      크게 보여준다. 막대는 실제 마이크 음량에 반응한다.
+                    -->
+                    <FrameLayout
+                        android:layout_width="@dimen/listening_wave_width"
+                        android:layout_height="@dimen/listening_wave_height"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="@dimen/spacing">
+
+                        <com.davi.helper.ListeningIndicatorView
+                            android:id="@+id/listening_indicator"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <ImageView
+                            android:layout_width="@dimen/listening_mic_icon_size"
+                            android:layout_height="@dimen/listening_mic_icon_size"
+                            android:layout_gravity="center"
+                            android:contentDescription="@string/voice_flow_header_title"
+                            android:src="@android:drawable/ic_btn_speak_now"
+                            android:tint="@color/voice_mascot_tint" />
+                    </FrameLayout>
+
+                    <!-- 실시간 받아쓰기: 사용자 쪽(오른쪽), 화면을 채우듯 크게. -->
+                    <TextView
+                        android:id="@+id/voice_partial_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:background="@drawable/bg_chat_bubble"
+                        android:lineSpacingMultiplier="1.3"
+                        android:minHeight="120dp"
+                        android:padding="@dimen/bubble_padding"
+                        android:text="@string/voice_listening_placeholder"
+                        android:textSize="@dimen/text_transcript_large"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_retry_listening"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:background="@drawable/bg_outline_button"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:minWidth="@dimen/touch_target_min"
+                        android:paddingStart="@dimen/spacing"
+                        android:paddingEnd="@dimen/spacing"
+                        android:text="@string/voice_retry_button"
+                        android:textSize="@dimen/text_button" />
+
+                </LinearLayout>
+            </ScrollView>
+        </FrameLayout>
+
+        <!--
+          화면3: 되묻기(SLOT_FILLING, PingPong). 다비 질문은 강아지 아바타+왼쪽 정렬 말풍선,
+          사용자 답변은 사람 실루엣+오른쪽 정렬 말풍선으로 구분한다. 실제 진입 조건
+          (missing_slots)은 아직 없어 개발자 미리보기 버튼으로만 뜬다.
+        -->
+        <FrameLayout
+            android:id="@+id/voice_slotfill_fullscreen"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="@dimen/touch_target_min"
-            android:text="@string/btn_open_accessibility"
-            android:textSize="@dimen/text_button" />
+            android:layout_height="match_parent"
+            android:background="@color/voice_confirm_screen_bg"
+            android:visibility="gone">
 
-        <Button
-            android:id="@+id/btn_overlay"
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/voice_flow_header_title"
+                        android:textSize="@dimen/text_title"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_small"
+                        android:text="@string/voice_flow_header_subtitle"
+                        android:textSize="@dimen/text_body" />
+
+                    <!-- 다비 질문: 강아지 아바타 + 왼쪽 정렬 말풍선. -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:gravity="top"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="@dimen/avatar_size"
+                            android:layout_height="@dimen/avatar_size"
+                            android:contentDescription="@string/mascot_dog_description"
+                            android:src="@drawable/ic_mascot_dog" />
+
+                        <TextView
+                            android:id="@+id/slotfill_question_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/spacing_small"
+                            android:background="@drawable/bg_chat_bubble"
+                            android:maxWidth="@dimen/bubble_max_width"
+                            android:padding="@dimen/bubble_padding"
+                            android:textSize="@dimen/text_confirm_question"
+                            android:textStyle="bold"
+                            tools:text="@string/voice_slotfill_demo_question" />
+                    </LinearLayout>
+
+                    <!-- 사용자 답변(요건 부족): 오른쪽 정렬 말풍선 + 사람 실루엣. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:gravity="top|end"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/slotfill_echo_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/spacing_small"
+                            android:background="@drawable/bg_chat_bubble"
+                            android:maxWidth="@dimen/bubble_max_width"
+                            android:padding="@dimen/bubble_padding"
+                            android:textColor="@color/voice_confirm_echo_text"
+                            android:textSize="@dimen/text_confirm_question"
+                            tools:text="@string/voice_slotfill_demo_echo" />
+
+                        <ImageView
+                            android:layout_width="@dimen/avatar_size"
+                            android:layout_height="@dimen/avatar_size"
+                            android:contentDescription="@string/user_avatar_description"
+                            android:src="@drawable/ic_user_silhouette" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btn_retry_slotfill"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:background="@drawable/bg_outline_button"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:minWidth="@dimen/touch_target_min"
+                        android:paddingStart="@dimen/spacing"
+                        android:paddingEnd="@dimen/spacing"
+                        android:text="@string/voice_retry_button"
+                        android:textSize="@dimen/text_button" />
+
+                </LinearLayout>
+            </ScrollView>
+        </FrameLayout>
+
+        <!-- 화면4: 최종 확인. 공통 헤더 + 질문/echo 카드 + 원형 X/O. -->
+        <FrameLayout
+            android:id="@+id/voice_confirm_fullscreen"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
-            android:text="@string/btn_open_overlay"
-            android:textSize="@dimen/text_button" />
+            android:layout_height="match_parent"
+            android:background="@color/voice_confirm_screen_bg"
+            android:visibility="gone">
 
-        <TextView
-            android:id="@+id/goal_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing"
-            android:labelFor="@+id/goal_input"
-            android:text="@string/goal_label"
-            android:textSize="@dimen/text_body"
-            android:textStyle="bold" />
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
-        <EditText
-            android:id="@+id/goal_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:autofillHints=""
-            android:hint="@string/goal_hint"
-            android:imeOptions="actionDone"
-            android:inputType="text"
-            android:minHeight="@dimen/touch_target_min"
-            android:textSize="@dimen/text_body" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing">
 
-        <Button
-            android:id="@+id/btn_start"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
-            android:text="@string/btn_start"
-            android:textSize="@dimen/text_button" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/voice_flow_header_title"
+                        android:textSize="@dimen/text_title"
+                        android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btn_stop"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
-            android:text="@string/btn_stop"
-            android:textSize="@dimen/text_button" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_small"
+                        android:text="@string/voice_flow_header_subtitle"
+                        android:textSize="@dimen/text_body" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:lineSpacingMultiplier="1.3"
-            android:text="@string/guide_hint"
-            android:textSize="@dimen/text_body" />
+                    <!-- 되묻기(화면3)와 같은 채팅형: 다비 질문(왼쪽 아바타+말풍선), 사용자 echo(오른쪽). -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:gravity="top"
+                        android:orientation="horizontal">
 
-    </LinearLayout>
+                        <ImageView
+                            android:layout_width="@dimen/avatar_size"
+                            android:layout_height="@dimen/avatar_size"
+                            android:contentDescription="@string/mascot_dog_description"
+                            android:src="@drawable/ic_mascot_dog" />
 
-</ScrollView>
+                        <TextView
+                            android:id="@+id/confirm_question_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/spacing_small"
+                            android:background="@drawable/bg_chat_bubble"
+                            android:lineSpacingMultiplier="1.3"
+                            android:maxWidth="@dimen/bubble_max_width"
+                            android:padding="@dimen/bubble_padding"
+                            android:textSize="@dimen/text_confirm_question"
+                            android:textStyle="bold"
+                            tools:text="카카오톡으로 지수님께 사진 보내는 게 맞나요?" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:gravity="top|end"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/confirm_echo_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/spacing_small"
+                            android:background="@drawable/bg_chat_bubble"
+                            android:maxWidth="@dimen/bubble_max_width"
+                            android:padding="@dimen/bubble_padding"
+                            android:textColor="@color/voice_confirm_echo_text"
+                            android:textSize="@dimen/text_confirm_question"
+                            tools:text="지수한테 사진 보내줘" />
+
+                        <ImageView
+                            android:layout_width="@dimen/avatar_size"
+                            android:layout_height="@dimen/avatar_size"
+                            android:contentDescription="@string/user_avatar_description"
+                            android:src="@drawable/ic_user_silhouette" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/btn_confirm_reject"
+                            android:layout_width="@dimen/confirm_choice_button_size"
+                            android:layout_height="@dimen/confirm_choice_button_size"
+                            android:layout_marginEnd="@dimen/spacing"
+                            android:background="@drawable/bg_circle_reject"
+                            android:clickable="true"
+                            android:contentDescription="@string/voice_confirm_reject"
+                            android:focusable="true"
+                            android:padding="20dp"
+                            android:src="@drawable/ic_close_white" />
+
+                        <View
+                            android:id="@+id/btn_confirm_accept"
+                            android:layout_width="@dimen/confirm_choice_button_size"
+                            android:layout_height="@dimen/confirm_choice_button_size"
+                            android:background="@drawable/bg_circle_accept"
+                            android:clickable="true"
+                            android:contentDescription="@string/voice_confirm_accept"
+                            android:focusable="true" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </ScrollView>
+        </FrameLayout>
+
+    </FrameLayout>
+
+</FrameLayout>
