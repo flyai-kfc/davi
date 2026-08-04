@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-import harness
 from harness import (
     FIXTURES,
     FixtureDocument,
     FixtureError,
+    _date_paths,
     _validation_locations,
     find_sensitive_paths,
     load_fixture,
@@ -79,6 +80,79 @@ def test_loader_rejects_unknown_or_coerced_input_fields(tmp_path: Path):
         load_fixture(path)
 
 
+def test_schema_date_field_allows_exact_iso_date(tmp_path: Path):
+    path = _write_fixture(tmp_path, "dated.json", _fixture_payload())
+
+    fixture = load_fixture(path)
+
+    assert fixture.document.source.captured_at.isoformat() == "2026-07-27"
+
+
+def test_iso_date_in_plain_string_field_is_not_exempt(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["description"] = "2026-07-27"
+    path = _write_fixture(tmp_path, "date-shaped-text.json", payload)
+
+    with pytest.raises(FixtureError) as raised:
+        load_fixture(path)
+
+    message = str(raised.value)
+    assert "2026-07-27" not in message
+    assert "$.description" in message
+    assert "민감 데이터" in message
+
+
+def test_date_paths_follow_validated_date_types_in_new_nested_fields():
+    typed_fixture = {
+        "source": {"captured_at": date(2026, 7, 27)},
+        "metadata": {"reviewed_at": date(2026, 7, 31)},
+        "description": "2026-07-31",
+    }
+
+    assert _date_paths(typed_fixture) == {
+        "$.source.captured_at",
+        "$.metadata.reviewed_at",
+    }
+
+
+def test_observed_action_requires_explicit_review_state(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action"] = {
+        "action_type": "tap",
+        "target_node_id": "n1",
+    }
+    path = _write_fixture(tmp_path, "missing-review.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
+def test_review_state_without_observed_action_is_rejected(tmp_path: Path):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action_review"] = {"status": "unreviewed"}
+    path = _write_fixture(tmp_path, "review-without-action.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
+@pytest.mark.parametrize("status", ["accepted", "rejected"])
+def test_reviewed_observation_requires_date_and_pull_request(
+    tmp_path: Path,
+    status: str,
+):
+    payload = _fixture_payload()
+    payload["source"]["observed_model_action"] = {
+        "action_type": "tap",
+        "target_node_id": "n1",
+    }
+    payload["source"]["observed_model_action_review"] = {"status": status}
+    path = _write_fixture(tmp_path, f"{status}.json", payload)
+
+    with pytest.raises(FixtureError, match="fixture 형식 오류"):
+        load_fixture(path)
+
+
 @pytest.mark.parametrize(
     "sensitive",
     [
@@ -125,16 +199,11 @@ def test_sensitive_json_key_is_detected_without_exposing_key():
     assert sensitive_key not in " ".join(findings)
 
 
-def test_envelope_validation_location_redacts_sensitive_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_envelope_validation_location_redacts_sensitive_key(tmp_path: Path):
     sensitive_key = "contact@example.com"
     payload = _fixture_payload()
     payload[sensitive_key] = "safe"
     path = _write_fixture(tmp_path, "invalid-envelope.json", payload)
-    monkeypatch.setattr(
-        harness, "assert_no_sensitive_data", lambda *_args, **_kwargs: None
-    )
 
     with pytest.raises(FixtureError) as raised:
         load_fixture(path)
@@ -190,8 +259,12 @@ def test_repository_one_page_home_preserves_complete_anonymized_tree():
 
     # 실호출 n8 선택은 source 관측값일 뿐, Stub exact-match 기대값이 아니다.
     observed = fixture.document.source.observed_model_action
+    review = fixture.document.source.observed_model_action_review
     assert observed is not None
+    assert review is not None
     assert observed.target_node_id == "n8"
+    assert review.status == "accepted"
+    assert review.reviewed_in_pull_request == 80
     assert "target_node_id" not in fixture.document.expected.model_fields_set
 
 
