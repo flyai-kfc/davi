@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  확인 카드 "네" 버튼. 목업은 초록 원 + 흰 링 + 초록 중심점의 타겟(과녁) 모양이라 아이콘
+  대신 레이어리스트 3겹으로 직접 그린다(별도 이미지 에셋 불필요).
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_button_idle_pressed" />
+                </shape>
+            </item>
+            <item android:bottom="8dp" android:left="8dp" android:right="8dp" android:top="8dp">
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/white" />
+                </shape>
+            </item>
+            <item android:bottom="20dp" android:left="20dp" android:right="20dp" android:top="20dp">
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_button_idle_pressed" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_accept_bg" />
+                </shape>
+            </item>
+            <item android:bottom="8dp" android:left="8dp" android:right="8dp" android:top="8dp">
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/white" />
+                </shape>
+            </item>
+            <item android:bottom="20dp" android:left="20dp" android:right="20dp" android:top="20dp">
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_accept_bg" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>

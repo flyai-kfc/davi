@@ -1,0 +1,22 @@
+<resources>
+    <!-- 화면1(대기) 원형 음성 버튼. 그라디언트 중심/가장자리 + 눌림 상태. -->
+    <color name="voice_button_idle_center">#66BB6A</color>
+    <color name="voice_button_idle_edge">#2E7D32</color>
+    <color name="voice_button_idle_pressed">#1B5E20</color>
+    <!-- 화면2(리스닝) 펄스 인디케이터 -->
+    <color name="voice_listening_pulse">#4CAF50</color>
+
+    <!-- 리스닝·되묻기·최종확인 전체화면 뒤 배경(채팅형 화면 공통). -->
+    <color name="voice_confirm_screen_bg">#F1F1F3</color>
+    <color name="voice_confirm_echo_text">#757575</color>
+    <color name="voice_reject_bg">#E53935</color>
+    <color name="voice_accept_bg">#43A047</color>
+
+    <!--
+      채팅형 말풍선 공통 배경. 화면 배경(voice_confirm_screen_bg, 연회색)과 대비되도록 흰색을
+      쓴다 — 둘 다 회색 계열이면 말풍선이 배경에 묻힌다.
+    -->
+    <color name="voice_bubble_bg">#FFFFFF</color>
+    <color name="voice_field_border">#CCCCCC</color>
+    <color name="voice_mascot_tint">#424242</color>
+</resources>

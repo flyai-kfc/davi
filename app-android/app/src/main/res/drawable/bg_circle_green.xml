@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  화면1(대기) 원형 음성 버튼 배경. 그라디언트만으로는 평면적이라, 아래쪽에 진한 색
+  "받침"을 살짝 남겨 튀어나온 실제 버튼처럼 보이게 한다(레이어리스트 2겹) — 사용자 피드백:
+  "마이크 버튼을 조금 더 3D로, 더 버튼같이". 눌리면 받침이 얇아져 눌린 느낌을 준다.
+  MainActivity의 scale 애니메이션과 함께 쓴다.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_button_idle_pressed" />
+                </shape>
+            </item>
+            <!--
+              위쪽 원. 좌우로 rim/2, 아래로 rim만큼 inset해야 정원 비율이 유지된다
+              (아래로만 inset하면 타원으로 찌그러진다) — 그 결과 아래쪽에 받침 색이
+              초승달 모양으로 가장 두껍게, 위쪽은 거의 안 보이게 남아 입체감을 준다.
+            -->
+            <item
+                android:bottom="3dp"
+                android:left="1.5dp"
+                android:right="1.5dp">
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_button_idle_edge" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <!-- 받침(그림자 역할). 항상 이 색이 아래쪽 테두리로 살짝 남는다. -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/voice_button_idle_edge" />
+                </shape>
+            </item>
+            <item
+                android:bottom="10dp"
+                android:left="5dp"
+                android:right="5dp">
+                <shape android:shape="oval">
+                    <gradient
+                        android:type="radial"
+                        android:gradientRadius="70%p"
+                        android:centerX="35%"
+                        android:centerY="30%"
+                        android:startColor="@color/voice_button_idle_center"
+                        android:endColor="@color/voice_button_idle_edge" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>
