@@ -73,6 +73,10 @@ POST /v1/intent/slot-fill
 
 ## 2. 동작 흐름
 
+**음성 입출력은 둘 다 Android 기본 API를 쓴다** — 입력은 `SpeechRecognizer`,
+출력은 `TextToSpeech`(외부 TTS 서비스를 쓰지 않는다). 읽어 주는 문장은 항상
+pback이 돌려준 `confirmation_question` 그대로이며, 앱이 다시 쓰지 않는다.
+
 ### 화면 1: 대기
 - pfront: 마이크 버튼만 표시
 
@@ -90,7 +94,7 @@ pback 응답:
 
 pfront이 할 것:
   1. 말풍선으로 confirmation_question 표시
-  2. TTS로 음성 읽기
+  2. TextToSpeech로 음성 읽기
   3. "네" / "아니요" 버튼 표시 + 음성 대기 (자동 인식 활성화)
   4. "네" 선택 → slots dict를 goal로 변환해 next_step() 파이프라인 시작
   5. "아니요" 선택 → 화면 2로 돌아가 처음부터 다시 시작 (새 session_id 발급)
@@ -104,7 +108,7 @@ pback 응답:
 
 pfront이 할 것:
   1. 말풍선으로 confirmation_question 표시
-  2. TTS로 음성 읽기
+  2. TextToSpeech로 음성 읽기
   3. 자동 음성 인식 재시작
   4. 사용자 답변을 받으면 conversation_history에 추가
   5. 다시 /v1/intent/slot-fill 호출
@@ -201,34 +205,18 @@ feature/pback-...  → pingpong PR → merge
 
 ---
 
-## 6. 배포 순서
+## 6. 머지 순서 — pback 먼저
 
-**현재 미정 — 함께 정하기:**
+```
+1. feature/pback-*  → pingpong merge   (엔드포인트가 먼저 존재하게)
+2. feature/pfront-* → pingpong merge   (그 엔드포인트를 호출)
+3. pingpong → main                     (제품 반영)
+```
 
-### 옵션 A: pback 먼저
-```
-1. pback PR merge (API 엔드포인트 활성화)
-2. pfront PR merge (엔드포인트 호출 시작)
-```
-→ 장점: 순차적, 롤백 쉬움
-→ 단점: pback 배포 후 대기
-
-### 옵션 B: 동시
-```
-1. pfront + pback PR merge 동시
-2. 동시 배포
-```
-→ 장점: 빠름
-→ 단점: 문제 시 원인 파악 어려움
-
-### 옵션 C: Feature Flag
-```
-1. pback PR merge (플래그 off)
-2. pfront PR merge
-3. 플래그 on
-```
-→ 장점: 안전
-→ 단점: 복잡함
+**pback을 앞에 두는 이유**는 프론트가 붙을 대상이 먼저 있어야 하기 때문이다.
+다만 pfront은 pback 머지를 기다리지 않는다 — `resolveIntent()` 한 함수 뒤에
+mock을 두고 화면 흐름부터 완성하고, 실제 호출은 그 함수 내부만 바꾼다.
+계약(§1)이 지켜지는 한 두 작업은 병렬로 간다.
 
 ---
 
@@ -249,11 +237,11 @@ feature/pback-...  → pingpong PR → merge
 
 ## 8. 애매한 부분 — 의견 주세요
 
-- [ ] **배포 순서**: 옵션 A/B/C 중 어느 것으로?
-- [ ] **상대 팀원 리뷰**: 필수? 아니면 선택?
+- [ ] **상대 팀원 리뷰**: 필수? 아니면 선택? (§4는 현재 "강제 아님")
 - [ ] **실기기 테스트 담당**: 둘 다? 한 명?
-- [ ] **Session 초기화 정책**: "아니요" 후 매번 새 ID? 같은 ID 재사용?
-- [ ] **대화 이력 보존**: 다음 세션에 넘길까? (현재: 세션 내만)
+
+확정되어 이 목록에서 내린 것 — 본문이 유일한 출처다.
+Session 초기화(§3) · 대화 이력 범위(§1) · 머지 순서(§6).
 
 ---
 
