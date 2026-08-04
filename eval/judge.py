@@ -29,6 +29,11 @@ _SERVER = Path(__file__).resolve().parent.parent / "server"
 sys.path.insert(0, str(_SERVER))
 
 from app.config import settings
+from app.gemini_response import (
+    GeminiCandidateError,
+    extract_candidate_text,
+    strip_json_fence,
+)
 from app.gemini_schema import build_response_schema
 from app.prompt import build_prompt
 from app.reasoning import next_step
@@ -38,6 +43,7 @@ from harness import FIXTURES, FixtureError, ObservedModelAction, load_fixtures
 
 _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _SAFE_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_FIXTURES = 10
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 _JUDGE_SYSTEM_INSTRUCTION = """당신은 스마트폰 사용 안내의 품질을 채점하는 독립 평가자입니다.
@@ -205,10 +211,11 @@ class GeminiEvalHttpClient:
             )
 
         try:
+            payload = response.json()
             return response_model.model_validate_json(
-                _strip_json_fence(_response_text(response))
+                strip_json_fence(extract_candidate_text(payload))
             )
-        except (TypeError, ValueError) as error:
+        except (GeminiCandidateError, TypeError, ValueError) as error:
             raise EvalJudgeError(
                 EvalErrorKind.PARSE,
                 "Gemini 선택 평가 응답이 구조화 계약과 맞지 않음",
@@ -259,8 +266,16 @@ def run_judge_suite(
     fixtures_dir: Path = FIXTURES,
     *,
     http_client: httpx.Client | None = None,
+    max_fixtures: int = _MAX_FIXTURES,
 ) -> dict[str, Any]:
     """실제 후보 모델과 judge를 실행하고 원문 없는 요약을 반환한다."""
+
+    if not 1 <= max_fixtures <= _MAX_FIXTURES:
+        return {
+            "status": "failed",
+            "error": EvalErrorKind.CONFIGURATION.value,
+            "summary": {"total": 0, "passed": 0, "failed": 1, "skipped": 0},
+        }
 
     missing = config.missing_environment
     if missing:
@@ -290,6 +305,7 @@ def run_judge_suite(
     client = GeminiEvalHttpClient(config.api_key, http_client)
     candidate_client = _CandidateClient(client, config.candidate_model)
     results: list[dict[str, Any]] = []
+    evaluated_count = 0
     try:
         for fixture in fixtures:
             reference = fixture.document.source.observed_model_action
@@ -302,6 +318,31 @@ def run_judge_suite(
                     }
                 )
                 continue
+            review = fixture.document.source.observed_model_action_review
+            if review is None or review.status != "accepted":
+                reason = (
+                    "관측 기준 미검토"
+                    if review is None or review.status == "unreviewed"
+                    else "관측 기준 검토에서 제외됨"
+                )
+                results.append(
+                    {
+                        "id": fixture.document.id,
+                        "status": "skipped",
+                        "reason": reason,
+                    }
+                )
+                continue
+            if evaluated_count >= max_fixtures:
+                results.append(
+                    {
+                        "id": fixture.document.id,
+                        "status": "skipped",
+                        "reason": "실행당 평가 fixture 상한",
+                    }
+                )
+                continue
+            evaluated_count += 1
 
             try:
                 candidate = next_step(fixture.request, candidate_client).action
@@ -359,34 +400,6 @@ def _validate_model_name(model: str) -> None:
         )
 
 
-def _response_text(response: httpx.Response) -> str:
-    try:
-        payload = response.json()
-        parts = payload["candidates"][0]["content"]["parts"]
-        text = "".join(part["text"] for part in parts if "text" in part)
-    except (IndexError, KeyError, TypeError, ValueError) as error:
-        raise EvalJudgeError(
-            EvalErrorKind.PARSE,
-            "Gemini 선택 평가 응답에 텍스트 후보가 없음",
-        ) from error
-    if not text.strip():
-        raise EvalJudgeError(
-            EvalErrorKind.PARSE,
-            "Gemini 선택 평가 응답 텍스트가 비어 있음",
-        )
-    return text
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if not stripped.startswith("```"):
-        return stripped
-    lines = stripped.splitlines()
-    if len(lines) >= 3 and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1]).strip()
-    return stripped
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -395,11 +408,18 @@ def main(argv: list[str] | None = None) -> int:
         default=FIXTURES,
         help="JSON fixture 디렉터리(기본: eval/fixtures)",
     )
+    parser.add_argument(
+        "--max-fixtures",
+        type=int,
+        default=_MAX_FIXTURES,
+        help=f"accepted fixture 실행 상한(1~{_MAX_FIXTURES}, 기본: {_MAX_FIXTURES})",
+    )
     args = parser.parse_args(argv)
 
     report = run_judge_suite(
         JudgeConfig.from_environment(),
         args.fixtures_dir,
+        max_fixtures=args.max_fixtures,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 1 if report["status"] == "failed" else 0

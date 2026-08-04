@@ -19,6 +19,12 @@ import httpx
 
 from .config import settings
 from .errors import LlmError
+from .gemini_response import (
+    GeminiCandidateError,
+    GeminiCandidateErrorReason,
+    extract_candidate_text,
+    strip_json_fence,
+)
 from .gemini_schema import build_response_schema
 from .prompt import build_prompt, fallback_prompt
 from .schemas import (
@@ -36,7 +42,6 @@ _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _DEFAULT_RETRY_AFTER_SECONDS = 60
 # GuideAction은 짧은 JSON 한 객체다. 정상 응답의 여유는 충분히 두되 장문 폭주는 여기서 자른다.
 _MAX_OUTPUT_TOKENS = 1024
-_MAX_TOKENS_FINISH_REASON = "MAX_TOKENS"
 _DIRECTION_RETRY_INSTRUCTION = (
     "이전 응답은 action_type이 scroll인데 direction이 빠져 유효하지 않았습니다. "
     "direction을 up, down, left, right 중 하나로 반드시 포함해 JSON 객체 하나만 다시 반환하세요."
@@ -198,7 +203,7 @@ class GeminiLlmClient(LlmClient):
 
     def _parse_action(self, response_text: str) -> GuideAction:
         try:
-            payload = json.loads(_strip_json_fence(response_text))
+            payload = json.loads(strip_json_fence(response_text))
         except (ValueError, TypeError) as error:
             llm_logger.warning("gemini_parse_error reason=invalid_json action=fail")
             raise LlmError(ErrorKind.PARSE, "Gemini 응답이 GuideAction 계약과 맞지 않음") from error
@@ -236,21 +241,21 @@ class GeminiLlmClient(LlmClient):
 def _response_text(response: httpx.Response) -> str:
     try:
         payload = response.json()
-        candidates = payload["candidates"]
-        candidate = candidates[0]
-        if candidate.get("finishReason") == _MAX_TOKENS_FINISH_REASON:
+    except ValueError as error:
+        raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
+
+    try:
+        return extract_candidate_text(payload)
+    except GeminiCandidateError as error:
+        if error.reason is GeminiCandidateErrorReason.MAX_TOKENS:
             llm_logger.warning("gemini_response_error reason=max_output_tokens action=fail")
             raise LlmError(
                 ErrorKind.PARSE,
                 "Gemini 응답이 출력 토큰 상한에서 잘림",
-            )
-        parts = candidate["content"]["parts"]
-        text = "".join(part["text"] for part in parts if "text" in part)
-    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as error:
+            ) from error
+        if error.reason is GeminiCandidateErrorReason.EMPTY_TEXT:
+            raise LlmError(ErrorKind.PARSE, "Gemini 응답 텍스트가 비어 있음") from error
         raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
-    if not text.strip():
-        raise LlmError(ErrorKind.PARSE, "Gemini 응답 텍스트가 비어 있음")
-    return text
 
 
 def _retry_after_seconds(headers: Mapping[str, str]) -> int | None:
@@ -261,18 +266,6 @@ def _retry_after_seconds(headers: Mapping[str, str]) -> int | None:
         return max(0, int(value))
     except ValueError:
         return None
-
-
-def _strip_json_fence(text: str) -> str:
-    """무스키마 폴백에서 모델이 드물게 붙이는 Markdown fence를 허용한다."""
-
-    stripped = text.strip()
-    if not stripped.startswith("```"):
-        return stripped
-    lines = stripped.splitlines()
-    if len(lines) >= 3 and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1]).strip()
-    return stripped
 
 
 @cache

@@ -37,6 +37,7 @@ jobs:
               - 'server/**'
               - 'eval/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/eval-judge.yml'
               # 앱의 계약 파일이 바뀌어도 백엔드 잡을 돌린다.
               # test_contract_drift.py 가 이 파일을 읽어 서버 enum과 대조하기 때문이다.
               # 이게 없으면 앱만 고친 PR에서 드리프트 검사가 통째로 건너뛰어진다.
@@ -154,18 +155,13 @@ jobs:
         working-directory: eval
         run: python harness.py
 
-      # 키나 judge 모델이 없으면 명시적 skip(성공), 둘 다 있으면 실제 모델 + judge를 실행한다.
-      - name: eval LLM judge (선택)
+      # 필수 PR CI는 외부 모델의 비결정성·비용에 의존하지 않는다. CLI의 keyless skip 계약만 검사한다.
+      - name: eval LLM judge 키 없는 스모크
         working-directory: eval
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DAVI_EVAL_JUDGE_MODEL: ${{ vars.DAVI_EVAL_JUDGE_MODEL }}
-          DAVI_MODEL_OPTIONAL: ${{ vars.DAVI_MODEL }}
-        run: |
-          if [ -n "$DAVI_MODEL_OPTIONAL" ]; then
-            export DAVI_MODEL="$DAVI_MODEL_OPTIONAL"
-          fi
-          python judge.py
+          GEMINI_API_KEY: ''
+          DAVI_EVAL_JUDGE_MODEL: ''
+        run: python judge.py
 
   # 브랜치 보호의 필수 체크로 지정할 잡. 위 잡들이 조건부라 skipped가 되는데,
   # skipped는 필수 체크를 통과시키지 못하므로 여기서 한 번 집계한다.
