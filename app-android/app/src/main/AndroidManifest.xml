@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 설정 앱 등 오버레이 불가 화면에서 헤드업 알림 폴백(HANDOFF §3-1) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 화면1→2 음성 질의 인식(SpeechRecognizer) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="false"
