@@ -159,6 +159,31 @@ def test_keyless_cli_skip_is_success(
     assert report["status"] == "skipped"
 
 
+@pytest.mark.parametrize("max_fixtures", ["0", "11"])
+def test_keyless_cli_rejects_invalid_fixture_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+    max_fixtures: str,
+):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("DAVI_EVAL_JUDGE_MODEL", raising=False)
+
+    exit_code = main(
+        [
+            "--fixtures-dir",
+            str(tmp_path),
+            "--max-fixtures",
+            max_fixtures,
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert report["status"] == "failed"
+    assert report["error"] == EvalErrorKind.CONFIGURATION.value
+
+
 def test_enabled_failure_report_returns_nonzero(
     monkeypatch: pytest.MonkeyPatch, capsys
 ):

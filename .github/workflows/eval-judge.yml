@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       max_fixtures:
-        description: 'accepted fixture 실행 상한(1~10)'
+        description: 'accepted fixture 실행 상한(생략 시 judge.py 기본값)'
         required: false
-        default: '10'
 
 permissions:
   contents: read
@@ -46,18 +45,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DAVI_EVAL_JUDGE_MODEL: ${{ vars.DAVI_EVAL_JUDGE_MODEL }}
           DAVI_MODEL_OPTIONAL: ${{ vars.DAVI_MODEL }}
-          MAX_FIXTURES: ${{ inputs.max_fixtures || '10' }}
+          MAX_FIXTURES: ${{ inputs.max_fixtures }}
         run: |
           if [ -z "$GEMINI_API_KEY" ] || [ -z "$DAVI_EVAL_JUDGE_MODEL" ]; then
             echo "::error::실제 judge 관측에 필요한 secret 또는 model variable이 없습니다."
             exit 1
           fi
-          if ! [[ "$MAX_FIXTURES" =~ ^[0-9]+$ ]] \
-            || [ "$MAX_FIXTURES" -lt 1 ] || [ "$MAX_FIXTURES" -gt 10 ]; then
-            echo "::error::max_fixtures는 1~10이어야 합니다."
-            exit 1
-          fi
           if [ -n "$DAVI_MODEL_OPTIONAL" ]; then
             export DAVI_MODEL="$DAVI_MODEL_OPTIONAL"
           fi
-          python judge.py --max-fixtures "$MAX_FIXTURES"
+          if [ -n "$MAX_FIXTURES" ]; then
+            python judge.py --max-fixtures "$MAX_FIXTURES"
+          else
+            python judge.py
+          fi

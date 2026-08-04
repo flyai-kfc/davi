@@ -440,6 +440,8 @@ def _date_paths(value: Any) -> set[str]:
     paths: set[str] = set()
 
     def visit(current: Any, path: str) -> None:
+        # datetime도 date의 하위 타입이지만 시간부가 붙은 ISO 값은 날짜 전용 fullmatch 예외를
+        # 통과하지 않으므로 민감 데이터 검사 범위가 넓어지지 않는다.
         if isinstance(current, date):
             paths.add(path)
             return

@@ -264,7 +264,7 @@ def test_repository_one_page_home_preserves_complete_anonymized_tree():
     assert review is not None
     assert observed.target_node_id == "n8"
     assert review.status == "accepted"
-    assert review.reviewed_in_pull_request == 43
+    assert review.reviewed_in_pull_request == 80
     assert "target_node_id" not in fixture.document.expected.model_fields_set
 
 

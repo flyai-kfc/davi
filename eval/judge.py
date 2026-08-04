@@ -270,6 +270,13 @@ def run_judge_suite(
 ) -> dict[str, Any]:
     """실제 후보 모델과 judge를 실행하고 원문 없는 요약을 반환한다."""
 
+    if not 1 <= max_fixtures <= _MAX_FIXTURES:
+        return {
+            "status": "failed",
+            "error": EvalErrorKind.CONFIGURATION.value,
+            "summary": {"total": 0, "passed": 0, "failed": 1, "skipped": 0},
+        }
+
     missing = config.missing_environment
     if missing:
         return {
@@ -280,11 +287,6 @@ def run_judge_suite(
         }
 
     try:
-        if not 1 <= max_fixtures <= _MAX_FIXTURES:
-            raise EvalJudgeError(
-                EvalErrorKind.CONFIGURATION,
-                f"선택 평가 fixture 상한은 1~{_MAX_FIXTURES}여야 함",
-            )
         _validate_model_name(config.candidate_model)
         _validate_model_name(config.judge_model)
         fixtures = load_fixtures(fixtures_dir)
