@@ -34,6 +34,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private val apiExecutor = Executors.newSingleThreadExecutor()
     private val requestInFlight = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val logicalRequests = LogicalRequestTracker()
+    private var lastLoggedScreenSignature: String? = null
+    private var rootUnavailable = false
 
     private val stability = ScreenStabilityTracker()
 
@@ -53,6 +56,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private val sessionListener = GuideSession.Listener { goal ->
         mainHandler.post {
             stability.reset()
+            logicalRequests.reset()
+            lastLoggedScreenSignature = null
+            rootUnavailable = false
             display.reset()
             if (goal == null) {
                 mainHandler.removeCallbacks(sampleRunnable)
@@ -124,11 +130,18 @@ class GuideAccessibilityService : AccessibilityService() {
         if (root == null) {
             // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
             // 내용은 display가 기억한다 — 유효 화면으로 돌아오면 아래 redisplay가 되살린다.
-            Log.w(TAG, "active root=null")
+            if (!rootUnavailable) {
+                rootUnavailable = true
+                GuideTelemetry.rootState("unavailable")
+            }
             overlay?.clear()
             display.onCleared()
             scheduleSample(POLL_MS)
             return
+        }
+        if (rootUnavailable) {
+            rootUnavailable = false
+            GuideTelemetry.rootState("recovered")
         }
 
         val result = runCatching { UiTreeSerializer.serialize(root) }.getOrElse {
@@ -159,7 +172,12 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.SEND -> {
-                logScreen(result)
+                if (lastLoggedScreenSignature != signature) {
+                    lastLoggedScreenSignature = signature
+                    GuideTelemetry.screenStable(result)
+                    // raw 상세 로그의 debug/release 분리는 #58. #81은 같은 화면 retry의 반복만 막는다.
+                    logScreenDetails(result)
+                }
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
                 if (requestNextStep(result.screen, signature, session)) {
@@ -207,8 +225,11 @@ class GuideAccessibilityService : AccessibilityService() {
             requestInFlight.set(false)
             return false
         }
+        val logicalRequest = logicalRequests.next(signature, session.generation)
 
         apiExecutor.execute {
+            val startedAt = SystemClock.elapsedRealtime()
+            GuideTelemetry.requestStarted(logicalRequest)
             try {
                 when (
                     val result = client.nextStep(
@@ -223,10 +244,18 @@ class GuideAccessibilityService : AccessibilityService() {
                             recentActions = session.recentActions,
                             clientVersion = BuildConfig.VERSION_NAME,
                         ),
+                        logicalRequest,
                     )
                 ) {
                     is NextStepResult.Success -> {
                         val action = result.response.action
+                        GuideTelemetry.requestFinished(
+                            logicalRequest,
+                            outcome = "success",
+                            durationMs = SystemClock.elapsedRealtime() - startedAt,
+                            statusCode = 200,
+                            serverRequestId = result.trace.requestId,
+                        )
                         Log.i(
                             TAG,
                             "action=${action.actionType.name.lowercase()} " +
@@ -234,34 +263,62 @@ class GuideAccessibilityService : AccessibilityService() {
                                 // scroll은 방향이 곧 안내다. 로그에 없으면 방향이 맞았는지
                                 // 실기기에서 확인할 길이 없다(#37).
                                 "direction=${action.direction?.name?.lowercase() ?: "-"} " +
-                                "history=${session.recentInstructions.size} " +
-                                "instruction=${action.instruction}",
+                                "history=${session.recentInstructions.size}",
                         )
                         mainHandler.post {
-                            applyAction(screen, signature, result.response, session)
+                            logicalRequests.markHttpResponse(logicalRequest, 200)
+                            applyAction(screen, signature, result.response, session, logicalRequest)
                         }
                     }
 
                     is NextStepResult.ApiFailure -> {
-                        Log.w(
-                            TAG,
-                            "api_error kind=${result.error.kind.name} status=${result.statusCode}",
+                        logicalRequests.markHttpResponse(logicalRequest, result.statusCode)
+                        GuideTelemetry.requestFinished(
+                            logicalRequest,
+                            outcome = "api_error",
+                            durationMs = SystemClock.elapsedRealtime() - startedAt,
+                            statusCode = result.statusCode,
+                            errorKind = result.error.kind.name,
+                            serverRequestId = result.trace.requestId,
                         )
                         retryThisScreen()
                     }
 
                     is NextStepResult.HttpFailure -> {
-                        Log.w(TAG, "http_error status=${result.statusCode}")
+                        logicalRequests.markHttpResponse(logicalRequest, result.statusCode)
+                        GuideTelemetry.requestFinished(
+                            logicalRequest,
+                            outcome = "http_error",
+                            durationMs = SystemClock.elapsedRealtime() - startedAt,
+                            statusCode = result.statusCode,
+                            serverRequestId = result.trace.requestId,
+                        )
                         retryThisScreen()
                     }
 
                     is NextStepResult.NetworkFailure -> {
-                        Log.w(TAG, "network_error", result.exception)
+                        GuideTelemetry.requestFinished(
+                            logicalRequest,
+                            outcome = "network_error",
+                            durationMs = SystemClock.elapsedRealtime() - startedAt,
+                            errorKind = "NETWORK",
+                            exceptionClass = result.exception.javaClass.simpleName,
+                        )
                         retryThisScreen()
                     }
 
                     is NextStepResult.ParseFailure -> {
-                        Log.w(TAG, "response_parse_error", result.exception)
+                        // trace가 있으면 서버의 성공 응답까지 받은 뒤 body 계약 파싱이 실패한 것이다.
+                        // #82가 같은 ID의 결과를 캐시해도 불량 200을 되받지 않도록 논리 요청을 닫는다.
+                        if (result.trace != null) logicalRequests.markHttpResponse(logicalRequest, 200)
+                        GuideTelemetry.requestFinished(
+                            logicalRequest,
+                            outcome = "response_parse_error",
+                            durationMs = SystemClock.elapsedRealtime() - startedAt,
+                            errorKind = "PARSE",
+                            serverRequestId = result.trace?.requestId,
+                            exceptionClass = result.exception.javaClass.simpleName,
+                        )
                         retryThisScreen()
                     }
                 }
@@ -301,9 +358,10 @@ class GuideAccessibilityService : AccessibilityService() {
         requestSignature: String,
         response: NextStepResponse,
         session: GuideSession.Active,
+        logicalRequest: LogicalRequestAttempt,
     ) {
         if (!GuideSession.isCurrent(session.generation)) {
-            Log.i(TAG, "stale response dropped goal=${session.goal}")
+            GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             return
         }
 
@@ -314,7 +372,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 버리면 다음 샘플이 B를 새로 물어본다.
         val current = stability.currentSignature()
         if (current != null && current != requestSignature) {
-            Log.i(TAG, "screen changed while waiting, response dropped")
+            GuideTelemetry.responseDropped(logicalRequest, "screen_changed")
             return
         }
 
@@ -322,7 +380,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (action.actionType == ActionType.DONE) {
             when (GuideSession.onDone(session.generation, response.verified)) {
                 GuideSession.DoneOutcome.STOP ->
-                    Log.i(TAG, "session done goal=${session.goal}") // 리스너가 오버레이를 지운다
+                    Log.i(TAG, "session done") // 리스너가 오버레이를 지운다
 
                 GuideSession.DoneOutcome.RETRY -> {
                     // 완료 검증(#54)이 화면 근거를 못 찾은 done이다. 조기 종료일 수 있으니 세션을
@@ -342,7 +400,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
                 }
 
-                null -> Log.i(TAG, "stale response dropped goal=${session.goal}")
+                null -> GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             }
             return
         }
@@ -365,7 +423,7 @@ class GuideAccessibilityService : AccessibilityService() {
         draw(display.show(requestSignature, bounds, action.instruction))
     }
 
-    private fun logScreen(result: UiTreeSerializer.Result) {
+    private fun logScreenDetails(result: UiTreeSerializer.Result) {
         val screen = result.screen
         val clickableCount = screen.elements.count { it.clickable }
         val page = if (screen.currentPage != null || screen.totalPages != null) {

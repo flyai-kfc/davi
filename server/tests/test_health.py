@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 
@@ -11,6 +12,14 @@ from pydantic import SecretStr
 # 토큰 없는 development 기본값은 loopback 전용이다. TestClient의 기본 ``testclient`` host는
 # 실제 IP가 아니므로, 평소 테스트는 운영의 로컬 개발 요청과 같은 loopback으로 명시한다.
 client = TestClient(app, client=("127.0.0.1", 50000))
+
+
+def _request_events(caplog) -> list[dict]:
+    return [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "uvicorn.error.davi.requests"
+    ]
 
 
 def _next_step_payload() -> dict:
@@ -190,9 +199,8 @@ def test_next_step_stuck_returns_classified_error(caplog):
     assert body["request_id"]
     assert r.headers["X-Request-ID"] == body["request_id"]
     assert any(
-        f"request_id={body['request_id']}" in record.getMessage()
-        for record in caplog.records
-        if record.name == "uvicorn.error.davi.requests"
+        event["event"] == "request_finished" and event["request_id"] == body["request_id"]
+        for event in _request_events(caplog)
     )
 
 
@@ -240,24 +248,20 @@ def test_production_next_step_logs_only_safe_metadata(
         )
 
     assert r.status_code == 200
-    messages = [
-        record.getMessage()
-        for record in caplog.records
-        if record.name == "uvicorn.error.davi.requests"
-    ]
-    assert len(messages) == 1
-    message = messages[0]
-    assert "package_name=com.sec.android.app.launcher" in message
-    assert "element_count=2" in message
-    assert "client_version=0.1.0" in message
-    assert "status_code=200" in message
-    assert "duration_ms=" in message
+    events = _request_events(caplog)
+    assert [event["event"] for event in events] == ["request_received", "request_finished"]
+    finished = events[-1]
+    assert finished["package_name"] == "com.sec.android.app.launcher"
+    assert finished["element_count"] == 2
+    assert finished["client_version"] == "0.1.0"
+    assert finished["status_code"] == 200
+    assert finished["duration_ms"] >= 0
     request_id = r.headers["X-Request-ID"]
     assert re.fullmatch(r"[0-9a-f]{32}", request_id)
-    assert f"request_id={request_id}" in message
-    assert "goal=" not in message
-    assert secret_goal not in message
-    assert secret_label not in message
-    assert secret_instruction not in message
-    assert secret_token not in message
-    assert "시계" not in message
+    assert all(event["request_id"] == request_id for event in events)
+    messages = [json.dumps(event, ensure_ascii=False) for event in events]
+    assert all(secret_goal not in message for message in messages)
+    assert all(secret_label not in message for message in messages)
+    assert all(secret_instruction not in message for message in messages)
+    assert all(secret_token not in message for message in messages)
+    assert all("시계" not in message for message in messages)

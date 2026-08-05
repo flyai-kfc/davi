@@ -11,7 +11,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python3.12 -m pip install -r requirements-dev.txt
 cp .env.example .env
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 ```
 
 Windows:
@@ -21,15 +21,21 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate            # PowerShell:  .venv\Scripts\Activate.ps1
 py -3.12 -m pip install -r requirements-dev.txt
 copy .env.example .env            # 키는 나중에. 지금은 DAVI_USE_STUB_LLM=true 로 뜬다.
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 ```
 
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 
-`POST /v1/next-step`의 성공 응답과 앱 계약으로 분류해 반환하는 오류 응답에는 32자리 비식별
-`X-Request-ID` 헤더가 붙는다. 성공 응답도 이 값을 서버 로그의 `request_id`와 대조할 수 있으며,
-오류 응답에서는 본문의 `request_id`와도 같다. 응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
+ASGI에 도달한 응답에는 서버가 HTTP 전송마다 만든 32자리 비식별 `X-Request-ID`가 붙는다.
+Android는 `/v1/next-step`에 무작위 UUID `X-Davi-Logical-Request-ID`와 1부터 증가하는
+`X-Davi-Attempt`를 함께 보낸다. 서버는 둘 다 없으면 이전 APK로 보고 허용하고, 정확히 한 쌍의
+유효한 값만 echo한다. 한쪽 누락·중복·형식 오류는 `400 BAD_REQUEST`이며 검증 전 값은 반사하지 않는다.
+JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
+
+같은 화면·세션의 network/timeout 및 retryable 429/502 재전송만 Logical Request ID를 유지한다.
+화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. #81은 검증·echo·로그 연결만 하며,
+같은 ID의 dedupe·결과 cache·timeout budget은 #82 범위다.
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
 향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
@@ -130,9 +136,11 @@ cd server
 ```
 
 PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
-PID·로그 파일은 600이다. 로그는 일 단위로 이어 쓰고 시작 시 7일보다 오래된 파일을 정리한다.
-요청 로그에는 request ID, 패키지명, 요소 개수, 클라이언트 버전, HTTP 상태와 처리 시간만 남긴다.
-목표·화면 label·최근 안내·요청 본문·API 키·개발 토큰은 기록하지 않는다.
+PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰고 시작 시 7일보다 오래된 파일을
+정리한다. 정상 추론은 `request_received` → `gemini_attempt_started` →
+`gemini_attempt_finished` → `request_finished`로 이어지고 request ID·Logical Request ID·attempt로
+대조한다. 정상 `/health`와 기본 Uvicorn access log는 생략해 반복 I/O와 IP/port 보존을 막는다.
+목표·화면 label·최근 안내·요청 본문·프롬프트·Gemini 응답·API 키·개발 토큰은 기록하지 않는다.
 
 ### 장애 확인 순서
 
@@ -142,7 +150,7 @@ PID·로그 파일은 600이다. 로그는 일 단위로 이어 쓰고 시작 �
 4. macOS 방화벽에서 `.venv/bin/python` 수신 허용 확인
 5. 앱을 다시 빌드했는지와 URL의 현재 사설 IPv4 확인
 6. HTTP 401이면 토큰 불일치, 429이면 `Retry-After`만큼 기다린다
-7. `server/.shared-dev/logs/<오늘>.log`에서 비식별 request ID와 상태 코드만 확인
+7. `server/.shared-dev/logs/<오늘>.log`에서 Logical Request ID로 앱의 attempt와 Gemini 단계를 대조
 
 ## 도그푸딩 raw 보존 (#41)
 
@@ -180,6 +188,8 @@ pytest
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
 | `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
+| `app/observability.py` | 비식별 요청 문맥·고정 이벤트·안전한 JSON Lines formatter. |
+| `app/logging.json` | Uvicorn access log를 끄고 서버 진단을 JSON Lines로 통합하는 설정. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
 | `app/config.py` | 실행 프로필·환경변수와 fail-fast 검증. |
 
@@ -192,8 +202,9 @@ pytest
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
-- `/v1/next-step` 요청 로깅 — request ID·패키지명·요소 개수·클라이언트 버전·HTTP 상태·
-  처리 시간만 한 줄로 기록한다. 사용자 입력인 목표·화면 `label`·최근 안내와 token은 기록하지 않는다.
+- 요청 관측(#81) — 모든 ASGI 응답의 request ID, Android Logical Request ID/attempt와 Gemini 호출
+  단계를 비식별 JSON Lines로 연결한다. 401·422·429·502·500·404는 고정 오류 코드만 남기고,
+  정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
 - `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
@@ -212,4 +223,5 @@ pytest
 
 **껍데기** (호출하면 아무 일도 없거나 raise)
 - `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. 하위 태스크 분해 없음.
-- `reasoning._apply_guardrails` — action을 그대로 통과시킨다. 가드 0개(HANDOFF §5-4 통합 지점만 잡아둠).
+- `reasoning._apply_guardrails` — 같은 삼성 런처 화면의 동일 scroll 세 번째 후보를
+  `open_app_drawer`로 전환하는 좁은 반복 가드가 단일 지점에 있다(#36).

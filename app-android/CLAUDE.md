@@ -16,6 +16,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **반복 가드 이력** — 서버가 돌려준 구조 기반 화면 서명과 action/direction/target을 활성
   `GuideSession`에 최대 10개만 보관해 다음 요청으로 보낸다. 원문 label은 해시하지 않으며,
   세션 generation이 바뀌면 안내 문장 이력과 함께 폐기한다.
+- **논리 요청 추적** — 안정된 화면의 첫 요청에 무작위 Logical Request ID를 만들고 network/timeout
+  재전송은 같은 ID의 attempt만 올린다. 화면·목표·세션 변경과 정상 응답 뒤 새 추론은 새 ID다.
+  화면 내용·`device_id`에서 ID를 만들지 않고 앱 프로세스 밖에 저장하지 않는다(#81).
 - **오버레이 렌더링** — 서버가 준 "다음 안내 하나"를 그린다. 지금은 **강조 사각형 + 안내문 상자**까지.
   방향 스와이프 애니메이션·읽는 중 테두리는 아직 없다(HANDOFF §4의 `SwipeGuideView` / `ReadingBorderView`).
   오버레이가 안 그려지는 화면(설정 앱)의 헤드업 폴백도 아직 없다.
