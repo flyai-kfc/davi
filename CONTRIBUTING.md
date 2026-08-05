@@ -57,6 +57,10 @@ git config core.hooksPath .githooks
 바꾸기 전에 `server/CLAUDE.md`의 "API 계약 결정"(확정/보류 목록)을 먼저 읽고,
 PR 본문에 바뀐 필드와 세 곳에 미친 영향을 적는다.
 
+HTTP 전송 추적 계약은 `server/app/observability.py`와 Android `RequestTracing.kt`가 함께 문다.
+header 이름·UUID·attempt 규칙을 바꾸면 두 파일과 서버 계약 드리프트 테스트, CI 경로 필터를
+같이 고치고 JSON 본문 계약 변경 여부를 별도로 적는다.
+
 ## 로컬 검사 (푸시 전)
 
 CI와 같은 것을 돌린다.
