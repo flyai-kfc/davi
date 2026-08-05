@@ -60,6 +60,8 @@ nohup ".venv/bin/python" -m uvicorn app.main:app \
     --host "$DAVI_BIND_HOST" \
     --port "$SHARED_DEV_PORT" \
     --workers 1 \
+    --no-access-log \
+    --log-config app/logging.json \
     >>"$log_file" 2>&1 &
 server_pid=$!
 printf '%s\n' "$server_pid" > "$SHARED_DEV_PID_FILE"

@@ -3,40 +3,92 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from ipaddress import ip_address
 
 from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .config import settings
 from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .llm import get_llm_client
+from .observability import (
+    ATTEMPT_HEADER,
+    LOGICAL_REQUEST_ID_HEADER,
+    REQUEST_ID_HEADER,
+    REQUEST_LOGGER_NAME,
+    TraceContext,
+    log_event,
+    reset_trace_context,
+    set_trace_context,
+)
 from .raw_store import raw_store_dir, store_raw_exchange
 from .reasoning import next_step
 from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
 
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
-# Uvicorn 기본 핸들러를 상속해 별도 logging 설정 없이 서버 콘솔에 출력한다.
-request_logger = logging.getLogger("uvicorn.error.davi.requests")
+request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
 _NEXT_STEP_PATH = "/v1/next-step"
-_MAX_LOG_VALUE_LENGTH = 200
+_HEALTH_PATH = "/health"
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
-_REQUEST_ID_HEADER = "X-Request-ID"
+_ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
 
 
-def _safe_log_value(value: object) -> str:
-    """허용된 운영 메타데이터를 한 줄·상한 길이로 제한한다."""
-    if value is None:
-        return "-"
-    one_line = " ".join(str(value).splitlines())
-    if len(one_line) > _MAX_LOG_VALUE_LENGTH:
-        return f"{one_line[:_MAX_LOG_VALUE_LENGTH]}…"
-    return one_line
+def _request_route(path: str) -> str:
+    """사용자가 만든 raw path를 로그에 넣지 않고 고정 route만 분류한다."""
+
+    if path == _NEXT_STEP_PATH:
+        return _NEXT_STEP_PATH
+    if path == _HEALTH_PATH:
+        return _HEALTH_PATH
+    return "unmatched"
+
+
+def _logical_request_headers(request: Request) -> tuple[str | None, int | None, bool]:
+    """논리 요청 header 쌍을 검증한다. invalid 값은 절대 echo하거나 로그에 넣지 않는다."""
+
+    logical_ids = request.headers.getlist(LOGICAL_REQUEST_ID_HEADER)
+    attempts = request.headers.getlist(ATTEMPT_HEADER)
+    if not logical_ids and not attempts:
+        return None, None, True
+    if len(logical_ids) != 1 or len(attempts) != 1:
+        return None, None, False
+
+    logical_request_id = logical_ids[0]
+    attempt_value = attempts[0]
+    if _ATTEMPT_PATTERN.fullmatch(attempt_value) is None:
+        return None, None, False
+    try:
+        parsed_id = uuid.UUID(logical_request_id)
+        attempt = int(attempt_value)
+    except (ValueError, TypeError):
+        return None, None, False
+    if str(parsed_id) != logical_request_id or attempt <= 0 or attempt > 2_147_483_647:
+        return None, None, False
+    return logical_request_id, attempt, True
+
+
+def _attach_trace_headers(response: JSONResponse, context: TraceContext) -> None:
+    response.headers[REQUEST_ID_HEADER] = context.request_id
+    if context.logical_request_id is not None and context.attempt is not None:
+        response.headers[LOGICAL_REQUEST_ID_HEADER] = context.logical_request_id
+        response.headers[ATTEMPT_HEADER] = str(context.attempt)
+
+
+def _invalid_trace_headers_response(request_id: str) -> JSONResponse:
+    error = ApiError(
+        kind=ErrorKind.BAD_REQUEST,
+        message="invalid logical request headers",
+        request_id=request_id,
+    )
+    return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=error.model_dump())
 
 
 def _development_access_error(request: Request) -> JSONResponse | None:
@@ -73,6 +125,8 @@ def _development_access_error(request: Request) -> JSONResponse | None:
         return None
 
     retry_after = decision.retry_after_seconds or 1
+    request.state.error_kind = "DEV_RATE_LIMIT"
+    request.state.retry_after_seconds = retry_after
     error = ApiError(
         kind=ErrorKind.QUOTA,
         message="development request limit exceeded",
@@ -87,6 +141,7 @@ def _development_access_error(request: Request) -> JSONResponse | None:
 
 
 def _development_auth_error(request: Request) -> JSONResponse:
+    request.state.error_kind = ErrorKind.AUTH.value
     error = ApiError(
         kind=ErrorKind.AUTH,
         message="development access denied",
@@ -121,43 +176,91 @@ def _store_raw_if_dogfood(
             payload,
         )
     except OSError as exc:
-        request_logger.warning(
-            "raw_store_failed request_id=%s error=%s",
-            request.state.request_id,
-            type(exc).__name__,
+        log_event(
+            request_logger,
+            logging.WARNING,
+            "raw_store_failed",
+            exception_class=type(exc).__name__,
         )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    request.state.error_kind = "VALIDATION"
+    request.state.validation_error_count = len(exc.errors())
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.middleware("http")
-async def log_next_step_request(request: Request, call_next):
-    """추론 요청의 비식별 운영 메타데이터만 한 줄로 남긴다."""
-    if request.url.path != _NEXT_STEP_PATH:
-        return await call_next(request)
+async def observe_request(request: Request, call_next):
+    """모든 ASGI 응답에 request ID를 붙이고 경로별 비식별 이벤트를 남긴다."""
 
+    route = _request_route(request.url.path)
     request.state.request_id = uuid.uuid4().hex
+    logical_request_id: str | None = None
+    attempt: int | None = None
+    valid_trace_headers = True
+    if route == _NEXT_STEP_PATH:
+        logical_request_id, attempt, valid_trace_headers = _logical_request_headers(request)
+    context = TraceContext(request.state.request_id, logical_request_id, attempt)
+    request.state.trace_context = context
+    context_token = set_trace_context(context)
     started_at = time.perf_counter()
     status_code = 500
+    response: JSONResponse | None = None
     try:
-        response = _development_access_error(request)
-        if response is None:
-            response = await call_next(request)
-        # 본문 계약을 늘리지 않고 네이티브 클라이언트가 서버 로그와 대조할 수 있게 한다.
-        response.headers[_REQUEST_ID_HEADER] = request.state.request_id
+        if route == _NEXT_STEP_PATH:
+            log_event(
+                request_logger,
+                logging.INFO,
+                "request_received",
+                method=request.method,
+                route=route,
+            )
+        if not valid_trace_headers:
+            request.state.error_kind = ErrorKind.BAD_REQUEST.value
+            response = _invalid_trace_headers_response(request.state.request_id)
+        else:
+            response = _development_access_error(request) if route == _NEXT_STEP_PATH else None
+            if response is None:
+                response = await call_next(request)
+        _attach_trace_headers(response, context)
+        status_code = response.status_code
+        return response
+    except Exception as exc:  # noqa: BLE001 - 응답 추적 ID를 보존하는 최종 HTTP 경계
+        request.state.error_kind = "INTERNAL"
+        request.state.exception_class = type(exc).__name__
+        response = JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Internal Server Error"},
+        )
+        _attach_trace_headers(response, context)
         status_code = response.status_code
         return response
     finally:
-        metadata = getattr(request.state, "next_step_metadata", {})
         duration_ms = (time.perf_counter() - started_at) * 1000
-        request_logger.info(
-            "next_step request_id=%s package_name=%s element_count=%s "
-            "client_version=%s status_code=%s duration_ms=%.2f",
-            request.state.request_id,
-            _safe_log_value(metadata.get("package_name")),
-            metadata.get("element_count", 0),
-            _safe_log_value(metadata.get("client_version")),
-            status_code,
-            duration_ms,
-        )
+        if not (route == _HEALTH_PATH and status_code == status.HTTP_200_OK):
+            metadata = getattr(request.state, "next_step_metadata", {})
+            error_kind = getattr(request.state, "error_kind", None)
+            if status_code == status.HTTP_404_NOT_FOUND and error_kind is None:
+                error_kind = "NOT_FOUND"
+            log_event(
+                request_logger,
+                logging.INFO if status_code < 500 else logging.ERROR,
+                "request_finished",
+                method=request.method,
+                route=route,
+                status_code=status_code,
+                duration_ms=round(duration_ms, 2),
+                package_name=metadata.get("package_name"),
+                element_count=metadata.get("element_count"),
+                client_version=metadata.get("client_version"),
+                error_kind=error_kind,
+                retry_after_seconds=getattr(request.state, "retry_after_seconds", None),
+                validation_error_count=getattr(request.state, "validation_error_count", None),
+                exception_class=getattr(request.state, "exception_class", None),
+            )
+        reset_trace_context(context_token)
 
 
 @app.get("/health")
@@ -185,6 +288,8 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         # 앱이 사용자에게 다르게 안내하도록 kind를 그대로 전달(HANDOFF §5, LlmException).
         # message는 디버그용이며 시니어에게 그대로 보여주지 않는다(C8).
         error = api_error_for(e, request.state.request_id)
+        request.state.error_kind = e.kind.value
+        request.state.retry_after_seconds = e.retry_after_seconds
         _store_raw_if_dogfood(req, http_status_for(e), error, request)
         return JSONResponse(
             status_code=http_status_for(e),

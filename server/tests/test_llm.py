@@ -62,6 +62,10 @@ def _client(handler) -> GeminiLlmClient:
     )
 
 
+def _events(caplog) -> list[dict]:
+    return [json.loads(record.getMessage()) for record in caplog.records]
+
+
 def test_gemini_sends_prompt_and_response_schema():
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -124,9 +128,11 @@ def test_gemini_retries_missing_scroll_direction_once(caplog):
     assert action.direction == "up"
     assert len(requests) == 2
     assert all(request["generationConfig"]["maxOutputTokens"] == 1024 for request in requests)
-    messages = [record.getMessage() for record in caplog.records]
-    assert messages == ["gemini_parse_recovery reason=scroll_direction_missing action=retry"]
-    assert all("카카오톡" not in message for message in messages)
+    events = _events(caplog)
+    assert [(event["event"], event["reason"], event["action"]) for event in events] == [
+        ("gemini_parse_recovery", "scroll_direction_missing", "retry")
+    ]
+    assert all("카카오톡" not in json.dumps(event, ensure_ascii=False) for event in events)
 
 
 def test_schema_fallback_uses_same_missing_direction_retry_policy():
@@ -159,9 +165,9 @@ def test_missing_scroll_direction_after_retry_is_a_distinct_parse_failure(caplog
 
     assert raised.value.kind is ErrorKind.PARSE
     assert raised.value.message == "Gemini scroll 응답에 direction이 없음 (1회 재시도 실패)"
-    assert [record.getMessage() for record in caplog.records] == [
-        "gemini_parse_recovery reason=scroll_direction_missing action=retry",
-        "gemini_parse_recovery reason=scroll_direction_missing action=fail",
+    assert [(event["reason"], event["action"]) for event in _events(caplog)] == [
+        ("scroll_direction_missing", "retry"),
+        ("scroll_direction_missing", "fail"),
     ]
 
 
@@ -233,8 +239,8 @@ def test_gemini_classifies_invalid_model_output_as_parse_error(caplog):
 
     assert raised.value.kind is ErrorKind.PARSE
     assert raised.value.message == "Gemini 응답이 GuideAction 계약과 맞지 않음"
-    assert [record.getMessage() for record in caplog.records] == [
-        "gemini_parse_error reason=invalid_json action=fail"
+    assert [(event["event"], event["reason"], event["action"]) for event in _events(caplog)] == [
+        ("gemini_parse_error", "invalid_json", "fail")
     ]
 
 
@@ -262,9 +268,11 @@ def test_gemini_classifies_max_tokens_without_logging_response_text(caplog):
 
     assert raised.value.kind is ErrorKind.PARSE
     assert raised.value.message == "Gemini 응답이 출력 토큰 상한에서 잘림"
-    messages = [record.getMessage() for record in caplog.records]
-    assert messages == ["gemini_response_error reason=max_output_tokens action=fail"]
-    assert all(truncated_text not in message for message in messages)
+    events = _events(caplog)
+    assert [(event["event"], event["reason"], event["action"]) for event in events] == [
+        ("gemini_response_error", "max_output_tokens", "fail")
+    ]
+    assert all(truncated_text not in json.dumps(event) for event in events)
 
 
 def test_get_llm_client_reuses_one_connection_pool():
