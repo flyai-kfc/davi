@@ -31,12 +31,17 @@ class GuideApiClientTest {
     @Test
     fun `posts the contract and parses a guide action`() {
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","action_type":"tap","target_node_id":"n1","instruction":"카카오톡을 누르세요."},"model":"stub","verified":false,"screen_signature":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
-            ),
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader(RequestTracingContract.REQUEST_ID_HEADER, SERVER_REQUEST_ID)
+                .addHeader(RequestTracingContract.LOGICAL_REQUEST_ID_HEADER, TRACE_ID)
+                .addHeader(RequestTracingContract.ATTEMPT_HEADER, "2")
+                .setBody(
+                    """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","action_type":"tap","target_node_id":"n1","instruction":"카카오톡을 누르세요."},"model":"stub","verified":false,"screen_signature":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+                ),
         )
 
-        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest())
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace(2))
 
         assertTrue(result is NextStepResult.Success)
         result as NextStepResult.Success
@@ -44,10 +49,15 @@ class GuideApiClientTest {
         assertEquals("n1", result.response.action.targetNodeId)
         assertEquals("카카오톡을 누르세요.", result.response.action.instruction)
         assertEquals("a".repeat(64), result.response.screenSignature)
+        assertEquals(SERVER_REQUEST_ID, result.trace.requestId)
+        assertEquals(TRACE_ID, result.trace.logicalRequestId)
+        assertEquals(2, result.trace.attempt)
 
         val request = server.takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/v1/next-step", request.path)
+        assertEquals(TRACE_ID, request.getHeader(RequestTracingContract.LOGICAL_REQUEST_ID_HEADER))
+        assertEquals("2", request.getHeader(RequestTracingContract.ATTEMPT_HEADER))
         val body = request.body.readUtf8()
         val payload = Json.parseToJsonElement(body).jsonObject
         assertEquals("카카오톡 열기", payload["goal"]?.jsonPrimitive?.content)
@@ -69,7 +79,7 @@ class GuideApiClientTest {
         GuideApiClient(
             server.url("/").toString(),
             devAccessToken = token,
-        ).nextStep(sampleRequest())
+        ).nextStep(sampleRequest(), trace())
 
         assertEquals(token, server.takeRequest().getHeader("X-Davi-Dev-Token"))
     }
@@ -85,7 +95,7 @@ class GuideApiClientTest {
         GuideApiClient(
             server.url("/").toString(),
             devAccessToken = "   ",
-        ).nextStep(sampleRequest())
+        ).nextStep(sampleRequest(), trace())
 
         assertEquals(null, server.takeRequest().getHeader("X-Davi-Dev-Token"))
     }
@@ -102,7 +112,7 @@ class GuideApiClientTest {
             ),
         )
 
-        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest())
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace())
 
         assertTrue(result is NextStepResult.Success)
         result as NextStepResult.Success
@@ -122,8 +132,8 @@ class GuideApiClientTest {
         }
         val client = GuideApiClient(server.url("/").toString())
 
-        client.nextStep(sampleRequest().copy(deviceId = "ba7816bf8f01cfea"))
-        client.nextStep(sampleRequest())
+        client.nextStep(sampleRequest().copy(deviceId = "ba7816bf8f01cfea"), trace())
+        client.nextStep(sampleRequest(), trace(2))
 
         assertTrue(
             server.takeRequest().body.readUtf8().contains("\"device_id\":\"ba7816bf8f01cfea\""),
@@ -140,7 +150,7 @@ class GuideApiClientTest {
             ),
         )
 
-        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest())
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace())
 
         assertTrue(result is NextStepResult.ApiFailure)
         result as NextStepResult.ApiFailure
@@ -149,10 +159,35 @@ class GuideApiClientTest {
     }
 
     @Test
+    fun `does not trust malformed or mismatched response trace headers`() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader(RequestTracingContract.REQUEST_ID_HEADER, "private-untrusted-value")
+                .addHeader(
+                    RequestTracingContract.LOGICAL_REQUEST_ID_HEADER,
+                    "00000000-0000-0000-0000-000000000000",
+                )
+                .addHeader(RequestTracingContract.ATTEMPT_HEADER, "01")
+                .setBody(
+                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false}""",
+                ),
+        )
+
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace())
+
+        assertTrue(result is NextStepResult.Success)
+        result as NextStepResult.Success
+        assertEquals(null, result.trace.requestId)
+        assertEquals(null, result.trace.logicalRequestId)
+        assertEquals(null, result.trace.attempt)
+    }
+
+    @Test
     fun `returns a network failure without throwing`() {
         val client = OkHttpClient.Builder().callTimeout(1, TimeUnit.SECONDS).build()
 
-        val result = GuideApiClient("http://127.0.0.1:1", client).nextStep(sampleRequest())
+        val result = GuideApiClient("http://127.0.0.1:1", client).nextStep(sampleRequest(), trace())
 
         assertTrue(result is NextStepResult.NetworkFailure)
     }
@@ -180,4 +215,11 @@ class GuideApiClientTest {
         ),
         clientVersion = "0.1.0",
     )
+
+    private fun trace(attempt: Int = 1) = LogicalRequestAttempt(TRACE_ID, attempt)
+
+    private companion object {
+        const val TRACE_ID = "123e4567-e89b-12d3-a456-426614174000"
+        const val SERVER_REQUEST_ID = "0123456789abcdef0123456789abcdef"
+    }
 }
