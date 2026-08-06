@@ -17,7 +17,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | B1 | 색 토큰 구조 | 2층 (프리미티브 + 시맨틱) |
 | B2 | 포인트 색 | **#F2001C** — 오버레이 강조·포인트 전용. **주 버튼 배경은 어두운 변형**(#A50014급, 흰 글자 7:1 이상)을 시맨틱으로 분리. 세컨더리 #FFE1E1은 **배경(서피스) 전용** — 글자·단독 식별 요소 금지 |
 | B3 | 다크모드 | 라이트 단일 모드. **다크 모드는 미리 만들지 않는다**(빈 모드 = 라이트 복제본이 "대응됨"으로 오인). 착수 시점에 모드 추가 |
-| C1 | 서체 | **Pretendard 번들** — Figma와 실기기 일치가 근거. 배율 추종은 서체 무관하게 sp가 담당 |
+| C1 | 서체 | **Pretendard 번들** — Figma와 실기기 일치가 근거. 배율 추종은 서체 무관하게 sp가 담당. Figma 파일의 일상 운영은 아래 "서체 운영" 참고 |
 | C2 | 타입 램프 | 5단 28 / 24 / 20 / 17 / 14sp |
 | C3 | 본문 하한 | 17sp (캡션 14sp는 부가 정보 전용) |
 | C4 | 배율 보장 | 시스템 글꼴 배율 2.0x까지 |
@@ -28,7 +28,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | E2 | 버튼 눌림 | 그림자+눌림 입체 표현 (flat 직관 부족 대응) |
 | F1 | 토큰 네이밍 | 슬래시 소문자 (`color/text/primary`) |
 | F2 | Android 매핑 | `davi_` 접두 스네이크 (`@color/davi_text_primary`) |
-| F3 | Figma 파일 | 단일 파일 운영 (publish 불요) — 페이지: Foundations / Wireframe / Screens. 발표는 Slides 별도 파일 |
+| F3 | Figma 파일 | 단일 파일 운영 (publish 불요) — 페이지: Foundations(토큰·스타일) / Components(컴포넌트 실물) / Wireframe(원본) / Screens(파생 산출물). 발표는 Slides 별도 파일 |
 
 ## 근거 메모 (수치가 걸린 것만)
 
@@ -52,6 +52,24 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
   계정 귀속). 반영은 화면 단위 일괄 재생성 — 폴링·지속 동기화는 하지 않는다.
 - **컴포넌트화는 화면이 안정된 뒤.** 화면 확정 전에 컴포넌트를 만들면 화면이 바뀔
   때마다 variant 재작업이 된다. E1 목록은 그 시점의 대상 목록이다.
+
+## 서체 운영 — Figma는 평소 Noto, 산출 직전만 Pretendard (2026-08-06 확정)
+
+전 텍스트 스타일의 fontFamily는 `primitives > font/family` 변수 하나에 바인딩되어
+있어, 이 변수 값 수정 한 번으로 파일 전체 서체가 바뀐다. 단 Figma는 이 변수의 값
+변경 시 바인딩된 텍스트 전체를 리렌더하며 **현재 렌더 중인 폰트의 로드를 요구**하고,
+Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 방향으로도 이 변수를
+바꿀 수 없다**(2026-08-06 실측 — 문자열 쓰기 자체는 되지만 리렌더 요구에 막힌다.
+스타일 적용 등 신규 텍스트 생성도 Pretendard 상태에선 불가).
+
+그래서 토글 빈도를 뒤집는다:
+
+- **평상시 `font/family` = Noto Sans KR.** 에이전트가 재생성·텍스트 생성을 막힘 없이
+  수행한다. Pretendard가 Noto 기반이라 작업 중 화면 차이는 라틴·숫자 폭 수준이다.
+- **발표·산출물 확정 직전에만** 팀원(Pretendard 설치자)이 변수 값을 Pretendard로
+  전환(1클릭)하고, 끝나면 되돌린다. 전환 후 좁은 텍스트 상자의 줄바꿈만 한 번 훑는다.
+- 구현(Android)은 이 운영과 무관하게 C1대로 Pretendard 번들.
+- 팀 전원 Pretendard 로컬 설치를 전제로 한다(미설치자에겐 missing font로 보임).
 
 ## 반영 상태
 
