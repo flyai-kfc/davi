@@ -81,6 +81,11 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 `StubIntentResolver`가 현재 발화를 그대로 ready goal로 돌려 계약만 검증하며 의미 품질을 주장하지 않는다.
 두 trace header와 development auth/rate limit, `ApiError`는 `/v1/next-step`과 같은 경계를 쓴다.
 
+Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과
+운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
+제거한다. ready goal 누락·공백 또는 텍스트 상한 위반은 이전 모델 원문 없이 고정 진단만 덧붙여 한 번
+교정한다. schema 400 폴백을 포함해 공급자 호출은 요청당 최대 2회이며, 그 뒤에는 `PARSE`로 실패한다.
+
 ## 실행 프로필
 
 `DAVI_ENV`는 서버의 실행 경계를 정한다. 값이 없으면 로컬·테스트 호환을 위해
@@ -256,7 +261,8 @@ pytest
   HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
 - `app/intent_prompt.py` + `app/intent_resolution.py:GeminiIntentResolver` — 완결된 이전 턴과 현재
   발화를 분리해 직렬화하고 `needs_clarification`/`ready` 구조화 출력으로 질문 또는 goal을 만든다.
-  `StubIntentResolver`는 keyless 스모크 전용이며 자연어 품질을 대변하지 않는다.
+  내부 판단 근거를 status보다 먼저 생성하되 wire·로그에는 버리고, 안전한 goal 제거와 총 2회 안의
+  계약 교정만 허용한다. `StubIntentResolver`는 keyless 스모크 전용이며 자연어 품질을 대변하지 않는다.
 - Gemini 실호출 스모크(2026-07-27) — `.env`의 `gemini-3.5-flash-lite`로 마스킹된 샘플 화면을 호출해
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
 - `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.

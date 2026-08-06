@@ -11,9 +11,10 @@ import logging
 import time
 from collections.abc import Mapping
 from functools import cache
-from typing import Any
+from typing import Any, Never, Self
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from .config import settings
 from .errors import LlmError
@@ -24,16 +25,83 @@ from .gemini_response import (
     strip_json_fence,
 )
 from .gemini_schema import build_response_schema
-from .intent_prompt import build_intent_prompt
+from .intent_prompt import build_intent_prompt, build_intent_repair_prompt
 from .observability import LLM_LOGGER_NAME, log_event
 from .prompt import fallback_prompt
-from .schemas import ErrorKind, IntentDialogueStatus, SlotFillRequest, SlotFillState
+from .schemas import (
+    MAX_INTENT_MESSAGE_LENGTH,
+    MAX_VOICE_TEXT_LENGTH,
+    ErrorKind,
+    IntentDialogueStatus,
+    SlotFillRequest,
+    SlotFillState,
+)
 
-INTENT_DIALOGUE_SCHEMA = build_response_schema(SlotFillState)
 _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _DEFAULT_RETRY_AFTER_SECONDS = 60
 _MAX_OUTPUT_TOKENS = 512
 llm_logger = logging.getLogger(LLM_LOGGER_NAME)
+
+
+class _IntentDialogueDecision(BaseModel):
+    """Gemini 내부 판단 계약. 공개 wire 응답과 분리해 근거를 결정보다 먼저 생성한다."""
+
+    decision_basis: str = Field(
+        min_length=1,
+        max_length=MAX_INTENT_MESSAGE_LENGTH,
+        description="현재 대화만으로 질문 필요 여부를 판단한 짧은 한국어 근거 한 문장",
+    )
+    status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
+    message: str = Field(
+        min_length=1,
+        max_length=MAX_INTENT_MESSAGE_LENGTH,
+        description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
+    )
+    goal: str | None = Field(
+        default=None,
+        max_length=MAX_VOICE_TEXT_LENGTH,
+        description="ready일 때 기존 안내 세션에 넘길 구체적인 목표",
+    )
+
+    @field_validator("decision_basis", "message")
+    @classmethod
+    def reject_blank_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("필수 판단 텍스트는 공백일 수 없다")
+        return stripped
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_goal(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("완성 목표는 공백일 수 없다")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_status_and_goal(self) -> Self:
+        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION and self.goal is not None:
+            raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
+        if self.status is IntentDialogueStatus.READY and self.goal is None:
+            raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        return self
+
+    def to_wire_state(self) -> SlotFillState:
+        return SlotFillState(status=self.status, message=self.message, goal=self.goal)
+
+
+INTENT_DIALOGUE_SCHEMA = build_response_schema(_IntentDialogueDecision)
+
+
+class _RecoverableIntentContractError(Exception):
+    """원문을 보존하지 않고 한 번만 교정할 수 있는 계약 위반."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class IntentResolver:
@@ -95,7 +163,22 @@ class GeminiIntentResolver(IntentResolver):
                 )
             except _GeminiHttpError as fallback_error:
                 raise self._to_llm_error(fallback_error) from fallback_error
-        return self._parse_state(response_text)
+            return self._parse_final_state(response_text)
+
+        try:
+            return self._parse_state(response_text)
+        except _RecoverableIntentContractError as error:
+            self._log_contract_recovery(error.reason, action="retry")
+            try:
+                repaired_text = self._call_once(
+                    build_intent_repair_prompt(prompt, error.reason),
+                    with_schema=True,
+                    provider_attempt=2,
+                    trigger="contract_recovery",
+                )
+            except _GeminiHttpError as repair_error:
+                raise self._to_llm_error(repair_error) from repair_error
+            return self._parse_final_state(repaired_text)
 
     def _call_once(
         self,
@@ -208,20 +291,78 @@ class GeminiIntentResolver(IntentResolver):
     def _parse_state(self, response_text: str) -> SlotFillState:
         try:
             payload = json.loads(strip_json_fence(response_text))
-            return SlotFillState.model_validate(payload)
         except (ValueError, TypeError) as error:
-            log_event(
-                llm_logger,
-                logging.WARNING,
-                "gemini_parse_error",
-                operation="intent_dialogue",
-                reason="invalid_intent_dialogue",
-                action="fail",
-            )
+            self._raise_parse_error("invalid_json", error)
+
+        if not isinstance(payload, dict):
+            self._raise_parse_error("invalid_shape", TypeError("응답이 객체가 아님"))
+
+        normalized = dict(payload)
+        if (
+            normalized.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
+            and normalized.get("goal") is not None
+        ):
+            normalized["goal"] = None
+            try:
+                decision = _IntentDialogueDecision.model_validate(normalized)
+            except ValidationError as error:
+                self._raise_or_recover(normalized, error)
+            self._log_contract_recovery("status_goal_mismatch", action="normalize")
+            return decision.to_wire_state()
+
+        try:
+            decision = _IntentDialogueDecision.model_validate(normalized)
+        except ValidationError as error:
+            self._raise_or_recover(normalized, error)
+        return decision.to_wire_state()
+
+    def _parse_final_state(self, response_text: str) -> SlotFillState:
+        """두 번째 공급자 호출은 다시 교정하지 않고 실패로 닫는다."""
+
+        try:
+            return self._parse_state(response_text)
+        except _RecoverableIntentContractError as error:
+            self._log_contract_recovery(error.reason, action="fail")
             raise LlmError(
                 ErrorKind.PARSE,
                 "Gemini 응답이 음성 목표 대화 계약과 맞지 않음",
             ) from error
+
+    def _raise_or_recover(
+        self,
+        payload: dict[str, Any],
+        error: ValidationError,
+    ) -> Never:
+        reason = _recoverable_contract_reason(payload, error)
+        if reason is not None:
+            raise _RecoverableIntentContractError(reason) from error
+        self._raise_parse_error("invalid_intent_dialogue", error)
+
+    @staticmethod
+    def _raise_parse_error(reason: str, error: Exception) -> Never:
+        log_event(
+            llm_logger,
+            logging.WARNING,
+            "gemini_parse_error",
+            operation="intent_dialogue",
+            reason=reason,
+            action="fail",
+        )
+        raise LlmError(
+            ErrorKind.PARSE,
+            "Gemini 응답이 음성 목표 대화 계약과 맞지 않음",
+        ) from error
+
+    @staticmethod
+    def _log_contract_recovery(reason: str, *, action: str) -> None:
+        log_event(
+            llm_logger,
+            logging.WARNING,
+            "gemini_contract_recovery",
+            operation="intent_dialogue",
+            reason=reason,
+            action=action,
+        )
 
     @staticmethod
     def _to_llm_error(error: _GeminiHttpError) -> LlmError:
@@ -240,6 +381,37 @@ class GeminiIntentResolver(IntentResolver):
         if error.status_code == 400:
             return LlmError(ErrorKind.BAD_REQUEST, "Gemini API 요청 형식 오류")
         return LlmError(ErrorKind.SERVER, f"Gemini API 서버 오류 (HTTP {error.status_code})")
+
+
+def _recoverable_contract_reason(
+    payload: dict[str, Any],
+    error: ValidationError,
+) -> str | None:
+    """스키마로 표현하지 못한 텍스트·교차 필드 위반만 교정 대상으로 삼는다."""
+
+    if payload.get("status") == IntentDialogueStatus.READY:
+        goal = payload.get("goal")
+        if goal is None or (isinstance(goal, str) and not goal.strip()):
+            return "status_goal_mismatch"
+
+    recoverable_fields = {"decision_basis", "message", "goal"}
+    for detail in error.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    ):
+        location = detail.get("loc", ())
+        field = location[0] if location else None
+        error_type = detail.get("type")
+        if field not in recoverable_fields:
+            continue
+        if error_type == "string_too_long":
+            return f"{field}_too_long"
+        if error_type in {"string_too_short", "value_error"}:
+            value = payload.get(field)
+            if isinstance(value, str) and not value.strip():
+                return f"{field}_blank"
+    return None
 
 
 def _response_text(response: httpx.Response) -> str:

@@ -209,6 +209,7 @@ class ApiError(BaseModel):
 
 MAX_VOICE_TEXT_LENGTH = 500
 MAX_CONVERSATION_MESSAGES = 10
+MAX_INTENT_MESSAGE_LENGTH = 300
 
 
 class ConversationRole(StrEnum):
@@ -277,7 +278,7 @@ class SlotFillState(BaseModel):
     status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
     message: str = Field(
         min_length=1,
-        max_length=300,
+        max_length=MAX_INTENT_MESSAGE_LENGTH,
         description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
     )
     goal: str | None = Field(

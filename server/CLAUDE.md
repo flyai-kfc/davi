@@ -53,6 +53,10 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 - `scroll`인데 `direction`이 빠지면 화면 메타로 앞/뒤 방향을 추측하지 않는다. 같은 schema 모드에서
   방향을 명시하도록 **한 번만 재요청**하고, 다시 빠지면 PARSE로 실패한다. 로그에는 응답 원문 대신
   `scroll_direction_missing` 진단 코드만 남긴다.
+- 음성 목표 판단은 공개 wire 모델과 Gemini 내부 모델을 분리하고, 내부 `decision_basis`를
+  `status`보다 먼저 생성한다. `needs_clarification`의 불필요한 goal만 제거하며, ready goal 누락·
+  공백과 텍스트 상한 위반은 한 번 교정한다. schema 400 폴백을 포함해 요청당 총 2회만 호출하고,
+  두 번째 위반은 PARSE로 닫는다. 로그에는 고정 reason code만 남긴다.
 - 무료 티어 rate limit: flash-lite ≈ 15 RPM / 1,000 RPD. 429 `prepayment credits are depleted`는 사용량 초과가 아니라 결제 경로 문제일 수 있다. RPD 리셋은 한국시간 17:00.
 
 ## API 계약 결정 (2026-07-24 리뷰 → **2026-08-06 C1~C13 반영**)
@@ -76,7 +80,7 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 | C10 | **`Screen`에 `has_scrollable_element`(선택) 추가.** True/False/None 세 상태를 구분한다. | 요소를 훑어 유추하면 "스크롤 요소가 없다"와 "앱이 아직 안 채웠다"가 섞인다. 삼성 런처 홈은 `scrollable` 노드가 0개인데 그 침묵을 모델이 "넘길 수 있다"로 읽었다(위와 같은 실측). **없다는 것도 상태다**(루트 `CLAUDE.md`: 지식이 아니라 상태를 준다). 이름은 "화면이 스크롤된다"가 아니라 관찰한 사실 그대로다 — 트리에 스크롤 노드가 없어도 실제로는 넘어가는 화면이 있다(런처 페이징). |
 | C11 | **앱이 `recent_actions`를 세션 안에 최대 10개 보관하고, 서버가 돌려준 구조 기반 `screen_signature`와 함께 다음 요청에 보낸다. 서버는 무상태로 반복을 판정한다.** | `recent_instructions`는 문구가 매번 달랐던 8회 scroll을 정확히 식별할 수 없다. `device_id`는 기기와 세션을 혼동하고, 서버 캐시는 TTL·멀티워커·세션 누출 문제를 만든다. #44의 generation 격리와 함께 구조화 이력을 비우면 같은 목표 재시작도 분리된다. 서명은 label을 포함하지 않아 시계·배터리 변동과 원문 label 해시의 재식별 위험을 피한다. |
 | C12 | **앱이 비식별 `X-Davi-Logical-Request-ID`와 `X-Davi-Attempt`를 HTTP header로 보내고 서버가 검증·echo·단계별 로그 연결에 사용한다. JSON 본문은 바꾸지 않는다.** | 앱이 10초에 timeout된 뒤 서버가 최대 20초 넘게 처리해 같은 화면 호출 5건이 겹쳤지만, 서버가 나중에 만든 `X-Request-ID`는 응답을 못 받은 앱과 대조할 수 없었다. ID는 무작위 UUID이며 goal·label·화면 서명·기기 ID에서 파생하지 않는다. #81은 관측만, dedupe·cache·timeout은 #82다. |
-| C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`만 반환한다.** 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. |
+| C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`만 반환한다.** 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. 내부 Gemini 모델은 짧은 `decision_basis`를 먼저 생성하며 wire·로그에는 내보내지 않는다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. 결론보다 근거를 먼저 생성하는 C1 순서를 새 LLM 경계에도 유지한다. |
 
 ### C11 반복 가드 정책
 

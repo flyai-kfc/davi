@@ -29,7 +29,9 @@ def _request(
     )
 
 
-def _gemini_response(payload: dict) -> dict:
+def _gemini_response(payload: dict, *, add_basis: bool = True) -> dict:
+    if add_basis and "status" in payload:
+        payload = {"decision_basis": "현재 대화로 판단한 근거", **payload}
     return {
         "candidates": [
             {
@@ -102,7 +104,19 @@ def test_request_rejects_blank_or_incomplete_history(payload):
 
 def test_response_contract_has_no_fixed_slot_or_action_taxonomy():
     assert set(SlotFillState.model_fields) == {"status", "message", "goal"}
-    assert set(INTENT_DIALOGUE_SCHEMA["properties"]) == {"status", "message", "goal"}
+    assert set(INTENT_DIALOGUE_SCHEMA["properties"]) == {
+        "decision_basis",
+        "status",
+        "message",
+        "goal",
+    }
+    assert INTENT_DIALOGUE_SCHEMA["propertyOrdering"] == [
+        "decision_basis",
+        "status",
+        "message",
+        "goal",
+    ]
+    assert INTENT_DIALOGUE_SCHEMA["required"][0] == "decision_basis"
 
 
 @pytest.mark.parametrize(
@@ -140,6 +154,7 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert request.conversation_history[0].content in prompt
     assert str(request.session_id) not in prompt
     assert "고정 슬롯 목록을 가정하지 마세요" in prompt
+    assert "먼저 decision_basis" in prompt
     assert "target_person" not in prompt
     assert "답변 위치만 보고 의미 없는 현재 답변" in prompt
 
@@ -193,6 +208,119 @@ def test_gemini_parses_ready_goal():
     assert state.goal == "카메라 앱 열기"
 
 
+def test_gemini_normalizes_clarification_goal_without_another_call(caplog):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "어느 앱을 말씀하시는 건가요?",
+                    "goal": "앱 열기",
+                }
+            ),
+        )
+
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"):
+        state = _resolver(handler).resolve(_request())
+
+    assert state.status == "needs_clarification"
+    assert state.goal is None
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "status_goal_mismatch" and event.get("action") == "normalize"
+        for event in _events(caplog)
+    )
+
+
+def test_gemini_retries_ready_without_goal_once_without_reusing_raw_output():
+    requests: list[dict] = []
+    private_invalid_message = "private-invalid-model-message"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json=_gemini_response(
+                    {
+                        "status": "ready",
+                        "message": private_invalid_message,
+                    }
+                ),
+            )
+        prompt = body["contents"][0]["parts"][0]["text"]
+        assert "ready 상태라면 goal을 반드시 채우고" in prompt
+        assert private_invalid_message not in prompt
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "ready",
+                    "message": "목표를 정리했어요.",
+                    "goal": "카메라 앱 열기",
+                }
+            ),
+        )
+
+    state = _resolver(handler).resolve(_request())
+
+    assert state.goal == "카메라 앱 열기"
+    assert len(requests) == 2
+
+
+def test_gemini_contract_recovery_stops_after_second_invalid_output():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response({"status": "ready", "message": "목표를 정리했어요."}),
+        )
+
+    with pytest.raises(LlmError) as raised:
+        _resolver(handler).resolve(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert len(requests) == 2
+
+
+def test_gemini_retries_overlong_message_once():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json=_gemini_response(
+                    {
+                        "status": "needs_clarification",
+                        "message": "가" * 301,
+                    }
+                ),
+            )
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "어느 앱인가요?",
+                }
+            ),
+        )
+
+    state = _resolver(handler).resolve(_request())
+
+    assert state.message == "어느 앱인가요?"
+    assert len(requests) == 2
+
+
 def test_gemini_retries_once_without_schema_after_schema_400():
     requests: list[dict] = []
 
@@ -218,6 +346,48 @@ def test_gemini_retries_once_without_schema_after_schema_400():
 
     assert state.status == "ready"
     assert len(requests) == 2
+
+
+def test_schema_fallback_uses_total_two_call_limit_for_contract_failure():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(400, json={"error": {}})
+        return httpx.Response(
+            200,
+            json=_gemini_response({"status": "ready", "message": "목표를 정리했어요."}),
+        )
+
+    with pytest.raises(LlmError) as raised:
+        _resolver(handler).resolve(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert len(requests) == 2
+
+
+def test_invalid_status_is_not_retried():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "unknown",
+                    "message": "목표를 정리했어요.",
+                    "goal": "카메라 앱 열기",
+                }
+            ),
+        )
+
+    with pytest.raises(LlmError) as raised:
+        _resolver(handler).resolve(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert len(requests) == 1
 
 
 @pytest.mark.parametrize(
@@ -264,7 +434,11 @@ def test_gemini_classifies_network_and_invalid_output_without_logging_raw_text(c
 
 
 def test_gemini_logs_only_safe_operation_metadata(caplog):
-    private_values = ["private-utterance-canary", "private-key-canary"]
+    private_values = [
+        "private-utterance-canary",
+        "private-key-canary",
+        "private-decision-basis-canary",
+    ]
     resolver = GeminiIntentResolver(
         private_values[1],
         "gemini-test",
@@ -274,6 +448,7 @@ def test_gemini_logs_only_safe_operation_metadata(caplog):
                     200,
                     json=_gemini_response(
                         {
+                            "decision_basis": private_values[2],
                             "status": "ready",
                             "message": "private-message-canary",
                             "goal": "private-goal-canary",

@@ -10,6 +10,18 @@ import json
 
 from .schemas import SlotFillRequest
 
+_REPAIR_GUIDANCE = {
+    "decision_basis_blank": "판단 근거를 짧은 한 문장으로 채우세요.",
+    "decision_basis_too_long": "판단 근거를 더 짧은 한 문장으로 줄이세요.",
+    "message_blank": "사용자에게 읽어 줄 질문이나 안내를 한 문장으로 채우세요.",
+    "message_too_long": "사용자에게 읽어 줄 문장을 300자 이내로 줄이세요.",
+    "goal_blank": "ready 상태에 맞는 구체적인 목표를 한 문장으로 채우세요.",
+    "goal_too_long": "목표를 500자 이내의 구체적인 한 문장으로 줄이세요.",
+    "status_goal_mismatch": (
+        "ready 상태라면 goal을 반드시 채우고, needs_clarification 상태라면 goal을 생략하세요."
+    ),
+}
+
 
 def build_intent_prompt(request: SlotFillRequest) -> str:
     """고정 슬롯 목록 없이 지금 꼭 필요한 질문 하나 또는 최종 목표를 요청한다."""
@@ -26,6 +38,8 @@ def build_intent_prompt(request: SlotFillRequest) -> str:
 목표 한 문장으로 만들 수 있는지 판단하세요.
 
 원칙:
+- 먼저 decision_basis에 현재 대화만으로 판단한 근거를 짧은 한국어 한 문장으로 쓰세요.
+  이 값은 사용자에게 표시되지 않습니다.
 - 앱 종류나 행동별 고정 슬롯 목록을 가정하지 마세요.
 - 현재 정보만으로 사용자의 의도가 여러 의미로 갈리거나 안내에 꼭 필요한 정보가 없으면
   status를 needs_clarification으로 하고, 가장 중요한 질문 하나만 message에 쓰세요.
@@ -40,4 +54,15 @@ def build_intent_prompt(request: SlotFillRequest) -> str:
 <untrusted_voice_dialogue>
 {serialized}
 </untrusted_voice_dialogue>
+"""
+
+
+def build_intent_repair_prompt(prompt: str, reason: str) -> str:
+    """이전 모델 원문 없이 계약 위반 이유만 더해 한 번 교정한다."""
+
+    guidance = _REPAIR_GUIDANCE[reason]
+    return f"""{prompt}
+
+이전 응답이 JSON 계약을 만족하지 않았습니다. 이전 응답 원문을 답변에 인용하지 말고 같은 대화를
+다시 판단하세요. {guidance}
 """
