@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             recordVoiceRequestResult(logicalRequest, result, durationMs)
             if (!destroyed) {
                 runOnUiThread {
-                    if (!destroyed) handleSlotFillResult(pending, result)
+                    if (!destroyed) handleSlotFillResult(pending, logicalRequest, result)
                 }
             }
         }
@@ -194,11 +194,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleSlotFillResult(
         pending: VoiceDialogueSession.PendingRequest,
+        logicalRequest: LogicalRequestAttempt,
         result: SlotFillResult,
     ) {
         when (result) {
             is SlotFillResult.Success -> {
-                val outcome = voiceSession.applyResponse(pending, result.state) ?: return
+                val outcome = voiceSession.applyResponse(pending, result.state)
+                if (outcome == null) {
+                    GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
+                    return
+                }
                 when (outcome) {
                     is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
                     is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome)

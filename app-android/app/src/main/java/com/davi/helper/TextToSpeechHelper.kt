@@ -25,30 +25,12 @@ class TextToSpeechHelper(context: Context) {
     private lateinit var textToSpeech: TextToSpeech
 
     init {
-        textToSpeech = TextToSpeech(context.applicationContext) { status ->
-            if (destroyed) return@TextToSpeech
-            val languageResult = if (status == TextToSpeech.SUCCESS) {
-                textToSpeech.setLanguage(Locale.KOREAN)
-            } else {
-                TextToSpeech.ERROR
-            }
-            ready = languageResult != TextToSpeech.LANG_MISSING_DATA &&
-                languageResult != TextToSpeech.LANG_NOT_SUPPORTED &&
-                languageResult != TextToSpeech.ERROR
-            failed = !ready
-            val waiting = pending.also { pending = null }
-            if (ready) waiting?.let(::speakNow) else waiting?.onError?.invoke()
-        }.apply {
+        textToSpeech = TextToSpeech(context.applicationContext, ::onInitialized).apply {
             setOnUtteranceProgressListener(
                 object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
 
-                    override fun onDone(utteranceId: String?) {
-                        if (utteranceId != activeId) return
-                        val callback = activeDone
-                        clearActive()
-                        callback?.invoke()
-                    }
+                    override fun onDone(utteranceId: String?) = finishWithSuccess(utteranceId)
 
                     @Deprecated("Android framework callback")
                     override fun onError(utteranceId: String?) = finishWithError(utteranceId)
@@ -60,6 +42,23 @@ class TextToSpeechHelper(context: Context) {
         }
     }
 
+    @Synchronized
+    private fun onInitialized(status: Int) {
+        if (destroyed) return
+        val languageResult = if (status == TextToSpeech.SUCCESS) {
+            textToSpeech.setLanguage(Locale.KOREAN)
+        } else {
+            TextToSpeech.ERROR
+        }
+        ready = languageResult != TextToSpeech.LANG_MISSING_DATA &&
+            languageResult != TextToSpeech.LANG_NOT_SUPPORTED &&
+            languageResult != TextToSpeech.ERROR
+        failed = !ready
+        val waiting = pending.also { pending = null }
+        if (ready) waiting?.let(::speakNow) else waiting?.onError?.invoke()
+    }
+
+    @Synchronized
     fun speak(text: String, onDone: () -> Unit, onError: () -> Unit) {
         val normalized = text.trim()
         if (normalized.isEmpty() || destroyed || failed) {
@@ -74,12 +73,14 @@ class TextToSpeechHelper(context: Context) {
         speakNow(request)
     }
 
+    @Synchronized
     fun stop() {
         pending = null
         clearActive()
         textToSpeech.stop()
     }
 
+    @Synchronized
     fun shutdown() {
         if (destroyed) return
         destroyed = true
@@ -87,6 +88,7 @@ class TextToSpeechHelper(context: Context) {
         textToSpeech.shutdown()
     }
 
+    @Synchronized
     private fun speakNow(request: Pending) {
         textToSpeech.stop()
         val id = UUID.randomUUID().toString()
@@ -98,6 +100,15 @@ class TextToSpeechHelper(context: Context) {
         }
     }
 
+    @Synchronized
+    private fun finishWithSuccess(utteranceId: String?) {
+        if (utteranceId != activeId) return
+        val callback = activeDone
+        clearActive()
+        callback?.invoke()
+    }
+
+    @Synchronized
     private fun finishWithError(utteranceId: String?) {
         if (utteranceId != activeId) return
         val callback = activeError

@@ -47,10 +47,11 @@ class SpeechRecognizerHelper(
     private fun startRecognizer(onDevice: Boolean) {
         try {
             usingOnDevice = onDevice
-            recognizer = createRecognizer(onDevice).apply {
-                setRecognitionListener(recognitionListener)
-                startListening(buildRecognizerIntent())
-            }
+            val created = createRecognizer(onDevice)
+            // startListening이 던져도 catch의 stop()이 방금 만든 인스턴스를 회수할 수 있게 먼저 보관한다.
+            recognizer = created
+            created.setRecognitionListener(recognitionListener)
+            created.startListening(buildRecognizerIntent())
         } catch (_: RuntimeException) {
             stop()
             listener.onError(ERROR_START_FAILED)

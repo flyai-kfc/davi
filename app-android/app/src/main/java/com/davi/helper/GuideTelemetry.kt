@@ -117,6 +117,18 @@ object GuideTelemetry {
         )
     }
 
+    fun voiceResponseDropped(request: LogicalRequestAttempt, reason: String) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "voice_response_dropped",
+                "logical_request_id" to request.logicalRequestId,
+                "attempt" to request.attempt,
+                "reason" to reason,
+            ),
+        )
+    }
+
     internal fun event(name: String, vararg fields: Pair<String, Any?>): String = buildString {
         append("event=").append(name)
         fields.forEach { (key, value) ->
