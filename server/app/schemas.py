@@ -1,7 +1,7 @@
 """앱 <-> 서버 계약. 이 스키마가 곧 API 계약이다(테스트로 고정한다).
 
 이 파일은 앱·서버·eval 셋이 동시에 무는 지점이라 바꾸면 세 곳이 함께 움직인다.
-결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C11) 참고.
+결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C13) 참고.
 
 두 가지 규칙을 지킨다(HANDOFF §10 실측):
 - **근거 필드가 먼저 온다.** GuideAction의 필드 선언 순서가 곧 Gemini `propertyOrdering`이고,
@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Self
+from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ActionType(StrEnum):
@@ -202,3 +203,111 @@ class ApiError(BaseModel):
     retry_after_seconds: int | None = None
     # 도그푸딩 로그 대조용.
     request_id: str | None = None
+
+
+# --- 음성 목표 대화 (#90) ----------------------------------------------------
+
+MAX_VOICE_TEXT_LENGTH = 500
+MAX_CONVERSATION_MESSAGES = 10
+
+
+class ConversationRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ConversationTurn(BaseModel):
+    """이미 끝난 음성 목표 대화 한 줄. 현재 사용자 발화는 여기에 넣지 않는다."""
+
+    role: ConversationRole
+    content: str = Field(min_length=1, max_length=MAX_VOICE_TEXT_LENGTH)
+
+    @field_validator("content")
+    @classmethod
+    def reject_blank_content(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("대화 내용은 공백일 수 없다")
+        return stripped
+
+
+class IntentDialogueStatus(StrEnum):
+    NEEDS_CLARIFICATION = "needs_clarification"
+    READY = "ready"
+
+
+class SlotFillRequest(BaseModel):
+    """현재 발화와 이전에 끝난 사용자↔도우미 턴.
+
+    엔드포인트 이름은 #88의 참고 계약을 따르지만, 서버는 고정 슬롯을 채우지 않는다.
+    ``conversation_history``는 반드시 완결된 user/assistant 쌍만 담고 ``utterance``가
+    이번 요청의 현재 사용자 발화다. ``session_id``는 앱 대화 경계일 뿐 모델 입력이나
+    운영 로그에 포함하지 않는다.
+    """
+
+    utterance: str = Field(min_length=1, max_length=MAX_VOICE_TEXT_LENGTH)
+    session_id: UUID
+    conversation_history: list[ConversationTurn] = Field(
+        default_factory=list,
+        max_length=MAX_CONVERSATION_MESSAGES,
+    )
+
+    @field_validator("utterance")
+    @classmethod
+    def reject_blank_utterance(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("현재 발화는 공백일 수 없다")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_completed_turn_pairs(self) -> Self:
+        if len(self.conversation_history) % 2 != 0:
+            raise ValueError("대화 이력은 완결된 user/assistant 쌍이어야 한다")
+        for index, turn in enumerate(self.conversation_history):
+            expected = ConversationRole.USER if index % 2 == 0 else ConversationRole.ASSISTANT
+            if turn.role is not expected:
+                raise ValueError("대화 이력은 user와 assistant가 번갈아야 한다")
+        return self
+
+
+class SlotFillState(BaseModel):
+    """고정 슬롯 없이 추가 질문 또는 최종 목표 하나를 돌려주는 응답."""
+
+    status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
+    message: str = Field(
+        min_length=1,
+        max_length=300,
+        description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
+    )
+    goal: str | None = Field(
+        default=None,
+        max_length=MAX_VOICE_TEXT_LENGTH,
+        description="ready일 때 기존 안내 세션에 넘길 구체적인 목표",
+    )
+
+    @field_validator("message")
+    @classmethod
+    def reject_blank_message(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("사용자 안내는 공백일 수 없다")
+        return stripped
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_goal(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("완성 목표는 공백일 수 없다")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_status_and_goal(self) -> Self:
+        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION and self.goal is not None:
+            raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
+        if self.status is IntentDialogueStatus.READY and self.goal is None:
+            raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        return self
