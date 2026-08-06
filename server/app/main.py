@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
+from .intent_resolution import resolve_intent
 from .llm import get_llm_client
 from .observability import (
     ATTEMPT_HEADER,
@@ -29,13 +30,22 @@ from .observability import (
 )
 from .raw_store import raw_store_dir, store_raw_exchange
 from .reasoning import next_step
-from .schemas import ApiError, ErrorKind, NextStepRequest, NextStepResponse
+from .schemas import (
+    ApiError,
+    ErrorKind,
+    NextStepRequest,
+    NextStepResponse,
+    SlotFillRequest,
+    SlotFillState,
+)
 
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
 _NEXT_STEP_PATH = "/v1/next-step"
+_SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _HEALTH_PATH = "/health"
+_TRACED_API_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH})
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
@@ -46,6 +56,8 @@ def _request_route(path: str) -> str:
 
     if path == _NEXT_STEP_PATH:
         return _NEXT_STEP_PATH
+    if path == _SLOT_FILL_PATH:
+        return _SLOT_FILL_PATH
     if path == _HEALTH_PATH:
         return _HEALTH_PATH
     return "unmatched"
@@ -188,6 +200,16 @@ def _store_raw_if_dogfood(
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     request.state.error_kind = "VALIDATION"
     request.state.validation_error_count = len(exc.errors())
+    if request.url.path == _SLOT_FILL_PATH:
+        error = ApiError(
+            kind=ErrorKind.BAD_REQUEST,
+            message="slot-fill request validation failed",
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content=error.model_dump(),
+        )
     return await request_validation_exception_handler(request, exc)
 
 
@@ -200,7 +222,7 @@ async def observe_request(request: Request, call_next):
     logical_request_id: str | None = None
     attempt: int | None = None
     valid_trace_headers = True
-    if route == _NEXT_STEP_PATH:
+    if route in _TRACED_API_PATHS:
         logical_request_id, attempt, valid_trace_headers = _logical_request_headers(request)
     context = TraceContext(request.state.request_id, logical_request_id, attempt)
     request.state.trace_context = context
@@ -209,7 +231,7 @@ async def observe_request(request: Request, call_next):
     status_code = 500
     response: JSONResponse | None = None
     try:
-        if route == _NEXT_STEP_PATH:
+        if route in _TRACED_API_PATHS:
             log_event(
                 request_logger,
                 logging.INFO,
@@ -221,7 +243,7 @@ async def observe_request(request: Request, call_next):
             request.state.error_kind = ErrorKind.BAD_REQUEST.value
             response = _invalid_trace_headers_response(request.state.request_id)
         else:
-            response = _development_access_error(request) if route == _NEXT_STEP_PATH else None
+            response = _development_access_error(request) if route in _TRACED_API_PATHS else None
             if response is None:
                 response = await call_next(request)
         _attach_trace_headers(response, context)
@@ -298,3 +320,22 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         )
     _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
     return response
+
+
+@app.post("/v1/intent/slot-fill", response_model=SlotFillState)
+def post_slot_fill(req: SlotFillRequest, request: Request) -> SlotFillState | JSONResponse:
+    """발화 하나를 받아 부족한 슬롯 하나를 되묻거나 최종 확인을 돌려준다."""
+
+    try:
+        return resolve_intent(req)
+    except LlmError as error:
+        # 현재 규칙 기반 스텁에서는 도달하지 않는다. Gemini 연동 후에도 앱의 오류 계약이
+        # 바뀌지 않도록 기존 next-step과 같은 경계를 먼저 연다.
+        api_error = api_error_for(error, request.state.request_id)
+        request.state.error_kind = error.kind.value
+        request.state.retry_after_seconds = error.retry_after_seconds
+        return JSONResponse(
+            status_code=http_status_for(error),
+            content=api_error.model_dump(),
+            headers=retry_after_header(error) or None,
+        )
