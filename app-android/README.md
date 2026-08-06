@@ -66,7 +66,7 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 
 ```powershell
 # 1) 서버 (스텁으로 먼저)
-cd server; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd server; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config app/logging.json
 
 # 2) 기기 -> 호스트 PC 포트 연결. 터널 대신 이걸 쓴다
 adb reverse tcp:8000 tcp:8000
@@ -86,7 +86,7 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 배선이 확인되면 **실호출**로 한 번 더 돌린다. `.env`를 고치지 않고 환경변수로 덮어쓴다.
 
 ```powershell
-cd server; $env:DAVI_USE_STUB_LLM="false"; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd server; $env:DAVI_USE_STUB_LLM="false"; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config app/logging.json
 ```
 
 `GET /health`의 `stub_llm`이 `false`인지 먼저 확인한다. 무료 티어는 15 RPM / 1,000 RPD이고
@@ -101,12 +101,14 @@ Gradle이 debug 빌드마다 `network_security_config.xml`을 생성해 실제 �
 ### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
 
 ```
-GuideSvc: screen pkg=com.sec.android.app.launcher elements=8 clickable=8
-GuideSvc: action=tap target=n8 instruction=카메라 아이콘을 눌러주세요.
+GuideSvc: event=screen_stable package=com.sec.android.app.launcher element_count=8 clickable_count=8
+GuideSvc: event=request_started logical_request_id=<uuid> attempt=1
+GuideSvc: event=request_finished logical_request_id=<uuid> attempt=1 outcome=success status_code=200 server_request_id=<id>
+GuideSvc: action=tap target=n8 direction=- history=0
 GuideSvc: highlight n8 bounds=[787, 1902, 1035, 2170]
-GuideSvc: screen pkg=com.sec.android.app.camera elements=14 clickable=13
-GuideSvc: action=done target=- instruction=이미 카메라 앱이 열려 있습니다.
-GuideSvc: session done goal=open camera app
+GuideSvc: event=screen_stable package=com.sec.android.app.camera element_count=14 clickable_count=13
+GuideSvc: action=done target=- direction=- history=1
+GuideSvc: session done
 ```
 
 ## 설정 (local.properties — gitignore됨)
@@ -145,6 +147,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 | `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동). 인메모리 — 영속화하지 않는다 |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
+| `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
+| `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
 | `gradle/libs.versions.toml` | 버전 카탈로그 |
 
@@ -159,7 +163,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 - `MainActivity` + `GuideSession` — 두 권한이 있을 때만 목표를 입력해 안내를 시작·중지한다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
-- `GuideApiClient` — 서버의 `NextStepRequest`/`NextStepResponse` 계약을 직렬화·파싱한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 기록하며 앱을 종료하지 않는다.
+- `GuideApiClient` — 서버의 JSON 계약을 직렬화·파싱하고 Logical Request ID/attempt header를
+  전송한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 분류하며 앱을 종료하지 않는다.
 - `OverlayController` + `HighlightOverlayView` — 서버가 고른 대상에 테두리를 그리고 안내문을 상자에 담아 함께 보여준다. `done`이면 지운다.
 - `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다. 스크롤 메타·페이지 dot도 함께 채운다.
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
@@ -168,7 +173,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 - ~~**같은 안내를 반복한다.**~~ 문장 이력은 모델 프롬프트에 유지하고, 별도의
   `recent_actions`를 서버 `_apply_guardrails`가 비교한다(#36). 앱은 서버가 label 없이 만든
   화면 서명과 구조화 행동을 활성 세션에 최대 10개만 보관하며 세션 재시작 때 비운다.
-- **앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.** 카메라 전환 직후 `elements=1`인 화면이 서버로 갔다. 시간 기반 정체·안정화 판정이 필요하다.
+- ~~**앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.**~~ 같은 화면 연속 샘플을 확인한 뒤
+  요청하고, 응답 대기 중 화면 변화와 정체를 폴링으로 판정한다(#39).
 - 권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다.
 - 정체 감지, 오버레이 불가 화면(설정 앱)의 헤드업 폴백은 아직 없다.
 
@@ -176,7 +182,7 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 
 ## 디버깅
 - 1순위: `adb logcat -s GuideSvc` (재현 직전 `adb logcat -c`).
-- 정상 왕복: `action=tap target=<node_id> instruction=<안내>`.
-- 서버가 꺼짐: `network_error`만 남고 서비스는 계속 실행된다.
+- 정상 왕복: 같은 `logical_request_id`의 `request_started` → `request_finished outcome=success`.
+- 서버가 꺼짐: `request_finished outcome=network_error`만 남고 서비스는 계속 실행된다.
 - 속성 확인: `adb shell uiautomator dump` (UTF-8로 읽기).
 - adb 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server`.

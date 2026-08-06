@@ -42,6 +42,7 @@ jobs:
               # test_contract_drift.py 가 이 파일을 읽어 서버 enum과 대조하기 때문이다.
               # 이게 없으면 앱만 고친 PR에서 드리프트 검사가 통째로 건너뛰어진다.
               - 'app-android/app/src/main/java/com/davi/helper/Contract.kt'
+              - 'app-android/app/src/main/java/com/davi/helper/RequestTracing.kt'
 
   android:
     name: Android (debug/release APK + test)

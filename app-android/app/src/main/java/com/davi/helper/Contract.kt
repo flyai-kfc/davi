@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
- * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C11)을 먼저 읽고 양쪽을 같이 고친다.
+ * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C12)을 먼저 읽고 양쪽을 같이 고친다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.

@@ -56,3 +56,5 @@ def test_start_script_enforces_development_real_llm_and_lan_bind():
     assert 'dev_token="${DAVI_DEV_ACCESS_TOKEN:-}"' in content
     assert 'export DAVI_BIND_HOST="0.0.0.0"' in content
     assert "--workers 1" in content
+    assert "--no-access-log" in content
+    assert "--log-config app/logging.json" in content
