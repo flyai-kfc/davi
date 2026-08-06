@@ -1,7 +1,7 @@
 """앱 <-> 서버 계약. 이 스키마가 곧 API 계약이다(테스트로 고정한다).
 
 이 파일은 앱·서버·eval 셋이 동시에 무는 지점이라 바꾸면 세 곳이 함께 움직인다.
-결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C11) 참고.
+결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C12) 참고.
 
 두 가지 규칙을 지킨다(HANDOFF §10 실측):
 - **근거 필드가 먼저 온다.** GuideAction의 필드 선언 순서가 곧 Gemini `propertyOrdering`이고,
@@ -202,3 +202,75 @@ class ApiError(BaseModel):
     retry_after_seconds: int | None = None
     # 도그푸딩 로그 대조용.
     request_id: str | None = None
+
+
+# --- 핑퐁: 음성 발화 -> 슬롯 채우기 (pingpong/CONTRACT.md §1) ---------------------
+
+
+class SlotFillActionType(StrEnum):
+    """행동이 특정 사람을 향하는가. 필수 슬롯 집합이 여기서 갈린다."""
+
+    PERSON_DIRECTED = "person_directed"
+    GENERAL = "general"
+
+
+SLOT_FILL_REQUIRED_FIELDS: dict[SlotFillActionType, tuple[str, ...]] = {
+    SlotFillActionType.PERSON_DIRECTED: ("target_person", "app", "content", "method"),
+    SlotFillActionType.GENERAL: ("app", "content", "method"),
+}
+
+
+MAX_UTTERANCE_LENGTH = 500
+MAX_CONVERSATION_MESSAGES = 10
+
+
+class ConversationRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ConversationTurn(BaseModel):
+    """서버가 무상태로 되묻기를 이어가기 위해 앱이 돌려주는 대화 한 줄."""
+
+    role: ConversationRole
+    content: str = Field(max_length=MAX_UTTERANCE_LENGTH)
+
+
+class SlotFillRequest(BaseModel):
+    """이번 발화와 같은 음성 목표 세션의 이전 대화."""
+
+    utterance: str = Field(min_length=1, max_length=MAX_UTTERANCE_LENGTH)
+    session_id: str = Field(min_length=1, max_length=128)
+    conversation_history: list[ConversationTurn] = Field(
+        default_factory=list,
+        max_length=MAX_CONVERSATION_MESSAGES,
+    )
+
+
+class SlotFillState(BaseModel):
+    """앱이 되묻기와 최종 확인 중 어느 화면으로 갈지 결정하는 응답."""
+
+    reasoning: str = Field(description="어떤 유형이고 어떤 슬롯이 채워졌는지의 판단 근거")
+    action_type: SlotFillActionType
+    slots: dict[str, str | None] = Field(default_factory=dict)
+    missing_slots: list[str] = Field(default_factory=list)
+    confirmation_question: str = Field(min_length=1)
+    goal: str | None = None
+
+    @model_validator(mode="after")
+    def validate_state_is_self_consistent(self) -> Self:
+        """빈 슬롯·완성 목표·확인 단계가 서로 다른 말을 하지 않게 한다."""
+
+        required = SLOT_FILL_REQUIRED_FIELDS[self.action_type]
+        if set(self.slots) != set(required):
+            raise ValueError("action_type의 필수 슬롯 키와 slots가 일치하지 않는다")
+
+        actual_missing = [name for name in required if self.slots[name] is None]
+        if self.missing_slots != actual_missing:
+            raise ValueError("null 슬롯과 missing_slots가 일치하지 않는다")
+
+        if actual_missing and self.goal is not None:
+            raise ValueError("아직 빈 슬롯이 있는데 goal이 채워졌다")
+        if not actual_missing and not self.goal:
+            raise ValueError("슬롯이 다 찼는데 goal이 비었다")
+        return self
