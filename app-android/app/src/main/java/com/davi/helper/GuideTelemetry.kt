@@ -73,6 +73,50 @@ object GuideTelemetry {
         Log.i(GuideAccessibilityService.TAG, event("root_state", "state" to state))
     }
 
+    fun voiceState(state: String, errorCode: Int? = null) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event("voice_state", "state" to state, "error_code" to errorCode),
+        )
+    }
+
+    fun voiceRequestStarted(request: LogicalRequestAttempt, turnIndex: Int) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "voice_request_started",
+                "logical_request_id" to request.logicalRequestId,
+                "attempt" to request.attempt,
+                "turn_index" to turnIndex,
+            ),
+        )
+    }
+
+    fun voiceRequestFinished(
+        request: LogicalRequestAttempt,
+        outcome: String,
+        durationMs: Long,
+        statusCode: Int? = null,
+        errorKind: String? = null,
+        serverRequestId: String? = null,
+        exceptionClass: String? = null,
+    ) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "voice_request_finished",
+                "logical_request_id" to request.logicalRequestId,
+                "attempt" to request.attempt,
+                "outcome" to outcome,
+                "duration_ms" to durationMs,
+                "status_code" to statusCode,
+                "error_kind" to errorKind,
+                "server_request_id" to serverRequestId,
+                "exception_class" to exceptionClass,
+            ),
+        )
+    }
+
     internal fun event(name: String, vararg fields: Pair<String, Any?>): String = buildString {
         append("event=").append(name)
         fields.forEach { (key, value) ->

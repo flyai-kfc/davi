@@ -72,6 +72,25 @@
             android:textSize="@dimen/text_body" />
 
         <Button
+            android:id="@+id/btn_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:minHeight="@dimen/touch_target_min"
+            android:text="@string/btn_voice_input"
+            android:textSize="@dimen/text_button" />
+
+        <TextView
+            android:id="@+id/voice_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:accessibilityLiveRegion="polite"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/voice_idle"
+            android:textSize="@dimen/text_body" />
+
+        <Button
             android:id="@+id/btn_start"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

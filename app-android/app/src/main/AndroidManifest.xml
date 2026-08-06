@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 설정 앱 등 오버레이 불가 화면에서 헤드업 알림 폴백(HANDOFF §3-1) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 사용자가 누른 동안 목표를 음성으로 입력. 원시 오디오는 앱이 저장하거나 서버로 보내지 않는다. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="false"
