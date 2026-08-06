@@ -26,15 +26,18 @@ uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
+- 음성 슬롯 채우기: `POST /v1/intent/slot-fill` (핑퐁 계약은 `../pingpong/CONTRACT.md`)
 
 ASGI에 도달한 응답에는 서버가 HTTP 전송마다 만든 32자리 비식별 `X-Request-ID`가 붙는다.
-Android는 `/v1/next-step`에 무작위 UUID `X-Davi-Logical-Request-ID`와 1부터 증가하는
+Android는 `/v1/next-step`과 `/v1/intent/slot-fill`에 무작위 UUID
+`X-Davi-Logical-Request-ID`와 1부터 증가하는
 `X-Davi-Attempt`를 함께 보낸다. 서버는 둘 다 없으면 이전 APK로 보고 허용하고, 정확히 한 쌍의
 유효한 값만 echo한다. 한쪽 누락·중복·형식 오류는 `400 BAD_REQUEST`이며 검증 전 값은 반사하지 않는다.
 JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
 
-같은 화면·세션의 network/timeout 및 retryable 429/502 재전송만 Logical Request ID를 유지한다.
-화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. #81은 검증·echo·로그 연결만 하며,
+`next-step`은 같은 화면·세션, `slot-fill`은 같은 발화의 network/timeout 및 retryable 429/502
+재전송만 Logical Request ID를 유지한다. 화면·목표·세션 변경, 새 발화와 정상 응답 뒤의 새 추론은
+새 ID다. #81은 검증·echo·로그 연결만 하며,
 같은 ID의 dedupe·결과 cache·timeout budget은 #82 범위다.
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
@@ -198,14 +201,16 @@ pytest
 **동작하는 구현** (테스트로 덮인 것 포함)
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
-- `app/schemas.py` — 계약 모델 전체. C1~C8 반영 완료, `tests/test_contract.py`가 고정한다.
+- `app/schemas.py` — 다음 안내와 음성 슬롯 채우기 계약 모델. C1~C12와 핑퐁 계약을 테스트로 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
-- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
+- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
 - 요청 관측(#81) — 모든 ASGI 응답의 request ID, Android Logical Request ID/attempt와 Gemini 호출
   단계를 비식별 JSON Lines로 연결한다. 401·422·429·502·500·404는 고정 오류 코드만 남기고,
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
+- `app/intent_resolution.py:resolve_intent` — 음성 발화의 되묻기 프로토콜을 재현하는 규칙 기반
+  스텁. 자연어 이해 품질이나 Gemini 연동을 뜻하지 않는다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
 - `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
   프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면

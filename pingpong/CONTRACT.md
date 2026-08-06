@@ -12,6 +12,23 @@ pfront(앱)과 pback(서버)이 함께 만드는 기능이므로, 이 문서에�
 POST /v1/intent/slot-fill
 ```
 
+### HTTP 요청 추적 (#81 확장)
+
+JSON 본문과 별도로 pfront은 한 발화의 응답 하나를 얻기 위한 비식별 전송 헤더를 보낸다.
+
+| Header | 의미 |
+|---|---|
+| `X-Davi-Logical-Request-ID` | 현재 발화 전송의 무작위 canonical UUID |
+| `X-Davi-Attempt` | 같은 발화를 다시 보내는 HTTP 시도 번호. 1부터 증가 |
+
+- 두 헤더는 둘 다 보내거나 둘 다 생략한다. 둘 다 없는 현재·이전 앱 요청도 허용한다.
+- 같은 발화의 network/timeout 또는 retryable `429`/`502` 재전송만 ID를 유지하고 attempt를 올린다.
+- 서버가 응답한 뒤 사용자가 새로 말하면 같은 `session_id`여도 새 Logical Request ID를 만든다.
+- "아니요"로 세션을 갱신하면 진행 중 ID도 폐기한다.
+- ID는 `utterance`·`session_id`·대화 이력에서 파생하지 않고 앱 프로세스 밖에 저장하지 않는다.
+- 서버는 유효한 두 값을 응답에 echo하고, 한쪽 누락·중복·형식 오류는 `400 BAD_REQUEST`로 거부한다.
+- 이 단계에서 ID는 검증·echo·안전 로그 연결에만 쓴다. dedupe·결과 cache·timeout budget은 #82다.
+
 ### 요청 (pfront → pback)
 
 ```json

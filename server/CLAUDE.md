@@ -29,7 +29,9 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 Gemini 쿼터를 보호한다.
 - 요청 로그에는 비식별 운영 메타데이터만 둔다. `goal`, 화면 label, 최근 안내, 요청 본문,
   API 키·access token은 어떤 프로필에서도 기록하지 않는다.
-- 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→Gemini 단계를 연결한다(#81).
+- 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→서버 단계를 연결한다(#81).
+  `/v1/next-step`은 한 화면의 안내 하나, `/v1/intent/slot-fill`은 한 발화의 응답 하나가 논리
+  요청 단위다. 모델을 호출하는 경로는 같은 문맥으로 Gemini 단계까지 연결한다.
   정상 `/health`와 기본 access log는 남기지 않으며 IP/port·User-Agent도 보존하지 않는다.
   로그 형식은 UTC timestamp가 있는 JSON Lines, 보존은 공용 개발 스크립트의 기존 7일이다.
 - **픽스처 보존(#41)은 운영 로그와 별개 채널이다.** 정책 원본은 `../SPEC.md` §3
