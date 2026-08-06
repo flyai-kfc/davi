@@ -26,6 +26,7 @@ uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
+- 음성 목표 정리: `POST /v1/intent/slot-fill` (고정 슬롯 없이 질문 또는 최종 goal 반환)
 
 ASGI에 도달한 응답에는 서버가 HTTP 전송마다 만든 32자리 비식별 `X-Request-ID`가 붙는다.
 Android는 `/v1/next-step`에 무작위 UUID `X-Davi-Logical-Request-ID`와 1부터 증가하는
@@ -39,6 +40,51 @@ JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하�
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
 향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
+
+## 음성 목표 대화 계약
+
+`/v1/intent/slot-fill`은 PR #88의 엔드포인트 모양만 참고하고 규칙 기반 슬롯 분류는 이식하지
+않았다. `conversation_history`에는 **이전에 끝난** user/assistant 쌍만 오래된 순으로 넣고,
+`utterance`가 이번 요청의 현재 사용자 발화다. 이력은 최대 10개 메시지(5왕복)이며
+`session_id`는 무작위 UUID다.
+
+```json
+{
+  "utterance": "사진을 보내고 싶어",
+  "session_id": "2c8a6a21-0d5a-4868-a394-694684f494df",
+  "conversation_history": []
+}
+```
+
+모델이 정보가 더 필요하다고 판단하면 한 질문만 돌려준다.
+
+```json
+{
+  "status": "needs_clarification",
+  "message": "사진을 어디로 보내고 싶으세요?",
+  "goal": null
+}
+```
+
+충분하면 기존 `/v1/next-step`의 `goal`로 바로 쓸 정규화된 목표를 돌려준다.
+
+```json
+{
+  "status": "ready",
+  "message": "보호자에게 메신저로 사진 보내기로 정리했어요.",
+  "goal": "메신저에서 보호자에게 사진 보내기"
+}
+```
+
+발화와 이전 턴은 의미 보존을 위해 Gemini에 전달되지만 서버 운영 로그와 도그푸딩 raw 채널에는
+저장하지 않는다. `session_id`는 모델 입력에도 넣지 않는다. 키 없는 개발·CI에서는
+`StubIntentResolver`가 현재 발화를 그대로 ready goal로 돌려 계약만 검증하며 의미 품질을 주장하지 않는다.
+두 trace header와 development auth/rate limit, `ApiError`는 `/v1/next-step`과 같은 경계를 쓴다.
+
+Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과
+운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
+제거한다. ready goal 누락·공백 또는 텍스트 상한 위반은 이전 모델 원문 없이 고정 진단만 덧붙여 한 번
+교정한다. schema 400 폴백을 포함해 공급자 호출은 요청당 최대 2회이며, 그 뒤에는 `PARSE`로 실패한다.
 
 ## 실행 프로필
 
@@ -188,6 +234,8 @@ pytest
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
 | `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
+| `app/intent_prompt.py` | 이전 턴+현재 발화 → 고정 슬롯 없는 음성 목표 프롬프트. |
+| `app/intent_resolution.py` | 음성 목표 스텁/Gemini 경계, 구조화 질문·goal 검증. |
 | `app/observability.py` | 비식별 요청 문맥·고정 이벤트·안전한 JSON Lines formatter. |
 | `app/logging.json` | Uvicorn access log를 끄고 서버 진단을 JSON Lines로 통합하는 설정. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
@@ -198,10 +246,10 @@ pytest
 **동작하는 구현** (테스트로 덮인 것 포함)
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
-- `app/schemas.py` — 계약 모델 전체. C1~C8 반영 완료, `tests/test_contract.py`가 고정한다.
+- `app/schemas.py` — 다음 안내와 음성 목표 대화 계약. C1~C13을 계약 테스트가 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
-- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
+- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
 - 요청 관측(#81) — 모든 ASGI 응답의 request ID, Android Logical Request ID/attempt와 Gemini 호출
   단계를 비식별 JSON Lines로 연결한다. 401·422·429·502·500·404는 고정 오류 코드만 남기고,
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
@@ -211,6 +259,10 @@ pytest
   프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
   JSON 계약을 프롬프트로 옮겨 무스키마 호출을 한 번 재시도한다.
   HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
+- `app/intent_prompt.py` + `app/intent_resolution.py:GeminiIntentResolver` — 완결된 이전 턴과 현재
+  발화를 분리해 직렬화하고 `needs_clarification`/`ready` 구조화 출력으로 질문 또는 goal을 만든다.
+  내부 판단 근거를 status보다 먼저 생성하되 wire·로그에는 버리고, 안전한 goal 제거와 총 2회 안의
+  계약 교정만 허용한다. `StubIntentResolver`는 keyless 스모크 전용이며 자연어 품질을 대변하지 않는다.
 - Gemini 실호출 스모크(2026-07-27) — `.env`의 `gemini-3.5-flash-lite`로 마스킹된 샘플 화면을 호출해
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
 - `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.

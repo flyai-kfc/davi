@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from app.config import Settings, settings
+from app.intent_resolution import get_intent_resolver
 from app.llm import get_llm_client
 from app.main import dev_rate_limiter
 
@@ -36,9 +37,11 @@ def isolate_runtime_state(monkeypatch):
 
     _apply_runtime_profile(monkeypatch, _validated_runtime_profile())
     get_llm_client.cache_clear()
+    get_intent_resolver.cache_clear()
     dev_rate_limiter.reset()
     yield
     get_llm_client.cache_clear()
+    get_intent_resolver.cache_clear()
     dev_rate_limiter.reset()
 
 
