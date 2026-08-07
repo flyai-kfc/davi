@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
- * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C12)을 먼저 읽고 양쪽을 같이 고친다.
+ * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C13)을 먼저 읽고 양쪽을 같이 고친다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -152,4 +152,43 @@ enum class ApiErrorKind {
     @SerialName("SERVER") SERVER,
     @SerialName("PARSE") PARSE,
     @SerialName("BAD_REQUEST") BAD_REQUEST,
+}
+
+/** 음성 목표 대화의 이전 한 줄. 현재 발화는 [SlotFillRequest.utterance]에만 둔다(C13). */
+@Serializable
+data class ConversationTurn(
+    val role: ConversationRole,
+    val content: String,
+)
+
+@Serializable
+enum class ConversationRole {
+    @SerialName("user") USER,
+    @SerialName("assistant") ASSISTANT,
+}
+
+/**
+ * 고정 슬롯을 노출하지 않는 음성 목표 요청. 이력은 완결된 user/assistant 쌍 최대 5왕복이다.
+ * [sessionId]는 무작위 대화 경계이며 원문·기기 값에서 만들거나 로그에 남기지 않는다.
+ */
+@Serializable
+data class SlotFillRequest(
+    val utterance: String,
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("conversation_history") val conversationHistory: List<ConversationTurn> = emptyList(),
+)
+
+@Serializable
+data class SlotFillState(
+    val status: IntentDialogueStatus,
+    /** 화면에 보여주고 TTS로 읽을 질문 또는 준비 완료 문장. 운영 로그에는 남기지 않는다. */
+    val message: String,
+    /** READY일 때만 존재하며, 사용자가 확인할 기존 목표 입력칸에 넣는다. */
+    val goal: String? = null,
+)
+
+@Serializable
+enum class IntentDialogueStatus {
+    @SerialName("needs_clarification") NEEDS_CLARIFICATION,
+    @SerialName("ready") READY,
 }

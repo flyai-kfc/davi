@@ -75,8 +75,25 @@ adb reverse tcp:8000 tcp:8000
 cd app-android; ./scripts/dev-install.ps1 -ClearLog
 ```
 
-앱에서 목표를 입력 → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
+앱에서 목표를 입력(또는 **말로 입력**) → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
 목표를 달성하면 서버가 `done`을 주고 오버레이가 사라진다.
+
+### 음성 목표 입력
+
+`말로 입력`은 pfront의 전체 실험 UI나 mock을 가져오지 않고 `SpeechRecognizerHelper`와 권한 처리만
+선택 이식한 경로다. Android 12+에서 온디바이스 인식기가 있으면 우선 사용하고, 그 외 제공자에도
+오프라인 선호 힌트를 보낸다. 최초 사용 때 `RECORD_AUDIO`를 요청하며 영구 거부 뒤에는 앱 설정으로
+이동한다.
+
+인식된 현재 발화와 이전에 끝난 user/assistant 쌍을 `/v1/intent/slot-fill`에 보낸다. 서버가
+`needs_clarification`이면 `message`를 화면에 표시하고 Android TTS로 읽은 뒤 자동으로 다음 발화를
+듣는다. `ready`이면 서버의 `goal`을 기존 입력칸에 넣고 끝낸다. **안내는 자동 시작하지 않으며**
+사용자가 내용을 보고 기존 `안내 시작`을 눌러야 한다.
+
+대화는 무작위 UUID별 최대 5왕복을 프로세스 메모리에만 두고 화면 이탈·재시작 때 폐기한다. 늦은
+응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고, 발화·질문·goal·
+대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 이전 턴은 의미 보존을 위해 서버와
+Gemini에 전달된다는 내부 도그푸딩 경계는 `../SPEC.md` §4에 명시돼 있다.
 
 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)는 접근성 서비스 연결 시
 `GuideSvc`의 `connected ... dogfoodDeviceId=<16자 해시>`로 도그푸딩 화이트리스트 등록 값을
@@ -142,11 +159,15 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 ## 구성
 | 경로 | 역할 |
 |---|---|
-| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림), MainActivity, 접근성 서비스 |
-| `.../MainActivity.kt` | 온보딩 + 목표 입력, 안내 세션 시작·중지 |
+| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림/마이크), MainActivity, 접근성 서비스 |
+| `.../MainActivity.kt` | 온보딩 + 텍스트/음성 목표 입력, 안내 세션 시작·중지 |
 | `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동). 인메모리 — 영속화하지 않는다 |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
+| `.../SpeechRecognizerHelper.kt` | 온디바이스 우선 음성인식 결과 하나의 lifecycle 경계 |
+| `.../VoiceDialogueSession.kt` | 최대 5왕복의 이전 턴과 늦은 응답 generation 격리 |
+| `.../SlotFillApiClient.kt` | `/v1/intent/slot-fill` 계약·추적 header·오류 분류 |
+| `.../TextToSpeechHelper.kt` | 서버 질문/완료 문장을 읽고 다음 청취 callback 연결 |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
@@ -161,6 +182,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 **동작하는 구현**
 - Gradle 구성(버전 카탈로그, viewBinding, debug 전용 서버 URL·개발 토큰 주입), 매니페스트, 접근성 서비스 등록.
 - `MainActivity` + `GuideSession` — 두 권한이 있을 때만 목표를 입력해 안내를 시작·중지한다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
+- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal의 기존 입력칸
+  전달까지 연결된다. 앱은 고정 슬롯을 조합하거나 음성만으로 안내를 자동 시작하지 않는다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
 - `GuideApiClient` — 서버의 JSON 계약을 직렬화·파싱하고 Logical Request ID/attempt header를
