@@ -47,6 +47,70 @@
 
 완화책은 이미 구현돼 있다 — `post_slot_fill`은 `_store_raw_if_dogfood`를 부르지 않고, 요청 로그에는 `conversation_message_count`만 남으며, 교정 진단에는 고정 reason code만 남는다. `app-android/CLAUDE.md`에도 같은 내용이 있다. 여는 논의는 §4 Q7이다.
 
+### 지금 도는 플로우
+
+①~⑪이 목표 확정이고 **⑫부터가 기존 닫힌 루프**다.
+
+```
+[어르신]        [앱 (Kotlin)]                    [서버 (FastAPI)]           [Gemini]
+    │
+    │ ① "말로 입력" 탭
+    ├──────────────▶ RECORD_AUDIO 런타임 권한
+    │                VoiceDialogueSession.start()
+    │                  → generation++, sessionId, stage=LISTENING
+    │
+    │ ② 발화        SpeechRecognizerHelper.start()
+    ├──────────────▶  온디바이스 우선(EXTRA_PREFER_OFFLINE)
+    │                 부분 결과는 화면에 실시간 표시
+    │                onFinalResult(text)
+    │                       │
+    │                ③ nextRequest(text) → stage=REQUESTING
+    │                   SlotFillRequest{utterance, sessionId,
+    │                                   conversationHistory}
+    │                       │  POST /v1/intent/slot-fill
+    │                       │  + X-Davi-Logical-Request-ID (C12)
+    │                       ▼
+    │                                  ④ post_slot_fill
+    │                                     resolve_intent()
+    │                                     build_intent_prompt()
+    │                                          │  구조화 출력 요청 ─────▶ ⑤
+    │                                          │  ◀───────────────────
+    │                                     {decision_basis, status,
+    │                                      message, goal}
+    │                                     ⑥ 실패 시 2단 복구:
+    │                                        schema 400 → 무스키마 재시도
+    │                                        계약 위반 → 1회 교정
+    │                       ◀──────────  SlotFillState{status, message, goal}
+    │                       │
+    │                ⑦ applyResponse()
+    │                   ├─ needs_clarification ─────────────┐
+    │                   ├─ ready ──────────────┐            │
+    │                   └─ 10메시지(5왕복) 초과 → LimitReached → 텍스트 입력 폴백
+    │                                          │            │
+    │ ⑧ 질문 듣기                              │      stage=SPEAKING
+    │ ◀────────────────────────────────────────┼──── TTS로 message 읽기
+    │                                          │      history에 (user,assistant) 쌍 누적
+    │ ⑨ 다시 발화                              │      onFinished → continueListening
+    ├──────────────────────────────────────────┼──── stage=LISTENING → ②로 되돌아감
+    │                                          │
+    │                                   ⑩ showReadyGoal()
+    │ ◀──────────────────────────────────  goalInput에 goal 문장 채움
+    │                                      message TTS로 읽기
+    │
+    │ ⑪ "시작" 탭  ← 여기가 사실상 최종 확인
+    ├──────────────▶ GuideSession.start(goal)   ← ★ 문장 하나만 넘어간다
+    │                 (음성 대화는 여기서 끝)
+    │
+    │                ⑫ 이후 기존 닫힌 루프
+    │                   접근성 이벤트 → UiTreeSerializer → 1차 마스킹
+    │                   → POST /v1/next-step → GuideAction → 오버레이
+    │                   → 화면 변화 감지 → 반복
+```
+
+**이 그림에서 읽어야 할 것은 ⑪이다.** 문장 하나만 넘어가므로, ⑫의 완료 판정은 모델이 **매 스텝 새로 지어낸** `expected_result`로 한다. 목표 확정 단계가 만든 판단이 안내 루프에 하나도 전달되지 않는다. §5의 작업들이 뚫으려는 지점이 여기다.
+
+마스킹의 비대칭도 이 그림에 있다 — ⑫의 화면 트리는 1·2차 마스킹을 거치지만 ②~⑥의 발화는 거치지 않는다(위 절의 결정).
+
 ---
 
 ## 2. 합의된 것
@@ -74,7 +138,7 @@ evidence를 화면 label과 축자 대조하는 현 방식은 이 기능의 출�
 
 ## 3. 제안 — 착수 전 합의가 필요하다
 
-아래는 2026-08-07 논의에서 나온 분석이다. **승인되지 않았다.** 특히 작업 A1이 이 제안을 코드에 박으므로, A1 착수 전에 짧게라도 결론을 낸다.
+아래는 2026-08-07 논의에서 나온 분석이다. **승인되지 않았다.** 특히 작업 W5가 이 제안을 코드에 박으므로, W5 착수 전에 짧게라도 결론을 낸다(§5의 결정 회의).
 
 ### [제안] P1. 완료 기준은 목표 확정 시점에 전부 고정할 수 없다 (2단계)
 
@@ -125,76 +189,116 @@ evidence를 화면 label과 축자 대조하는 현 방식은 이 기능의 출�
 
 ---
 
-## 5. 작업 분해
+## 5. 작업 분해 (3명 · 3파도)
 
-의존은 `A1 → A2 → B3` 한 줄뿐이다. 계약 추가는 순수 추가라 낡은 앱이 무시해도 되므로 앱·서버가 동시에 움직일 수 있다.
+**파도 0은 미결과 무관해 3명이 지금 동시에 착수한다.** 그다음 Q1·Q7 결정 회의가 게이트이고, 파도 1이 계약을 흘려보낸다.
+
+이 구조를 쓰는 이유는 **Q1·Q7이 W5(구 A1)를 막고 있기 때문**이다. 그대로 두면 3명 중 2명이 회의를 기다린다. 리뷰(#96)가 짚어 준 함정 3건이 `completion_type`/`done_signal` 설계와 **무관한 견고화**라서, 그것을 W1로 떼어내면 서버 담당도 회의 전에 일할 수 있다.
 
 **착수할 때 이슈 assignee를 등록한다.** 비어 있으면 집어도 되는 이슈다(루트 `CLAUDE.md`).
 
-### 트랙 A — 서버 (의도 해석)
+```
+        서버 담당          앱 담당           eval 담당
+파도0   W1                W2                W3
+        ─────────── 🚦 결정 회의 (Q1·Q7) ───────────
+파도1   W4 → W5 → W6      W8 → W7           W9
+파도2   (W11)             (W10)             —
+```
 
-**A1. `server: 목표 확정 응답에 완료 신호와 판정 타입을 추가한다`** · `task, server` · 계약 변경 **O**
-- **선행: §3의 P1·P2 합의.** 이 작업이 5분류를 코드에 박는다.
+대기가 생기는 곳은 W7(W6 대기) 하나뿐이고 W8로 메운다.
+
+---
+
+### 파도 0 — 지금 즉시. 3명 동시 착수
+
+**W1. `server: 의도 해석 경계를 견고화한다`** · `task, server` · 계약 변경 X
+W5가 들어오기 전에 깔아 두는 안전망이다. 세 건 다 지금도 독립적으로 타당하다.
+- **`_REPAIR_GUIDANCE` KeyError 방어.** `intent_prompt.py`가 `_REPAIR_GUIDANCE[reason]`으로 직접 인덱싱한다. W5가 필드를 넣으면 `_recoverable_contract_reason`이 `done_signal_blank` 같은 새 reason을 반환하는데 dict에 없으면 KeyError → 500이다. **정상 경로에선 안 터지고 모델이 계약을 어겼을 때만 터져 CI 초록으로 통과한다.** `.get()` + 기본 문구로 바꾸고 각 reason의 교정 경로를 테스트한다.
+- **`_MAX_OUTPUT_TOKENS` 512 → 1024.** 자유 텍스트 필드가 길어지면 잘리고, 잘리면 `max_output_tokens` PARSE 실패다. **공급자 호출은 요청당 2회 상한**(schema 400 폴백 + 교정 1회)이라 만회할 여유가 없다. next-step은 같은 이유로 이미 1024다. 잘림 회귀 테스트를 함께 넣는다.
+- **`test_contract_drift.py` 확장.** 지금 `ActionType`·`SwipeDirection`·`ScrollAxis`·`ErrorKind` 4개만 본다. `IntentDialogueStatus`가 **이미** 사각지대에 있고, W5의 `completion_type`도 같은 자리에 들어온다. **kotlinx는 모르는 값에 예외를 던진다** — 그 테스트 docstring이 설명하는 #17이 정확히 이 사고이며 당시 양쪽 테스트가 다 초록이었다.
+
+**W2. `app: 음성 인식 실패와 무응답에서 대화를 잇는다`** · `task, app` · 계약 변경 X
+- `handleSpeechError`가 지금은 모든 오류에서 `voiceSession.cancel()`로 대화를 통째로 닫는다. `ERROR_NO_MATCH`/`ERROR_SPEECH_TIMEOUT`만 같은 턴 재요청(최대 2회), 나머지는 현행대로 종료.
+- 완료: 실기기에서 일부러 침묵 → 재요청 확인, `adb logcat -s GuideSvc` 발췌.
+
+**W3. `eval: 의도 해석 회귀 픽스처를 만든다 (키 없는 층)`** · `task, eval` · 계약 변경 X
+- `eval/fixtures/`가 전부 화면 트리라 의도 해석 회귀가 0건이다. 발화(+이력) → 기대 status 픽스처를 추가한다.
+- 이번엔 **키 없는 층만** — 스키마·PII 검사·상한. judge 층은 W9.
+
+---
+
+### 🚦 결정 회의 — 파도 1의 게이트
+
+Q1(판정 불가를 정당한 결과로 받을 것인가) · Q7(음성 경로 마스킹을 열 것인가). 둘 다 §4에 선택지와 결과가 정리돼 있다. **결론 없이는 W4·W5를 열지 않는다.**
+
+---
+
+### 파도 1 — 결정 후
+
+**W4. `docs: 완료 신호 구조와 Q1·Q7 결론을 SPEC에 반영한다`** · `documentation` (구 D1)
+- SPEC §3 범위·§4 아키텍처 그림, 계약 결정(C14), 루트 `CLAUDE.md` 도메인 용어에 "완료 신호".
+- **코드보다 먼저다**(루트 `CLAUDE.md`). Q1·Q7의 결론이 SPEC §4를 고치는 일이라 W4가 그 충돌을 푸는 작업이 된다. 병행하면 W5 담당자가 SPEC과 이 문서 중 어느 쪽을 읽어야 할지 알 수 없다.
+- docs 규칙대로 #92·#93이 바꾼 식별자를 저장소 문서 전체와 열린 이슈 본문에 grep 대조한다.
+- (`SPEC.md` §10의 "`_verify_done`이 아직 스텁이다"는 낡은 서술은 #96에서 이미 정정했다.)
+
+**W5. `server: 목표 확정 응답에 완료 신호와 판정 타입을 추가한다`** · `task, server` · 계약 변경 **O** (구 A1)
+- 선행: W4, W1.
+- **선행 합의: §3의 P1·P2.** 이 작업이 5분류를 코드에 박는다.
 - `_IntentDialogueDecision`에 `completion_type`·`done_signal` 추가. 필드 순서는
   `decision_basis` → `completion_type` → `status` → `message` → `goal` → `done_signal`.
   판정 타입이 `status`를 강등시키는 근거이므로 앞에 온다(C1: 선언 순서 = `propertyOrdering` = 추론 순서).
 - 타입을 못 고르면 `needs_clarification`.
-- **wire까지 노출한다** — `_IntentDialogueDecision`(Gemini 내부 모델)만 고치면 B3에서 값이 오지 않아 A1을 다시 연다. `SlotFillState`와 앱 `Contract.kt`까지 포함한다.
+- **wire까지 노출한다** — `_IntentDialogueDecision`(Gemini 내부 모델)만 고치면 W7에서 값이 오지 않아 W5를 다시 연다. `SlotFillState`와 앱 `Contract.kt`까지 포함한다.
 - **[합의] D에 따라 아무것도 막지 않는다.** 값만 채운다.
-- 완료:
-  - pytest 계약 테스트, 스텁도 새 필드를 채울 것.
-  - **`_REPAIR_GUIDANCE`에 새 reason code 항목 추가 + 각 reason의 교정 경로 테스트.** `intent_prompt.py`가 `_REPAIR_GUIDANCE[reason]`으로 직접 인덱싱하므로, `_recoverable_contract_reason`이 `done_signal_blank` 같은 새 reason을 반환하면 KeyError → 500이다. **정상 경로에선 안 터지고 모델이 계약을 어겼을 때만 터져 CI 초록으로 통과한다.**
-  - **`_MAX_OUTPUT_TOKENS` 재검토 + 잘림 회귀 테스트.** 현재 512인데 `done_signal`은 자유 텍스트라 출력이 길어진다. 잘리면 `max_output_tokens` PARSE 실패이고, **공급자 호출은 요청당 2회 상한**(schema 400 폴백 + 교정 1회)이라 만회할 여유가 없다. next-step은 같은 이유로 이미 1024를 쓴다.
-  - **`test_contract_drift.py` 확장.** 지금 `ActionType`·`SwipeDirection`·`ScrollAxis`·`ErrorKind` 4개만 본다. `completion_type`이 enum으로 wire에 나가면 같은 사각지대에 들어가고, **kotlinx는 모르는 값에 예외를 던진다** — 그 테스트 docstring이 설명하는 #17이 정확히 이 사고이며 당시 양쪽 테스트가 다 초록이었다. (`IntentDialogueStatus`도 이미 같은 사각지대에 있다.)
+- 완료: pytest 계약 테스트, 스텁도 새 필드를 채울 것. (W1이 KeyError·토큰 상한·drift를 이미 막아 뒀으므로 여기서 다시 다루지 않는다.)
 
-**A2. `server: next-step 요청에 완료 신호를 받아 프롬프트에 싣는다`** · `task, server` · 계약 변경 **O**
+**W6. `server: next-step 요청에 완료 신호를 받아 프롬프트에 싣는다`** · `task, server` · 계약 변경 **O** (구 A2)
+- 선행: W5.
 - `NextStepRequest.completion_signal: str | None` 추가, `prompt.build_prompt`에 완료 기준 한 줄.
 - `_verify_done`은 건드리지 않는다([합의] C).
 - 완료: 계약 테스트 + 프롬프트 스냅샷 테스트.
 
-### 트랙 B — 앱 (음성 루프)
-
-**B1. ~~`app: 발화 전사문에 1차 마스킹을 건다`~~** · **보류 — Q7 결론 전까지 착수 금지**
-- `SPEC.md` §4가 의도적으로 제외한 것을 되돌리는 작업이다. 현재 `PrivacyMasker` 패턴으로는 목표만 깨진다(§4 Q7).
-
-**B2. `app: 음성 인식 실패와 무응답에서 대화를 잇는다`** · `task, app` · 계약 변경 X
-- `handleSpeechError`가 지금은 모든 오류에서 대화를 닫는다. `ERROR_NO_MATCH`/`ERROR_SPEECH_TIMEOUT`만 같은 턴 재요청(최대 2회), 나머지는 현행대로 종료.
-- 완료: 실기기에서 일부러 침묵 → 재요청 확인, logcat 발췌.
-
-**B3. `app: 확정된 목표와 완료 신호를 세션에 보관해 매 요청에 보낸다`** · `task, app` · 계약 변경 **O**
+**W7. `app: 확정된 목표와 완료 신호를 세션에 보관해 매 요청에 보낸다`** · `task, app` · 계약 변경 **O** (구 B3)
+- 선행: W6.
 - `GuideSession.start(goal, completionSignal)`. generation 규칙은 그대로 — 세션이 바뀌면 함께 폐기.
 - 완료: **실기기 관통** — 음성으로 목표 확정 → 안내가 이어짐 → logcat에 completion_signal이 실린 것 확인.
 
-### 트랙 C — 서버/평가 (완전 독립)
+**W8. `app: 음성 대화 상태와 오류를 사용자 문구로 표시한다`** · `task, app` · 계약 변경 X
+- 선행 없음. **앱 담당이 W6를 기다리는 동안 하는 일이다.**
+- 열린 이슈 #29(안내 상태·오류 문구)와 범위가 겹치므로 함께 정리한다.
+- **Q1이 "받는다"로 결론 나면 음성 최종 확인(예/아니오)도 여기 붙는다** — "판정 불가" 타입의 종료 경로가 곧 이것이다(§6 참고).
 
-**C1. ~~`server: 음성 목표 경로에 2차 마스킹을 건다`~~** · **보류 — Q7 결론 전까지 착수 금지**
-- B1과 같은 이유다(§4 Q7).
+**W9. `eval: judge 층으로 문장 품질과 판정 타입을 채점한다`** · `task, eval` · 계약 변경 X
+- 선행: W5.
+- 2축 채점 — ① 문장이 발화 의도를 정의하는가 ② 판정 타입이 맞게 붙었는가.
+- eval judge 운영 정책(#68·#80)을 따른다. PR 필수 게이트는 키 없는 층으로 고정하고 실제 judge는 `main` 주 1회·수동 관측이다.
 
-**C2. `eval: 의도 해석 회귀 픽스처를 만든다`** · `task, eval` · 계약 변경 X
-- `eval/fixtures/`가 전부 화면 트리라 의도 해석 회귀가 0건이다. 발화(+이력) → 기대 status/타입 픽스처를 추가한다.
-- 키 없는 층(스키마·PII 검사·상한)부터. judge 층은 그다음.
+---
 
-### 아무나 / 마지막
+### 파도 2 — Q7이 "연다"일 때만
 
-**D1. `docs: 음성 목표 확정과 완료 기준 구조를 SPEC에 넣는다`** · `documentation`
-- SPEC §3 범위·§4 아키텍처 그림, 계약 결정(C14), 루트 `CLAUDE.md` 도메인 용어에 "완료 신호".
-- **원칙상 코드보다 먼저이고(루트 `CLAUDE.md`), 지금은 더 그렇다** — Q1·Q7의 결론이 SPEC §4를 고치는 일이라 D1이 그 충돌을 푸는 작업이 된다. 병행하면 A1 담당자가 SPEC과 이 문서 중 어느 쪽을 읽어야 할지 알 수 없다.
-- docs 규칙대로 #92·#93이 바꾼 식별자를 저장소 문서 전체와 열린 이슈 본문에 grep 대조한다.
-- (`SPEC.md` §10의 "`_verify_done`이 아직 스텁이다"는 낡은 서술은 **이 문서 PR에서 이미 정정했다.**)
+**W10. `app: 발화 전사문 마스킹`** / **W11. `server: 음성 경로 2차 마스킹`** · Q7 결론 후
+- 목표를 깨지 않는 방식이어야 한다(§4 Q7). 현재 `PrivacyMasker` 패턴을 그대로 쓰면 안 된다.
+- **Q7이 "닫는다"면 이 파도는 없어진다.**
 
-**D2. `repo: slot-fill 네이밍을 계약 실제와 맞춘다`** · 백로그 · Q6 결론 후
+### 백로그
 
-### 3명 기준 배분
+**`repo: slot-fill 네이밍을 계약 실제와 맞춘다`** · Q6 결론 후
 
-**D1(SPEC 갱신)이 A1보다 앞선다.** B1·C1은 Q7 결론 전까지 빠져 있다.
+### 구 ID 대응표
 
-| 사람 | 순서 | 대기 |
-|---|---|---|
-| 서버 담당 | D1 → A1 → A2 | 없음 |
-| 앱 담당 | B2 → B3 | B3만 A2 대기 (B2로 메움) |
-| 서버/eval 담당 | C2 | 없음. 완전 독립이라 D1을 기다리지 않는다 |
+#96에서 쓰던 ID를 찾는 사람을 위해.
 
-Q7이 "연다"로 결론 나면 B1·C1이 앱 담당·서버/eval 담당의 뒤에 붙는다.
+| 구 | 신 |
+|---|---|
+| A1 | W5 (함정 3건은 W1로 분리) |
+| A2 | W6 |
+| B1 | W10 (파도 2) |
+| B2 | W2 |
+| B3 | W7 |
+| C1 | W11 (파도 2) |
+| C2 | W3 (키 없는 층) + W9 (judge 층) |
+| D1 | W4 |
 
 ---
 
