@@ -124,9 +124,9 @@ DAVI_DOGFOOD=true
 
 두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
 `10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
-없다. 사설 Wi-Fi 주소에는 토큰이 필수다.
-공개 endpoint나 터널은 이 debug 개발 경로에서 허용하지 않으며, release에는 어느 개발 값도
-들어가지 않는다.
+없다. 사설 Wi-Fi 주소에는 토큰이 필수다. Azure Container Apps 공유 개발 서버는 기본 443 포트의
+**HTTPS** URL만 허용하며, 원격 host이므로 토큰이 필수다. HTTPS에는 평문 통신 예외를 만들지 않는다.
+release에는 어느 개발 값도 들어가지 않는다.
 
 일회성 자동 검증은 파일에 토큰을 기록하지 않도록 같은 이름의 환경변수를 사용할 수 있다.
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
@@ -138,6 +138,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 **Gemini API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
 
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
+Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
+[`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
 ## 구성
 | 경로 | 역할 |

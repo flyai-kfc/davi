@@ -17,6 +17,8 @@ eval/runs/
 server/.shared-dev/
 # 도그푸딩 raw 봉투(#41) — 영구 보존, 커밋 금지
 server/.dogfood-raw/
+# Azure dev resource names are environment-specific. 예시 파일만 추적하고 실제 parameter 파일은 남기지 않는다.
+infra/azure/parameters.dev.json
 
 # Android (app-android/)
 *.iml

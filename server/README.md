@@ -198,6 +198,18 @@ PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰�
 6. HTTP 401이면 토큰 불일치, 429이면 `Retry-After`만큼 기다린다
 7. `server/.shared-dev/logs/<오늘>.log`에서 Logical Request ID로 앱의 attempt와 Gemini 단계를 대조
 
+## Azure Container Apps 공유 development 서버
+
+같은 Wi-Fi·전용 맥북 없이 팀이 같은 `main` 서버를 검증해야 할 때만 쓰는 **개발 전용** 경로다(#94).
+GitHub Actions의 Android/서버 PR CI는 그대로 두고, Azure DevOps Pipeline이 `main`에 병합된
+`server/**`·`infra/azure/**` 변경만 ACR 이미지 → Container Apps revision으로 배포한다. PR은 배포하지
+않는다.
+
+이 경로는 HTTPS와 32자 이상 개발 토큰을 요구한다. Gemini 키·개발 토큰은 Key Vault에만 두며, 앱에는
+Azure Container Apps HTTPS URL과 개발 토큰만 debug `local.properties`로 전달한다. Azure 서버는
+원본 도그푸딩 raw 보존을 하지 않는다. 최초 Azure 권한·기반 리소스·Pipeline 연결과 장애 확인은
+[`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
+
 ## 도그푸딩 raw 보존 (#41)
 
 `DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만

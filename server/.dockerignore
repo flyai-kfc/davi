@@ -1,0 +1,13 @@
+# 이미지에는 실행 코드와 런타임 의존성만 보낸다. 비밀·로컬 상태·원본 도그푸딩 데이터는 절대 포함하지 않는다.
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+.shared-dev/
+.dogfood-raw/
+.DS_Store

@@ -16,7 +16,7 @@ plugins {
 
 abstract class GenerateDebugNetworkSecurityConfig : DefaultTask() {
     @get:Input
-    abstract val debugHost: Property<String>
+    abstract val cleartextHost: Property<String>
 
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
@@ -25,15 +25,20 @@ abstract class GenerateDebugNetworkSecurityConfig : DefaultTask() {
     fun generate() {
         val output = outputDirectory.file("xml/network_security_config.xml").get().asFile
         output.parentFile.mkdirs()
+        val cleartextDomain = cleartextHost.get().takeIf { it.isNotEmpty() }?.let { host ->
+            """
+                <domain-config cleartextTrafficPermitted="true">
+                    <domain includeSubdomains="false">$host</domain>
+                </domain-config>
+            """.trimIndent()
+        }.orEmpty()
         output.writeText(
             """
             <?xml version="1.0" encoding="utf-8"?>
             <!-- build.gradle.kts가 생성한다. 직접 수정하지 않는다. -->
             <network-security-config>
                 <base-config cleartextTrafficPermitted="false" />
-                <domain-config cleartextTrafficPermitted="true">
-                    <domain includeSubdomains="false">${debugHost.get()}</domain>
-                </domain-config>
+                $cleartextDomain
             </network-security-config>
             """.trimIndent() + "\n",
         )
@@ -86,21 +91,28 @@ val parsedDebugUrl = runCatching { URI(debugServerUrl) }.getOrElse {
 }
 val debugScheme = parsedDebugUrl.scheme?.lowercase().orEmpty()
 val debugServerHost = parsedDebugUrl.host?.lowercase().orEmpty()
-if (debugScheme != "http" || debugServerHost.isEmpty()) {
-    throw GradleException("DAVI_DEBUG_SERVER_URL은 사설 IPv4를 사용하는 http 절대 URL이어야 합니다.")
+if (debugScheme !in setOf("http", "https") || debugServerHost.isEmpty()) {
+    throw GradleException("DAVI_DEBUG_SERVER_URL은 http 또는 https 절대 URL이어야 합니다.")
 }
 if (parsedDebugUrl.rawUserInfo != null || parsedDebugUrl.rawQuery != null || parsedDebugUrl.rawFragment != null) {
     throw GradleException("DAVI_DEBUG_SERVER_URL에는 사용자 정보·query·fragment를 넣을 수 없습니다.")
 }
-if (parsedDebugUrl.port != 8000 || parsedDebugUrl.rawPath !in setOf("", "/")) {
-    throw GradleException("DAVI_DEBUG_SERVER_URL은 경로 없이 8000 포트를 사용해야 합니다.")
+if (parsedDebugUrl.rawPath !in setOf("", "/")) {
+    throw GradleException("DAVI_DEBUG_SERVER_URL에는 경로를 넣을 수 없습니다.")
 }
-if (!isPrivateOrLocalIpv4(debugServerHost)) {
-    throw GradleException("debug 평문 HTTP는 사설 IPv4·loopback 주소에만 사용할 수 있습니다.")
+if (debugScheme == "http") {
+    if (parsedDebugUrl.port != 8000) {
+        throw GradleException("debug 평문 HTTP는 8000 포트만 사용할 수 있습니다.")
+    }
+    if (!isPrivateOrLocalIpv4(debugServerHost)) {
+        throw GradleException("debug 평문 HTTP는 사설 IPv4·loopback 주소에만 사용할 수 있습니다.")
+    }
+} else if (parsedDebugUrl.port !in setOf(-1, 443)) {
+    throw GradleException("debug HTTPS는 기본 443 포트만 사용할 수 있습니다.")
 }
 val localOnlyHosts = setOf("127.0.0.1", "localhost", "10.0.2.2")
 if (debugServerHost !in localOnlyHosts && debugAccessToken.isEmpty()) {
-    throw GradleException("사설 Wi-Fi debug 서버에는 DAVI_DEBUG_ACCESS_TOKEN이 필요합니다.")
+    throw GradleException("원격 debug 서버에는 DAVI_DEBUG_ACCESS_TOKEN이 필요합니다.")
 }
 if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
     throw GradleException("DAVI_DEBUG_ACCESS_TOKEN은 32자 이상이어야 합니다.")
@@ -115,13 +127,13 @@ val releaseServerUrl = "https://example.invalid"
 val generatedDebugNetworkSecurityDir =
     layout.buildDirectory.dir("generated/res/network-security/debug")
 
-// debug도 고정 서버 host 하나에만 평문 HTTP를 연다. network security XML은 빌드 설정을
-// 치환하지 않으므로, 위에서 검증한 사설 IPv4·loopback literal을 리소스로 생성한다.
+// HTTP일 때만 검증된 host 하나에 평문을 연다. HTTPS에는 별도 예외가 필요 없으며,
+// network security XML은 base-config에서 평문을 계속 거부한다.
 val generateDebugNetworkSecurityConfig =
     tasks.register<GenerateDebugNetworkSecurityConfig>("generateDebugNetworkSecurityConfig") {
         group = "build setup"
-        description = "debug 서버 host만 허용하는 network security config 생성"
-        debugHost.set(debugServerHost)
+        description = "debug HTTP 서버 host만 허용하는 network security config 생성"
+        cleartextHost.set(if (debugScheme == "http") debugServerHost else "")
         outputDirectory.set(generatedDebugNetworkSecurityDir)
     }
 

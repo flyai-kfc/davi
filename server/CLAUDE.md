@@ -21,8 +21,9 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 ## 실행
 - **`py -3.12` 고정.** 원래 근거였던 litellm은 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`
   (3.11+)를 쓴다(`../SPEC.md` §5 표와 같은 근거).
-- 개인 USB 검증은 loopback+`adb reverse`, 팀 공용 검증은 같은 사설 Wi-Fi의 전용 맥북으로
-  접속한다(`../SPEC.md` §7, `scripts/start-shared-dev.sh`). 인터넷에 공개하지 않는다.
+- 개인 USB 검증은 loopback+`adb reverse`, 팀 공용 검증은 같은 사설 Wi-Fi의 전용 맥북 또는
+  #94 Azure Container Apps development endpoint로 접속한다(`../SPEC.md` §7). Azure는 HTTPS와
+  개발 토큰을 요구하는 dev-only 예외이며, production 공개 서비스가 아니다.
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. 잘못된 조합은
@@ -33,7 +34,8 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   대화 `session_id`, 모델의 질문/goal, 요청 본문, API 키·access token은 어떤 프로필에서도 기록하지 않는다.
 - 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→Gemini 단계를 연결한다(#81).
   정상 `/health`와 기본 access log는 남기지 않으며 IP/port·User-Agent도 보존하지 않는다.
-  로그 형식은 UTC timestamp가 있는 JSON Lines, 보존은 공용 개발 스크립트의 기존 7일이다.
+  로그 형식은 UTC timestamp가 있는 JSON Lines다. 공용 맥 스크립트는 7일 보존하며 Azure는
+  Log Analytics의 30일 개발 보존 정책을 쓴다.
 - **픽스처 보존(#41)은 운영 로그와 별개 채널이다.** 정책 원본은 `../SPEC.md` §3
   "도그푸딩 raw 보존 정책"(대상·내용·위치·기간·접근 범위). 여기서는 경계만 재확인한다 —
   위 운영 로그의 비식별 불변식은 이 채널과 무관하게 유지되며, 비화이트리스트
