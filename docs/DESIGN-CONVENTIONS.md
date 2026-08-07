@@ -35,7 +35,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 - **B2 분리 이유**: #F2001C 위에는 어떤 글자도 7:1이 안 나온다(흰 4.4:1, 검정 4.8:1이 수학적 최대).
   AAA 정책과 주 버튼을 양립시키려면 버튼 배경은 어두운 변형이어야 한다.
 - **#FFE1E1**: 흰 화면 대비 1.2:1 — 글자·아이콘·단독 식별 요소로는 A2(3:1) 위반. 위에 어두운
-  글자를 얹는 배경으로는 17:1로 AAA 통과.
+  글자를 얹는 배경으로는 AAA 통과(순수 검정 기준 17:1, `color/text/primary` #1A1A1A 기준 14.2:1).
 
 ## 파이프라인 — 와이어프레임이 원본이다 (2026-08-05 확정)
 
@@ -74,5 +74,9 @@ Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 �
 ## 반영 상태
 
 - Figma Foundations: 이 결정대로 변수·스타일 생성 (2026-08-05, 에이전트)
-- 코드 리소스(`colors.xml`·`dimens.xml`·테마): **미반영** — 구현 이슈에서 별도 진행
-- 현재 앱의 하드코딩 5색·dimens 9개는 이 컨벤션 확정 전 값이다 (`HighlightOverlayView` 등)
+- 코드 리소스(`colors.xml`·`dimens.xml`·테마·Pretendard 번들): **미반영** — #100에서 진행
+- **현재 테마가 B3와 충돌 중** — `Theme.Davi`가 Material3 DayNight를 상속해, 다크 리소스가
+  없어도 시스템 다크에서 검증 안 된 M3 기본 다크 팔레트가 실제 적용된다. Light 고정
+  여부 판단 포함 #100 범위
+- 현재 앱의 하드코딩 색 3건·raw px 크기 2건·dimens 9개는 이 컨벤션 확정 전
+  값이다 (`HighlightOverlayView` companion 등)

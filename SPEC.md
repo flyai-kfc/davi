@@ -282,7 +282,7 @@ davi/
 │  ├─ CLAUDE.md · README.md · .gitignore · requirements.txt
 │  ├─ harness.py                   ← ../server/app 을 직접 import
 │  └─ fixtures/                    ← 익명화된 화면 픽스처
-├─ docs/                           ← 설계 메모·ADR (아직 없음, 필요할 때 생성)
+├─ docs/                           ← 설계 메모·ADR (DESIGN-CONVENTIONS.md — 디자인 컨벤션 결정 기록)
 └─ reference/                      ← 이전 PoC. read-only, gitignore 유지. 수정 금지.
 ```
 
