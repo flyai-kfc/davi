@@ -141,7 +141,8 @@
 - 실사용자(시니어) 반응 수집·인터뷰.
 - 사용자 옵트인 로그 동의 UI — 로그는 도그푸딩 기기 한정. **옵트인 UI는 베타 개발 시 구현.**
 - 가족 호출·상담 연결 등 "막혔을 때"의 종착지 설계(§5-11) — 베타 이후.
-- 관리형 클라우드 호스팅. 이번엔 로컬 + 사설 Wi-Fi 개발 서버로 충분.
+- 제품용 관리형 클라우드 호스팅·사용자 인증. #94의 Azure Container Apps는 팀 debug APK가
+  `main` 서버를 함께 검증하는 dev-only 인프라일 뿐, 이 비목표를 해제하지 않는다.
 
 ---
 
@@ -293,15 +294,26 @@ davi/
 
 ## 7. 배포 환경 (이번 사이클)
 
-- 평일 팀 테스트는 **전용 맥북의 local uvicorn + 같은 사설 Wi-Fi**로 연결한다(#57).
-  서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 개발 토큰과 팀 전체 요청 제한으로
-  같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로 명시 종료한다.
-- 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드가 URL을 RFC1918 사설 IPv4로
-  제한하며 release APK는 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.
-- ngrok / Cloudflare Tunnel 같은 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다.
-  외부 네트워크가 필요한 일회성 검증은 별도 보안·인증 결정을 거쳐야 한다.
-- API 키는 서버 환경변수. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
-- 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
+- 개인 USB 검증은 loopback+`adb reverse`다. 평일 팀 테스트는 전용 맥북의 local uvicorn + 같은
+  사설 Wi-Fi(#57) 또는 #94의 Azure Container Apps 공유 development endpoint를 쓴다.
+- LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 개발 토큰과 팀 전체 요청
+  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로
+  명시 종료한다.
+- Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 Azure DevOps가
+  commit SHA와 Pipeline build ID로 식별되는 불변 image/revision으로 배포하고, PR은 공유 서버를
+  바꾸지 않는다. 최소/최대 replica와 Uvicorn worker는 각각 1이다.
+- Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
+  토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰은 Key Vault의 versionless secret을
+  user-assigned Managed Identity로만 읽으며 Git·image·Pipeline 변수에는 넣지 않는다.
+- 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
+  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 개발 토큰을
+  요구한다. release APK는 두 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.
+- Azure 로그는 기존 비식별 JSON Lines만 Log Analytics에 30일 보존한다. 클라우드에서는
+  `DAVI_DOGFOOD_DEVICE_IDS`를 비워 원본 도그푸딩 raw를 저장하지 않는다.
+- ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다. #94의
+  Azure endpoint는 팀 debug APK 공유를 위한 명시적 dev-only 예외이며 제품 사용자 인증을 대신하지 않는다.
+- API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
+- 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
 
 ---
 

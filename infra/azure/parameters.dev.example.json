@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "koreacentral" },
+    "acrName": { "value": "replacewithgloballyuniqueacr" },
+    "keyVaultName": { "value": "replace-with-unique-kv" },
+    "managedEnvironmentName": { "value": "acaenv-davi-dev" },
+    "logAnalyticsWorkspaceName": { "value": "log-davi-dev" },
+    "containerIdentityName": { "value": "id-davi-server-dev" }
+  }
+}
