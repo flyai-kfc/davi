@@ -383,6 +383,30 @@ class GeminiIntentResolver(IntentResolver):
         return LlmError(ErrorKind.SERVER, f"Gemini API 서버 오류 (HTTP {error.status_code})")
 
 
+# 교정 대상 텍스트 필드와 교차 필드 위반. reason code는 이 둘에서만 나온다.
+#
+# **새 텍스트 필드를 교정 대상으로 넣으면 여기부터 고친다.** 그러면 파생되는 reason code가
+# 늘어나고, `intent_prompt._REPAIR_GUIDANCE`에 해당 문구가 없으면 계약 테스트가 먼저 실패한다.
+# 사전이 낡은 채로 굴러가면 모델은 무엇이 틀렸는지 모르는 일반 문구만 받아 같은 실수를 되풀이하고,
+# 공급자 호출 2회 상한 안에서 교정이 무력해진다 — 서버는 죽지 않으므로 아무도 알아채지 못한다.
+RECOVERABLE_TEXT_FIELDS = ("decision_basis", "message", "goal")
+CROSS_FIELD_REASON_CODES = ("status_goal_mismatch",)
+
+
+def recoverable_reason_codes() -> frozenset[str]:
+    """`_recoverable_contract_reason`이 만들 수 있는 reason code 전체.
+
+    손으로 적은 목록이 아니라 위 두 상수에서 파생한다. 목록을 두 벌 유지하면 반드시 어긋나고,
+    어긋난 쪽이 교정 문구 사전이면 실패가 조용하다(C1이 `propertyOrdering`에서 택한 판단과 같다).
+    """
+
+    codes = set(CROSS_FIELD_REASON_CODES)
+    for field in RECOVERABLE_TEXT_FIELDS:
+        codes.add(f"{field}_blank")
+        codes.add(f"{field}_too_long")
+    return frozenset(codes)
+
+
 def _recoverable_contract_reason(
     payload: dict[str, Any],
     error: ValidationError,
@@ -394,7 +418,7 @@ def _recoverable_contract_reason(
         if goal is None or (isinstance(goal, str) and not goal.strip()):
             return "status_goal_mismatch"
 
-    recoverable_fields = {"decision_basis", "message", "goal"}
+    recoverable_fields = frozenset(RECOVERABLE_TEXT_FIELDS)
     for detail in error.errors(
         include_url=False,
         include_context=False,

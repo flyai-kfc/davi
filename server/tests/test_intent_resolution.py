@@ -7,11 +7,17 @@ import uuid
 import httpx
 import pytest
 from app.errors import LlmError
-from app.intent_prompt import build_intent_prompt
+from app.intent_prompt import (
+    _FALLBACK_REPAIR_GUIDANCE,
+    _REPAIR_GUIDANCE,
+    build_intent_prompt,
+    build_intent_repair_prompt,
+)
 from app.intent_resolution import (
     INTENT_DIALOGUE_SCHEMA,
     GeminiIntentResolver,
     StubIntentResolver,
+    recoverable_reason_codes,
     resolve_intent,
 )
 from app.schemas import ErrorKind, SlotFillRequest, SlotFillState
@@ -157,6 +163,52 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "먼저 decision_basis" in prompt
     assert "target_person" not in prompt
     assert "답변 위치만 보고 의미 없는 현재 답변" in prompt
+
+
+def test_every_recoverable_reason_has_dedicated_repair_guidance():
+    """교정 문구 사전이 낡으면 여기서 먼저 실패한다.
+
+    reason code가 늘어나는 것은 `_recoverable_contract_reason`이 보는 필드가 늘 때이고,
+    그때 사전을 같이 갱신하지 않으면 모델은 무엇이 틀렸는지 모르는 일반 문구만 받는다.
+    서버는 죽지 않아 알림도 없고 정상 경로에서는 재현되지도 않으므로, 이 대조가 유일한 신호다.
+    """
+
+    missing = recoverable_reason_codes() - set(_REPAIR_GUIDANCE)
+
+    assert not missing, (
+        f"교정 문구가 없는 reason: {sorted(missing)}. "
+        "app/intent_prompt.py의 _REPAIR_GUIDANCE에 전용 문구를 추가할 것."
+    )
+
+
+def test_repair_guidance_has_no_unused_entry():
+    """반대 방향도 본다 — 쓰이지 않는 문구는 사라진 reason의 잔해다."""
+
+    unused = set(_REPAIR_GUIDANCE) - recoverable_reason_codes()
+
+    assert not unused, f"생성되지 않는 reason의 문구가 남아 있다: {sorted(unused)}"
+
+
+@pytest.mark.parametrize("reason", sorted(recoverable_reason_codes()))
+def test_repair_prompt_carries_the_reason_specific_guidance(reason):
+    """각 reason의 교정 경로가 자기 문구를 싣는지 확인한다."""
+
+    prompt = build_intent_repair_prompt(build_intent_prompt(_request()), reason)
+
+    assert _REPAIR_GUIDANCE[reason] in prompt
+    assert _FALLBACK_REPAIR_GUIDANCE not in prompt
+    assert "이전 응답 원문을 답변에 인용하지 말고" in prompt
+
+
+def test_unknown_reason_falls_back_instead_of_raising():
+    """사전에 없는 reason이 와도 500으로 죽지 않는다(안전망).
+
+    다만 이 경로로 들어오는 것 자체가 결함이며, 위 대조 테스트가 그것을 먼저 막는다.
+    """
+
+    prompt = build_intent_repair_prompt(build_intent_prompt(_request()), "done_signal_blank")
+
+    assert _FALLBACK_REPAIR_GUIDANCE in prompt
 
 
 def test_gemini_sends_dialogue_schema_and_parses_dynamic_question():

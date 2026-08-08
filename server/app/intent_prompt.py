@@ -22,6 +22,12 @@ _REPAIR_GUIDANCE = {
     ),
 }
 
+# 사전에 없는 reason이 와도 500으로 죽지 않게 하는 안전망이다. **이 문구에 기대지 않는다** —
+# 무엇이 틀렸는지 짚어주지 못해 모델이 같은 실수를 되풀이하고, 공급자 호출 2회 상한 안에서
+# 교정 기회를 한 번 버리는 셈이다. 새 reason code는 위 사전에 전용 문구로 넣는다.
+# 사전 누락 자체는 `intent_resolution.recoverable_reason_codes()`와 대조하는 테스트가 잡는다.
+_FALLBACK_REPAIR_GUIDANCE = "필드 길이 상한과 status·goal 조건을 모두 지켜 다시 작성하세요."
+
 
 def build_intent_prompt(request: SlotFillRequest) -> str:
     """고정 슬롯 목록 없이 지금 꼭 필요한 질문 하나 또는 최종 목표를 요청한다."""
@@ -60,7 +66,7 @@ def build_intent_prompt(request: SlotFillRequest) -> str:
 def build_intent_repair_prompt(prompt: str, reason: str) -> str:
     """이전 모델 원문 없이 계약 위반 이유만 더해 한 번 교정한다."""
 
-    guidance = _REPAIR_GUIDANCE[reason]
+    guidance = _REPAIR_GUIDANCE.get(reason, _FALLBACK_REPAIR_GUIDANCE)
     return f"""{prompt}
 
 이전 응답이 JSON 계약을 만족하지 않았습니다. 이전 응답 원문을 답변에 인용하지 말고 같은 대화를
