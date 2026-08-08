@@ -39,8 +39,35 @@ from .schemas import (
 
 _GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _DEFAULT_RETRY_AFTER_SECONDS = 60
-_MAX_OUTPUT_TOKENS = 512
+
+# JSON 키·중괄호·따옴표·status 값처럼 필드 본문 밖에서 쓰이는 문자. 넉넉히 잡는다.
+_JSON_ENVELOPE_CHARS = 128
+
+# 상한이 계약 최대 응답을 못 담으면 **스키마상 완벽히 유효한 응답이 잘려** PARSE로 실패한다.
+# 잘린 JSON은 교정할 수 없고 공급자 호출은 요청당 2회 상한이라 만회할 여유도 없다.
+# 하한은 필드 상한에서 파생하고(`contract_max_response_token_floor`), 상한은 그보다 넉넉히 둔다 —
+# `maxOutputTokens`는 목표가 아니라 자르는 선이라 올려도 실제 생성량만큼만 비용이 든다.
+#
+# **next-step(`llm.py`)의 1024와 값을 맞추지 않는다.** 그쪽 `GuideAction`에는 필드 상한이 없어
+# 담아야 할 계약 최대가 존재하지 않고, 1024는 장문 폭주를 자르려고 고른 값이다. 근거가 다르다.
+_MAX_OUTPUT_TOKENS = 2048
 llm_logger = logging.getLogger(LLM_LOGGER_NAME)
+
+
+def contract_max_response_token_floor() -> int:
+    """계약이 허용하는 최대 응답을 담으려면 최소 몇 토큰이 필요한가.
+
+    **한국어는 글자당 1토큰을 넘지 않는다고 보수적으로 가정한다.** 실제 토큰화가 그보다 촘촘하면
+    여유가 늘 뿐이라 안전한 방향이고, 정확한 비율은 공급자 토크나이저에 달려 있어 여기서
+    단정하지 않는다. 필드 상한이 바뀌면 이 하한도 같이 움직이므로 상수를 두 벌 두지 않는다.
+    """
+
+    return (
+        MAX_INTENT_MESSAGE_LENGTH  # decision_basis
+        + MAX_INTENT_MESSAGE_LENGTH  # message
+        + MAX_VOICE_TEXT_LENGTH  # goal
+        + _JSON_ENVELOPE_CHARS
+    )
 
 
 class _IntentDialogueDecision(BaseModel):

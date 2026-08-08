@@ -14,13 +14,21 @@ from app.intent_prompt import (
     build_intent_repair_prompt,
 )
 from app.intent_resolution import (
+    _MAX_OUTPUT_TOKENS,
     INTENT_DIALOGUE_SCHEMA,
     GeminiIntentResolver,
     StubIntentResolver,
+    contract_max_response_token_floor,
     recoverable_reason_codes,
     resolve_intent,
 )
-from app.schemas import ErrorKind, SlotFillRequest, SlotFillState
+from app.schemas import (
+    MAX_INTENT_MESSAGE_LENGTH,
+    MAX_VOICE_TEXT_LENGTH,
+    ErrorKind,
+    SlotFillRequest,
+    SlotFillState,
+)
 from pydantic import ValidationError
 
 
@@ -165,6 +173,50 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "답변 위치만 보고 의미 없는 현재 답변" in prompt
 
 
+def test_output_token_cap_covers_the_contract_maximum_response():
+    """상한이 계약 최대 응답을 담는지 본다.
+
+    못 담으면 **스키마상 완벽히 유효한 응답이 잘려** PARSE로 실패하고, 잘린 JSON은 교정할 수
+    없는데 공급자 호출은 요청당 2회 상한이라 만회할 여유도 없다. 숫자만 바꾸면 왜 그 값인지가
+    코드에서 사라지므로, 필드 상한에서 파생한 하한과 대조해 근거를 붙잡아 둔다.
+    """
+
+    floor = contract_max_response_token_floor()
+
+    assert floor <= _MAX_OUTPUT_TOKENS, (
+        f"maxOutputTokens({_MAX_OUTPUT_TOKENS})가 계약 최대 응답({floor} 토큰)보다 작다. "
+        "필드 상한을 올렸다면 이 상한도 함께 올릴 것."
+    )
+
+
+def test_contract_maximum_response_parses_without_truncation_handling():
+    """상한 길이를 꽉 채운 유효 응답이 그대로 통과하는지 확인한다."""
+
+    long_basis = "가" * MAX_INTENT_MESSAGE_LENGTH
+    long_message = "나" * MAX_INTENT_MESSAGE_LENGTH
+    long_goal = "다" * MAX_VOICE_TEXT_LENGTH
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "decision_basis": long_basis,
+                    "status": "ready",
+                    "message": long_message,
+                    "goal": long_goal,
+                },
+                add_basis=False,
+            ),
+        )
+
+    state = _resolver(handler).resolve(_request())
+
+    assert state.status == "ready"
+    assert state.message == long_message
+    assert state.goal == long_goal
+
+
 def test_every_recoverable_reason_has_dedicated_repair_guidance():
     """교정 문구 사전이 낡으면 여기서 먼저 실패한다.
 
@@ -221,7 +273,7 @@ def test_gemini_sends_dialogue_schema_and_parses_dynamic_question():
     def handler(http_request: httpx.Request) -> httpx.Response:
         body = json.loads(http_request.content)
         assert body["generationConfig"]["responseSchema"] == INTENT_DIALOGUE_SCHEMA
-        assert body["generationConfig"]["maxOutputTokens"] == 512
+        assert body["generationConfig"]["maxOutputTokens"] == _MAX_OUTPUT_TOKENS
         assert str(private_session) not in body["contents"][0]["parts"][0]["text"]
         assert http_request.headers["x-goog-api-key"] == "test-key"
         return httpx.Response(
