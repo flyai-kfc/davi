@@ -21,7 +21,28 @@ import re
 from pathlib import Path
 
 import pytest
-from app.schemas import ActionType, ErrorKind, ScrollAxis, SwipeDirection
+from app.schemas import (
+    ActionType,
+    ConversationRole,
+    ErrorKind,
+    IntentDialogueStatus,
+    ScrollAxis,
+    SwipeDirection,
+)
+
+# 앱 enum 이름 -> 서버 enum. 이름이 다른 쌍이 있어 목록으로 둔다(`ApiErrorKind` ↔ `ErrorKind`).
+#
+# **이 목록도 손으로 유지되는 목록이라 낡는다.** 실제로 음성 목표 대화가 들어온 뒤
+# `ConversationRole`·`IntentDialogueStatus` 둘이 여기 안 들어와 감시 밖에 있었다. 그래서
+# `test_every_contract_enum_is_covered`가 `Contract.kt`의 선언과 대조해 누락을 먼저 잡는다.
+_ENUM_PAIRS: dict[str, type] = {
+    "ActionType": ActionType,
+    "SwipeDirection": SwipeDirection,
+    "ScrollAxis": ScrollAxis,
+    "ApiErrorKind": ErrorKind,
+    "ConversationRole": ConversationRole,
+    "IntentDialogueStatus": IntentDialogueStatus,
+}
 
 CONTRACT_KT = (
     Path(__file__).resolve().parents[2]
@@ -56,14 +77,26 @@ def contract_source() -> str:
     return CONTRACT_KT.read_text(encoding="utf-8")
 
 
+def test_every_contract_enum_is_covered(contract_source: str) -> None:
+    """`Contract.kt`가 선언한 enum이 전부 대조 대상인지 본다.
+
+    드리프트 검사가 있어도 **검사 목록에서 빠지면 없는 것과 같다.** 음성 목표 대화(#90·#91)가
+    들어왔을 때 실제로 그렇게 됐다 — 앱·서버 양쪽에 enum이 생겼는데 이 테스트의 목록에는
+    안 들어와, 어긋나도 CI가 초록이었다. 계약이 늘어날 때 이 누락을 사람이 기억해서 막지 않는다.
+    """
+
+    declared = set(re.findall(r"enum\s+class\s+(\w+)", contract_source))
+    uncovered = declared - set(_ENUM_PAIRS)
+
+    assert not uncovered, (
+        f"`Contract.kt`에 있지만 드리프트 검사에서 빠진 enum: {sorted(uncovered)}. "
+        "`_ENUM_PAIRS`에 서버 enum과 함께 추가할 것."
+    )
+
+
 @pytest.mark.parametrize(
     ("kotlin_enum", "python_enum"),
-    [
-        ("ActionType", ActionType),
-        ("SwipeDirection", SwipeDirection),
-        ("ScrollAxis", ScrollAxis),
-        ("ApiErrorKind", ErrorKind),
-    ],
+    sorted(_ENUM_PAIRS.items()),
 )
 def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_enum) -> None:
     app_values = _kotlin_enum_values(contract_source, kotlin_enum)
