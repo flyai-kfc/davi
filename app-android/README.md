@@ -109,11 +109,11 @@ cd server; $env:DAVI_USE_STUB_LLM="false"; .\.venv\Scripts\python.exe -m uvicorn
 `GET /health`의 `stub_llm`이 `false`인지 먼저 확인한다. 무료 티어는 15 RPM / 1,000 RPD이고
 RPD 리셋은 한국시간 17:00이다(`../HANDOFF.md` §10). 확인이 끝나면 서버를 내려 쿼터를 아낀다.
 
-**평문 HTTP는 디버그 빌드에서만 열려 있다.** targetSdk 36은 평문 통신을 기본 차단하므로
-`http://127.0.0.1:8000`으로 붙으면 `CLEARTEXT communication ... not permitted`로 막힌다.
-Gradle이 debug 빌드마다 `network_security_config.xml`을 생성해 실제 고정 endpoint의 host
-하나에만 평문을 열고, 그 host도 로컬 주소 또는 RFC1918 사설 IPv4 literal로 제한한다.
-**릴리스 빌드는 여전히 평문이 막혀 있다.**
+**평문 HTTP는 로컬·사설 주소를 쓰는 디버그 빌드에서만 열린다.** targetSdk 36은 평문 통신을
+기본 차단하므로 Gradle이 debug 빌드마다 `network_security_config.xml`을 생성하고, 설정한
+loopback 또는 RFC1918 사설 IPv4 host 하나에만 `domain-config` 평문 예외를 만든다. Azure
+Container Apps HTTPS endpoint를 쓰면 이 예외 자체를 만들지 않고 일반 TLS로 연결한다.
+**릴리스 빌드는 개발 endpoint 설정을 거부하며 평문도 계속 막혀 있다.**
 
 ### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
 
@@ -141,9 +141,10 @@ DAVI_DOGFOOD=true
 
 두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
 `10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
-없다. 사설 Wi-Fi 주소에는 토큰이 필수다.
-공개 endpoint나 터널은 이 debug 개발 경로에서 허용하지 않으며, release에는 어느 개발 값도
-들어가지 않는다.
+없다. 사설 Wi-Fi 주소에는 토큰이 필수다. Azure 공유 개발 서버는 기본 443 포트의
+`*.azurecontainerapps.io` **HTTPS** URL만 허용하며 원격 host이므로 토큰이 필수다. HTTPS에는
+평문 통신 예외를 만들지 않는다. 그 밖의 공개 endpoint와 터널은 허용하지 않으며, release에는
+어느 개발 값도 들어가지 않는다.
 
 일회성 자동 검증은 파일에 토큰을 기록하지 않도록 같은 이름의 환경변수를 사용할 수 있다.
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
@@ -155,6 +156,8 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 **Gemini API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
 
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
+Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
+[`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
 ## 구성
 | 경로 | 역할 |

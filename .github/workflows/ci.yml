@@ -24,6 +24,7 @@ jobs:
     outputs:
       android: ${{ steps.filter.outputs.android }}
       backend: ${{ steps.filter.outputs.backend }}
+      infrastructure: ${{ steps.filter.outputs.infrastructure }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -43,6 +44,15 @@ jobs:
               # 이게 없으면 앱만 고친 PR에서 드리프트 검사가 통째로 건너뛰어진다.
               - 'app-android/app/src/main/java/com/davi/helper/Contract.kt'
               - 'app-android/app/src/main/java/com/davi/helper/RequestTracing.kt'
+            infrastructure:
+              - 'server/Dockerfile'
+              - 'server/.dockerignore'
+              - 'server/requirements.txt'
+              - 'server/requirements.lock.txt'
+              - 'server/app/**'
+              - 'infra/azure/**'
+              - '.github/workflows/azure-dev-deploy.yml'
+              - '.github/workflows/ci.yml'
 
   android:
     name: Android (debug/release APK + test)
@@ -91,6 +101,29 @@ jobs:
           grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
           grep -q '<domain includeSubdomains="false">192.168.1.2</domain>' "$config"
           test "$(grep -c 'cleartextTrafficPermitted="true"' "$config")" -eq 1
+
+      - name: debug Azure HTTPS endpoint 허용
+        env:
+          DAVI_DEBUG_SERVER_URL: https://davi-server-dev.example.azurecontainerapps.io
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          ./gradlew assembleDebug
+          config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
+          grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
+          ! grep -q 'cleartextTrafficPermitted="true"' "$config"
+          ! grep -q '<domain-config' "$config"
+
+      - name: debug 임의 HTTPS endpoint 거부
+        env:
+          DAVI_DEBUG_SERVER_URL: https://not-davi.example.com
+          DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
+        run: |
+          set +e
+          output="$(./gradlew generateDebugNetworkSecurityConfig 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "Azure Container Apps 기본 endpoint" <<<"$output"
 
       - name: release에서 development 설정 거부
         env:
@@ -164,12 +197,52 @@ jobs:
           DAVI_EVAL_JUDGE_MODEL: ''
         run: python judge.py
 
+  infrastructure:
+    name: Infrastructure (Docker + Bicep)
+    needs: changes
+    if: needs.changes.outputs.infrastructure == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bicep 템플릿 빌드
+        run: |
+          az bicep install --version v0.46.1
+          az bicep build --file infra/azure/dev-foundation.bicep --stdout >/dev/null
+          az bicep build --file infra/azure/dev-server.bicep --stdout >/dev/null
+
+      - name: 서버 이미지 빌드·비루트 확인·health 스모크
+        run: |
+          set -euo pipefail
+          image="davi-server-ci:${GITHUB_SHA}"
+          container="davi-server-ci-${GITHUB_RUN_ID}"
+          docker build --tag "$image" server
+          test "$(docker image inspect "$image" --format '{{.Config.User}}')" = "davi"
+          docker run --detach --rm \
+            --name "$container" \
+            --publish 127.0.0.1:8000:8000 \
+            --env DAVI_ENV=development \
+            --env DAVI_USE_STUB_LLM=true \
+            --env DAVI_BIND_HOST=0.0.0.0 \
+            --env DAVI_DEV_ACCESS_TOKEN=ci-only-not-a-secret-token-value-0001 \
+            "$image"
+          trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --max-time 1 http://127.0.0.1:8000/health \
+              | python -c 'import json,sys; data=json.load(sys.stdin); assert data == {"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":True}'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$container"
+          exit 1
+
   # 브랜치 보호의 필수 체크로 지정할 잡. 위 잡들이 조건부라 skipped가 되는데,
   # skipped는 필수 체크를 통과시키지 못하므로 여기서 한 번 집계한다.
   ci:
     name: CI 통과
     if: always()
-    needs: [changes, android, backend]
+    needs: [changes, android, backend, infrastructure]
     runs-on: ubuntu-latest
     steps:
       - name: 결과 집계
@@ -177,6 +250,7 @@ jobs:
           echo "changes=${{ needs.changes.result }}"
           echo "android=${{ needs.android.result }}"
           echo "backend=${{ needs.backend.result }}"
+          echo "infrastructure=${{ needs.infrastructure.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] \
             || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
             echo "::error::실패했거나 취소된 잡이 있습니다."
