@@ -25,7 +25,7 @@ stages:
     displayName: 서버 이미지 빌드
     jobs:
       - job: BuildImage
-        displayName: ACR image build
+        displayName: Docker image build와 ACR push
         steps:
           - checkout: self
 
@@ -43,11 +43,19 @@ stages:
                   exit 1
                 }
                 image_tag="$(Build.SourceVersion)-$(Build.BuildId)"
-                az acr build \
-                  --registry "$DAVI_AZURE_ACR_NAME" \
-                  --image "$(imageRepository):$image_tag" \
-                  --file Dockerfile \
+                login_server="$(az acr show \
+                  --name "$DAVI_AZURE_ACR_NAME" \
+                  --query loginServer \
+                  --output tsv)"
+                test -n "$login_server"
+
+                az acr login --name "$DAVI_AZURE_ACR_NAME"
+                docker build \
+                  --platform linux/amd64 \
+                  --file server/Dockerfile \
+                  --tag "$login_server/$(imageRepository):$image_tag" \
                   server
+                docker push "$login_server/$(imageRepository):$image_tag"
             env:
               DAVI_AZURE_ACR_NAME: $(DAVI_AZURE_ACR_NAME)
 

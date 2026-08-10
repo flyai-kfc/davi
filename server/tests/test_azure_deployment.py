@@ -52,6 +52,12 @@ def test_pipeline_never_deploys_pr_and_uses_unique_image_and_revision() -> None:
 
     assert "      - main" in pipeline
     assert "pr: none" in pipeline
+    assert "az acr build" not in pipeline
+    assert 'az acr login --name "$DAVI_AZURE_ACR_NAME"' in pipeline
+    assert "docker build" in pipeline
+    assert "--platform linux/amd64" in pipeline
+    assert "--file server/Dockerfile" in pipeline
+    assert 'docker push "$login_server/$(imageRepository):$image_tag"' in pipeline
     assert 'image_tag="$(Build.SourceVersion)-$(Build.BuildId)"' in pipeline
     assert 'revision_suffix="r$(Build.BuildId)"' in pipeline
     assert "GEMINI_API_KEY: $(" not in pipeline

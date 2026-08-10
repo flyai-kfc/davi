@@ -6,7 +6,7 @@ Azure DevOps Pipeline으로 자동 배포하는 절차다. 제품 배포·사용
 
 ```text
 main의 server/ · infra/azure/ · azure-pipelines.yml 변경
-  → Azure DevOps가 <commit SHA>-<build ID> image를 ACR에서 build
+  → Azure DevOps hosted agent가 linux/amd64 image를 build해 ACR에 push
   → r<build ID> Container Apps revision 배포
   → readiness 통과 후 HTTPS /health 확인
 ```
@@ -23,7 +23,7 @@ URL과 토큰을 공개 채널·이슈·PR·로그에 붙이지 않는다.
 | `server/.dockerignore` | `.env`, venv, 테스트, local/raw 상태를 build context에서 제외한다. |
 | `infra/azure/dev-foundation.bicep` | ACR, Key Vault, user-assigned identity, Log Analytics, Container Apps Environment와 RBAC를 준비한다. |
 | `infra/azure/dev-server.bicep` | Key Vault 참조·HTTPS ingress·단일 replica/revision의 Container App을 배포한다. |
-| `azure-pipelines.yml` | `main`의 대상 경로만 image build → revision 배포 → health 검사한다. |
+| `azure-pipelines.yml` | `main`의 대상 경로만 hosted Docker build → ACR push → revision 배포 → health 검사한다. |
 | `.github/workflows/ci.yml` | PR에서 Bicep compile과 Docker build/health, Android HTTPS 설정을 키 없이 검증한다. |
 
 PR CI는 Azure 구독을 변경하지 않는다. 실제 Resource Group 배포와 Android 연결은 아래 체크리스트를
@@ -50,6 +50,9 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
 4. Key Vault Portal의 **Secrets**에서 다음 값을 직접 만든다. 명령행 인자·Pipeline 변수·Git에
    실제 값을 넣지 않는다.
 
+   Secret을 만드는 사람에게는 vault 범위의 `Key Vault Secrets Officer`가 필요하다. 기반 Bicep은
+   runtime identity에 읽기 권한만 부여하며 특정 팀원 계정을 템플릿에 고정하지 않는다.
+
    | Secret name | 값 |
    |---|---|
    | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 |
@@ -61,13 +64,29 @@ vault 삭제 후 같은 이름을 즉시 재사용할 수 없다는 점도 고�
 
 ## 2. Azure DevOps 관리자: main Pipeline 연결
 
-1. Azure DevOps에서 GitHub `flyai-kfc/davi`를 소스로 Pipeline을 만든다.
-2. Azure Resource Manager Service Connection을 만든다.
-   - 권장 이름: `davi-dev-azure-rm`
-   - 범위: 개발 Resource Group 하나
-   - 인증: Workload Identity Federation
-3. YAML 경로를 `/azure-pipelines.yml`로 지정한다.
-4. 다음 Pipeline variable을 등록한다. 모두 리소스 식별자이며 secret 값이 아니다.
+Microsoft-hosted `ubuntu-latest` agent를 실행할 수 있는 Azure DevOps organization/project와 GitHub
+저장소 연결 권한이 필요하다. private project에 hosted parallel job이 없으면 Pipeline 생성과 별개로
+agent 실행이 거부되므로 Azure DevOps의 parallel jobs 상태를 먼저 확인한다.
+
+1. Azure DevOps **Project settings → Pipelines → Service connections → New service connection**에서
+   `Azure Resource Manager`를 선택한다.
+2. 자동 설정이 가능한 계정이면 app registration의 **Workload identity federation** 방식을 선택한다.
+   client secret 방식은 사용하지 않는다. 자동 설정이 권한 때문에 실패할 때만 Microsoft의 manual
+   workload identity 절차로 app registration과 federated credential을 연결한다.
+3. 다음 범위와 이름으로 저장한다.
+   - Service connection name: `davi-dev-azure-rm`
+   - Scope level: `Resource Group`
+   - Subscription: 공유 개발 구독
+   - Resource Group: `rg-davi-dev`
+   - 권한: Resource Group의 `Contributor`. 제한된 custom role을 쓰면 ACR에 `AcrPush`도 필요
+   - **Grant access permission to all pipelines는 선택하지 않는다.** 이 Pipeline 하나만 첫 실행에서
+     `Permit`으로 승인한다.
+4. **Pipelines → New pipeline → GitHub → `flyai-kfc/davi` → Existing Azure Pipelines YAML file**을
+   선택하고 YAML 경로를 `/azure-pipelines.yml`로 지정한다. 이 파일이 `main`에 병합된 뒤 연결하며
+   Pipeline의 default branch도 `main`으로 둔다. feature/PR branch를 골라 공유 서버에 수동 배포하지
+   않는다.
+5. Pipeline **Edit → Variables**에서 다음 값을 등록한다. 모두 리소스 식별자이며 secret 값이 아니지만,
+   실행 시 임의 변경되지 않도록 queue-time override는 끈다.
 
    | Variable | 예시 |
    |---|---|
@@ -79,6 +98,10 @@ vault 삭제 후 같은 이름을 즉시 재사용할 수 없다는 점도 고�
    | `DAVI_AZURE_CONTAINER_IDENTITY_NAME` | `id-davi-server-dev` |
    | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-dev` |
 
+6. **Pipelines → Environments**에 `davi-development`가 없으면 만들고 이 Pipeline의 deployment job만
+   사용하도록 권한을 둔다. 첫 실행에서 Service Connection이나 Environment 사용 승인이 뜨면 해당
+   실행 화면의 `Permit`으로 이 Pipeline에만 허용한다.
+
 `GEMINI_API_KEY`와 `DAVI_DEV_ACCESS_TOKEN`은 Pipeline variable로 만들지 않는다. Pipeline과 Service
 Connection은 Key Vault secret 값을 읽지 않으며 Container App identity만 runtime에 읽는다.
 
@@ -86,10 +109,16 @@ Pipeline은 `main` push 중 `server/**`, `infra/azure/**`, `azure-pipelines.yml`
 `pr: none`으로 PR 배포를 금지한다. 같은 commit을 재실행해도 build ID가 image tag와 revision suffix에
 포함되므로 기존 tag를 덮어쓰거나 배포가 생략되지 않는다.
 
+이미지는 Microsoft-hosted Ubuntu agent의 Docker daemon에서 `linux/amd64`로 build한 뒤
+`az acr login`으로 얻은 federated identity 자격으로 push한다. `az acr build`/ACR Tasks는 사용하지
+않는다. Azure for Students처럼 ACR Tasks가 허용되지 않는 구독에서도 같은 Pipeline을 쓰고, API 키나
+개발 token은 build context·Docker 명령·Pipeline 변수에 전달하지 않는다.
+
 ## 3. 첫 배포와 Android 실기기 확인
 
-기반 리소스와 secret, Pipeline 변수를 준비한 뒤 Pipeline을 수동으로 한 번 실행한다. 성공한 health
-단계는 다음 형식의 URL만 출력하며 응답 본문이나 token은 출력하지 않는다.
+기반 리소스와 secret, Pipeline 변수를 준비한 뒤 `main` 병합으로 발생한 첫 자동 실행을 확인한다.
+필요해 수동 재실행할 때도 branch는 `main`만 선택한다. 성공한 health 단계는 다음 형식의 URL만
+출력하며 응답 본문이나 token은 출력하지 않는다.
 
 ```text
 shared development URL: https://davi-server-dev.<hash>.<region>.azurecontainerapps.io
@@ -125,7 +154,8 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
   저장하지 않는다. fixture 원본 수집은 승인된 로컬 공기계 경로만 사용한다.
 - 비식별 JSON Lines는 stderr→Log Analytics로 전달되며 30일 보존한다. 정상 `/health`, IP/port,
   User-Agent, 요청 본문과 secret은 애플리케이션 로그에 남기지 않는다.
-- 배포 실패는 Azure DevOps의 Bicep deployment, Container App revision 상태, health 단계 순서로 본다.
+- 배포 실패는 Azure DevOps의 Docker build/ACR push, Bicep deployment, Container App revision 상태,
+  health 단계 순서로 본다.
   Gemini 요청만 실패하면 비식별 request ID와 Logical Request ID로 대조한다.
 - 롤백은 문제 commit을 `main`에서 revert해 새 build ID의 image/revision으로 다시 배포한다. 기존 ACR
   tag를 덮어쓰거나 닫힌 #95 브랜치를 재사용하지 않는다.
