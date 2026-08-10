@@ -6,9 +6,10 @@ PR 검증과 배포는 서로 다른 workflow이며, 배포 workflow는 PR에서
 
 ```text
 main의 server/ · infra/azure/ · azure-dev-deploy.yml 변경
-  → GitHub-hosted runner가 linux/amd64 image를 build해 ACR에 push
+  → GitHub-hosted runner가 고정 base image와 Docker 전용 lock으로 linux/amd64 image를 build해 ACR에 push
   → r<run ID>-<attempt> Container Apps revision 배포
-  → readiness 통과 후 HTTPS /health 확인
+  → 배포 output의 정확한 revision/image가 active·healthy·traffic 100%인지 대조
+  → 같은 Container App HTTPS /health 확인
 ```
 
 외부 ingress는 팀 debug APK가 다른 네트워크에서도 접근하도록 HTTPS로 열려 있다. `/health` 외의
@@ -19,7 +20,7 @@ URL과 토큰을 공개 채널·이슈·PR·로그에 붙이지 않는다.
 
 | 경로 | 역할 |
 |---|---|
-| `server/Dockerfile` | 비루트 `davi` 사용자로 Uvicorn worker 하나를 실행한다. |
+| `server/Dockerfile` | digest로 고정한 Python base와 `requirements.lock.txt`를 써 비루트 `davi` 사용자로 Uvicorn worker 하나를 실행한다. |
 | `server/.dockerignore` | `.env`, venv, 테스트, local/raw 상태를 build context에서 제외한다. |
 | `infra/azure/dev-foundation.bicep` | ACR, Key Vault, user-assigned identity, Log Analytics, Container Apps Environment와 RBAC를 준비한다. |
 | `infra/azure/dev-server.bicep` | Key Vault 참조·HTTPS ingress·단일 replica/revision의 Container App을 배포한다. |
@@ -59,8 +60,14 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
    | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 |
 
 Container App은 versionless Key Vault URI를 참조한다. secret 갱신은 Container Apps가 동기화하지만
-팀 debug APK의 개발 토큰도 함께 교체해야 한다. Key Vault purge protection과 90일 soft delete 때문에
-vault 삭제 후 같은 이름을 즉시 재사용할 수 없다는 점도 고려한다.
+팀 debug APK의 개발 토큰도 함께 교체해야 한다. 새 dev vault는 purge protection을 켜지 않고 Azure가
+허용하는 최소값인 7일 soft delete를 쓴다. 삭제 뒤 7일 안에 같은 이름을 다시 써야 한다면 권한 있는
+관리자가 삭제된 vault를 명시적으로 purge해야 한다.
+
+이미 만들어진 vault의 soft-delete 기간은 바꿀 수 없고, 한번 켠 purge protection도 끌 수 없다.
+따라서 기존 `davi-dev-kv-kfc001`의 90일·purge-protected 상태는 이 템플릿 수정으로 소급 변경되지
+않는다. 기존 vault를 새 정책으로 옮기려면 새 이름의 vault 생성, 두 secret의 수동 재등록, GitHub
+environment 변수 변경을 별도 작업으로 검토한다. 이 PR은 비밀값을 읽거나 복사하지 않는다.
 
 ## 2. Azure 관리자: GitHub 배포 identity 준비
 
@@ -173,14 +180,22 @@ workflow는 `main` push 중 `server/**`, `infra/azure/**`, 자신의 YAML 변경
 Azure for Students처럼 ACR Tasks가 허용되지 않는 구독에서도 같은 workflow를 쓰고, API 키나 개발
 token은 build context·Docker 명령·GitHub 변수에 전달하지 않는다.
 
+Docker build만 `server/requirements.lock.txt`를 사용한다. 로컬 개발·테스트는 계속
+`requirements-dev.txt`가 참조하는 하한 기반 `requirements.txt`를 사용한다. 런타임 의존성을 바꿀 때는
+Linux amd64의 `python:3.12-slim-bookworm`에서 `requirements.txt`를 설치한 `pip freeze` 결과로 lock을
+갱신하고, Python base digest도 의도적으로 함께 검토한다.
+
 ## 4. 첫 배포와 Android 실기기 확인
 
 기반 리소스와 secret, federated credential, GitHub environment 변수를 준비한 뒤 `main` 병합으로
 발생한 첫 자동 실행을 확인한다.
-필요해 수동 재실행할 때도 branch는 `main`만 선택한다. 성공한 health 단계는 다음 형식의 URL만
-출력하며 응답 본문이나 token은 출력하지 않는다.
+필요해 수동 재실행할 때도 branch는 `main`만 선택한다. 성공한 검증 단계는 Bicep 배포 output과
+Container Apps가 보고한 revision 이름·container image를 직접 비교한 뒤 다음 형식의 비민감 식별자와
+URL만 출력한다. `/health` 응답 본문이나 token은 출력하지 않는다.
 
 ```text
+verified revision: davi-server-app--r<run ID>-<attempt>
+verified image: <registry>/davi-server:<main commit SHA>-<run ID>-<attempt>
 shared development URL: https://davi-server-app.<hash>.<region>.azurecontainerapps.io
 ```
 
@@ -197,9 +212,9 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
 
 최초 배포의 완료 체크:
 
-- GitHub Actions의 login/build/deploy/health 단계가 모두 성공한다.
-- Container App image tag가 `<main commit SHA>-<GitHub run ID>-<attempt>`다.
-- active revision suffix가 `r<GitHub run ID>-<attempt>`다.
+- GitHub Actions의 login/build/deploy/revision+health 단계가 모두 성공한다.
+- 검증된 Container App image tag가 `<main commit SHA>-<GitHub run ID>-<attempt>`다.
+- 검증된 active·healthy revision suffix가 `r<GitHub run ID>-<attempt>`이고 traffic이 100%다.
 - Container App 설정에는 Key Vault reference만 있고 secret 평문이 없다.
 - `/health`는 HTTPS 200이며 `development`, `stub_llm=false`다.
 - 토큰 없는 `/v1/next-step`은 401이고 유효 토큰을 쓴 익명 fixture 요청은 정상 응답한다.
@@ -214,8 +229,8 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
   저장하지 않는다. fixture 원본 수집은 승인된 로컬 공기계 경로만 사용한다.
 - 비식별 JSON Lines는 stderr→Log Analytics로 전달되며 30일 보존한다. 정상 `/health`, IP/port,
   User-Agent, 요청 본문과 secret은 애플리케이션 로그에 남기지 않는다.
-- 배포 실패는 GitHub Actions의 OIDC login, Docker build/ACR push, Bicep deployment, Container App revision 상태,
-  health 단계 순서로 본다.
+- 배포 실패는 GitHub Actions의 OIDC login, Docker build/ACR push, Bicep deployment, 이번 배포의 정확한
+  revision/image 상태, health 단계 순서로 본다. 이전 revision의 정상 응답은 성공으로 처리하지 않는다.
   Gemini 요청만 실패하면 비식별 request ID와 Logical Request ID로 대조한다.
 - 롤백은 문제 commit을 `main`에서 revert해 새 Actions run ID의 image/revision으로 다시 배포한다. 기존 ACR
   tag를 덮어쓰거나 닫힌 #95 브랜치를 재사용하지 않는다.

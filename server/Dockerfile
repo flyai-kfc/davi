@@ -1,5 +1,5 @@
 # Azure Container Apps용 개발 서버 이미지. 실행 설정과 비밀값은 배포 환경에서만 주입한다.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -11,8 +11,8 @@ RUN groupadd --gid 10001 davi \
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN python -m pip install --requirement requirements.txt
+COPY requirements.lock.txt ./
+RUN python -m pip install --requirement requirements.lock.txt
 
 COPY --chown=davi:davi app ./app
 

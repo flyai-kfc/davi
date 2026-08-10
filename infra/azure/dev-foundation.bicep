@@ -93,8 +93,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       name: 'standard'
     }
     enableRbacAuthorization: true
-    enablePurgeProtection: true
-    softDeleteRetentionInDays: 90
+    // dev vault는 이름·환경을 짧게 재생성할 수 있도록 최소 soft-delete 기간만 둔다.
+    // purge protection은 비가역이므로 dev foundation에서는 활성화하지 않는다.
+    softDeleteRetentionInDays: 7
     publicNetworkAccess: 'Enabled'
   }
 }

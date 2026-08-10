@@ -83,16 +83,19 @@ jobs:
           docker push "$login_server/$IMAGE_REPOSITORY:$image_tag"
 
       - name: 고유 Container Apps revision 배포
+        id: deploy
         shell: bash
         run: |
           set -euo pipefail
           image_tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           revision_suffix="r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
-          az deployment group create \
+          deployment_outputs="$(az deployment group create \
             --name "davi-server-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
             --template-file infra/azure/dev-server.bicep \
+            --query properties.outputs \
+            --output json \
             --parameters \
               containerAppName="$DAVI_AZURE_CONTAINER_APP_NAME" \
               managedEnvironmentName="$DAVI_AZURE_MANAGED_ENVIRONMENT_NAME" \
@@ -100,32 +103,59 @@ jobs:
               keyVaultName="$DAVI_AZURE_KEY_VAULT_NAME" \
               containerIdentityName="$DAVI_AZURE_CONTAINER_IDENTITY_NAME" \
               imageTag="$image_tag" \
-              revisionSuffix="$revision_suffix"
+              revisionSuffix="$revision_suffix")"
 
-      # 인증 없는 health의 고정 상태만 본다. 응답 본문과 비밀값은 로그에 출력하지 않는다.
-      - name: HTTPS health 스모크
+          deployed_revision="$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
+          deployed_image="$(jq -er '.deployedImage.value' <<<"$deployment_outputs")"
+          container_app_fqdn="$(jq -er '.containerAppFqdn.value' <<<"$deployment_outputs")"
+          {
+            printf 'revision=%s\n' "$deployed_revision"
+            printf 'image=%s\n' "$deployed_image"
+            printf 'fqdn=%s\n' "$container_app_fqdn"
+          } >> "$GITHUB_OUTPUT"
+
+      # 이번 실행의 정확한 revision/image가 active·healthy·100% traffic인지 확인한 뒤 health를 본다.
+      # 응답 본문과 비밀값은 로그에 출력하지 않는다.
+      - name: 배포 revision과 HTTPS health 검증
         shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.deploy.outputs.revision }}
+          EXPECTED_IMAGE: ${{ steps.deploy.outputs.image }}
+          DEPLOYED_FQDN: ${{ steps.deploy.outputs.fqdn }}
         run: |
           set -euo pipefail
-          az containerapp show \
-            --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
-            --name "$DAVI_AZURE_CONTAINER_APP_NAME" \
-            --query 'properties.configuration.ingress.fqdn' \
-            --output tsv > /tmp/davi-container-app-fqdn
-          read -r fqdn < /tmp/davi-container-app-fqdn
-          test -n "$fqdn"
+          test -n "$EXPECTED_REVISION"
+          test -n "$EXPECTED_IMAGE"
+          test -n "$DEPLOYED_FQDN"
 
           for attempt in $(seq 1 18); do
-            if curl --fail --silent --show-error --max-time 10 \
-              --output /tmp/davi-health-response \
-              "https://$fqdn/health" \
+            if az containerapp revision show \
+              --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
+              --name "$DAVI_AZURE_CONTAINER_APP_NAME" \
+              --revision "$EXPECTED_REVISION" \
+              --output json > /tmp/davi-deployed-revision 2>/dev/null \
+              && jq -e \
+                --arg expected_revision "$EXPECTED_REVISION" \
+                --arg expected_image "$EXPECTED_IMAGE" \
+                '.name == $expected_revision
+                  and .properties.active == true
+                  and .properties.provisioningState == "Provisioned"
+                  and .properties.healthState == "Healthy"
+                  and .properties.trafficWeight == 100
+                  and .properties.template.containers[0].image == $expected_image' \
+                /tmp/davi-deployed-revision >/dev/null \
+              && curl --fail --silent --show-error --max-time 10 \
+                --output /tmp/davi-health-response \
+                "https://$DEPLOYED_FQDN/health" \
               && jq -e \
                 '.status == "ok" and .environment == "development" and .stub_llm == false' \
                 /tmp/davi-health-response >/dev/null; then
-              printf 'shared development URL: https://%s\n' "$fqdn"
+              printf 'verified revision: %s\n' "$EXPECTED_REVISION"
+              printf 'verified image: %s\n' "$EXPECTED_IMAGE"
+              printf 'shared development URL: https://%s\n' "$DEPLOYED_FQDN"
               exit 0
             fi
             sleep 10
           done
-          echo '::error::Container App health 확인에 실패했습니다.'
+          echo '::error::이번 배포 revision/image 또는 Container App health 확인에 실패했습니다.'
           exit 1

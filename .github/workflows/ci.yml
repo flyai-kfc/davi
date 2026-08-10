@@ -48,6 +48,8 @@ jobs:
               - 'server/Dockerfile'
               - 'server/.dockerignore'
               - 'server/requirements.txt'
+              - 'server/requirements.lock.txt'
+              - 'server/app/**'
               - 'infra/azure/**'
               - '.github/workflows/azure-dev-deploy.yml'
               - '.github/workflows/ci.yml'

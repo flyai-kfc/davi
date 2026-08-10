@@ -300,8 +300,10 @@ davi/
   제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로
   명시 종료한다.
 - Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
-  commit SHA와 Actions run ID/attempt로 식별되는 불변 image/revision으로 배포하고, PR은 공유 서버를
-  바꾸지 않는다. 최소/최대 replica와 Uvicorn worker는 각각 1이다.
+  digest 고정 base와 Docker 전용 의존성 lock으로 build한다. commit SHA와 Actions run ID/attempt로
+  식별되는 불변 image/revision을 배포하고, 정확한 revision/image가 active·healthy·traffic 100%인지
+  대조한 뒤 `/health`를 검사한다. PR은 공유 서버를 바꾸지 않는다. 최소/최대 replica와 Uvicorn
+  worker는 각각 1이다.
 - Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
   토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰은 Key Vault의 versionless secret을
   user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는 넣지 않는다.

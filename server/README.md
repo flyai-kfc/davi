@@ -203,7 +203,10 @@ PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰�
 
 같은 Wi-Fi·전용 맥북 없이 팀이 같은 `main` 서버를 검증할 때만 쓰는 **개발 전용** 경로다(#94).
 GitHub Actions가 `main`에 병합된 서버·인프라 변경을 ACR image와 단일 Container Apps revision으로
-배포한다. PR은 공유 서버를 바꾸지 않는다.
+배포한다. Docker만 Linux/Python 3.12에서 고정한 `requirements.lock.txt`와 digest 고정 base image를
+사용하며, 로컬 개발·테스트는 계속 `requirements-dev.txt`/`requirements.txt`를 쓴다. 배포 뒤에는
+이번 run의 정확한 revision과 image가 active·healthy·traffic 100%인지 대조한 다음 `/health`를
+검사하므로 이전 revision의 정상 응답으로 성공하지 않는다. PR은 공유 서버를 바꾸지 않는다.
 
 외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. Gemini 키와 개발 토큰은
 Key Vault의 versionless secret으로만 보관하며 Container App의 user-assigned identity가 읽는다.

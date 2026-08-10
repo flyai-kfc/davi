@@ -109,11 +109,11 @@ cd server; $env:DAVI_USE_STUB_LLM="false"; .\.venv\Scripts\python.exe -m uvicorn
 `GET /health`의 `stub_llm`이 `false`인지 먼저 확인한다. 무료 티어는 15 RPM / 1,000 RPD이고
 RPD 리셋은 한국시간 17:00이다(`../HANDOFF.md` §10). 확인이 끝나면 서버를 내려 쿼터를 아낀다.
 
-**평문 HTTP는 디버그 빌드에서만 열려 있다.** targetSdk 36은 평문 통신을 기본 차단하므로
-`http://127.0.0.1:8000`으로 붙으면 `CLEARTEXT communication ... not permitted`로 막힌다.
-Gradle이 debug 빌드마다 `network_security_config.xml`을 생성해 실제 고정 endpoint의 host
-하나에만 평문을 열고, 그 host도 로컬 주소 또는 RFC1918 사설 IPv4 literal로 제한한다.
-**릴리스 빌드는 여전히 평문이 막혀 있다.**
+**평문 HTTP는 로컬·사설 주소를 쓰는 디버그 빌드에서만 열린다.** targetSdk 36은 평문 통신을
+기본 차단하므로 Gradle이 debug 빌드마다 `network_security_config.xml`을 생성하고, 설정한
+loopback 또는 RFC1918 사설 IPv4 host 하나에만 `domain-config` 평문 예외를 만든다. Azure
+Container Apps HTTPS endpoint를 쓰면 이 예외 자체를 만들지 않고 일반 TLS로 연결한다.
+**릴리스 빌드는 개발 endpoint 설정을 거부하며 평문도 계속 막혀 있다.**
 
 ### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
 

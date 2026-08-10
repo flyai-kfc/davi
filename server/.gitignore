@@ -11,6 +11,3 @@ venv/
 .env
 .env.*
 !.env.example
-
-# 잠금/동결 산출물(원하면 커밋해도 됨 — 팀 합의 시 이 줄 제거)
-requirements.lock.txt
