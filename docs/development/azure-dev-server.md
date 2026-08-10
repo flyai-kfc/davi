@@ -124,13 +124,14 @@ User Access Administrator 권한이 필요하다.
      --identity-name id-davi-github-deploy \
      --resource-group rg-davi-dev \
      --issuer https://token.actions.githubusercontent.com \
-     --subject repo:flyai-kfc/davi:environment:davi-development \
+     --subject repo:flyai-kfc@308695859/davi@1310845925:environment:davi-development \
      --audiences api://AzureADTokenExchange
    ```
 
-   이 저장소는 2026-08-10 기준 GitHub 기본 subject를 사용하고 immutable subject opt-in은 꺼져 있어
-   위 subject가 맞다. GitHub OIDC subject 설정을 나중에 바꾸면 federated credential도 GitHub가
-   반환하는 새 prefix에 맞춰 함께 갱신한다.
+   이 저장소는 2026-07-24에 생성돼 GitHub의 2026-07-15 이후 신규 저장소 기본 정책에 따라
+   owner/repository ID가 포함된 immutable subject를 사용한다. 2026-08-10 확인한 GitHub
+   `sub_claim_prefix`와 위 subject가 일치한다. GitHub OIDC subject 설정을 나중에 바꾸면 federated
+   credential도 GitHub가 반환하는 새 prefix에 맞춰 함께 갱신한다.
 
 ## 3. GitHub 관리자: environment와 변수 연결
 
