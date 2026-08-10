@@ -1,9 +1,9 @@
-// main 자동 배포 Pipeline이 적용하는 공유 development Container App revision.
+// main 자동 배포 GitHub Actions workflow가 적용하는 공유 development Container App revision.
 // 기반 리소스와 RBAC는 dev-foundation.bicep에서 최초 1회 준비한다.
 targetScope = 'resourceGroup'
 
 @minLength(1)
-param containerAppName string = 'davi-server-dev'
+param containerAppName string = 'davi-server-app'
 
 @minLength(1)
 param managedEnvironmentName string
@@ -21,12 +21,12 @@ param containerIdentityName string
 
 @minLength(7)
 @maxLength(128)
-@description('ACR에 이미 push된 불변 image tag다. commit SHA와 Pipeline build ID를 함께 쓴다.')
+@description('ACR에 이미 push된 불변 image tag다. commit SHA와 GitHub Actions run ID/attempt를 함께 쓴다.')
 param imageTag string
 
 @minLength(2)
 @maxLength(64)
-@description('같은 commit 재실행도 새 revision이 되게 Pipeline build ID에서 만든 suffix다.')
+@description('같은 commit 재실행도 새 revision이 되게 GitHub Actions run ID/attempt에서 만든 suffix다.')
 param revisionSuffix string
 
 @minLength(1)

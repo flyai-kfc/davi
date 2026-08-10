@@ -299,12 +299,12 @@ davi/
 - LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 개발 토큰과 팀 전체 요청
   제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로
   명시 종료한다.
-- Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 Azure DevOps가
-  commit SHA와 Pipeline build ID로 식별되는 불변 image/revision으로 배포하고, PR은 공유 서버를
+- Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
+  commit SHA와 Actions run ID/attempt로 식별되는 불변 image/revision으로 배포하고, PR은 공유 서버를
   바꾸지 않는다. 최소/최대 replica와 Uvicorn worker는 각각 1이다.
 - Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
   토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰은 Key Vault의 versionless secret을
-  user-assigned Managed Identity로만 읽으며 Git·image·Pipeline 변수에는 넣지 않는다.
+  user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는 넣지 않는다.
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
   Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 개발 토큰을
   요구한다. release APK는 두 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.

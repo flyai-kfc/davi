@@ -22,6 +22,7 @@ def test_container_image_runs_as_non_root_without_local_or_raw_data() -> None:
 def test_container_app_uses_single_https_development_revision() -> None:
     template = _text("infra/azure/dev-server.bicep")
 
+    assert "param containerAppName string = 'davi-server-app'" in template
     assert "revisionSuffix: revisionSuffix" in template
     assert "external: true" in template
     assert "allowInsecure: false" in template
@@ -47,18 +48,33 @@ def test_container_app_reads_secrets_only_through_managed_identity() -> None:
     assert "name: 'DAVI_DEV_ACCESS_TOKEN'\n              secretRef: 'dev-access-token'" in template
 
 
-def test_pipeline_never_deploys_pr_and_uses_unique_image_and_revision() -> None:
-    pipeline = _text("azure-pipelines.yml")
+def test_github_deploy_never_deploys_pr_and_uses_oidc() -> None:
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
 
-    assert "      - main" in pipeline
-    assert "pr: none" in pipeline
-    assert "az acr build" not in pipeline
-    assert 'az acr login --name "$DAVI_AZURE_ACR_NAME"' in pipeline
-    assert "docker build" in pipeline
-    assert "--platform linux/amd64" in pipeline
-    assert "--file server/Dockerfile" in pipeline
-    assert 'docker push "$login_server/$(imageRepository):$image_tag"' in pipeline
-    assert 'image_tag="$(Build.SourceVersion)-$(Build.BuildId)"' in pipeline
-    assert 'revision_suffix="r$(Build.BuildId)"' in pipeline
-    assert "GEMINI_API_KEY: $(" not in pipeline
-    assert "DAVI_DEV_ACCESS_TOKEN: $(" not in pipeline
+    assert "pull_request:" not in workflow
+    assert "branches: [main]" in workflow
+    assert "if: github.ref == 'refs/heads/main'" in workflow
+    assert "environment: davi-development" in workflow
+    assert "id-token: write" in workflow
+    assert "uses: azure/login@v2" in workflow
+    assert "client-secret:" not in workflow
+    assert "${{ secrets." not in workflow
+
+
+def test_github_deploy_uses_unique_local_image_and_bicep_revision() -> None:
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+
+    assert "az acr build" not in workflow
+    assert "az containerapp up" not in workflow
+    assert 'az acr login --name "$DAVI_AZURE_ACR_NAME"' in workflow
+    assert "docker build" in workflow
+    assert "--platform linux/amd64" in workflow
+    assert "--file server/Dockerfile" in workflow
+    assert 'docker push "$login_server/$IMAGE_REPOSITORY:$image_tag"' in workflow
+    assert 'image_tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' in workflow
+    assert 'revision_suffix="r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' in workflow
+    assert "az deployment group create" in workflow
+    assert "--template-file infra/azure/dev-server.bicep" in workflow
+    assert "GEMINI_API_KEY" not in workflow
+    assert "DAVI_DEV_ACCESS_TOKEN" not in workflow
+    assert not (REPO_ROOT / "azure-pipelines.yml").exists()

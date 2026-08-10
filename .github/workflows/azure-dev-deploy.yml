@@ -1,0 +1,131 @@
+name: Azure development deploy
+
+# PR은 공유 서버를 바꾸지 않는다. main에 병합된 서버·인프라 변경과 명시적인 main 수동 실행만 배포한다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "infra/azure/**"
+      - ".github/workflows/azure-dev-deploy.yml"
+  workflow_dispatch:
+
+# 서로 다른 main 실행이 image와 revision을 엇갈리게 적용하지 않도록 배포를 직렬화한다.
+concurrency:
+  group: azure-development-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, deploy, and verify
+    # workflow_dispatch도 main 외의 ref에서는 공유 서버를 변경하지 않는다.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: davi-development
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DAVI_AZURE_RESOURCE_GROUP: ${{ vars.DAVI_AZURE_RESOURCE_GROUP }}
+      DAVI_AZURE_ACR_NAME: ${{ vars.DAVI_AZURE_ACR_NAME }}
+      DAVI_AZURE_KEY_VAULT_NAME: ${{ vars.DAVI_AZURE_KEY_VAULT_NAME }}
+      DAVI_AZURE_MANAGED_ENVIRONMENT_NAME: ${{ vars.DAVI_AZURE_MANAGED_ENVIRONMENT_NAME }}
+      DAVI_AZURE_CONTAINER_IDENTITY_NAME: ${{ vars.DAVI_AZURE_CONTAINER_IDENTITY_NAME }}
+      DAVI_AZURE_CONTAINER_APP_NAME: ${{ vars.DAVI_AZURE_CONTAINER_APP_NAME }}
+      IMAGE_REPOSITORY: davi-server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # client secret 없이 GitHub OIDC와 Azure federated credential로 로그인한다.
+      - name: Azure 로그인
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 배포 변수 검증
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            DAVI_AZURE_RESOURCE_GROUP \
+            DAVI_AZURE_ACR_NAME \
+            DAVI_AZURE_KEY_VAULT_NAME \
+            DAVI_AZURE_MANAGED_ENVIRONMENT_NAME \
+            DAVI_AZURE_CONTAINER_IDENTITY_NAME \
+            DAVI_AZURE_CONTAINER_APP_NAME; do
+            test -n "${!name:-}" || {
+              echo "::error::GitHub environment variable $name 을 설정하세요."
+              exit 1
+            }
+          done
+
+      - name: 불변 image tag로 ACR push
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          login_server="$(az acr show \
+            --name "$DAVI_AZURE_ACR_NAME" \
+            --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
+            --query loginServer \
+            --output tsv)"
+          test -n "$login_server"
+
+          az acr login --name "$DAVI_AZURE_ACR_NAME"
+          docker build \
+            --platform linux/amd64 \
+            --file server/Dockerfile \
+            --tag "$login_server/$IMAGE_REPOSITORY:$image_tag" \
+            server
+          docker push "$login_server/$IMAGE_REPOSITORY:$image_tag"
+
+      - name: 고유 Container Apps revision 배포
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          revision_suffix="r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          az deployment group create \
+            --name "davi-server-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
+            --template-file infra/azure/dev-server.bicep \
+            --parameters \
+              containerAppName="$DAVI_AZURE_CONTAINER_APP_NAME" \
+              managedEnvironmentName="$DAVI_AZURE_MANAGED_ENVIRONMENT_NAME" \
+              acrName="$DAVI_AZURE_ACR_NAME" \
+              keyVaultName="$DAVI_AZURE_KEY_VAULT_NAME" \
+              containerIdentityName="$DAVI_AZURE_CONTAINER_IDENTITY_NAME" \
+              imageTag="$image_tag" \
+              revisionSuffix="$revision_suffix"
+
+      # 인증 없는 health의 고정 상태만 본다. 응답 본문과 비밀값은 로그에 출력하지 않는다.
+      - name: HTTPS health 스모크
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp show \
+            --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
+            --name "$DAVI_AZURE_CONTAINER_APP_NAME" \
+            --query 'properties.configuration.ingress.fqdn' \
+            --output tsv > /tmp/davi-container-app-fqdn
+          read -r fqdn < /tmp/davi-container-app-fqdn
+          test -n "$fqdn"
+
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 10 \
+              --output /tmp/davi-health-response \
+              "https://$fqdn/health" \
+              && jq -e \
+                '.status == "ok" and .environment == "development" and .stub_llm == false' \
+                /tmp/davi-health-response >/dev/null; then
+              printf 'shared development URL: https://%s\n' "$fqdn"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo '::error::Container App health 확인에 실패했습니다.'
+          exit 1

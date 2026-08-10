@@ -49,7 +49,7 @@ jobs:
               - 'server/.dockerignore'
               - 'server/requirements.txt'
               - 'infra/azure/**'
-              - 'azure-pipelines.yml'
+              - '.github/workflows/azure-dev-deploy.yml'
               - '.github/workflows/ci.yml'
 
   android:

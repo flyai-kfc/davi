@@ -1,13 +1,13 @@
 # Azure Container Apps 공유 개발 서버
 
 이 문서는 #94의 **개발·도그푸딩 전용** Azure 서버를 최초 준비하고, 이후 `main` 서버 변경을
-Azure DevOps Pipeline으로 자동 배포하는 절차다. 제품 배포·사용자 인증·release APK endpoint가
-아니다. GitHub Actions는 계속 PR 검증을 담당하고 Azure Pipeline은 PR을 배포하지 않는다.
+GitHub Actions로 자동 배포하는 절차다. 제품 배포·사용자 인증·release APK endpoint가 아니다.
+PR 검증과 배포는 서로 다른 workflow이며, 배포 workflow는 PR에서 실행되지 않는다.
 
 ```text
-main의 server/ · infra/azure/ · azure-pipelines.yml 변경
-  → Azure DevOps hosted agent가 linux/amd64 image를 build해 ACR에 push
-  → r<build ID> Container Apps revision 배포
+main의 server/ · infra/azure/ · azure-dev-deploy.yml 변경
+  → GitHub-hosted runner가 linux/amd64 image를 build해 ACR에 push
+  → r<run ID>-<attempt> Container Apps revision 배포
   → readiness 통과 후 HTTPS /health 확인
 ```
 
@@ -23,7 +23,7 @@ URL과 토큰을 공개 채널·이슈·PR·로그에 붙이지 않는다.
 | `server/.dockerignore` | `.env`, venv, 테스트, local/raw 상태를 build context에서 제외한다. |
 | `infra/azure/dev-foundation.bicep` | ACR, Key Vault, user-assigned identity, Log Analytics, Container Apps Environment와 RBAC를 준비한다. |
 | `infra/azure/dev-server.bicep` | Key Vault 참조·HTTPS ingress·단일 replica/revision의 Container App을 배포한다. |
-| `azure-pipelines.yml` | `main`의 대상 경로만 hosted Docker build → ACR push → revision 배포 → health 검사한다. |
+| `.github/workflows/azure-dev-deploy.yml` | `main`의 대상 경로만 OIDC 로그인 → hosted Docker build → ACR push → Bicep revision 배포 → health 검사한다. |
 | `.github/workflows/ci.yml` | PR에서 Bicep compile과 Docker build/health, Android HTTPS 설정을 키 없이 검증한다. |
 
 PR CI는 Azure 구독을 변경하지 않는다. 실제 Resource Group 배포와 Android 연결은 아래 체크리스트를
@@ -47,7 +47,7 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
      --parameters @infra/azure/parameters.dev.json
    ```
 
-4. Key Vault Portal의 **Secrets**에서 다음 값을 직접 만든다. 명령행 인자·Pipeline 변수·Git에
+4. Key Vault Portal의 **Secrets**에서 다음 값을 직접 만든다. 명령행 인자·GitHub 변수·Git에
    실제 값을 넣지 않는다.
 
    Secret을 만드는 사람에게는 vault 범위의 `Key Vault Secrets Officer`가 필요하다. 기반 Bicep은
@@ -62,72 +62,131 @@ Container App은 versionless Key Vault URI를 참조한다. secret 갱신은 Con
 팀 debug APK의 개발 토큰도 함께 교체해야 한다. Key Vault purge protection과 90일 soft delete 때문에
 vault 삭제 후 같은 이름을 즉시 재사용할 수 없다는 점도 고려한다.
 
-## 2. Azure DevOps 관리자: main Pipeline 연결
+## 2. Azure 관리자: GitHub 배포 identity 준비
 
-Microsoft-hosted `ubuntu-latest` agent를 실행할 수 있는 Azure DevOps organization/project와 GitHub
-저장소 연결 권한이 필요하다. private project에 hosted parallel job이 없으면 Pipeline 생성과 별개로
-agent 실행이 거부되므로 Azure DevOps의 parallel jobs 상태를 먼저 확인한다.
+배포 identity는 Container App이 런타임에 쓰는 `id-davi-server-dev`와 분리한다. 아래 예시는
+`id-davi-github-deploy` user-assigned managed identity를 만들고 GitHub environment에만 신뢰를 준다.
+실행 계정에는 identity 생성과 role assignment를 위한 대상 Resource Group의 Owner 또는
+User Access Administrator 권한이 필요하다.
 
-1. Azure DevOps **Project settings → Pipelines → Service connections → New service connection**에서
-   `Azure Resource Manager`를 선택한다.
-2. 자동 설정이 가능한 계정이면 app registration의 **Workload identity federation** 방식을 선택한다.
-   client secret 방식은 사용하지 않는다. 자동 설정이 권한 때문에 실패할 때만 Microsoft의 manual
-   workload identity 절차로 app registration과 federated credential을 연결한다.
-3. 다음 범위와 이름으로 저장한다.
-   - Service connection name: `davi-dev-azure-rm`
-   - Scope level: `Resource Group`
-   - Subscription: 공유 개발 구독
-   - Resource Group: `rg-davi-dev`
-   - 권한: Resource Group의 `Contributor`. 제한된 custom role을 쓰면 ACR에 `AcrPush`도 필요
-   - **Grant access permission to all pipelines는 선택하지 않는다.** 이 Pipeline 하나만 첫 실행에서
-     `Permit`으로 승인한다.
-4. **Pipelines → New pipeline → GitHub → `flyai-kfc/davi` → Existing Azure Pipelines YAML file**을
-   선택하고 YAML 경로를 `/azure-pipelines.yml`로 지정한다. 이 파일이 `main`에 병합된 뒤 연결하며
-   Pipeline의 default branch도 `main`으로 둔다. feature/PR branch를 골라 공유 서버에 수동 배포하지
-   않는다.
-5. Pipeline **Edit → Variables**에서 다음 값을 등록한다. 모두 리소스 식별자이며 secret 값이 아니지만,
-   실행 시 임의 변경되지 않도록 queue-time override는 끈다.
+1. GitHub Actions 전용 identity를 만든다. `id-davi-github-deploy`가 이미 있으면 새로 만들지 않고
+   다음 단계에서 client/principal ID를 확인한다.
 
-   | Variable | 예시 |
+   ```bash
+   az identity create \
+     --name id-davi-github-deploy \
+     --resource-group rg-davi-dev
+   ```
+
+2. 배포 identity와 대상 scope를 확인한다. 아래 값은 비밀값이 아닌 Azure 리소스 식별자다.
+
+   ```bash
+   DAVI_DEPLOY_CLIENT_ID="$(az identity show \
+     --name id-davi-github-deploy \
+     --resource-group rg-davi-dev \
+     --query clientId -o tsv)"
+   DAVI_DEPLOY_PRINCIPAL_ID="$(az identity show \
+     --name id-davi-github-deploy \
+     --resource-group rg-davi-dev \
+     --query principalId -o tsv)"
+   DAVI_RESOURCE_GROUP_ID="$(az group show \
+     --name rg-davi-dev \
+     --query id -o tsv)"
+   DAVI_ACR_ID="$(az acr show \
+     --name <ACR_NAME> \
+     --resource-group rg-davi-dev \
+     --query id -o tsv)"
+   ```
+
+3. identity에는 Resource Group 배포 권한과 ACR image push 권한만 준다. Key Vault secret 값 읽기
+   권한은 주지 않는다.
+
+   ```bash
+   az role assignment create \
+     --assignee-object-id "$DAVI_DEPLOY_PRINCIPAL_ID" \
+     --assignee-principal-type ServicePrincipal \
+     --role Contributor \
+     --scope "$DAVI_RESOURCE_GROUP_ID"
+
+   az role assignment create \
+     --assignee-object-id "$DAVI_DEPLOY_PRINCIPAL_ID" \
+     --assignee-principal-type ServicePrincipal \
+     --role AcrPush \
+     --scope "$DAVI_ACR_ID"
+   ```
+
+4. GitHub의 `davi-development` environment에서 발급된 OIDC token만 허용하는 federated credential을
+   추가한다. organization·repository·environment 이름은 대소문자까지 실제 값과 일치해야 한다.
+
+   ```bash
+   az identity federated-credential create \
+     --name github-davi-development \
+     --identity-name id-davi-github-deploy \
+     --resource-group rg-davi-dev \
+     --issuer https://token.actions.githubusercontent.com \
+     --subject repo:flyai-kfc/davi:environment:davi-development \
+     --audiences api://AzureADTokenExchange
+   ```
+
+   이 저장소는 2026-08-10 기준 GitHub 기본 subject를 사용하고 immutable subject opt-in은 꺼져 있어
+   위 subject가 맞다. GitHub OIDC subject 설정을 나중에 바꾸면 federated credential도 GitHub가
+   반환하는 새 prefix에 맞춰 함께 갱신한다.
+
+## 3. GitHub 관리자: environment와 변수 연결
+
+1. 저장소 **Settings → Environments → New environment**에서 `davi-development`를 만든다.
+2. **Deployment branches and tags**를 `Selected branches and tags`로 바꾸고 `main`만 추가한다.
+   완전 자동배포가 목표라면 required reviewer는 두지 않는다. 승인 후 배포가 필요하면 reviewer를
+   추가할 수 있지만 모든 `main` 배포가 대기 상태가 된다.
+3. `davi-development`의 **Environment variables**에 다음을 등록한다. client secret과 GitHub secret은
+   만들지 않는다.
+
+   | Variable | 예시/출처 |
    |---|---|
-   | `DAVI_AZURE_SERVICE_CONNECTION` | `davi-dev-azure-rm` |
+   | `AZURE_CLIENT_ID` | 위 `DAVI_DEPLOY_CLIENT_ID` |
+   | `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` |
+   | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` |
    | `DAVI_AZURE_RESOURCE_GROUP` | `rg-davi-dev` |
-   | `DAVI_AZURE_ACR_NAME` | `davidevacr...` |
-   | `DAVI_AZURE_KEY_VAULT_NAME` | `davi-dev-kv-...` |
+   | `DAVI_AZURE_ACR_NAME` | `davidevacrkfc001` |
+   | `DAVI_AZURE_KEY_VAULT_NAME` | `davi-dev-kv-kfc001` |
    | `DAVI_AZURE_MANAGED_ENVIRONMENT_NAME` | `acaenv-davi-dev` |
    | `DAVI_AZURE_CONTAINER_IDENTITY_NAME` | `id-davi-server-dev` |
-   | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-dev` |
+   | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-app` |
 
-6. **Pipelines → Environments**에 `davi-development`가 없으면 만들고 이 Pipeline의 deployment job만
-   사용하도록 권한을 둔다. 첫 실행에서 Service Connection이나 Environment 사용 승인이 뜨면 해당
-   실행 화면의 `Permit`으로 이 Pipeline에만 허용한다.
+4. organization의 Actions 사용 정책이 제한돼 있다면 `actions/checkout@v4`와 `azure/login@v2`를
+   허용한다. workflow의 `id-token: write`는 OIDC token 발급에만 쓰며 repository contents 쓰기
+   권한은 주지 않는다.
+5. `main` 보호 규칙에서 기존 CI를 필수 검사로 유지한다. 배포 workflow는 PR에서 실행되지 않고,
+   병합된 코드만 공유 서버에 반영한다.
 
-`GEMINI_API_KEY`와 `DAVI_DEV_ACCESS_TOKEN`은 Pipeline variable로 만들지 않는다. Pipeline과 Service
-Connection은 Key Vault secret 값을 읽지 않으며 Container App identity만 runtime에 읽는다.
+`GEMINI_API_KEY`와 `DAVI_DEV_ACCESS_TOKEN`은 GitHub 변수나 secret으로 만들지 않는다. workflow의
+배포 identity는 Key Vault secret 값을 읽지 않으며 Container App runtime identity만 읽는다.
 
-Pipeline은 `main` push 중 `server/**`, `infra/azure/**`, `azure-pipelines.yml` 변경에만 실행되고
-`pr: none`으로 PR 배포를 금지한다. 같은 commit을 재실행해도 build ID가 image tag와 revision suffix에
-포함되므로 기존 tag를 덮어쓰거나 배포가 생략되지 않는다.
+workflow는 `main` push 중 `server/**`, `infra/azure/**`, 자신의 YAML 변경에만 실행된다. 수동 실행도
+`main` ref만 허용한다. 같은 commit을 재실행해도 run ID와 attempt가 image tag와 revision suffix에
+포함되므로 기존 tag를 덮어쓰거나 배포가 생략되지 않는다. 고정 concurrency group으로 여러 배포를
+직렬화해 이전 실행과 새 실행의 image/revision이 엇갈리지 않게 한다.
 
-이미지는 Microsoft-hosted Ubuntu agent의 Docker daemon에서 `linux/amd64`로 build한 뒤
-`az acr login`으로 얻은 federated identity 자격으로 push한다. `az acr build`/ACR Tasks는 사용하지
-않는다. Azure for Students처럼 ACR Tasks가 허용되지 않는 구독에서도 같은 Pipeline을 쓰고, API 키나
-개발 token은 build context·Docker 명령·Pipeline 변수에 전달하지 않는다.
+이미지는 GitHub-hosted Ubuntu runner의 Docker daemon에서 `linux/amd64`로 build한 뒤 `az acr login`으로
+얻은 OIDC identity 자격으로 push한다. `az acr build`/ACR Tasks와 `az containerapp up`은 사용하지 않는다.
+Azure for Students처럼 ACR Tasks가 허용되지 않는 구독에서도 같은 workflow를 쓰고, API 키나 개발
+token은 build context·Docker 명령·GitHub 변수에 전달하지 않는다.
 
-## 3. 첫 배포와 Android 실기기 확인
+## 4. 첫 배포와 Android 실기기 확인
 
-기반 리소스와 secret, Pipeline 변수를 준비한 뒤 `main` 병합으로 발생한 첫 자동 실행을 확인한다.
+기반 리소스와 secret, federated credential, GitHub environment 변수를 준비한 뒤 `main` 병합으로
+발생한 첫 자동 실행을 확인한다.
 필요해 수동 재실행할 때도 branch는 `main`만 선택한다. 성공한 health 단계는 다음 형식의 URL만
 출력하며 응답 본문이나 token은 출력하지 않는다.
 
 ```text
-shared development URL: https://davi-server-dev.<hash>.<region>.azurecontainerapps.io
+shared development URL: https://davi-server-app.<hash>.<region>.azurecontainerapps.io
 ```
 
 각 앱 개발자는 추적되지 않는 `app-android/local.properties`에 다음을 넣고 debug APK를 다시 만든다.
 
 ```properties
-DAVI_DEBUG_SERVER_URL=https://davi-server-dev.<hash>.<region>.azurecontainerapps.io
+DAVI_DEBUG_SERVER_URL=https://davi-server-app.<hash>.<region>.azurecontainerapps.io
 DAVI_DEBUG_ACCESS_TOKEN=<Key Vault의 DAVI-DEV-ACCESS-TOKEN과 같은 값>
 ```
 
@@ -137,9 +196,9 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
 
 최초 배포의 완료 체크:
 
-- Azure deployment와 Pipeline build/deploy/health 단계가 모두 성공한다.
-- Container App image tag가 `<main commit SHA>-<Pipeline build ID>`다.
-- active revision suffix가 `r<Pipeline build ID>`다.
+- GitHub Actions의 login/build/deploy/health 단계가 모두 성공한다.
+- Container App image tag가 `<main commit SHA>-<GitHub run ID>-<attempt>`다.
+- active revision suffix가 `r<GitHub run ID>-<attempt>`다.
 - Container App 설정에는 Key Vault reference만 있고 secret 평문이 없다.
 - `/health`는 HTTPS 200이며 `development`, `stub_llm=false`다.
 - 토큰 없는 `/v1/next-step`은 401이고 유효 토큰을 쓴 익명 fixture 요청은 정상 응답한다.
@@ -154,8 +213,8 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
   저장하지 않는다. fixture 원본 수집은 승인된 로컬 공기계 경로만 사용한다.
 - 비식별 JSON Lines는 stderr→Log Analytics로 전달되며 30일 보존한다. 정상 `/health`, IP/port,
   User-Agent, 요청 본문과 secret은 애플리케이션 로그에 남기지 않는다.
-- 배포 실패는 Azure DevOps의 Docker build/ACR push, Bicep deployment, Container App revision 상태,
+- 배포 실패는 GitHub Actions의 OIDC login, Docker build/ACR push, Bicep deployment, Container App revision 상태,
   health 단계 순서로 본다.
   Gemini 요청만 실패하면 비식별 request ID와 Logical Request ID로 대조한다.
-- 롤백은 문제 commit을 `main`에서 revert해 새 build ID의 image/revision으로 다시 배포한다. 기존 ACR
+- 롤백은 문제 commit을 `main`에서 revert해 새 Actions run ID의 image/revision으로 다시 배포한다. 기존 ACR
   tag를 덮어쓰거나 닫힌 #95 브랜치를 재사용하지 않는다.

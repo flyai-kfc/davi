@@ -202,13 +202,13 @@ PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰�
 ## Azure Container Apps 공유 development 서버
 
 같은 Wi-Fi·전용 맥북 없이 팀이 같은 `main` 서버를 검증할 때만 쓰는 **개발 전용** 경로다(#94).
-Azure DevOps가 `main`에 병합된 서버·인프라 변경을 ACR image와 단일 Container Apps revision으로
+GitHub Actions가 `main`에 병합된 서버·인프라 변경을 ACR image와 단일 Container Apps revision으로
 배포한다. PR은 공유 서버를 바꾸지 않는다.
 
 외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. Gemini 키와 개발 토큰은
 Key Vault의 versionless secret으로만 보관하며 Container App의 user-assigned identity가 읽는다.
 앱에는 Azure URL과 개발 토큰만 debug 설정으로 전달한다. Azure의 도그푸딩 allowlist는 비워 raw
-화면 데이터를 저장하지 않는다. 최초 권한·기반 리소스·Pipeline 연결과 장애 확인은
+화면 데이터를 저장하지 않는다. 최초 권한·GitHub OIDC 연결과 장애 확인은
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
 ## 도그푸딩 raw 보존 (#41)
