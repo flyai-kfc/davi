@@ -34,4 +34,9 @@
     <string name="guide_done_unconfirmed">다 된 것 같은데 확인하지 못했어요.\n끝났으면 \'안내 중지\'를 눌러 주세요.</string>
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
+
+    <!-- MA-1 홈 (docs/SCREENS.md). 문구 확정은 W8 — 여기는 디자인 확정값. -->
+    <string name="voice_home_title">누르고\n물어보세요</string>
+    <string name="voice_home_mic_desc">말로 물어보기</string>
+    <string name="voice_home_preview_label">다비 MA-1 미리보기</string>
 </resources>

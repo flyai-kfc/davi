@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 마이크 버튼(MA-1): 흰 원 + 주 버튼 색 링. Figma button/mic와 1:1. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/davi_bg" />
+            <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_button_primary" />
+        </shape>
+    </item>
+</ripple>

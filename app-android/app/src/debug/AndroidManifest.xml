@@ -9,5 +9,20 @@
     <application
         android:networkSecurityConfig="@xml/network_security_config"
         android:usesCleartextTraffic="true"
-        tools:replace="android:usesCleartextTraffic" />
+        tools:replace="android:usesCleartextTraffic">
+        <!--
+          MA-1(docs/SCREENS.md) 미리보기 진입. 클래스가 debug 소스셋에만 있어 릴리스엔
+          아예 포함되지 않는다. 기존 홈(MainActivity) 교체 시점은 팀 결정(#100).
+        -->
+        <activity
+            android:name=".VoiceHomeActivity"
+            android:exported="true"
+            android:label="@string/voice_home_preview_label"
+            android:theme="@style/Theme.Davi">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>

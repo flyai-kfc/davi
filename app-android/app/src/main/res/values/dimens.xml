@@ -16,4 +16,29 @@
     <!-- 안내문 상자: 글자와 상자 사이(padding), 상자와 대상·화면 가장자리 사이(margin). -->
     <dimen name="overlay_instruction_padding">16dp</dimen>
     <dimen name="overlay_instruction_margin">20dp</dimen>
+
+    <!--
+      디자인 토큰(크기). 원본은 Figma Foundations primitives — 이름은 code syntax와 1:1.
+      결정 기록: docs/DESIGN-CONVENTIONS.md (C2·D1·D2·D3).
+      위 기존 dimen들은 컨벤션 확정 전 값 — 사용처 교체가 끝나면 제거한다(#100).
+    -->
+    <dimen name="davi_type_title">28sp</dimen>
+    <dimen name="davi_type_subtitle">24sp</dimen>
+    <dimen name="davi_type_body_lg">20sp</dimen>
+    <dimen name="davi_type_body">17sp</dimen>
+    <dimen name="davi_type_caption">14sp</dimen>
+    <dimen name="davi_spacing_xs">4dp</dimen>
+    <dimen name="davi_spacing_sm">8dp</dimen>
+    <dimen name="davi_spacing_md">12dp</dimen>
+    <dimen name="davi_spacing_lg">16dp</dimen>
+    <dimen name="davi_spacing_xl">24dp</dimen>
+    <dimen name="davi_radius_sm">8dp</dimen>
+    <dimen name="davi_radius_md">12dp</dimen>
+    <dimen name="davi_radius_lg">16dp</dimen>
+    <dimen name="davi_size_touch_target">56dp</dimen>
+
+    <!-- 컴포넌트 고정 크기 (Figma Components 실측) -->
+    <dimen name="davi_mic_button_size">130dp</dimen>
+    <dimen name="davi_mic_button_stroke">4dp</dimen>
+    <dimen name="davi_button_stroke">1.5dp</dimen>
 </resources>

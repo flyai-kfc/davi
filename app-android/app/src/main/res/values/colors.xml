@@ -1,0 +1,24 @@
+<resources>
+    <!--
+      디자인 토큰(시맨틱 색). 값의 원본은 Figma SSoT Foundations 페이지의 semantic 컬렉션이며,
+      이름은 각 변수의 Android code syntax와 1:1이다. 결정 기록: docs/DESIGN-CONVENTIONS.md (B1·B2).
+      여기 값을 바꿀 땐 Figma 변수를 먼저 바꾸고 맞춘다.
+    -->
+    <color name="davi_highlight">#F2001C</color>
+    <color name="davi_button_primary">#A50014</color>
+    <color name="davi_button_on_primary">#FFFFFF</color>
+    <color name="davi_button_kakao">#FEE500</color>
+    <color name="davi_surface_secondary">#FFE1E1</color>
+    <color name="davi_text_primary">#1A1A1A</color>
+    <color name="davi_text_secondary">#595959</color>
+    <color name="davi_bg">#FFFFFF</color>
+    <color name="davi_surface">#F4F4F6</color>
+    <color name="davi_border">#D9D9D9</color>
+    <color name="davi_success">#2E7D32</color>
+    <color name="davi_danger">#C62828</color>
+    <color name="davi_overlay_box">#FFFFFF</color>
+    <color name="davi_overlay_on_box">#1A1A1A</color>
+
+    <!-- 눌림 상태 레이어(E2): 검정 12%. Material state layer 관례 — ripple 색으로 쓴다. -->
+    <color name="davi_state_layer_pressed">#1F000000</color>
+</resources>
