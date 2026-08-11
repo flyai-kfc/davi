@@ -2,11 +2,11 @@ package com.davi.helper
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
+import androidx.core.content.ContextCompat
 
 /**
  * 강조할 영역에 테두리를 하나 그리고, 서버가 준 안내문을 상자에 담아 함께 보여주는 뷰.
@@ -27,19 +27,30 @@ class HighlightOverlayView(context: Context) : View(context) {
     /** 이 뷰가 화면에서 실제로 어디에 놓였는지. 좌표 보정에 쓴다. */
     private val locationOnScreen = IntArray(2)
 
+    // 색·크기 전부 디자인 토큰(colors.xml·dimens.xml)에서 온다 — 하드코딩·px 계산 금지(#100).
+    // 검증 기기(3x 밀도)에서 기존 raw px(12/24)와 dp 토큰(4dp/8dp)이 같은 픽셀값이라 시인성은 보존된다.
+    private val highlightStroke = resources.getDimension(R.dimen.davi_overlay_highlight_stroke)
+    private val highlightCorner = resources.getDimension(R.dimen.davi_radius_sm)
+    private val boxCorner = resources.getDimension(R.dimen.davi_radius_md)
+
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = STROKE_WIDTH_PX
-        color = STROKE_COLOR
+        strokeWidth = highlightStroke
+        color = ContextCompat.getColor(context, R.color.davi_highlight)
     }
 
-    // 크기는 res/values/dimens.xml에서 온다. 코드에서 px·밀도를 계산하지 않는다(app-android/CLAUDE.md).
+    // 안내창(GD 명세): 흰 배경 + 진한 글자 + 테두리 — 배경 불문 가독 전략(#111 확정 디자인).
     private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = INSTRUCTION_TEXT_COLOR
+        color = ContextCompat.getColor(context, R.color.davi_overlay_on_box)
         textSize = resources.getDimension(R.dimen.text_overlay_instruction)
     }
     private val instructionBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = INSTRUCTION_BOX_COLOR
+        color = ContextCompat.getColor(context, R.color.davi_overlay_box)
+    }
+    private val instructionBoxBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = resources.getDimension(R.dimen.davi_button_stroke)
+        color = ContextCompat.getColor(context, R.color.davi_border)
     }
     private val instructionPadding = resources.getDimension(R.dimen.overlay_instruction_padding)
     private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
@@ -74,7 +85,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         // 테두리가 대상 가장자리를 덮지 않도록 선 두께의 절반만큼 바깥으로 물린다.
         // 단 화면 밖으로 나가면 그만큼 잘리므로, 그릴 수 있는 범위 안으로 당긴다
         // (실측: 네비게이션바 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다).
-        val half = STROKE_WIDTH_PX / 2f
+        val half = highlightStroke / 2f
         val minX = locationOnScreen[0] + half
         val minY = locationOnScreen[1] + half
         val maxX = locationOnScreen[0] + width - half
@@ -86,8 +97,8 @@ class HighlightOverlayView(context: Context) : View(context) {
                 (target.top - half).coerceAtLeast(minY),
                 (target.right + half).coerceAtMost(maxX),
                 (target.bottom + half).coerceAtMost(maxY),
-                CORNER_RADIUS_PX,
-                CORNER_RADIUS_PX,
+                highlightCorner,
+                highlightCorner,
                 strokePaint,
             )
         }
@@ -118,7 +129,8 @@ class HighlightOverlayView(context: Context) : View(context) {
         }
 
         val box = RectF(boxLeft, boxTop, boxRight, boxTop + boxHeight)
-        canvas.drawRoundRect(box, CORNER_RADIUS_PX, CORNER_RADIUS_PX, instructionBoxPaint)
+        canvas.drawRoundRect(box, boxCorner, boxCorner, instructionBoxPaint)
+        canvas.drawRoundRect(box, boxCorner, boxCorner, instructionBoxBorderPaint)
 
         var baseline = box.top + instructionPadding - instructionPaint.fontMetrics.top
         lines.forEach { line ->
@@ -159,14 +171,4 @@ class HighlightOverlayView(context: Context) : View(context) {
         return lines
     }
 
-    private companion object {
-        /** 시니어가 알아볼 수 있게 두껍게. 값은 실사용하며 다시 정한다. */
-        const val STROKE_WIDTH_PX = 12f
-        const val CORNER_RADIUS_PX = 24f
-        val STROKE_COLOR = Color.parseColor("#FF3D00")
-
-        /** 어떤 앱 위에 떠도 읽히도록 어두운 상자 + 흰 글자. 대비는 실사용하며 다시 정한다. */
-        val INSTRUCTION_TEXT_COLOR = Color.WHITE
-        val INSTRUCTION_BOX_COLOR = Color.argb(235, 30, 30, 30)
-    }
 }

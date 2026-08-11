@@ -3,24 +3,19 @@
       시니어 대상 기본값. sp는 시스템 글꼴 크기 설정을 따라간다(코드에서 px 계산 금지).
       터치 대상은 Android 권장 48dp보다 크게 잡는다.
     -->
-    <dimen name="text_title">26sp</dimen>
-    <dimen name="text_body">20sp</dimen>
-    <dimen name="text_button">20sp</dimen>
-    <!-- 다른 앱 위에 뜨는 안내문. 본문보다 조금 크게. -->
+    <!--
+      오버레이 전용 실측값 — 토큰 램프 밖 값이라 별도 유지한다(안내문 22sp는 원거리 가독 실측).
+      GD 화면 재구현 시 램프 정합을 재검토한다(docs/SCREENS.md GD-1~3).
+    -->
     <dimen name="text_overlay_instruction">22sp</dimen>
-
-    <dimen name="touch_target_min">56dp</dimen>
-    <dimen name="spacing">24dp</dimen>
-    <dimen name="spacing_small">12dp</dimen>
-
-    <!-- 안내문 상자: 글자와 상자 사이(padding), 상자와 대상·화면 가장자리 사이(margin). -->
     <dimen name="overlay_instruction_padding">16dp</dimen>
     <dimen name="overlay_instruction_margin">20dp</dimen>
+    <!-- 강조 테두리 두께. 기존 raw 12px가 검증 기기(3x)에서 4dp — 시인성 보존값. -->
+    <dimen name="davi_overlay_highlight_stroke">4dp</dimen>
 
     <!--
       디자인 토큰(크기). 원본은 Figma Foundations primitives — 이름은 code syntax와 1:1.
       결정 기록: docs/DESIGN-CONVENTIONS.md (C2·D1·D2·D3).
-      위 기존 dimen들은 컨벤션 확정 전 값 — 사용처 교체가 끝나면 제거한다(#100).
     -->
     <dimen name="davi_type_title">28sp</dimen>
     <dimen name="davi_type_subtitle">24sp</dimen>
