@@ -20,7 +20,12 @@ import com.davi.helper.databinding.ActivityMainBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
-/** MA-1 미리보기(debug) 등 외부 진입이 음성 대화를 바로 시작하도록 요청하는 extra. */
+/**
+ * MA-1 미리보기(debug)가 음성 대화를 바로 시작하도록 요청하는 extra.
+ *
+ * 소비하는 쪽은 debug 빌드에서만 동작한다 — `MainActivity`가 exported라 게이트가 없으면
+ * 릴리스에서 임의 앱이 인텐트 하나로 마이크 청취를 시작시킬 수 있다.
+ */
 internal const val EXTRA_START_VOICE = "com.davi.helper.extra.START_VOICE"
 
 /**
@@ -106,7 +111,10 @@ class MainActivity : AppCompatActivity() {
 
         // MA-1 미리보기(debug)에서 마이크로 진입한 경우 음성 대화를 바로 시작한다.
         // 재생성(회전 등)에서 반복 시작되지 않게 최초 생성에서만 처리한다.
-        if (savedInstanceState == null && intent?.getBooleanExtra(EXTRA_START_VOICE, false) == true) {
+        if (BuildConfig.DEBUG &&
+            savedInstanceState == null &&
+            intent?.getBooleanExtra(EXTRA_START_VOICE, false) == true
+        ) {
             onVoiceInputTapped()
         }
     }
