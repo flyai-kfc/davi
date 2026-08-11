@@ -32,6 +32,19 @@ SCROLLABLE_OBSERVED = "스크롤: 스크롤 가능한 요소가 관측되었습�
 SCROLLABLE_NOT_OBSERVED = (
     "스크롤: 스크롤 가능한 요소가 관측되지 않았습니다(화면을 넘길 수 없다는 뜻은 아닙니다)"
 )
+IME_VISIBLE = "입력기: 화면에 키보드가 표시되어 있습니다"
+IME_NOT_VISIBLE = "입력기: 화면에 키보드가 표시되어 있지 않습니다"
+FOCUSED_INPUT_INSTRUCTION = (
+    "editable=true, focused=true인 입력칸은 사용자가 이미 입력 대상을 선택한 상태입니다. "
+    "키보드가 표시되어 있거나 표시 여부를 관측하지 못했고 입력이 필요하면 같은 칸을 다시 "
+    "누르는 tap보다 그 입력칸을 대상으로 한 type을 우선하세요. 포커스나 키보드 상태만으로 "
+    "입력 완료 또는 목표 달성을 추론하지 마세요."
+)
+FOCUSED_INPUT_KEYBOARD_CLOSED = (
+    "editable=true, focused=true인 입력칸은 선택되어 있지만 키보드는 닫혀 있습니다. 화면 터치로 "
+    "입력해야 한다면 type을 바로 안내하지 말고, 그 입력칸을 tap해 키보드를 여는 한 단계를 먼저 "
+    "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
+)
 
 
 def build_prompt(req: NextStepRequest) -> str:
@@ -45,7 +58,7 @@ def build_prompt(req: NextStepRequest) -> str:
 
 목표: {req.goal}
 현재 앱 패키지: {req.screen.package_name or "알 수 없음"}
-{_page_context(req)}{_scroll_context(req)}최근에 했던 안내:
+{_page_context(req)}{_scroll_context(req)}{_input_context(req)}최근에 했던 안내:
 {_recent_instructions(req)}
 현재 화면 요소:
 {_screen_elements(req)}
@@ -89,6 +102,21 @@ def _scroll_context(req: NextStepRequest) -> str:
     return f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
 
 
+def _input_context(req: NextStepRequest) -> str:
+    """입력 포커스와 IME 관측의 역할을 분리한다. None은 키보드 사실로 만들지 않는다."""
+
+    ime_visible = req.screen.ime_visible
+    context = ""
+    if ime_visible is not None:
+        context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
+    input_ready = any(element.editable and element.focused for element in req.screen.elements)
+    if input_ready and ime_visible is not False:
+        context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
+    elif input_ready:
+        context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
+    return context
+
+
 def _screen_elements(req: NextStepRequest) -> str:
     return "\n".join(_format_element(element) for element in req.screen.elements) or "- 요소 없음"
 
@@ -99,6 +127,8 @@ def _format_element(element: UiElement) -> str:
         f"label={element.label!r}",
         f"role={element.role!r}",
         f"clickable={element.clickable}",
+        f"editable={element.editable}",
+        f"focused={element.focused}",
     ]
     optional_fields = (
         ("bounds", element.bounds),

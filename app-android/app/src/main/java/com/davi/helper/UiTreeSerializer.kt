@@ -3,6 +3,7 @@ package com.davi.helper
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
+import android.view.accessibility.AccessibilityWindowInfo
 
 /**
  * 접근성 트리 -> LLM용 요소 목록.
@@ -15,8 +16,9 @@ import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
  * 라벨이 "시계 텍스트"가 되어 모델이 시계를 조작 대상으로 고른다(HANDOFF §3-9).
  * 그래서 [shouldMergeDescendants]가 큰 컨테이너를 걸러낸다.
  *
- * 화면 요소와 스크롤/page 상태를 함께 채운다. `has_scrollable_element`는 보이는 트리 전체에서
- * 스크롤 가능 노드나 scroll action을 하나라도 관측했는지를 나타낸다(C10).
+ * 화면 요소와 스크롤/page/IME 상태를 함께 채운다. `has_scrollable_element`는 보이는 트리 전체에서
+ * 스크롤 가능 노드나 scroll action을 하나라도 관측했는지를 나타낸다(C10). IME는 창의 type만
+ * 관측하고 키보드의 키 노드나 입력 원문은 순회하지 않는다(#112).
  */
 object UiTreeSerializer {
 
@@ -68,7 +70,7 @@ object UiTreeSerializer {
 
     data class Result(val screen: Screen, val truncated: Boolean)
 
-    fun serialize(root: AccessibilityNodeInfo): Result {
+    fun serialize(root: AccessibilityNodeInfo, windowTypes: Iterable<Int>? = null): Result {
         val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
             .coerceAtLeast(1L)
 
@@ -83,6 +85,7 @@ object UiTreeSerializer {
                 currentPage = ctx.currentPage,
                 totalPages = ctx.totalPages,
                 hasScrollableElement = ctx.hasScrollableElement,
+                imeVisible = imeVisibility(windowTypes),
             ),
             truncated = truncated,
         )
@@ -120,12 +123,16 @@ object UiTreeSerializer {
                 element(node, ownTextValue, ctx, role = ROLE_PAGE_DOT, clickable = false),
             )
             emitted = true
-        } else if (node.isClickable) {
-            val merge = shouldMergeDescendants(node, ctx.screenArea)
+        } else if (node.isClickable || node.isEditable) {
+            // 커스텀 입력 위젯은 사용자가 입력한 값을 비편집 자손에 복제하기도 한다.
+            // 편집 노드는 hint만 쓰고 자손을 라벨에 합치지도, 아래에서 순회하지도 않는다.
+            val inspectDescendants = shouldInspectDescendants(node.isEditable)
+            val merge = inspectDescendants && shouldMergeDescendants(node, ctx.screenArea)
             val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
-            if (label.isNotBlank()) {
+            // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
+            if (label.isNotBlank() || node.isEditable) {
                 ctx.elements.add(element(node, label, ctx))
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
@@ -150,6 +157,7 @@ object UiTreeSerializer {
             ctx.elements.add(element(node, "", ctx))
         }
 
+        if (!shouldInspectDescendants(node.isEditable)) return
         for (i in 0 until node.childCount) {
             walk(node.getChild(i), ctx, childrenAbsorbed, depth + 1)
         }
@@ -200,6 +208,8 @@ object UiTreeSerializer {
             // 페이지 dot은 clickable=true지만 약 50x50px이라 시니어가 조준할 수 없다.
             // 탭 대상이 아니라 **정보원**으로만 쓴다(HANDOFF §3-3)는 결정을 여기서 못박는다.
             clickable = clickable ?: node.isClickable,
+            editable = node.isEditable,
+            focused = node.isFocused,
             bounds = listOf(r.left, r.top, r.right, r.bottom),
             canScrollForward = scroll?.forward,
             canScrollBackward = scroll?.backward,
@@ -241,6 +251,15 @@ object UiTreeSerializer {
         hasScrollActions: Boolean,
     ): Boolean = seen || isScrollable || hasScrollActions
 
+    /**
+     * IME 창은 존재 여부만 관측한다. 키보드 root·키 label은 직렬화하지 않는다.
+     * null/빈 목록은 interactive window를 못 얻은 상태일 수 있으므로 "숨김"으로 단정하지 않는다.
+     */
+    internal fun imeVisibility(windowTypes: Iterable<Int>?): Boolean? {
+        val observed = windowTypes?.toList()?.takeIf { it.isNotEmpty() } ?: return null
+        return observed.any { it == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    }
+
     private fun scrollStateOf(node: AccessibilityNodeInfo, bounds: Rect): ScrollState? {
         val actions = node.actionList.mapTo(HashSet()) { it.id }
         val forward = AccessibilityAction.ACTION_SCROLL_FORWARD.id in actions
@@ -274,14 +293,31 @@ object UiTreeSerializer {
         else -> Axis.VERTICAL
     }
 
-    /** 자기가 들고 있는 글자. text 우선, 없으면 contentDescription. */
+    /**
+     * 자기가 들고 있는 안전한 라벨.
+     *
+     * 편집 가능한 노드의 `text`와 contentDescription은 사용자가 입력한 원문을 되풀이할 수 있으므로
+     * 읽지 않는다. 앱이 제공한 hint만 사용하고, 없으면 빈 label의 EditText로 보낸다.
+     */
     private fun ownText(node: AccessibilityNodeInfo): String? {
+        if (node.isEditable) {
+            return editableLabel(node.hintText)
+        }
         val text = node.text?.toString()?.trim()
         if (!text.isNullOrEmpty()) return text
         val desc = node.contentDescription?.toString()?.trim()
         if (!desc.isNullOrEmpty()) return desc
         return null
     }
+
+    /** Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수. */
+    internal fun editableLabel(hintText: CharSequence?): String? {
+        val hint = hintText?.toString()?.trim()
+        return hint?.takeIf { it.isNotEmpty() }
+    }
+
+    /** 입력 원문이 구현별 자손 노드로 새는 것을 막는 순회 경계. */
+    internal fun shouldInspectDescendants(editable: Boolean): Boolean = !editable
 
     /**
      * 자손 텍스트를 합쳐도 되는 노드인가.
@@ -314,6 +350,8 @@ object UiTreeSerializer {
             // 중첩된 클릭 노드의 글자는 그 노드가 자기 라벨로 가져간다.
             if (child.isClickable) continue
             ownText(child)?.let { if (out.size < MAX_LABEL_PARTS) out.add(it) }
+            // 편집 노드 아래의 구현별 자손에 입력 원문이 중복 노출될 수 있어 더 내려가지 않는다.
+            if (child.isEditable) continue
             collectDescendantText(child, out, depth + 1)
         }
     }

@@ -97,3 +97,16 @@ def test_repeat_guard_fields_exist_on_both_sides(contract_source: str) -> None:
         "direction",
         "target_node_id",
     } == set(RecentAction.model_fields)
+
+
+def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
+    """#112의 요소/화면 상태가 Kotlin·Python 중 한쪽에서만 바뀌지 않게 한다."""
+
+    assert "val editable: Boolean = false" in contract_source
+    assert "val focused: Boolean = false" in contract_source
+    assert '@SerialName("ime_visible") val imeVisible: Boolean? = null' in contract_source
+
+    from app.schemas import Screen, UiElement
+
+    assert {"editable", "focused"} <= set(UiElement.model_fields)
+    assert "ime_visible" in Screen.model_fields

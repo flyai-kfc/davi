@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
- * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C13)을 먼저 읽고 양쪽을 같이 고친다.
+ * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C14)을 먼저 읽고 양쪽을 같이 고친다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -18,6 +18,10 @@ data class UiElement(
     val label: String = "",
     val role: String = "",
     val clickable: Boolean = false,
+    /** 텍스트 입력을 받을 수 있는 요소인가. 입력된 원문 자체는 [label]에 넣지 않는다. */
+    val editable: Boolean = false,
+    /** 현재 접근성 입력 포커스를 가진 요소인가. */
+    val focused: Boolean = false,
     /** [left, top, right, bottom] 화면 좌표. */
     val bounds: List<Int>? = null,
     @SerialName("can_scroll_forward") val canScrollForward: Boolean? = null,
@@ -40,6 +44,8 @@ data class Screen(
      * **`false`와 `null`은 다르다.** 현재 serializer는 보이는 트리 순회를 끝내고 항상 채운다.
      */
     @SerialName("has_scrollable_element") val hasScrollableElement: Boolean? = null,
+    /** `true` 표시 / `false` 미표시 / `null` 낡은 앱 또는 빈 window 목록으로 관측하지 못함. */
+    @SerialName("ime_visible") val imeVisible: Boolean? = null,
 )
 
 @Serializable

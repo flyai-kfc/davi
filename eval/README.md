@@ -80,6 +80,9 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
 - `input`은 `server/app/schemas.py:NextStepRequest`의 JSON 표현이다. 최신 계약의 선택 필드는
   생략할 수 있다. 로더는 실제로 적힌 필드만 직렬화 왕복해 알 수 없는 필드나 묵시적 타입 변환으로
   입력이 손실되지 않는지도 확인한다.
+- #112 이전 실기기 fixture는 `editable`·`focused`·`ime_visible`을 생략한 구버전 관측으로
+  그대로 유지한다. 새 입력 fixture는 실제 관측값만 넣고, 편집 요소의 입력 원문이나 IME 키 목록을
+  재구성해 넣지 않는다.
 - `recent_instructions`는 모델 프롬프트용 문장 이력이고, `recent_actions`는 서버 반복 가드용
   구조화 이력이다. fixture는 세션 시작 화면이므로 빈 `recent_actions`를 명시하거나 생략할 수 있다.
 - `source.observed_model_action`은 실기기 실호출에서 관측한 구조화 메타데이터다. 원문 모델 응답을

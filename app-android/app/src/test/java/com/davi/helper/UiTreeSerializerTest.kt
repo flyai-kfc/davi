@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.view.accessibility.AccessibilityWindowInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -100,5 +101,32 @@ class UiTreeSerializerTest {
                 hasScrollActions = false,
             ),
         )
+    }
+
+    @Test
+    fun `IME는 창 type 존재 여부만 관측한다`() {
+        assertEquals(
+            true,
+            UiTreeSerializer.imeVisibility(
+                listOf(
+                    AccessibilityWindowInfo.TYPE_APPLICATION,
+                    AccessibilityWindowInfo.TYPE_INPUT_METHOD,
+                ),
+            ),
+        )
+        assertEquals(
+            false,
+            UiTreeSerializer.imeVisibility(listOf(AccessibilityWindowInfo.TYPE_APPLICATION)),
+        )
+        assertNull(UiTreeSerializer.imeVisibility(emptyList()))
+        assertNull(UiTreeSerializer.imeVisibility(null))
+    }
+
+    @Test
+    fun `편집 요소 라벨은 입력 원문 대신 hint만 쓴다`() {
+        assertEquals("검색어 입력", UiTreeSerializer.editableLabel(" 검색어 입력 "))
+        assertNull(UiTreeSerializer.editableLabel(null))
+        assertEquals(false, UiTreeSerializer.shouldInspectDescendants(editable = true))
+        assertEquals(true, UiTreeSerializer.shouldInspectDescendants(editable = false))
     }
 }
