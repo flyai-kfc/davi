@@ -1,4 +1,4 @@
-"""API 계약을 고정하는 테스트. server/CLAUDE.md "API 계약 결정"(C1~C8)에 대응한다.
+"""API 계약을 고정하는 테스트. server/CLAUDE.md "API 계약 결정"(C1~C14)에 대응한다.
 
 여기가 깨지면 앱·eval도 같이 깨진다는 뜻이므로, 실패를 무시하고 넘어가지 말 것.
 """
@@ -101,6 +101,50 @@ def test_page_position_lives_on_screen_not_element():
     assert {"current_page", "total_pages"} <= set(Screen.model_fields)
     assert "current_page" not in UiElement.model_fields
     assert "total_pages" not in UiElement.model_fields
+
+
+def test_input_state_has_backward_compatible_defaults():
+    """낡은 앱은 #112 필드를 보내지 않으므로 누락을 관측하지 않은 상태로 받아야 한다."""
+
+    request = NextStepRequest.model_validate(
+        {
+            "goal": "검색하기",
+            "screen": {
+                "package_name": "com.example.app",
+                "elements": [{"node_id": "n1", "label": "검색창"}],
+            },
+        }
+    )
+
+    assert request.screen.elements[0].editable is False
+    assert request.screen.elements[0].focused is False
+    assert request.screen.ime_visible is None
+
+
+def test_input_state_deserializes_without_input_text():
+    request = NextStepRequest.model_validate(
+        {
+            "goal": "검색하기",
+            "screen": {
+                "package_name": "com.example.app",
+                "ime_visible": True,
+                "elements": [
+                    {
+                        "node_id": "n1",
+                        "label": "검색어 입력",
+                        "role": "EditText",
+                        "editable": True,
+                        "focused": True,
+                    }
+                ],
+            },
+        }
+    )
+
+    assert request.screen.ime_visible is True
+    assert request.screen.elements[0].editable is True
+    assert request.screen.elements[0].focused is True
+    assert "text" not in UiElement.model_fields
 
 
 # --- C7 / C8: 요청·에러 ------------------------------------------------------

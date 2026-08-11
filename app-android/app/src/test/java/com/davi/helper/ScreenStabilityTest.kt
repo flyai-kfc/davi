@@ -1,17 +1,26 @@
 package com.davi.helper
 
+import android.view.accessibility.AccessibilityEvent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScreenSignatureTest {
 
-    private fun screen(vararg elements: UiElement, page: Int? = null, total: Int? = null) = Screen(
+    private fun screen(
+        vararg elements: UiElement,
+        page: Int? = null,
+        total: Int? = null,
+        imeVisible: Boolean? = null,
+    ) = Screen(
         packageName = "com.example.app",
         elements = elements.toList(),
         currentPage = page,
         totalPages = total,
         hasScrollableElement = false,
+        imeVisible = imeVisible,
     )
 
     @Test
@@ -50,6 +59,44 @@ class ScreenSignatureTest {
         val second = screen(UiElement(nodeId = "n1", label = "앱", clickable = true), page = 2, total = 3)
 
         assertNotEquals(ScreenSignature.of(first), ScreenSignature.of(second))
+    }
+
+    @Test
+    fun `입력 포커스나 IME 상태가 바뀌면 다른 화면이다`() {
+        val before = screen(
+            UiElement(nodeId = "n1", label = "검색어 입력", role = "EditText", editable = true),
+            imeVisible = false,
+        )
+        val ready = screen(
+            UiElement(
+                nodeId = "n1",
+                label = "검색어 입력",
+                role = "EditText",
+                editable = true,
+                focused = true,
+            ),
+            imeVisible = true,
+        )
+
+        assertNotEquals(ScreenSignature.of(before), ScreenSignature.of(ready))
+    }
+}
+
+class InputStateEventTest {
+
+    @Test
+    fun `포커스와 IME 창 변화는 안정화 샘플을 예약한다`() {
+        assertTrue(
+            GuideAccessibilityService.isInterestingEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED),
+        )
+        assertTrue(
+            GuideAccessibilityService.isInterestingEvent(AccessibilityEvent.TYPE_WINDOWS_CHANGED),
+        )
+        // 텍스트 원문 변화 자체는 상태 계약이 아니다. 다른 content 이벤트가 오더라도
+        // 입력 text를 제외한 시그니처가 같아 추가 요청으로 이어지지 않는다.
+        assertFalse(
+            GuideAccessibilityService.isInterestingEvent(AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED),
+        )
     }
 }
 
@@ -232,6 +279,39 @@ class ScreenStabilityTrackerTest {
 
         assertEquals(Decision.WAIT, tracker.onSample("a", 200))
         assertEquals(Decision.SEND, tracker.onSample("a", 300))
+    }
+
+    @Test
+    fun `포커스와 IME가 안정된 새 상태는 한 번만 보낸다`() {
+        tracker.onSample("before", 0)
+        assertEquals(Decision.SEND, tracker.onSample("before", 100))
+        tracker.markSent("before", 100)
+        tracker.markFinished()
+
+        assertEquals(Decision.WAIT, tracker.onSample("input-ready", 200))
+        assertEquals(Decision.SEND, tracker.onSample("input-ready", 300))
+        tracker.markSent("input-ready", 300)
+        tracker.markFinished()
+
+        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 400))
+        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 500))
+    }
+
+    @Test
+    fun `포커스가 빠르게 왕복하면 안정된 마지막 상태만 보낸다`() {
+        tracker.onSample("before", 0)
+        assertEquals(Decision.SEND, tracker.onSample("before", 100))
+        tracker.markSent("before", 100)
+        tracker.markFinished()
+
+        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 200))
+        assertEquals(Decision.WAIT, tracker.onSample("focus-b", 250))
+        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 300))
+        assertEquals(Decision.SEND, tracker.onSample("focus-a", 400))
+        tracker.markSent("focus-a", 400)
+        tracker.markFinished()
+
+        assertEquals(Decision.IDLE, tracker.onSample("focus-a", 500))
     }
 }
 

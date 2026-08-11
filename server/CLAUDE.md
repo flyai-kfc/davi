@@ -62,7 +62,7 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   두 번째 위반은 PARSE로 닫는다. 로그에는 고정 reason code만 남긴다.
 - 무료 티어 rate limit: flash-lite ≈ 15 RPM / 1,000 RPD. 429 `prepayment credits are depleted`는 사용량 초과가 아니라 결제 경로 문제일 수 있다. RPD 리셋은 한국시간 17:00.
 
-## API 계약 결정 (2026-07-24 리뷰 → **2026-08-06 C1~C13 반영**)
+## API 계약 결정 (2026-07-24 리뷰 → **2026-08-11 C1~C14 반영**)
 
 `app/schemas.py`는 앱·서버·eval 셋이 동시에 무는 지점이라 굳기 전에 검토했다.
 아래 확정 사항은 코드에 반영됐고 `tests/test_contract.py`가 고정한다. 계약을 바꾸려면
@@ -84,10 +84,11 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 | C11 | **앱이 `recent_actions`를 세션 안에 최대 10개 보관하고, 서버가 돌려준 구조 기반 `screen_signature`와 함께 다음 요청에 보낸다. 서버는 무상태로 반복을 판정한다.** | `recent_instructions`는 문구가 매번 달랐던 8회 scroll을 정확히 식별할 수 없다. `device_id`는 기기와 세션을 혼동하고, 서버 캐시는 TTL·멀티워커·세션 누출 문제를 만든다. #44의 generation 격리와 함께 구조화 이력을 비우면 같은 목표 재시작도 분리된다. 서명은 label을 포함하지 않아 시계·배터리 변동과 원문 label 해시의 재식별 위험을 피한다. |
 | C12 | **앱이 비식별 `X-Davi-Logical-Request-ID`와 `X-Davi-Attempt`를 HTTP header로 보내고 서버가 검증·echo·단계별 로그 연결에 사용한다. JSON 본문은 바꾸지 않는다.** | 앱이 10초에 timeout된 뒤 서버가 최대 20초 넘게 처리해 같은 화면 호출 5건이 겹쳤지만, 서버가 나중에 만든 `X-Request-ID`는 응답을 못 받은 앱과 대조할 수 없었다. ID는 무작위 UUID이며 goal·label·화면 서명·기기 ID에서 파생하지 않는다. #81은 관측만, dedupe·cache·timeout은 #82다. |
 | C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`만 반환한다.** 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. 내부 Gemini 모델은 짧은 `decision_basis`를 먼저 생성하며 wire·로그에는 내보내지 않는다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. 결론보다 근거를 먼저 생성하는 C1 순서를 새 LLM 경계에도 유지한다. |
+| C14 | **`UiElement.editable`·`focused`와 선택 `Screen.ime_visible`을 서로 다른 입력 상태로 보낸다.** | `editable+focused`는 사용자가 입력 대상을 선택했다는 주 신호이고, `ime_visible`은 소프트 키보드 창 관측이다(#112). 같은 칸의 재탭보다 `type`을 우선하는 판단은 포커스를 기준으로 하며 IME 표시 여부가 막지 않는다. 입력 원문과 IME 키 트리는 보내지 않고, 어느 상태로도 입력 완료·목표 완료를 추론하지 않는다. 낡은 앱의 필드 누락은 `false`·`None`, 빈 window 목록은 미관측 `None`으로 받는다. |
 
 ### C11 반복 가드 정책
 
-- 화면 서명은 package/page와 요소의 순서·node id·role·bounds·클릭/스크롤 상태만 포함한
+- 화면 서명은 package/page/IME와 요소의 순서·node id·role·bounds·클릭/편집/포커스/스크롤 상태만 포함한
   SHA-256이다. label의 원문·해시·길이는 모두 제외한다.
 - 같은 서명에서 `action_type`·`direction`·`target_node_id`가 같은 행동은 두 번까지 허용하고,
   세 번째 후보부터 fallback을 검토한다.

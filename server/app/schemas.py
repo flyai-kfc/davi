@@ -1,7 +1,7 @@
 """앱 <-> 서버 계약. 이 스키마가 곧 API 계약이다(테스트로 고정한다).
 
 이 파일은 앱·서버·eval 셋이 동시에 무는 지점이라 바꾸면 세 곳이 함께 움직인다.
-결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C13) 참고.
+결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C14) 참고.
 
 두 가지 규칙을 지킨다(HANDOFF §10 실측):
 - **근거 필드가 먼저 온다.** GuideAction의 필드 선언 순서가 곧 Gemini `propertyOrdering`이고,
@@ -74,6 +74,9 @@ class UiElement(BaseModel):
     label: str = ""
     role: str = ""
     clickable: bool = False
+    # 입력 원문은 label에 넣지 않는다. 이 둘은 접근성 상태만 전달한다(#112).
+    editable: bool = False
+    focused: bool = False
     bounds: list[int] | None = None  # [left, top, right, bottom]
 
     # 스크롤 상태 (C4). 방향·끝 판정이 여기서 나온다.
@@ -103,6 +106,8 @@ class Screen(BaseModel):
     # **없다는 것도 상태다.** 이름은 "화면이 스크롤된다"가 아니라 관찰한 사실 그대로 붙인다 —
     # 접근성 트리에 스크롤 노드가 없어도 실제로는 넘어가는 화면이 있다(런처 페이징).
     has_scrollable_element: bool | None = None
+    # True = IME 창 관측 / False = 정상 window 목록에 없음 / None = 낡은 앱·window 미관측.
+    ime_visible: bool | None = None
 
 
 class RecentAction(BaseModel):

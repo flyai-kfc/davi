@@ -1,5 +1,8 @@
 from app.prompt import (
     EVIDENCE_INSTRUCTION,
+    FOCUSED_INPUT_INSTRUCTION,
+    IME_NOT_VISIBLE,
+    IME_VISIBLE,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     build_prompt,
@@ -101,6 +104,63 @@ def test_scroll_state_does_not_prescribe_a_transition():
 
     assert "앱서랍" not in prompt
     assert "넘길 수 없다는 뜻은 아닙니다" in prompt
+
+
+def test_prompt_prioritizes_type_for_focused_editable_input_with_ime():
+    prompt = build_prompt(
+        _request(
+            ime_visible=True,
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="검색어 입력",
+                    role="EditText",
+                    editable=True,
+                    focused=True,
+                )
+            ],
+        )
+    )
+
+    assert IME_VISIBLE in prompt
+    assert FOCUSED_INPUT_INSTRUCTION in prompt
+    assert "같은 칸을 다시 누르는 tap보다" in prompt
+    assert "type을 우선" in prompt
+    assert "입력 완료 또는 목표 달성을 추론하지 마세요" in prompt
+    assert "editable=True" in prompt
+    assert "focused=True" in prompt
+
+
+def test_prompt_uses_focused_editable_input_even_when_ime_is_hidden_or_unknown():
+    hidden = build_prompt(
+        _request(
+            ime_visible=False,
+            elements=[UiElement(node_id="n1", editable=True, focused=True)],
+        )
+    )
+    unknown = build_prompt(
+        _request(elements=[UiElement(node_id="n1", editable=True, focused=True)])
+    )
+
+    assert IME_NOT_VISIBLE in hidden
+    assert FOCUSED_INPUT_INSTRUCTION in hidden
+    assert "입력기:" not in unknown
+    assert FOCUSED_INPUT_INSTRUCTION in unknown
+
+
+def test_prompt_does_not_claim_input_ready_without_focused_editable_element():
+    not_focused = build_prompt(
+        _request(
+            ime_visible=True,
+            elements=[UiElement(node_id="n1", editable=True, focused=False)],
+        )
+    )
+    old_client = build_prompt(_request())
+
+    assert IME_VISIBLE in not_focused
+    assert FOCUSED_INPUT_INSTRUCTION not in not_focused
+    assert "입력기:" not in old_client
+    assert FOCUSED_INPUT_INSTRUCTION not in old_client
 
 
 def test_home_and_app_drawer_are_told_apart_by_page_meta_not_by_scroll_state():

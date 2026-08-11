@@ -24,8 +24,11 @@ object ScreenSignature {
         append(screen.packageName).append('|')
         append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
         append(screen.hasScrollableElement ?: "-").append('|')
+        append(screen.imeVisible ?: "-").append('|')
         screen.elements.forEach { element ->
             append(if (element.clickable) 't' else '-')
+            append(if (element.editable) 'e' else '-')
+            append(if (element.focused) 'f' else '-')
             append(element.role).append(':')
             append(DIGITS.replace(element.label, "#"))
             append(';')

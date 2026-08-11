@@ -62,6 +62,9 @@ class GuideApiClientTest {
         val payload = Json.parseToJsonElement(body).jsonObject
         assertEquals("카카오톡 열기", payload["goal"]?.jsonPrimitive?.content)
         assertTrue(body.contains("\"label\":\"•••\""))
+        assertTrue(body.contains("\"editable\":true"))
+        assertTrue(body.contains("\"focused\":true"))
+        assertTrue(body.contains("\"ime_visible\":true"))
         assertTrue(body.contains("\"recent_actions\""))
         assertTrue(body.contains("\"screen_signature\":\"${"b".repeat(64)}\""))
         assertFalse(body.contains("secret@example.com"))
@@ -202,9 +205,12 @@ class GuideApiClientTest {
                     label = "•••",
                     role = "Button",
                     clickable = true,
+                    editable = true,
+                    focused = true,
                     bounds = listOf(1, 2, 3, 4),
                 ),
             ),
+            imeVisible = true,
         ),
         recentActions = listOf(
             RecentAction(

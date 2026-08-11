@@ -144,7 +144,12 @@ class GuideAccessibilityService : AccessibilityService() {
             GuideTelemetry.rootState("recovered")
         }
 
-        val result = runCatching { UiTreeSerializer.serialize(root) }.getOrElse {
+        // IME는 창 type만 읽고 키보드 root나 키 label은 직렬화하지 않는다(#112).
+        // 빈 목록은 "IME 없음"이 아니라 interactive window 관측 실패일 수 있으므로 미관측으로 둔다.
+        val windowTypes = runCatching { windows.map { it.type } }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+        val result = runCatching { UiTreeSerializer.serialize(root, windowTypes) }.getOrElse {
             Log.e(TAG, "serialize failed", it)
             scheduleSample(POLL_MS)
             return
@@ -435,6 +440,9 @@ class GuideAccessibilityService : AccessibilityService() {
             TAG,
             "screen pkg=${screen.packageName} elements=${screen.elements.size} " +
                 "clickable=$clickableCount " +
+                "editable=${screen.elements.count { it.editable }} " +
+                "focused=${screen.elements.count { it.focused }} " +
+                "ime=${screen.imeVisible ?: "?"} " +
                 "scrollable=${screen.hasScrollableElement ?: "?"}$page" +
                 if (result.truncated) " (truncated)" else "",
         )
@@ -458,10 +466,7 @@ class GuideAccessibilityService : AccessibilityService() {
         return " scroll=${e.scrollAxis?.name?.lowercase()}$fwd$back"
     }
 
-    private fun isInteresting(eventType: Int): Boolean =
-        eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+    private fun isInteresting(eventType: Int): Boolean = isInterestingEvent(eventType)
 
     override fun onInterrupt() {
         // 시스템이 접근성 피드백 중단을 요청해도 서비스·세션은 계속 살 수 있다. root=null 경로와
@@ -502,5 +507,13 @@ class GuideAccessibilityService : AccessibilityService() {
         private const val POLL_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
+
+        /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */
+        internal fun isInterestingEvent(eventType: Int): Boolean =
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
     }
 }

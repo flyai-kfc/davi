@@ -128,11 +128,14 @@ def _screen_signature(screen: Screen) -> str:
         "current_page": screen.current_page,
         "total_pages": screen.total_pages,
         "has_scrollable_element": screen.has_scrollable_element,
+        "ime_visible": screen.ime_visible,
         "elements": [
             {
                 "node_id": element.node_id,
                 "role": element.role,
                 "clickable": element.clickable,
+                "editable": element.editable,
+                "focused": element.focused,
                 "bounds": element.bounds,
                 "can_scroll_forward": element.can_scroll_forward,
                 "can_scroll_backward": element.can_scroll_backward,

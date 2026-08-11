@@ -88,6 +88,26 @@ def test_screen_without_any_label_is_not_failed():
     assert _verified("다 되었습니다", _screen("", ""))
 
 
+def test_hintless_editable_only_screen_keeps_fail_open_completion_policy():
+    """#112가 늘린 빈 label 입력 화면도 기존 fail-open 완료 정책을 명시적으로 유지한다."""
+
+    screen = Screen(
+        package_name="com.example.app",
+        ime_visible=True,
+        elements=[
+            UiElement(
+                node_id="n1",
+                label="",
+                role="EditText",
+                editable=True,
+                focused=True,
+            )
+        ],
+    )
+
+    assert _verified("다 되었습니다", screen)
+
+
 def test_non_latin_labels_are_still_compared():
     """한자·키릴 label이 정규화에서 통째로 사라지면 검사가 조용히 꺼진다(PR #62 리뷰 2번)."""
 

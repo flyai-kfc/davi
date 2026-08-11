@@ -120,6 +120,37 @@ production:
 {"status":"ok"}
 ```
 
+## 다음 안내의 입력 준비 상태
+
+`/v1/next-step` 화면 계약은 입력 원문 없이 다음 세 상태를 받을 수 있다(#112).
+
+```json
+{
+  "goal": "검색창에 날씨 입력하기",
+  "screen": {
+    "package_name": "com.example.app",
+    "ime_visible": true,
+    "elements": [
+      {
+        "node_id": "n1",
+        "label": "검색어 입력",
+        "role": "EditText",
+        "clickable": true,
+        "editable": true,
+        "focused": true
+      }
+    ]
+  }
+}
+```
+
+`editable=true`와 `focused=true`는 사용자가 해당 입력 대상을 선택했다는 관측값이다. 프롬프트는
+IME 표시 여부와 무관하게 같은 칸의 `tap`보다 필요 시 그 요소를 대상으로 한 `type`을 우선한다.
+`ime_visible`은 소프트 키보드 창을 별도로 관측한 값이며, 포커스·IME 어느 쪽도 입력 완료·목표
+완료로 해석하지 않는다. 낡은 앱이 `editable`·`focused`를 생략하면 `false`, `ime_visible`을
+생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. 앱은 편집 요소의 입력된
+`text`와 IME 키 트리를 요청에 넣지 않는다.
+
 ## 같은 Wi-Fi 공용 development 서버
 
 전용 맥북과 Android debug 기기가 같은 사설 Wi-Fi에 있을 때만 쓰는 개발 경로다(#57).
@@ -262,7 +293,7 @@ pytest
 **동작하는 구현** (테스트로 덮인 것 포함)
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
-- `app/schemas.py` — 다음 안내와 음성 목표 대화 계약. C1~C13을 계약 테스트가 고정한다.
+- `app/schemas.py` — 다음 안내와 음성 목표 대화 계약. C1~C14를 계약 테스트가 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
