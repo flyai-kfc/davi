@@ -6,6 +6,9 @@
     -->
     <style name="Theme.Davi" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@color/davi_bg</item>
+        <!-- Pretendard 전역 적용 (C1). textStyle=bold가 700 파일로 해석된다. -->
+        <item name="android:fontFamily">@font/pretendard</item>
+        <item name="fontFamily">@font/pretendard</item>
     </style>
 
     <!-- 타입 램프 (C2) — Figma davi/* 텍스트 스타일과 1:1 -->
