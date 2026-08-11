@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 
 /**
  * 강조할 영역에 테두리를 하나 그리고, 서버가 준 안내문을 상자에 담아 함께 보여주는 뷰.
@@ -43,6 +44,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.davi_overlay_on_box)
         textSize = resources.getDimension(R.dimen.text_overlay_instruction)
+        // Canvas 직접 그리기라 테마 fontFamily가 닿지 않는다 — 서체를 손으로 물린다(C1).
+        typeface = ResourcesCompat.getFont(context, R.font.pretendard)
     }
     private val instructionBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.davi_overlay_box)

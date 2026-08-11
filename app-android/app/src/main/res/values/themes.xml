@@ -6,6 +6,8 @@
     -->
     <style name="Theme.Davi" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@color/davi_bg</item>
+        <!-- 라이트 고정을 시스템 강제 다크에서도 지킨다(B3). Material은 이 값을 설정하지 않는다. -->
+        <item name="android:forceDarkAllowed">false</item>
         <!-- Pretendard 전역 적용 (C1). textStyle=bold가 700 파일로 해석된다. -->
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="fontFamily">@font/pretendard</item>
@@ -19,26 +21,35 @@
         <item name="android:textColorSecondary">@color/davi_text_secondary</item>
     </style>
 
-    <!-- 타입 램프 (C2) — Figma davi/* 텍스트 스타일과 1:1 -->
+    <!--
+      타입 램프 (C2) — Figma davi/* 텍스트 스타일과 1:1.
+      fontFamily를 각 스타일에 명시하는 이유: M3 부모가 android:fontFamily="sans-serif"를
+      직접 지정하고 있어, 테마 fallback이 이기는 해석 순서에 기대지 않기 위함이다.
+    -->
     <style name="TextAppearance.Davi.Title" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_title</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
     <style name="TextAppearance.Davi.Subtitle" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_subtitle</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
     <style name="TextAppearance.Davi.BodyLg" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_body_lg</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
     <style name="TextAppearance.Davi.Body" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_body</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
     <style name="TextAppearance.Davi.Caption" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_caption</item>
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
