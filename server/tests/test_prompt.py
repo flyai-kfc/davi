@@ -1,6 +1,7 @@
 from app.prompt import (
     EVIDENCE_INSTRUCTION,
     FOCUSED_INPUT_INSTRUCTION,
+    FOCUSED_INPUT_KEYBOARD_CLOSED,
     IME_NOT_VISIBLE,
     IME_VISIBLE,
     SCROLLABLE_NOT_OBSERVED,
@@ -131,21 +132,29 @@ def test_prompt_prioritizes_type_for_focused_editable_input_with_ime():
     assert "focused=True" in prompt
 
 
-def test_prompt_uses_focused_editable_input_even_when_ime_is_hidden_or_unknown():
+def test_prompt_opens_keyboard_before_type_when_focused_input_has_hidden_ime():
     hidden = build_prompt(
         _request(
             ime_visible=False,
             elements=[UiElement(node_id="n1", editable=True, focused=True)],
         )
     )
+
+    assert IME_NOT_VISIBLE in hidden
+    assert FOCUSED_INPUT_KEYBOARD_CLOSED in hidden
+    assert FOCUSED_INPUT_INSTRUCTION not in hidden
+    assert "type을 바로 안내하지 말고" in hidden
+    assert "tap해 키보드를 여는" in hidden
+
+
+def test_prompt_keeps_type_preference_when_ime_observation_is_unknown():
     unknown = build_prompt(
         _request(elements=[UiElement(node_id="n1", editable=True, focused=True)])
     )
 
-    assert IME_NOT_VISIBLE in hidden
-    assert FOCUSED_INPUT_INSTRUCTION in hidden
     assert "입력기:" not in unknown
     assert FOCUSED_INPUT_INSTRUCTION in unknown
+    assert FOCUSED_INPUT_KEYBOARD_CLOSED not in unknown
 
 
 def test_prompt_does_not_claim_input_ready_without_focused_editable_element():
@@ -159,8 +168,10 @@ def test_prompt_does_not_claim_input_ready_without_focused_editable_element():
 
     assert IME_VISIBLE in not_focused
     assert FOCUSED_INPUT_INSTRUCTION not in not_focused
+    assert FOCUSED_INPUT_KEYBOARD_CLOSED not in not_focused
     assert "입력기:" not in old_client
     assert FOCUSED_INPUT_INSTRUCTION not in old_client
+    assert FOCUSED_INPUT_KEYBOARD_CLOSED not in old_client
 
 
 def test_home_and_app_drawer_are_told_apart_by_page_meta_not_by_scroll_state():

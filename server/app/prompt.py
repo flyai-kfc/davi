@@ -36,9 +36,14 @@ IME_VISIBLE = "입력기: 화면에 키보드가 표시되어 있습니다"
 IME_NOT_VISIBLE = "입력기: 화면에 키보드가 표시되어 있지 않습니다"
 FOCUSED_INPUT_INSTRUCTION = (
     "editable=true, focused=true인 입력칸은 사용자가 이미 입력 대상을 선택한 상태입니다. "
-    "키보드 표시 여부와 무관하게 입력이 필요하면 같은 칸을 다시 누르는 tap보다 그 입력칸을 "
-    "대상으로 한 type을 우선하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 "
-    "추론하지 마세요."
+    "키보드가 표시되어 있거나 표시 여부를 관측하지 못했고 입력이 필요하면 같은 칸을 다시 "
+    "누르는 tap보다 그 입력칸을 대상으로 한 type을 우선하세요. 포커스나 키보드 상태만으로 "
+    "입력 완료 또는 목표 달성을 추론하지 마세요."
+)
+FOCUSED_INPUT_KEYBOARD_CLOSED = (
+    "editable=true, focused=true인 입력칸은 선택되어 있지만 키보드는 닫혀 있습니다. 화면 터치로 "
+    "입력해야 한다면 type을 바로 안내하지 말고, 그 입력칸을 tap해 키보드를 여는 한 단계를 먼저 "
+    "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
 
 
@@ -105,8 +110,10 @@ def _input_context(req: NextStepRequest) -> str:
     if ime_visible is not None:
         context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
     input_ready = any(element.editable and element.focused for element in req.screen.elements)
-    if input_ready:
+    if input_ready and ime_visible is not False:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
+    elif input_ready:
+        context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
     return context
 
 

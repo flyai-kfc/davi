@@ -145,11 +145,12 @@ production:
 ```
 
 `editable=true`와 `focused=true`는 사용자가 해당 입력 대상을 선택했다는 관측값이다. 프롬프트는
-IME 표시 여부와 무관하게 같은 칸의 `tap`보다 필요 시 그 요소를 대상으로 한 `type`을 우선한다.
-`ime_visible`은 소프트 키보드 창을 별도로 관측한 값이며, 포커스·IME 어느 쪽도 입력 완료·목표
-완료로 해석하지 않는다. 낡은 앱이 `editable`·`focused`를 생략하면 `false`, `ime_visible`을
-생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. 앱은 편집 요소의 입력된
-`text`와 IME 키 트리를 요청에 넣지 않는다.
+`ime_visible=true`이면 같은 칸의 `tap`보다 필요 시 그 요소를 대상으로 한 `type`을 우선한다.
+`false`이면 키보드가 닫힌 관측이므로 필요한 경우 입력칸을 탭해 키보드를 여는 한 단계를 먼저
+안내한다. `null`은 키보드 상태 미관측이며 기존 앱의 입력 안내를 막지 않는다. 포커스·IME 어느
+쪽도 입력 완료·목표 완료로 해석하지 않는다. 낡은 앱이 `editable`·`focused`를 생략하면 `false`,
+`ime_visible`을 생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. 앱은 편집
+요소의 입력된 `text`와 IME 키 트리를 요청에 넣지 않는다.
 
 ## 같은 Wi-Fi 공용 development 서버
 
