@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pretendard 번들 (C1, docs/DESIGN-CONVENTIONS.md). v1.3.9, OFL 1.1 —
+  고지 전문은 app-android/licenses/pretendard-OFL.txt (고지 화면은 베타 사이클).
+  textStyle=bold가 700, 기본이 400으로 해석된다.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        android:font="@font/pretendard_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/pretendard_regular"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/pretendard_bold"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        app:font="@font/pretendard_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+</font-family>

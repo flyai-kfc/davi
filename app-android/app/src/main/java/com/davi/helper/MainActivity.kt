@@ -21,6 +21,14 @@ import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
 /**
+ * MA-1 미리보기(debug)가 음성 대화를 바로 시작하도록 요청하는 extra.
+ *
+ * 소비하는 쪽은 debug 빌드에서만 동작한다 — `MainActivity`가 exported라 게이트가 없으면
+ * 릴리스에서 임의 앱이 인텐트 하나로 마이크 청취를 시작시킬 수 있다.
+ */
+internal const val EXTRA_START_VOICE = "com.davi.helper.extra.START_VOICE"
+
+/**
  * 온보딩 + 텍스트/음성 목표 입력 화면. 음성은 목표를 입력칸까지 옮길 뿐 안내를 자동 시작하거나
  * 사용자를 대신해 조작하지 않는다. 발화·질문·goal은 화면과 메모리에만 두고 logcat에 넘기지 않는다.
  */
@@ -100,6 +108,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnVoice.setOnClickListener { onVoiceInputTapped() }
         binding.btnStart.setOnClickListener { startGuide() }
         binding.btnStop.setOnClickListener { GuideSession.stop() }
+
+        // MA-1 미리보기(debug)에서 마이크로 진입한 경우 음성 대화를 바로 시작한다.
+        // 재생성(회전 등)에서 반복 시작되지 않게 최초 생성에서만 처리한다.
+        if (BuildConfig.DEBUG &&
+            savedInstanceState == null &&
+            intent?.getBooleanExtra(EXTRA_START_VOICE, false) == true
+        ) {
+            onVoiceInputTapped()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

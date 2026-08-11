@@ -31,3 +31,6 @@ app-android/**/build/
 *.jks
 # Gradle CLI 우회용 AF_UNIX 소켓 임시 폴더 (app-android/scripts/dev-install.ps1)
 .gradle-afunix-tmp/
+# JVM 크래시 덤프 (Gradle 데몬 죽을 때 생김)
+hs_err_pid*.log
+replay_pid*.log

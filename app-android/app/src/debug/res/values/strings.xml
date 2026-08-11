@@ -1,0 +1,4 @@
+<resources>
+    <!-- 미리보기 런처 이름. 개발 전용이라 릴리스 APK에 넣지 않는다. -->
+    <string name="voice_home_preview_label">다비 MA-1 미리보기</string>
+</resources>

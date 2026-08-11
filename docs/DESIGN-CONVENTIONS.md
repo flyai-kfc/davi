@@ -25,7 +25,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | D2 | 간격 | 4pt 그리드 5단 4 / 8 / 12 / 16 / 24 |
 | D3 | 코너 반경 | 3단 8 / 12 / 16 |
 | E1 | 컴포넌트 v1 | 큰 버튼 · 안내 카드 · 오버레이 안내문 상자 · 오버레이 하이라이트 테두리 · X/O 확인 쌍 |
-| E2 | 버튼 눌림 | 그림자+눌림 입체 표현 (flat 직관 부족 대응) |
+| E2 | 버튼 눌림 (2026-08-11 갱신) | 상시 그림자(elevation 2dp)로 입체를 주고, **눌림은 state layer**(검정 12%)로 표시. 최초 결정의 "눌림 시 깊이 변화"는 Figma button의 pressed variant(state layer)와 어긋나 원본 쪽으로 맞췄다 |
 | E3 | 아이콘 (2026-08-11 확정) | **Lucide Icons**, 24 그리드. 브랜드 아이콘(카카오 등)은 Lucide로 대체하지 않고 **공식 디자인 리소스**를 쓴다. 라이선스 ISC(자유 사용) |
 | F1 | 토큰 네이밍 | 슬래시 소문자 (`color/text/primary`) |
 | F2 | Android 매핑 | `davi_` 접두 스네이크 (`@color/davi_text_primary`) |
@@ -77,9 +77,12 @@ Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 �
 ## 반영 상태
 
 - Figma Foundations: 이 결정대로 변수·스타일 생성 (2026-08-05, 에이전트)
-- 코드 리소스(`colors.xml`·`dimens.xml`·테마·Pretendard 번들): **미반영** — #100에서 진행
-- **현재 테마가 B3와 충돌 중** — `Theme.Davi`가 Material3 DayNight를 상속해, 다크 리소스가
-  없어도 시스템 다크에서 검증 안 된 M3 기본 다크 팔레트가 실제 적용된다. Light 고정
-  여부 판단 포함 #100 범위
-- 현재 앱의 하드코딩 색 3건·raw px 크기 2건·dimens 9개는 이 컨벤션 확정 전
-  값이다 (`HighlightOverlayView` companion 등)
+- 코드 리소스(`colors.xml`·`dimens.xml`·타입 램프·버튼 스타일·Pretendard 번들): **반영**
+  (2026-08-11, #100). 이름은 Figma 변수의 Android code syntax와 1:1이며 값의 원본은 Figma다
+- 테마 **Light 고정**으로 B3 충돌 해소 — `Theme.Davi`가 `Theme.Material3.Light`를 상속하고
+  M3 색을 토큰에 매핑한다. 다크 대응은 토큰에 다크 값을 설계하는 시점에 착수
+- `HighlightOverlayView`의 하드코딩 색 3건·raw px 2건은 토큰으로 교체됨. 오버레이 전용
+  실측값(안내문 22sp·여백 16/20dp)만 램프 밖에 남아 있고, GD 화면 재구현에서 램프 정합을
+  재검토한다
+- 미반영: A1(7:1) 미달 토큰 `davi_danger`·`davi_success`의 값 조정 — Figma Foundations를
+  먼저 고치고 코드를 맞춘다

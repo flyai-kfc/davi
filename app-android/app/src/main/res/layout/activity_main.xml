@@ -12,109 +12,109 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/spacing">
+        android:padding="@dimen/davi_spacing_xl">
 
         <TextView
             android:id="@+id/title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
-            android:textSize="@dimen/text_title"
+            android:textSize="@dimen/davi_type_title"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing"
-            android:layout_marginBottom="@dimen/spacing"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:layout_marginBottom="@dimen/davi_spacing_xl"
             android:lineSpacingMultiplier="1.3"
             android:text="@string/onboarding_body"
-            android:textSize="@dimen/text_body" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <Button
             android:id="@+id/btn_accessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="@dimen/touch_target_min"
+            android:minHeight="@dimen/davi_size_touch_target"
             android:text="@string/btn_open_accessibility"
-            android:textSize="@dimen/text_button" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <Button
             android:id="@+id/btn_overlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
+            android:layout_marginTop="@dimen/davi_spacing_md"
+            android:minHeight="@dimen/davi_size_touch_target"
             android:text="@string/btn_open_overlay"
-            android:textSize="@dimen/text_button" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <TextView
             android:id="@+id/goal_label"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
             android:labelFor="@+id/goal_input"
             android:text="@string/goal_label"
-            android:textSize="@dimen/text_body"
+            android:textSize="@dimen/davi_type_body_lg"
             android:textStyle="bold" />
 
         <EditText
             android:id="@+id/goal_input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
+            android:layout_marginTop="@dimen/davi_spacing_md"
             android:autofillHints=""
             android:hint="@string/goal_hint"
             android:imeOptions="actionDone"
             android:inputType="text"
-            android:minHeight="@dimen/touch_target_min"
-            android:textSize="@dimen/text_body" />
+            android:minHeight="@dimen/davi_size_touch_target"
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <Button
             android:id="@+id/btn_voice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
+            android:layout_marginTop="@dimen/davi_spacing_md"
+            android:minHeight="@dimen/davi_size_touch_target"
             android:text="@string/btn_voice_input"
-            android:textSize="@dimen/text_button" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <TextView
             android:id="@+id/voice_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
+            android:layout_marginTop="@dimen/davi_spacing_md"
             android:accessibilityLiveRegion="polite"
             android:lineSpacingMultiplier="1.3"
             android:text="@string/voice_idle"
-            android:textSize="@dimen/text_body" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <Button
             android:id="@+id/btn_start"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
+            android:layout_marginTop="@dimen/davi_spacing_md"
+            android:minHeight="@dimen/davi_size_touch_target"
             android:text="@string/btn_start"
-            android:textSize="@dimen/text_button" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <Button
             android:id="@+id/btn_stop"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
-            android:minHeight="@dimen/touch_target_min"
+            android:layout_marginTop="@dimen/davi_spacing_md"
+            android:minHeight="@dimen/davi_size_touch_target"
             android:text="@string/btn_stop"
-            android:textSize="@dimen/text_button" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_small"
+            android:layout_marginTop="@dimen/davi_spacing_md"
             android:lineSpacingMultiplier="1.3"
             android:text="@string/guide_hint"
-            android:textSize="@dimen/text_body" />
+            android:textSize="@dimen/davi_type_body_lg" />
 
     </LinearLayout>
 
