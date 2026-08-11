@@ -26,7 +26,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | D3 | 코너 반경 | 3단 8 / 12 / 16 |
 | E1 | 컴포넌트 v1 | 큰 버튼 · 안내 카드 · 오버레이 안내문 상자 · 오버레이 하이라이트 테두리 · X/O 확인 쌍 |
 | E2 | 버튼 눌림 | 그림자+눌림 입체 표현 (flat 직관 부족 대응) |
-| E3 | 아이콘 | **Lucide Icons**, 24 그리드. 브랜드 아이콘(카카오 등)은 Lucide로 대체하지 않고 **공식 디자인 리소스**를 쓴다. 라이선스 ISC(자유 사용) |
+| E3 | 아이콘 (2026-08-11 확정) | **Lucide Icons**, 24 그리드. 브랜드 아이콘(카카오 등)은 Lucide로 대체하지 않고 **공식 디자인 리소스**를 쓴다. 라이선스 ISC(자유 사용) |
 | F1 | 토큰 네이밍 | 슬래시 소문자 (`color/text/primary`) |
 | F2 | Android 매핑 | `davi_` 접두 스네이크 (`@color/davi_text_primary`) |
 | F3 | Figma 파일 | 단일 파일 운영 (publish 불요) — 페이지: Foundations(토큰·스타일) / Components(컴포넌트 실물) / Wireframe(원본) / Screens(파생 산출물). 발표는 Slides 별도 파일 |

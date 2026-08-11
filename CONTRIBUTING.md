@@ -5,7 +5,7 @@
 각 폴더의 `CLAUDE.md`에 있다. 이전 PoC의 교훈은 [HANDOFF.md](HANDOFF.md).
 
 **이 저장소는 이번 사이클의 구현을 담는다.** 아직 사이클에 없는 장기 기획(북극성)은 별도 레포
-`flyai-kfc/davi-docs`의 `PLAN.md`에 있고, 거기서 미결이 닫힌 뒤 `SPEC.md`로 승격돼야 여기 이슈가
+`davi-docs`의 `PLAN.md`에 있고, 거기서 미결이 닫힌 뒤 `SPEC.md`로 승격돼야 여기 이슈가
 된다. PLAN은 PR·리뷰를 사람만 쓰는 등 규칙이 달라 저장소를 나눴다.
 
 ## 시작하기
