@@ -36,14 +36,20 @@ IME_VISIBLE = "입력기: 화면에 키보드가 표시되어 있습니다"
 IME_NOT_VISIBLE = "입력기: 화면에 키보드가 표시되어 있지 않습니다"
 FOCUSED_INPUT_INSTRUCTION = (
     "editable=true, focused=true인 입력칸은 사용자가 이미 입력 대상을 선택한 상태입니다. "
-    "키보드가 표시되어 있거나 표시 여부를 관측하지 못했고 입력이 필요하면 같은 칸을 다시 "
-    "누르는 tap보다 그 입력칸을 대상으로 한 type을 우선하세요. 포커스나 키보드 상태만으로 "
-    "입력 완료 또는 목표 달성을 추론하지 마세요."
+    "포커스나 키보드 상태만으로 추가 입력이 필요하다고 단정하지 마세요. 입력이 더 필요할 때만 "
+    "같은 칸을 다시 누르는 tap보다 그 입력칸을 대상으로 한 type을 우선하세요. 포커스나 키보드 "
+    "상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
 FOCUSED_INPUT_KEYBOARD_CLOSED = (
     "editable=true, focused=true인 입력칸은 선택되어 있지만 키보드는 닫혀 있습니다. 화면 터치로 "
     "입력해야 한다면 type을 바로 안내하지 말고, 그 입력칸을 tap해 키보드를 여는 한 단계를 먼저 "
     "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
+)
+ACTIONABLE_RESULT_INSTRUCTION = (
+    "현재 화면에는 label이 있는 비편집 clickable 요소도 있습니다. 그중 목표에 맞는 검색 결과나 "
+    "다음 단계 UI가 지금 보이고 바로 조작 가능하면, 입력창의 포커스나 키보드 표시와 관계없이 "
+    "그 요소를 누르는 tap을 추가 type보다 우선하세요. 그 요소를 누르기 전에 키보드를 닫는 별도 "
+    "동작을 먼저 안내하지 마세요."
 )
 
 
@@ -114,7 +120,18 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
         context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
+    if input_ready and _has_labeled_actionable_alternative(req):
+        context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
     return context
+
+
+def _has_labeled_actionable_alternative(req: NextStepRequest) -> bool:
+    """의미 판정은 모델에 맡기되, 입력칸 외에 검토할 수 있는 후보가 있는지만 관측한다."""
+
+    return any(
+        element.clickable and not element.editable and bool(element.label.strip())
+        for element in req.screen.elements
+    )
 
 
 def _screen_elements(req: NextStepRequest) -> str:

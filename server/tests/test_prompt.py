@@ -1,4 +1,5 @@
 from app.prompt import (
+    ACTIONABLE_RESULT_INSTRUCTION,
     EVIDENCE_INSTRUCTION,
     FOCUSED_INPUT_INSTRUCTION,
     FOCUSED_INPUT_KEYBOARD_CLOSED,
@@ -107,7 +108,7 @@ def test_scroll_state_does_not_prescribe_a_transition():
     assert "넘길 수 없다는 뜻은 아닙니다" in prompt
 
 
-def test_prompt_prioritizes_type_for_focused_editable_input_with_ime():
+def test_prompt_prioritizes_type_when_focused_input_has_no_actionable_result():
     prompt = build_prompt(
         _request(
             ime_visible=True,
@@ -127,6 +128,7 @@ def test_prompt_prioritizes_type_for_focused_editable_input_with_ime():
     assert FOCUSED_INPUT_INSTRUCTION in prompt
     assert "같은 칸을 다시 누르는 tap보다" in prompt
     assert "type을 우선" in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION not in prompt
     assert "입력 완료 또는 목표 달성을 추론하지 마세요" in prompt
     assert "editable=True" in prompt
     assert "focused=True" in prompt
@@ -155,6 +157,72 @@ def test_prompt_keeps_type_preference_when_ime_observation_is_unknown():
     assert "입력기:" not in unknown
     assert FOCUSED_INPUT_INSTRUCTION in unknown
     assert FOCUSED_INPUT_KEYBOARD_CLOSED not in unknown
+
+
+def test_prompt_prioritizes_visible_result_over_type_while_ime_stays_open():
+    prompt = build_prompt(
+        _request(
+            ime_visible=True,
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="검색어 입력",
+                    role="EditText",
+                    clickable=True,
+                    editable=True,
+                    focused=True,
+                ),
+                UiElement(
+                    node_id="n2",
+                    label="목표 검색 결과",
+                    role="Button",
+                    clickable=True,
+                ),
+            ],
+        )
+    )
+
+    assert IME_VISIBLE in prompt
+    assert FOCUSED_INPUT_INSTRUCTION in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION in prompt
+    assert "그 요소를 누르는 tap을 추가 type보다 우선" in prompt
+    assert "키보드를 닫는 별도 동작을 먼저 안내하지 마세요" in prompt
+
+
+def test_unknown_ime_keeps_visible_result_priority_for_old_client():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(node_id="n1", editable=True, focused=True),
+                UiElement(node_id="n2", label="다음", clickable=True),
+            ]
+        )
+    )
+
+    assert "입력기:" not in prompt
+    assert FOCUSED_INPUT_INSTRUCTION in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION in prompt
+
+
+def test_unlabeled_or_editable_clickable_element_is_not_treated_as_result():
+    prompt = build_prompt(
+        _request(
+            ime_visible=True,
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="검색어 입력",
+                    clickable=True,
+                    editable=True,
+                    focused=True,
+                ),
+                UiElement(node_id="n2", label="", clickable=True),
+            ],
+        )
+    )
+
+    assert FOCUSED_INPUT_INSTRUCTION in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION not in prompt
 
 
 def test_prompt_does_not_claim_input_ready_without_focused_editable_element():
