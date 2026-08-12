@@ -59,10 +59,10 @@
         <item name="android:minHeight">@dimen/davi_size_touch_target</item>
         <item name="android:textSize">@dimen/davi_type_body_lg</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:paddingLeft">20dp</item>
-        <item name="android:paddingRight">20dp</item>
+        <item name="android:paddingLeft">@dimen/davi_button_padding_h</item>
+        <item name="android:paddingRight">@dimen/davi_button_padding_h</item>
         <item name="android:stateListAnimator">@null</item>
-        <item name="android:elevation">2dp</item>
+        <item name="android:elevation">@dimen/davi_button_elevation</item>
     </style>
     <style name="Widget.Davi.Button.Primary">
         <item name="android:background">@drawable/bg_davi_button_primary</item>

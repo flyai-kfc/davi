@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  다비 로고 (local_docs/davi.svg → VectorDrawable 수동 변환).
+  브랜드 자산이라 색을 토큰으로 바꾸지 않고 원본 값으로 고정한다 — "색은 tint로" 컨벤션(E3)의
+  예외(button/oauth-kakao와 같은 원칙). SVG의 matrix 변환은 group 회전·이동으로 분해했다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group>
+        <clip-path android:pathData="M0,36 a36,36 0 1,0 72,0 a36,36 0 1,0 -72,0 Z" />
+        <!-- 배경 -->
+        <path android:pathData="M0,0 h72 v72 h-72 Z" android:fillColor="#F2001C" />
+        <!-- 몸통 -->
+        <group android:rotation="-18.05" android:translateX="28.4648" android:translateY="39.6145">
+            <path
+                android:pathData="M0,15.2742 a10.2238,15.2742 0 1,0 20.4476,0 a10.2238,15.2742 0 1,0 -20.4476,0 Z"
+                android:fillColor="#000000" />
+        </group>
+        <path
+            android:pathData="M41.8572,49.0917 a0.6283,0.6283 0 1,0 1.2565,0 a0.6283,0.6283 0 1,0 -1.2565,0 Z"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M39.2172 45.8173C40.5948 46.914 42.645 46.2331 43.0928 44.5302C43.5851 42.6583 41.8041 40.987 39.9672 41.597C38.1303 42.2071 37.7029 44.6117 39.2172 45.8173Z"
+            android:fillColor="#FFFFFF" />
+        <!-- 얼굴 -->
+        <group android:rotation="-18.05" android:translateX="15.7551" android:translateY="19.2792">
+            <path
+                android:pathData="M0,15.2742 a15.1344,15.2742 0 1,0 30.2688,0 a15.1344,15.2742 0 1,0 -30.2688,0 Z"
+                android:fillColor="#FFFFFF" />
+        </group>
+        <group android:rotation="-18.05" android:translateX="29.7983" android:translateY="29.5128">
+            <path
+                android:pathData="M0,5.0916 a5.045,5.0916 0 1,0 10.09,0 a5.045,5.0916 0 1,0 -10.09,0 Z"
+                android:fillColor="#E1E1E1" />
+        </group>
+        <!-- 귀 -->
+        <group android:rotation="16.61" android:translateX="16.2963" android:translateY="20.1067">
+            <path
+                android:pathData="M0,8.6295 a6.143,8.6295 0 1,0 12.2861,0 a6.143,8.6295 0 1,0 -12.2861,0 Z"
+                android:fillColor="#FFFFFF" />
+        </group>
+        <group android:rotation="126.65" android:translateX="45.9664" android:translateY="10.1966">
+            <path
+                android:pathData="M0,8.6295 a6.143,8.6295 0 1,0 12.2861,0 a6.143,8.6295 0 1,0 -12.2861,0 Z"
+                android:fillColor="#FFFFFF" />
+        </group>
+        <!-- 눈·코 -->
+        <group android:rotation="-47.3228" android:pivotX="29.717" android:pivotY="29.8015">
+            <path
+                android:pathData="M28.2966,29.8015 a1.4204,0.8118 0 1,0 2.8407,0 a1.4204,0.8118 0 1,0 -2.8407,0 Z"
+                android:fillColor="#222222" />
+        </group>
+        <!-- 원본 matrix가 반사 포함 — scaleX=-1 + 회전으로 분해 -->
+        <group android:scaleX="-1" android:rotation="10.58" android:translateX="41.0208" android:translateY="26.0236">
+            <path
+                android:pathData="M0,0.8118 a1.4204,0.8118 0 1,0 2.8407,0 a1.4204,0.8118 0 1,0 -2.8407,0 Z"
+                android:fillColor="#222222" />
+        </group>
+        <path
+            android:pathData="M34.5068,30.5285 a0.902,0.902 0 1,0 1.804,0 a0.902,0.902 0 1,0 -1.804,0 Z"
+            android:fillColor="#222222" />
+        <!-- 입 -->
+        <path
+            android:pathData="M38.5917 42.7101C39.6909 42.9363 40.133 44.2677 39.3875 45.1065C38.642 45.9454 37.2679 45.6626 36.9142 44.5975C36.5605 43.5324 37.4924 42.4839 38.5917 42.7101Z"
+            android:fillColor="#000000" />
+        <path
+            android:pathData="M41.7362 41.6658C40.9907 42.5047 41.4328 43.836 42.532 44.0623C43.6313 44.2885 44.5632 43.2399 44.2095 42.1748C43.8558 41.1097 42.4817 40.8269 41.7362 41.6658Z"
+            android:fillColor="#000000" />
+        <path
+            android:pathData="M39.3294,43.414 a1.1486,1.1486 0 1,0 2.2973,0 a1.1486,1.1486 0 1,0 -2.2973,0 Z"
+            android:fillColor="#000000" />
+        <!-- 우하단 마감 사각형 (원본 z-순서 유지) -->
+        <group android:rotation="30.8075" android:pivotX="51.9214" android:pivotY="39.025">
+            <path
+                android:pathData="M51.9214,39.025 l12.0414,0 l0,28.3094 l-12.0414,0 Z"
+                android:fillColor="#F2001C" />
+        </group>
+    </group>
+</vector>

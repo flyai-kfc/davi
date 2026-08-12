@@ -38,4 +38,12 @@
     <!-- MA-1 홈 (docs/SCREENS.md). 문구 확정은 W8 — 여기는 디자인 확정값. -->
     <string name="voice_home_title">누르고\n물어보세요</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
+
+    <!-- 대화 화면 (임시 와이어프레임 문구 — 확정은 W8/#29) -->
+    <string name="conversation_prompt_initial">무엇을 도와드릴까요?</string>
+    <string name="conversation_requesting">잠시만요</string>
+    <string name="conversation_failed">응답을 이해하지 못했어요.\n처음으로 돌아갈게요.</string>
+    <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
+    <string name="conversation_confirm_reject_desc">처음부터 다시</string>
+    <string name="conversation_close_desc">대화 그만하기</string>
 </resources>

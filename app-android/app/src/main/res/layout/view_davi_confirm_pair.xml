@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  chip/confirm-pair (docs/SCREENS.md 컴포넌트 인덱스): ×/○ 확인쌍.
+  MA-4 최종 확인에서 쓰고, GD-3 완료 확인이 재사용을 예약하고 있다.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center">
+
+    <ImageButton
+        android:id="@+id/btn_confirm_reject"
+        android:layout_width="@dimen/davi_confirm_chip_width"
+        android:layout_height="@dimen/davi_size_touch_target"
+        android:background="@drawable/bg_davi_chip_danger"
+        android:src="@drawable/ic_davi_x"
+        android:scaleType="centerInside"
+        android:contentDescription="@string/conversation_confirm_reject_desc" />
+
+    <Space
+        android:layout_width="@dimen/davi_spacing_lg"
+        android:layout_height="1dp" />
+
+    <ImageButton
+        android:id="@+id/btn_confirm_accept"
+        android:layout_width="@dimen/davi_confirm_chip_width"
+        android:layout_height="@dimen/davi_size_touch_target"
+        android:background="@drawable/bg_davi_chip_success"
+        android:src="@drawable/ic_davi_circle"
+        android:scaleType="centerInside"
+        android:contentDescription="@string/conversation_confirm_accept_desc" />
+</LinearLayout>

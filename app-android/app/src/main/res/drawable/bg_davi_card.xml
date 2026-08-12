@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 질문 카드(회색): 안내·질문 문구가 앉는 자리. 임시 디자인 — 확정 시 card/guide와 정합 재검토. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_surface" />
+    <corners android:radius="@dimen/davi_radius_md" />
+</shape>
