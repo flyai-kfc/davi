@@ -226,6 +226,34 @@ class GuideBoxLayoutTest {
     }
 
     @Test
+    fun `soft를 크게 덮으면 3줄로 줄여 덜 덮는다`() {
+        // 캡처 8 축약: tap 안내라 키보드가 soft인데, 다이얼로그(위)와 키보드(아래)가 화면을
+        // 나눠 덮어 어느 자리든 soft를 문다. 이전엔 hard 0이라 절반 상자를 그대로 뒀지만,
+        // 무관한 키보드조차 최소한으로만 덮도록 3줄로 줄인다(PR #118 리뷰 대응).
+        val dialogSoft = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 0f, 1000f, 1000f), hard = false)
+        val keyboardSoft = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1000f, 1000f, 2000f), hard = false)
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long, avoid = listOf(dialogSoft, keyboardSoft))
+
+        assertEquals(3, layout?.lines?.size)
+        assertTrue(layout!!.lines.last().endsWith("…"))
+    }
+
+    @Test
+    fun `soft 침범이 없으면 긴 안내문도 줄이지 않는다`() {
+        // 피할 자리가 있으면 글줄을 버릴 이유가 없다. 절반 상자(32줄, 992)가 soft 위(1200~)를
+        // 피해 화면 위쪽에 온전히 들어간다.
+        val lowSoft = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1200f, 1000f, 2000f), hard = false)
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long, avoid = listOf(lowSoft))
+
+        assertEquals(32, layout?.lines?.size)
+        assertTrue(layout!!.box.bottom <= 1200f)
+    }
+
+    @Test
     fun `축소 줄 수는 글자가 작아져도 늘지 않는다`() {
         // 비율 상한이었다면 lineHeight가 절반이 될 때 줄 수가 배로 늘어 상자가 도로
         // 커진다 — 폴백이 발동하는 화면은 빡빡한 화면이라 고정 3줄이 안전하다.

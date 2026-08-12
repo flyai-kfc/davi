@@ -58,16 +58,18 @@ object GuideBoxLayout {
         val textWidth = (right - left - padding * 2).coerceAtLeast(1f)
         val wrapped = wrapLines(instruction, textWidth, measure)
 
-        // 1차: 절반 상한. 절대 회피를 다 피했으면 그대로 — 글줄을 최대한 살린다.
+        // 1차: 절반 상한. 아무것도 안 덮으면 그대로 — 글줄을 최대한 살린다.
         // 상한이 없으면 상자가 화면보다 커져 자리 후보가 0개가 되고 회피 등급 전체가
         // 무효가 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
         val primaryLines = (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2) / lineHeight)
             .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
-        if (primary.hardCoverage == 0f) return primary.layout
+        if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
 
-        // 2차: 절반으로도 절대 회피가 안 피해지면 3줄로 줄여 한 번 재시도한다.
+        // 2차: 절반 상자가 무언가를 덮으면 3줄로 줄여 한 번 재시도한다. hard뿐 아니라
+        // soft 침범에도 줄인다 — 무관한 키보드조차 최소한으로만 덮기 위해서다
+        // (PR #118 리뷰 대응, 2026-08-12 결정).
         // 줄 수 고정인 이유: 비율 상한은 글자가 작아지면 줄 수가 늘어 상자가 도로 커진다 —
         // 이 폴백이 발동하는 화면이 곧 빡빡한 화면이라, 글자 크기와 무관한 최소 덩어리가
         // 들어갈 확률이 높다. 값은 실측이 쌓이기 전까지의 임시값이다(2026-08-12 결정).
@@ -78,13 +80,21 @@ object GuideBoxLayout {
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
-        // 상자를 줄여도 이득이 없으면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
-        return if (compact.hardCoverage < primary.hardCoverage) compact.layout else primary.layout
+        // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
+        // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
+        val improves = compact.hardCoverage < primary.hardCoverage ||
+            (compact.hardCoverage == primary.hardCoverage &&
+                compact.softCoverage < primary.softCoverage)
+        return if (improves) compact.layout else primary.layout
     }
 
-    private data class Attempt(val layout: Layout, val hardCoverage: Float)
+    private data class Attempt(
+        val layout: Layout,
+        val hardCoverage: Float,
+        val softCoverage: Float,
+    )
 
-    /** [maxLines]로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 비율을 함께 돌려준다. */
+    /** [maxLines]로 줄을 자르고 자리를 고른 뒤, 그 자리의 회피 침범 비율을 함께 돌려준다. */
     private fun attempt(
         maxLines: Int,
         wrapped: List<String>,
@@ -106,7 +116,8 @@ object GuideBoxLayout {
         val top = topFor(height, left, right, canvas, target, avoid, margin)
         val box = Bounds(left, top, right, top + height)
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
-        return Attempt(Layout(lines, box), coverage(box, hard))
+        val soft = avoid.filterNot { it.hard }.map { it.bounds }
+        return Attempt(Layout(lines, box), coverage(box, hard), coverage(box, soft))
     }
 
     /** 상한을 넘는 줄을 버리고 마지막 줄 끝에 말줄임을 단다. 말줄임도 폭 안에 들어가야 한다. */
