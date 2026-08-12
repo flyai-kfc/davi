@@ -58,16 +58,49 @@ object GuideBoxLayout {
         val textWidth = (right - left - padding * 2).coerceAtLeast(1f)
         val wrapped = wrapLines(instruction, textWidth, measure)
 
+        // 1차: 절반 상한. 절대 회피를 다 피했으면 그대로 — 글줄을 최대한 살린다.
+        val primary = attempt(MAX_HEIGHT_RATIO, wrapped, textWidth, left, right,
+            canvas, target, avoid, margin, padding, lineHeight, measure)
+        if (primary.hardOverlap == 0f) return primary.layout
+
+        // 2차: 절반으로도 절대 회피가 안 피해지면 상자를 더 줄여 한 번 재시도한다.
+        // 캡처 9 실측: hard 두 개(입력칸·키보드) 사이 빈 띠에 절반 상자는 안 들어가고
+        // 1/4 상자는 들어간다. 실측이 쌓이기 전까지의 임시 비율이다(2026-08-12 결정).
+        val compact = attempt(MAX_HEIGHT_RATIO_COMPACT, wrapped, textWidth, left, right,
+            canvas, target, avoid, margin, padding, lineHeight, measure)
+        // 상자를 줄여도 이득이 없으면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
+        return if (compact.hardOverlap < primary.hardOverlap) compact.layout else primary.layout
+    }
+
+    private data class Attempt(val layout: Layout, val hardOverlap: Float)
+
+    /** [ratio] 상한으로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 넓이를 함께 돌려준다. */
+    private fun attempt(
+        ratio: Float,
+        wrapped: List<String>,
+        textWidth: Float,
+        left: Float,
+        right: Float,
+        canvas: Bounds,
+        target: Bounds?,
+        avoid: List<Avoid>,
+        margin: Float,
+        padding: Float,
+        lineHeight: Float,
+        measure: Measure,
+    ): Attempt {
         // 높이 상한. 상자가 화면보다 커지면 자리 후보가 0개가 되어 회피 등급 전체가 무효가
         // 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
-        // 반이면 위나 아래 어느 한쪽은 반드시 비므로 후보가 산다. 잘림 표현은 W8에서 재론.
-        val maxLines = (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2) / lineHeight)
+        // 잘림 표현은 W8에서 재론.
+        val maxLines = (((canvas.bottom - canvas.top) * ratio - padding * 2) / lineHeight)
             .toInt().coerceAtLeast(1)
         val lines = truncate(wrapped, maxLines, textWidth, measure)
         val height = lines.size * lineHeight + padding * 2
 
         val top = topFor(height, left, right, canvas, target, avoid, margin)
-        return Layout(lines, Bounds(left, top, right, top + height))
+        val box = Bounds(left, top, right, top + height)
+        val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
+        return Attempt(Layout(lines, box), overlap(box, hard))
     }
 
     /** 상한을 넘는 줄을 버리고 마지막 줄 끝에 말줄임을 단다. 말줄임도 폭 안에 들어가야 한다. */
@@ -181,6 +214,9 @@ object GuideBoxLayout {
 
     /** 상자가 그리기 영역에서 차지할 수 있는 최대 비율. [truncate]가 이 상한을 강제한다. */
     private const val MAX_HEIGHT_RATIO = 0.5f
+
+    /** 절반 상자로 절대 회피를 못 피할 때 한 번 더 줄여 보는 축소 상한. 임시값(2026-08-12). */
+    private const val MAX_HEIGHT_RATIO_COMPACT = 0.25f
 
     private const val ELLIPSIS = "…"
 }

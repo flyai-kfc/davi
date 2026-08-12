@@ -183,6 +183,33 @@ class GuideBoxLayoutTest {
         assertTrue(layout!!.box.bottom <= keyboardTop)
     }
 
+    @Test
+    fun `절반 상자로 hard를 못 피하면 축소 상한으로 떨어진다`() {
+        // 캡처 9 배치의 축약: 대상(1000~1100) 위 공간 980, hard 키보드(1150~) 위 빈 띠 50.
+        // 절반 상자(32줄, 992)는 어디에도 못 들어가 대상을 물고, 1/4 상자(15줄, 482)는
+        // 대상 위에 온전히 들어간다.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long, target = TARGET, avoid = listOf(keyboard(hard = true)))
+
+        assertEquals(15, layout?.lines?.size)
+        assertTrue(layout!!.lines.last().endsWith("…"))
+        // 대상(top=1000)도 키보드(top=1150)도 건드리지 않는다.
+        assertTrue(layout.box.bottom <= 1000f - MARGIN)
+    }
+
+    @Test
+    fun `절반 상자가 이미 hard를 피하면 줄이지 않는다`() {
+        // 위쪽 절반이 비어 있으면 32줄 그대로 둔다 — 글줄을 공짜로 버리지 않는다.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+        val lowKeyboard = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1500f, 1000f, 2000f), hard = true)
+
+        val layout = compute(long, avoid = listOf(lowKeyboard))
+
+        assertEquals(32, layout?.lines?.size)
+        assertTrue(layout!!.box.bottom <= 1500f)
+    }
+
     private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
 
     private fun keyboard(hard: Boolean) =
