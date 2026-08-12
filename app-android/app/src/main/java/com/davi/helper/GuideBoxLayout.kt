@@ -59,14 +59,19 @@ object GuideBoxLayout {
         val wrapped = wrapLines(instruction, textWidth, measure)
 
         // 1차: 절반 상한. 절대 회피를 다 피했으면 그대로 — 글줄을 최대한 살린다.
-        val primary = attempt(MAX_HEIGHT_RATIO, wrapped, textWidth, left, right,
+        // 상한이 없으면 상자가 화면보다 커져 자리 후보가 0개가 되고 회피 등급 전체가
+        // 무효가 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
+        val primaryLines = (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2) / lineHeight)
+            .toInt().coerceAtLeast(1)
+        val primary = attempt(primaryLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
         if (primary.hardOverlap == 0f) return primary.layout
 
-        // 2차: 절반으로도 절대 회피가 안 피해지면 상자를 더 줄여 한 번 재시도한다.
-        // 캡처 9 실측: hard 두 개(입력칸·키보드) 사이 빈 띠에 절반 상자는 안 들어가고
-        // 1/4 상자는 들어간다. 실측이 쌓이기 전까지의 임시 비율이다(2026-08-12 결정).
-        val compact = attempt(MAX_HEIGHT_RATIO_COMPACT, wrapped, textWidth, left, right,
+        // 2차: 절반으로도 절대 회피가 안 피해지면 3줄로 줄여 한 번 재시도한다.
+        // 줄 수 고정인 이유: 비율 상한은 글자가 작아지면 줄 수가 늘어 상자가 도로 커진다 —
+        // 이 폴백이 발동하는 화면이 곧 빡빡한 화면이라, 글자 크기와 무관한 최소 덩어리가
+        // 들어갈 확률이 높다. 값은 실측이 쌓이기 전까지의 임시값이다(2026-08-12 결정).
+        val compact = attempt(COMPACT_MAX_LINES, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
         // 상자를 줄여도 이득이 없으면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         return if (compact.hardOverlap < primary.hardOverlap) compact.layout else primary.layout
@@ -74,9 +79,9 @@ object GuideBoxLayout {
 
     private data class Attempt(val layout: Layout, val hardOverlap: Float)
 
-    /** [ratio] 상한으로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 넓이를 함께 돌려준다. */
+    /** [maxLines]로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 넓이를 함께 돌려준다. */
     private fun attempt(
-        ratio: Float,
+        maxLines: Int,
         wrapped: List<String>,
         textWidth: Float,
         left: Float,
@@ -89,11 +94,7 @@ object GuideBoxLayout {
         lineHeight: Float,
         measure: Measure,
     ): Attempt {
-        // 높이 상한. 상자가 화면보다 커지면 자리 후보가 0개가 되어 회피 등급 전체가 무효가
-        // 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
         // 잘림 표현은 W8에서 재론.
-        val maxLines = (((canvas.bottom - canvas.top) * ratio - padding * 2) / lineHeight)
-            .toInt().coerceAtLeast(1)
         val lines = truncate(wrapped, maxLines, textWidth, measure)
         val height = lines.size * lineHeight + padding * 2
 
@@ -215,8 +216,8 @@ object GuideBoxLayout {
     /** 상자가 그리기 영역에서 차지할 수 있는 최대 비율. [truncate]가 이 상한을 강제한다. */
     private const val MAX_HEIGHT_RATIO = 0.5f
 
-    /** 절반 상자로 절대 회피를 못 피할 때 한 번 더 줄여 보는 축소 상한. 임시값(2026-08-12). */
-    private const val MAX_HEIGHT_RATIO_COMPACT = 0.25f
+    /** 절반 상자로 절대 회피를 못 피할 때 떨어지는 축소 줄 수. 임시값(2026-08-12). */
+    private const val COMPACT_MAX_LINES = 3
 
     private const val ELLIPSIS = "…"
 }

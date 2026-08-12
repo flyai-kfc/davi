@@ -184,18 +184,31 @@ class GuideBoxLayoutTest {
     }
 
     @Test
-    fun `절반 상자로 hard를 못 피하면 축소 상한으로 떨어진다`() {
+    fun `절반 상자로 hard를 못 피하면 3줄로 떨어진다`() {
         // 캡처 9 배치의 축약: 대상(1000~1100) 위 공간 980, hard 키보드(1150~) 위 빈 띠 50.
-        // 절반 상자(32줄, 992)는 어디에도 못 들어가 대상을 물고, 1/4 상자(15줄, 482)는
+        // 절반 상자(32줄, 992)는 어디에도 못 들어가 대상을 물고, 3줄 상자(122)는
         // 대상 위에 온전히 들어간다.
         val long = (1..40).joinToString("\n") { "줄$it" }
 
         val layout = compute(long, target = TARGET, avoid = listOf(keyboard(hard = true)))
 
-        assertEquals(15, layout?.lines?.size)
+        assertEquals(3, layout?.lines?.size)
         assertTrue(layout!!.lines.last().endsWith("…"))
         // 대상(top=1000)도 키보드(top=1150)도 건드리지 않는다.
         assertTrue(layout.box.bottom <= 1000f - MARGIN)
+    }
+
+    @Test
+    fun `축소 줄 수는 글자가 작아져도 늘지 않는다`() {
+        // 비율 상한이었다면 lineHeight가 절반이 될 때 줄 수가 배로 늘어 상자가 도로
+        // 커진다 — 폴백이 발동하는 화면은 빡빡한 화면이라 고정 3줄이 안전하다.
+        // 여기서는 절반 상자(32줄)가 hard(0~1970를 덮는 큰 영역)를 못 피해 폴백이 돈다.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+        val wall = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 0f, 1000f, 1970f), hard = true)
+
+        val layout = compute(long, avoid = listOf(wall))
+
+        assertEquals(3, layout?.lines?.size)
     }
 
     @Test
