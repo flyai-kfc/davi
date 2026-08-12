@@ -199,6 +199,19 @@ class GuideBoxLayoutTest {
     }
 
     @Test
+    fun `축소 폴백이 절반 상한보다 상자를 키우지 않는다`() {
+        // 작은 화면·아주 큰 글자에서는 절반이 3줄보다 적다(여기선 2줄).
+        // 그대로 3줄을 쓰면 축소 폴백이 상자를 되레 키워 절반 상한을 깬다.
+        val small = GuideBoxLayout.Bounds(0f, 0f, 1000f, 200f)
+        val wall = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 0f, 1000f, 200f), hard = true)
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long, canvas = small, avoid = listOf(wall))
+
+        assertEquals(2, layout?.lines?.size)
+    }
+
+    @Test
     fun `축소 줄 수는 글자가 작아져도 늘지 않는다`() {
         // 비율 상한이었다면 lineHeight가 절반이 될 때 줄 수가 배로 늘어 상자가 도로
         // 커진다 — 폴백이 발동하는 화면은 빡빡한 화면이라 고정 3줄이 안전하다.

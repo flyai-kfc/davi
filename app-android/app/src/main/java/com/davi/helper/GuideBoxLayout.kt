@@ -71,7 +71,12 @@ object GuideBoxLayout {
         // 줄 수 고정인 이유: 비율 상한은 글자가 작아지면 줄 수가 늘어 상자가 도로 커진다 —
         // 이 폴백이 발동하는 화면이 곧 빡빡한 화면이라, 글자 크기와 무관한 최소 덩어리가
         // 들어갈 확률이 높다. 값은 실측이 쌓이기 전까지의 임시값이다(2026-08-12 결정).
-        val compact = attempt(COMPACT_MAX_LINES, wrapped, textWidth, left, right,
+        //
+        // **1차보다 커지면 안 된다.** 작은 화면이나 아주 큰 글자에서는 절반이 3줄보다 적을 수
+        // 있는데, 그대로 3줄을 쓰면 축소 폴백이 상자를 되레 키워 절반 상한을 깬다.
+        val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
+        if (compactLines == primaryLines) return primary.layout
+        val compact = attempt(compactLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
         // 상자를 줄여도 이득이 없으면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         return if (compact.hardOverlap < primary.hardOverlap) compact.layout else primary.layout
