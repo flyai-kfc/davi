@@ -153,7 +153,8 @@ production:
 `null`은 키보드 상태 미관측이며 같은 우선순위를 적용한다. 포커스·IME 어느 쪽도 입력 완료·목표
 완료로 해석하지 않는다. 낡은 앱이 `editable`·`focused`를 생략하면 `false`, `ime_visible`을
 생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. 앱은 편집 요소의 입력된
-`text`와 IME 키 트리를 요청에 넣지 않는다.
+`text`와 IME 키 트리를 요청에 넣지 않는다. 구조 검증된 `NumberPicker`의 짧은 숫자는 사용자
+입력 원문이 아니라 직접 조정한 선택 상태이므로 예외로 보존한다(#117).
 
 ## 같은 Wi-Fi 공용 development 서버
 
