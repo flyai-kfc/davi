@@ -1,0 +1,124 @@
+package com.davi.helper
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * 안내창 줄바꿈·배치 회귀. `HighlightOverlayView` 안에 있던 동안은 걸 수 없던 테스트다(#38 1번).
+ *
+ * 폭 측정은 "글자 하나당 [CHAR_WIDTH]"인 가짜로 대신한다. `Paint.breakText`의 계약만 같으면
+ * 되므로 실제 글꼴이 필요 없다.
+ */
+class GuideBoxLayoutTest {
+
+    private val measure = GuideBoxLayout.Measure { text, maxWidth ->
+        val fits = (maxWidth / CHAR_WIDTH).toInt()
+        minOf(text.length, maxOf(fits, 0))
+    }
+
+    private fun compute(
+        instruction: String,
+        target: GuideBoxLayout.Bounds? = null,
+        canvas: GuideBoxLayout.Bounds = GuideBoxLayout.Bounds(0f, 0f, 1000f, 2000f),
+    ) = GuideBoxLayout.compute(
+        instruction = instruction,
+        canvas = canvas,
+        target = target,
+        margin = MARGIN,
+        padding = PADDING,
+        lineHeight = LINE_HEIGHT,
+        measure = measure,
+    )
+
+    @Test
+    fun `안내문이 없으면 그릴 것도 없다`() {
+        assertNull(compute(""))
+    }
+
+    @Test(timeout = 1_000)
+    fun `한 글자도 안 들어가는 폭에서도 루프가 끝난다`() {
+        // 이 계산은 onDraw 안에서 돌던 코드다. 안 끝나면 화면이 멈춘다(ANR).
+        // 좁은 화면이나 아주 큰 글꼴에서 실제로 도달할 수 있는 상태라 가드를 테스트로 고정한다.
+        val narrow = GuideBoxLayout.Bounds(0f, 0f, MARGIN * 2 + PADDING * 2, 2000f)
+
+        val layout = compute("가나다라", canvas = narrow)
+
+        assertEquals(listOf("가", "나", "다", "라"), layout?.lines)
+    }
+
+    @Test
+    fun `띄어쓰기가 없으면 폭에서 강제로 끊는다`() {
+        val layout = compute("가".repeat(120))
+
+        assertEquals(2, layout?.lines?.size)
+        assertTrue(layout!!.lines.all { it.length <= LINE_CHARS })
+    }
+
+    @Test
+    fun `가능하면 띄어쓰기에서 끊는다`() {
+        // 한 줄에 92자가 들어가는 폭에서 81번째 글자가 공백이면 거기서 끊는다.
+        val layout = compute("${"가".repeat(80)} ${"나".repeat(20)}")
+
+        assertEquals(listOf("가".repeat(80), "나".repeat(20)), layout?.lines)
+    }
+
+    @Test
+    fun `개행이 보통 글자로 삼켜지지 않는다`() {
+        // breakText는 \n을 글자로 세므로 문단을 먼저 갈라야 한다.
+        // 없으면 두 문장이 "…주세요.화면이"처럼 붙는다(실기기에서 확인).
+        val layout = compute("다 되면 눌러 주세요.\n화면이 바뀝니다.")
+
+        assertEquals(listOf("다 되면 눌러 주세요.", "화면이 바뀝니다."), layout?.lines)
+    }
+
+    @Test
+    fun `대상 위에 자리가 있으면 위에 놓는다`() {
+        val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 500f, 400f, 600f))
+
+        assertEquals(500f - MARGIN - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
+    fun `대상 위가 좁으면 아래에 놓는다`() {
+        val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 100f))
+
+        assertEquals(100f + MARGIN, layout?.box?.top)
+    }
+
+    @Test
+    fun `위아래 모두 안 되면 화면 아래에 붙인다`() {
+        val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 1990f))
+
+        assertEquals(2000f - MARGIN - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
+    fun `강조 대상이 없어도 안내문은 보여준다`() {
+        // 서버가 화면에 없는 대상을 골라도 안내는 떠야 한다.
+        val layout = compute("가나다", target = null)
+
+        assertEquals(2000f - MARGIN - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
+    fun `상자 폭은 여백을 뺀 만큼이다`() {
+        val layout = compute("가나다")
+
+        assertEquals(MARGIN, layout?.box?.left)
+        assertEquals(1000f - MARGIN, layout?.box?.right)
+    }
+
+    private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
+
+    private companion object {
+        const val CHAR_WIDTH = 10f
+        const val MARGIN = 20f
+        const val PADDING = 16f
+        const val LINE_HEIGHT = 30f
+
+        /** 상자 안쪽 폭 928 / 글자폭 10. */
+        const val LINE_CHARS = 92
+    }
+}
