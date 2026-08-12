@@ -129,4 +129,91 @@ class UiTreeSerializerTest {
         assertEquals(false, UiTreeSerializer.shouldInspectDescendants(editable = true))
         assertEquals(true, UiTreeSerializer.shouldInspectDescendants(editable = false))
     }
+
+    @Test
+    fun `직접 조작 가능한 NumberPicker의 짧은 숫자 값은 보존한다`() {
+        assertEquals("6, 시간", adjustableNumericLabel("6, 시간"))
+        assertEquals("00, 분", adjustableNumericLabel(" 00,   분 "))
+        assertEquals("2026년", adjustableNumericLabel("2026년"))
+    }
+
+    @Test
+    fun `NumberPicker여도 PII 형태와 긴 숫자는 보존하지 않는다`() {
+        assertNull(adjustableNumericLabel("010-1234-5678"))
+        assertNull(adjustableNumericLabel("1234-5678-9012-3456"))
+        assertNull(adjustableNumericLabel("123-456-789012"))
+        assertNull(adjustableNumericLabel("12345"))
+    }
+
+    @Test
+    fun `NumberPicker 숫자 공개에는 모든 구조적 안전 조건이 필요하다`() {
+        assertNull(adjustableNumericLabel("6", visibleToUser = false))
+        assertNull(adjustableNumericLabel("6", enabled = false))
+        assertNull(adjustableNumericLabel("6", password = true))
+        assertNull(adjustableNumericLabel("6", editable = false))
+        assertNull(adjustableNumericLabel("6", hasDirectAction = false))
+        assertNull(adjustableNumericLabel("6", hasNearbyAdjustableAncestor = false))
+    }
+
+    @Test
+    fun `가까운 조상은 활성 NumberPicker이며 조정 가능해야 한다`() {
+        assertEquals(
+            true,
+            UiTreeSerializer.isAdjustableControlAncestor(
+                visibleToUser = true,
+                enabled = true,
+                role = "NumberPicker",
+                scrollable = true,
+                hasAdjustmentAction = false,
+            ),
+        )
+        assertEquals(
+            true,
+            UiTreeSerializer.isAdjustableControlAncestor(
+                visibleToUser = true,
+                enabled = true,
+                role = "SeslNumberPicker",
+                scrollable = false,
+                hasAdjustmentAction = true,
+            ),
+        )
+        assertEquals(
+            false,
+            UiTreeSerializer.isAdjustableControlAncestor(
+                visibleToUser = true,
+                enabled = true,
+                role = "EditText",
+                scrollable = true,
+                hasAdjustmentAction = true,
+            ),
+        )
+        assertEquals(
+            false,
+            UiTreeSerializer.isAdjustableControlAncestor(
+                visibleToUser = false,
+                enabled = true,
+                role = "NumberPicker",
+                scrollable = true,
+                hasAdjustmentAction = true,
+            ),
+        )
+    }
+
+    private fun adjustableNumericLabel(
+        rawLabel: CharSequence?,
+        editable: Boolean = true,
+        visibleToUser: Boolean = true,
+        enabled: Boolean = true,
+        password: Boolean = false,
+        hasDirectAction: Boolean = true,
+        hasNearbyAdjustableAncestor: Boolean = true,
+    ): String? = UiTreeSerializer.adjustableNumericLabel(
+        rawLabel = rawLabel,
+        editable = editable,
+        visibleToUser = visibleToUser,
+        enabled = enabled,
+        password = password,
+        hasDirectAction = hasDirectAction,
+        hasNearbyAdjustableAncestor = hasNearbyAdjustableAncestor,
+    )
 }

@@ -18,7 +18,10 @@ data class UiElement(
     val label: String = "",
     val role: String = "",
     val clickable: Boolean = false,
-    /** 텍스트 입력을 받을 수 있는 요소인가. 입력된 원문 자체는 [label]에 넣지 않는다. */
+    /**
+     * 텍스트 입력을 받을 수 있는 요소인가. 입력 원문은 [label]에 넣지 않는다.
+     * 예외는 구조 검증된 NumberPicker 선택 상태뿐이다(#117).
+     */
     val editable: Boolean = false,
     /** 현재 접근성 입력 포커스를 가진 요소인가. */
     val focused: Boolean = false,

@@ -10,10 +10,7 @@ package com.davi.helper
  */
 object ScreenSignature {
 
-    /**
-     * 시계·배터리% 같은 숫자를 지운다. 숫자를 남기면 화면이 계속 바뀐 것으로 오인한다
-     * (`HANDOFF.md` §4 — 홀드의 근간).
-     */
+    /** 시계·배터리% 같은 volatile 숫자를 지운다(`HANDOFF.md` §4 — 홀드의 근간). */
     private val DIGITS = Regex("\\d+")
 
     /**
@@ -30,10 +27,26 @@ object ScreenSignature {
             append(if (element.editable) 'e' else '-')
             append(if (element.focused) 'f' else '-')
             append(element.role).append(':')
-            append(DIGITS.replace(element.label, "#"))
+            append(stableLabel(element))
             append(';')
         }
     }
+
+    /**
+     * 일반 숫자는 계속 volatile 값으로 취급한다. 다만 serializer가 직접 조작 가능한 NumberPicker에서만
+     * 보존하는 editable 짧은 숫자 label은 현재 선택 상태 자체이므로 숫자를 남긴다. 그래야 사용자가
+     * 분 picker를 스크롤해 `00, 분`을 `30, 분`으로 바꿨을 때 새 화면으로 판단해 다시 요청한다.
+     */
+    private fun stableLabel(element: UiElement): String =
+        if (
+            element.editable &&
+            element.role.endsWith("EditText") &&
+            UiTreeSerializer.isShortNumericControlLabel(element.label)
+        ) {
+            element.label
+        } else {
+            DIGITS.replace(element.label, "#")
+        }
 }
 
 /**
