@@ -46,10 +46,10 @@ FOCUSED_INPUT_KEYBOARD_CLOSED = (
     "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
 ACTIONABLE_RESULT_INSTRUCTION = (
-    "현재 화면에는 label이 있는 비편집 clickable 요소도 있습니다. 그중 목표에 맞는 검색 결과나 "
-    "다음 단계 UI가 지금 보이고 바로 조작 가능하면, 입력창의 포커스나 키보드 표시와 관계없이 "
-    "그 요소를 누르는 tap을 추가 type보다 우선하세요. 그 요소를 누르기 전에 키보드를 닫는 별도 "
-    "동작을 먼저 안내하지 마세요."
+    "입력창 외의 현재 화면 요소도 모두 확인하세요. 목표에 맞는 검색 결과나 다음 단계 UI가 지금 "
+    "보이고 바로 조작 가능하면, 입력창의 포커스나 키보드 표시와 관계없이 그 요소를 누르는 tap을 "
+    "추가 type보다 우선하세요. 그 요소를 누르기 전에 키보드를 닫는 별도 동작을 먼저 안내하지 "
+    "마세요."
 )
 
 
@@ -120,18 +120,9 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
         context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
-    if input_ready and _has_labeled_actionable_alternative(req):
+    if input_ready:
         context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
     return context
-
-
-def _has_labeled_actionable_alternative(req: NextStepRequest) -> bool:
-    """의미 판정은 모델에 맡기되, 입력칸 외에 검토할 수 있는 후보가 있는지만 관측한다."""
-
-    return any(
-        element.clickable and not element.editable and bool(element.label.strip())
-        for element in req.screen.elements
-    )
 
 
 def _screen_elements(req: NextStepRequest) -> str:

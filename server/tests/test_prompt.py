@@ -108,7 +108,7 @@ def test_scroll_state_does_not_prescribe_a_transition():
     assert "넘길 수 없다는 뜻은 아닙니다" in prompt
 
 
-def test_prompt_prioritizes_type_when_focused_input_has_no_actionable_result():
+def test_prompt_keeps_conditional_type_and_result_priority_for_focused_input():
     prompt = build_prompt(
         _request(
             ime_visible=True,
@@ -128,7 +128,8 @@ def test_prompt_prioritizes_type_when_focused_input_has_no_actionable_result():
     assert FOCUSED_INPUT_INSTRUCTION in prompt
     assert "같은 칸을 다시 누르는 tap보다" in prompt
     assert "type을 우선" in prompt
-    assert ACTIONABLE_RESULT_INSTRUCTION not in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION in prompt
+    assert "입력창 외의 현재 화면 요소도 모두 확인하세요" in prompt
     assert "입력 완료 또는 목표 달성을 추론하지 마세요" in prompt
     assert "editable=True" in prompt
     assert "focused=True" in prompt
@@ -204,7 +205,7 @@ def test_unknown_ime_keeps_visible_result_priority_for_old_client():
     assert ACTIONABLE_RESULT_INSTRUCTION in prompt
 
 
-def test_unlabeled_or_editable_clickable_element_is_not_treated_as_result():
+def test_result_priority_does_not_depend_on_preclassified_clickable_candidate():
     prompt = build_prompt(
         _request(
             ime_visible=True,
@@ -216,13 +217,12 @@ def test_unlabeled_or_editable_clickable_element_is_not_treated_as_result():
                     editable=True,
                     focused=True,
                 ),
-                UiElement(node_id="n2", label="", clickable=True),
             ],
         )
     )
 
     assert FOCUSED_INPUT_INSTRUCTION in prompt
-    assert ACTIONABLE_RESULT_INSTRUCTION not in prompt
+    assert ACTIONABLE_RESULT_INSTRUCTION in prompt
 
 
 def test_prompt_does_not_claim_input_ready_without_focused_editable_element():
