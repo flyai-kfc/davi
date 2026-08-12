@@ -42,4 +42,5 @@
     <dimen name="davi_button_elevation">2dp</dimen>
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>
+    <dimen name="davi_logo_size">72dp</dimen>
 </resources>

@@ -18,15 +18,19 @@
         android:theme="@style/Theme.Davi"
         android:usesCleartextTraffic="false">
 
+        <!-- 릴리스 진입점: 온보딩 → 대화 화면(#123). 대화 화면은 외부 인텐트를 받지 않는다. -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:name=".OnboardingActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ConversationActivity"
+            android:exported="false" />
 
         <!-- 화면 읽기 + 안내 루프의 본체. 시스템이 이름으로 바인딩하므로 exported=true -->
         <service
