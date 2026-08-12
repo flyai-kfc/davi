@@ -36,7 +36,14 @@ object UiTreeSerializer {
 
     private const val MAX_LABEL_CHARS = 120
 
+    /** NumberPicker 내부 구현이 wrapper를 두는 경우에도 가까운 최대 세 단계까지만 허용한다. */
+    private const val MAX_ADJUSTABLE_ANCESTOR_DEPTH = 3
+
     private val WHITESPACE = Regex("\\s+")
+
+    /** 시·분·날짜 picker에서 관측되는 "6, 시간", "00, 분" 같은 짧은 선택값만 허용한다. */
+    private val ADJUSTABLE_NUMERIC_LABEL =
+        Regex("""^\d{1,4}(?:\s*(?:[,،]\s*)?[\p{L}]{1,12})?$""")
 
     /**
      * 런처 페이지 인디케이터(dot)의 content-desc. 예: "6 페이지 중 2 페이지입니다."
@@ -113,7 +120,9 @@ object UiTreeSerializer {
 
         var childrenAbsorbed = absorbed
 
-        val ownTextValue = ownText(node)
+        // 일반 편집값은 계속 숨긴다. 다만 이 노드 자체가 NumberPicker의 직접 조작 파츠라는
+        // 구조적 근거가 있을 때만 현재 숫자 선택값을 별도 요소로 보존한다.
+        val ownTextValue = ownText(node, allowAdjustableNumericValue = true)
         val isPageDot = ownTextValue != null && parsePageDot(ownTextValue) != null
         var emitted = false
 
@@ -297,10 +306,29 @@ object UiTreeSerializer {
      * 자기가 들고 있는 안전한 라벨.
      *
      * 편집 가능한 노드의 `text`와 contentDescription은 사용자가 입력한 원문을 되풀이할 수 있으므로
-     * 읽지 않는다. 앱이 제공한 hint만 사용하고, 없으면 빈 label의 EditText로 보낸다.
+     * 기본적으로 읽지 않는다. 예외는 보이고 활성화된 비밀번호 아닌 노드가 직접 조작 action을
+     * 제공하고, 가까운 조상이 조정 가능한 NumberPicker인 짧은 숫자 label뿐이다. 이 예외도
+     * [allowAdjustableNumericValue]가 참인 자기 노드 직렬화에서만 적용해 조상 label로 합쳐지지 않는다.
      */
-    private fun ownText(node: AccessibilityNodeInfo): String? {
+    private fun ownText(
+        node: AccessibilityNodeInfo,
+        allowAdjustableNumericValue: Boolean = false,
+    ): String? {
         if (node.isEditable) {
+            if (allowAdjustableNumericValue) {
+                val rawLabel = node.text?.toString()?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: node.contentDescription?.toString()?.trim()
+                adjustableNumericLabel(
+                    rawLabel = rawLabel,
+                    editable = node.isEditable,
+                    visibleToUser = node.isVisibleToUser,
+                    enabled = node.isEnabled,
+                    password = node.isPassword,
+                    hasDirectAction = hasDirectManipulationAction(node),
+                    hasNearbyAdjustableAncestor = hasNearbyAdjustableAncestor(node),
+                )?.let { return it }
+            }
             return editableLabel(node.hintText)
         }
         val text = node.text?.toString()?.trim()
@@ -315,6 +343,83 @@ object UiTreeSerializer {
         val hint = hintText?.toString()?.trim()
         return hint?.takeIf { it.isNotEmpty() }
     }
+
+    /** Android 객체 없이 NumberPicker 값 공개 조건과 개인정보 경계를 테스트하기 위한 순수 함수. */
+    internal fun adjustableNumericLabel(
+        rawLabel: CharSequence?,
+        editable: Boolean,
+        visibleToUser: Boolean,
+        enabled: Boolean,
+        password: Boolean,
+        hasDirectAction: Boolean,
+        hasNearbyAdjustableAncestor: Boolean,
+    ): String? {
+        if (
+            !editable || !visibleToUser || !enabled || password ||
+            !hasDirectAction || !hasNearbyAdjustableAncestor
+        ) {
+            return null
+        }
+        val label = rawLabel?.toString()?.replace(WHITESPACE, " ")?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return label.takeIf { isShortNumericControlLabel(it) }
+    }
+
+    /** 구조 검증 뒤 보존된 선택값을 화면 시그니처에서도 식별하기 위한 공통 형식 판정. */
+    internal fun isShortNumericControlLabel(label: CharSequence?): Boolean {
+        val normalized = label?.toString()?.replace(WHITESPACE, " ")?.trim() ?: return false
+        return ADJUSTABLE_NUMERIC_LABEL.matches(normalized)
+    }
+
+    /** 클릭/선택/값 조정처럼 사용자가 이 노드 자체를 직접 조작할 수 있는 action만 인정한다. */
+    private fun hasDirectManipulationAction(node: AccessibilityNodeInfo): Boolean =
+        node.actionList.any {
+            it.id == AccessibilityAction.ACTION_CLICK.id ||
+                it.id == AccessibilityAction.ACTION_LONG_CLICK.id ||
+                it.id == AccessibilityAction.ACTION_SELECT.id ||
+                it.id == AccessibilityAction.ACTION_SET_PROGRESS.id
+        }
+
+    /** 앱·resource-id가 아니라 가까운 접근성 구조만으로 NumberPicker 소속 여부를 확인한다. */
+    private fun hasNearbyAdjustableAncestor(node: AccessibilityNodeInfo): Boolean {
+        var ancestor = node.parent
+        repeat(MAX_ADJUSTABLE_ANCESTOR_DEPTH) {
+            val current = ancestor ?: return false
+            val hasAdjustmentAction = current.actionList.any {
+                it.id == AccessibilityAction.ACTION_SCROLL_FORWARD.id ||
+                    it.id == AccessibilityAction.ACTION_SCROLL_BACKWARD.id ||
+                    it.id == AccessibilityAction.ACTION_SCROLL_UP.id ||
+                    it.id == AccessibilityAction.ACTION_SCROLL_DOWN.id ||
+                    it.id == AccessibilityAction.ACTION_SCROLL_LEFT.id ||
+                    it.id == AccessibilityAction.ACTION_SCROLL_RIGHT.id ||
+                    it.id == AccessibilityAction.ACTION_SET_PROGRESS.id
+            }
+            if (
+                isAdjustableControlAncestor(
+                    visibleToUser = current.isVisibleToUser,
+                    enabled = current.isEnabled,
+                    role = roleOf(current),
+                    scrollable = current.isScrollable,
+                    hasAdjustmentAction = hasAdjustmentAction,
+                )
+            ) {
+                return true
+            }
+            ancestor = current.parent
+        }
+        return false
+    }
+
+    internal fun isAdjustableControlAncestor(
+        visibleToUser: Boolean,
+        enabled: Boolean,
+        role: String,
+        scrollable: Boolean,
+        hasAdjustmentAction: Boolean,
+    ): Boolean = visibleToUser && enabled &&
+        role.endsWith("NumberPicker") &&
+        (scrollable || hasAdjustmentAction)
 
     /** 입력 원문이 구현별 자손 노드로 새는 것을 막는 순회 경계. */
     internal fun shouldInspectDescendants(editable: Boolean): Boolean = !editable

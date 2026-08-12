@@ -193,8 +193,10 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
   전송한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 분류하며 앱을 종료하지 않는다.
 - `OverlayController` + `HighlightOverlayView` — 서버가 고른 대상에 테두리를 그리고 안내문을 상자에 담아 함께 보여준다. `done`이면 지운다.
 - `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다. 스크롤 메타·페이지 dot과
-  `editable`·`focused`·`ime_visible`도 채운다. 편집 요소의 입력된 `text`와 IME 키 트리는 보내지
-  않고 hint만 label 후보로 쓴다(#112).
+  `editable`·`focused`·`ime_visible`도 채운다. 일반 편집 요소의 입력된 `text`와 IME 키 트리는 보내지
+  않고 hint만 label 후보로 쓴다(#112). `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
+  보임·활성·조작 action·가까운 조정 가능 조상을 확인한 짧은 숫자 label만 예외로 보존한다.
+  이 선택값의 숫자는 화면 시그니처에도 포함해 picker 스크롤 뒤 후속 안내를 다시 요청한다.
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **관통에서 드러난 것 (다음 작업의 근거)**

@@ -33,6 +33,34 @@ class ScreenSignatureTest {
     }
 
     @Test
+    fun `NumberPicker 선택 숫자가 바뀌면 새 화면 시그니처다`() {
+        // SM-S921N 삼성 시계는 선택된 분을 editable EditText의 "00, 분" 형태로 노출한다.
+        // 일반 숫자처럼 지우면 스크롤로 30분에 맞춰도 후속 요청이 나가지 않는다.
+        val at00 = screen(
+            UiElement(nodeId = "n1", label = "00, 분", role = "EditText", editable = true),
+        )
+        val at30 = screen(
+            UiElement(nodeId = "n1", label = "30, 분", role = "EditText", editable = true),
+        )
+
+        assertNotEquals(ScreenSignature.of(at00), ScreenSignature.of(at30))
+    }
+
+    @Test
+    fun `NumberPicker 주변 버튼의 숫자만 바뀌는 것은 volatile로 유지한다`() {
+        val before = screen(
+            UiElement(nodeId = "n1", label = "29", role = "Button", clickable = true),
+            UiElement(nodeId = "n2", label = "31", role = "Button", clickable = true),
+        )
+        val after = screen(
+            UiElement(nodeId = "n1", label = "30", role = "Button", clickable = true),
+            UiElement(nodeId = "n2", label = "32", role = "Button", clickable = true),
+        )
+
+        assertEquals(ScreenSignature.of(before), ScreenSignature.of(after))
+    }
+
+    @Test
     fun `요소가 늘어나면 다른 시그니처다`() {
         // 관통에서 실제로 나온 전환 과도기: 카메라 elements=1 -> 14 (#32).
         val settling = screen(UiElement(nodeId = "n1", label = "카메라", clickable = true))
