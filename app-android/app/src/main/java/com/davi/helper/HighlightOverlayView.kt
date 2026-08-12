@@ -27,6 +27,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     private var hasTarget = false
     private var instruction = ""
 
+    /** 안내창이 가리지 말아야 할 영역(키보드·다이얼로그). 창 목록은 서비스만 볼 수 있어 받아 온다. */
+    private var avoid: List<GuideBoxLayout.Avoid> = emptyList()
+
     /** 이 뷰가 화면에서 실제로 어디에 놓였는지. 좌표 보정에 쓴다. */
     private val locationOnScreen = IntArray(2)
 
@@ -66,10 +69,15 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
 
     /** 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다. */
-    fun setGuide(bounds: Rect?, instruction: String) {
+    fun setGuide(
+        bounds: Rect?,
+        instruction: String,
+        avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+    ) {
         hasTarget = bounds != null
         if (bounds != null) target.set(bounds)
         this.instruction = instruction.trim()
+        this.avoid = avoid
         relayout()
         invalidate()
     }
@@ -77,6 +85,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun clearTarget() {
         hasTarget = false
         instruction = ""
+        avoid = emptyList()
         layout = null
         invalidate()
     }
@@ -157,6 +166,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                 measure = { text, maxWidth ->
                     instructionPaint.breakText(text, true, maxWidth, null)
                 },
+                avoid = avoid,
             )
         }
     }

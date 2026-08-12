@@ -22,6 +22,7 @@ class GuideBoxLayoutTest {
         instruction: String,
         target: GuideBoxLayout.Bounds? = null,
         canvas: GuideBoxLayout.Bounds = GuideBoxLayout.Bounds(0f, 0f, 1000f, 2000f),
+        avoid: List<GuideBoxLayout.Avoid> = emptyList(),
     ) = GuideBoxLayout.compute(
         instruction = instruction,
         canvas = canvas,
@@ -30,6 +31,7 @@ class GuideBoxLayoutTest {
         padding = PADDING,
         lineHeight = LINE_HEIGHT,
         measure = measure,
+        avoid = avoid,
     )
 
     @Test
@@ -103,6 +105,40 @@ class GuideBoxLayoutTest {
     }
 
     @Test
+    fun `다이얼로그 본문을 피해 그 밖으로 나간다`() {
+        // 2026-08-12 SM-S921N 실측 배치: 다이얼로그가 화면 하단 밴드(1470~2178)로 뜨고
+        // 대상은 그 안의 버튼이다. 지금까지는 "대상 위"가 곧 다이얼로그 본문이었다(#38 4번).
+        val screen = GuideBoxLayout.Bounds(0f, 103f, 1080f, 2178f)
+        val dialog = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1470f, 1080f, 2178f), hard = false)
+
+        val layout = compute(
+            "가나다",
+            target = GuideBoxLayout.Bounds(600f, 2000f, 900f, 2100f),
+            canvas = screen,
+            avoid = listOf(dialog),
+        )
+
+        assertEquals(103f + MARGIN, layout?.box?.top)
+    }
+
+    @Test
+    fun `타이핑 안내면 키보드를 절대 피한다`() {
+        val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = true)))
+
+        // 키보드를 건드리지 않는 자리 중 첫 번째(대상 위).
+        assertEquals(918f, layout?.box?.top)
+    }
+
+    @Test
+    fun `무관한 키보드는 덜 가리는 쪽을 고른다`() {
+        // 같은 화면이라도 이번 안내가 타이핑이 아니면 키보드는 조작 대상이 아니다.
+        // 그러면 키보드를 조금 덮더라도 겹침이 가장 작은 자리가 낫다.
+        val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = false)))
+
+        assertEquals(1120f, layout?.box?.top)
+    }
+
+    @Test
     fun `상자 폭은 여백을 뺀 만큼이다`() {
         val layout = compute("가나다")
 
@@ -112,6 +148,9 @@ class GuideBoxLayoutTest {
 
     private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
 
+    private fun keyboard(hard: Boolean) =
+        GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1150f, 1000f, 2000f), hard = hard)
+
     private companion object {
         const val CHAR_WIDTH = 10f
         const val MARGIN = 20f
@@ -120,5 +159,9 @@ class GuideBoxLayoutTest {
 
         /** 상자 안쪽 폭 928 / 글자폭 10. */
         const val LINE_CHARS = 92
+
+        /** 키보드 위 입력 대상. 아래(1120)는 키보드를 조금 물고, 위(918)는 다이얼로그를 문다. */
+        val TARGET = GuideBoxLayout.Bounds(100f, 1000f, 400f, 1100f)
+        val DIALOG = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 0f, 1000f, 980f), hard = false)
     }
 }

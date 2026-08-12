@@ -11,8 +11,17 @@ package com.davi.helper
  */
 class GuideDisplayState {
 
-    /** 오버레이에 그릴 내용. [bounds]는 `[left, top, right, bottom]`, 강조가 없으면 null. */
-    data class Content(val bounds: List<Int>?, val text: String)
+    /**
+     * 오버레이에 그릴 내용. [bounds]는 `[left, top, right, bottom]`, 강조가 없으면 null.
+     *
+     * [actionType]은 안내창이 무엇을 피해야 하는지를 가른다 — 타이핑 안내면 키보드가 곧
+     * 조작 대상이라 절대 가리면 안 된다(#38 5번). 우리가 만든 안내(정체·상한)는 null이다.
+     */
+    data class Content(
+        val bounds: List<Int>?,
+        val text: String,
+        val actionType: ActionType? = null,
+    )
 
     private var guide: Content? = null
 
@@ -29,8 +38,13 @@ class GuideDisplayState {
     private var visible = false
 
     /** [signature] 화면에 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
-    fun show(signature: String, bounds: List<Int>?, text: String): Content {
-        val content = Content(bounds, text)
+    fun show(
+        signature: String,
+        bounds: List<Int>?,
+        text: String,
+        actionType: ActionType? = null,
+    ): Content {
+        val content = Content(bounds, text, actionType)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = true
@@ -90,6 +104,10 @@ class GuideDisplayState {
     fun stuckContent(suffix: String): Content? {
         val current = guide ?: return null
         visible = true
-        return if (stuckSuffixAllowed) Content(current.bounds, "${current.text}\n$suffix") else current
+        return if (stuckSuffixAllowed) {
+            Content(current.bounds, "${current.text}\n$suffix", current.actionType)
+        } else {
+            current
+        }
     }
 }

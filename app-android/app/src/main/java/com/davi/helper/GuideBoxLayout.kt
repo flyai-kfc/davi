@@ -22,12 +22,22 @@ object GuideBoxLayout {
 
     data class Bounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
+    /**
+     * 안내창이 가리지 말아야 할 영역.
+     *
+     * [hard]는 **가리면 지금 안내한 조작이 불가능해지는** 영역이다 — 강조 대상, 그리고 이번
+     * 안내가 타이핑일 때의 키보드. 그 외(무관하게 떠 있는 키보드, 다이얼로그 본문)는 가려도
+     * 조작은 되므로 최선 노력이다(#38 4·5번).
+     */
+    data class Avoid(val bounds: Bounds, val hard: Boolean)
+
     /** 그릴 것이 확정된 안내창. [lines]는 이미 접힌 상태다. */
     data class Layout(val lines: List<String>, val box: Bounds)
 
     /**
      * @param canvas   그릴 수 있는 범위(테두리 두께를 물린 뒤의 화면 안쪽).
-     * @param target   강조 대상. 없으면 null이고, 그때는 화면 아래에 붙인다.
+     * @param target   강조 대상. 없으면 null이고, 그때는 화면 아래에 붙인다. 언제나 절대 회피다.
+     * @param avoid    대상 밖의 회피 영역.
      * @return 그릴 것이 없으면 null.
      */
     fun compute(
@@ -38,6 +48,7 @@ object GuideBoxLayout {
         padding: Float,
         lineHeight: Float,
         measure: Measure,
+        avoid: List<Avoid> = emptyList(),
     ): Layout? {
         if (instruction.isEmpty()) return null
 
@@ -48,23 +59,66 @@ object GuideBoxLayout {
         val lines = wrapLines(instruction, textWidth, measure)
         val height = lines.size * lineHeight + padding * 2
 
-        val top = topFor(height, canvas, target, margin)
+        val top = topFor(height, left, right, canvas, target, avoid, margin)
         return Layout(lines, Bounds(left, top, right, top + height))
     }
 
-    /** 대상을 가리지 않도록 위 → 아래 순으로 자리를 고르고, 둘 다 안 되면 화면 아래에 붙인다. */
-    private fun topFor(height: Float, canvas: Bounds, target: Bounds?, margin: Float): Float {
-        if (target == null) return bottomAnchored(height, canvas, margin)
+    /**
+     * 들어갈 수 있는 자리 중 **절대 회피를 안 건드리는 자리**를 고르고, 그중 최선 노력 영역과
+     * 겹치는 넓이가 가장 작은 것을 쓴다. 전부 겹치면 덜 겹치는 쪽이다.
+     *
+     * 동점이면 후보 순서를 따른다(대상 위 → 대상 아래 → 화면 아래 → 화면 위).
+     * [minWith]가 첫 최솟값을 돌려주므로 기존 우선순위가 그대로 유지된다.
+     */
+    private fun topFor(
+        height: Float,
+        left: Float,
+        right: Float,
+        canvas: Bounds,
+        target: Bounds?,
+        avoid: List<Avoid>,
+        margin: Float,
+    ): Float {
+        val candidates = candidateTops(height, canvas, target, margin)
+        if (candidates.isEmpty()) return bottomAnchored(height, canvas, margin)
 
-        val above = target.top - margin - height
-        val below = target.bottom + margin
-        return when {
-            above >= canvas.top -> above
-            below + height <= canvas.bottom -> below
-            else -> bottomAnchored(height, canvas, margin)
-        }
+        // 대상은 언제나 절대 회피다 — 무엇을 누를지 안 보이면 안내가 성립하지 않는다.
+        val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
+        val soft = avoid.filterNot { it.hard }.map { it.bounds }
+
+        fun boxAt(top: Float) = Bounds(left, top, right, top + height)
+        return candidates.minWith(
+            compareBy({ overlap(boxAt(it), hard) }, { overlap(boxAt(it), soft) }),
+        )
     }
 
+    /** 상자가 화면 안에 온전히 들어가는 자리만 남긴다. */
+    private fun candidateTops(
+        height: Float,
+        canvas: Bounds,
+        target: Bounds?,
+        margin: Float,
+    ): List<Float> {
+        val tops = mutableListOf<Float>()
+        if (target != null) {
+            tops += target.top - margin - height
+            tops += target.bottom + margin
+        }
+        tops += canvas.bottom - margin - height
+        tops += canvas.top + margin
+        return tops.filter { it >= canvas.top && it + height <= canvas.bottom }.distinct()
+    }
+
+    private fun overlap(box: Bounds, regions: List<Bounds>): Float =
+        regions.fold(0f) { sum, region -> sum + intersectionArea(box, region) }
+
+    private fun intersectionArea(a: Bounds, b: Bounds): Float {
+        val width = minOf(a.right, b.right) - maxOf(a.left, b.left)
+        val height = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        return if (width <= 0f || height <= 0f) 0f else width * height
+    }
+
+    /** 어느 자리도 온전히 들어가지 않을 때. 상자가 화면보다 크면 위쪽을 살린다. */
     private fun bottomAnchored(height: Float, canvas: Bounds, margin: Float): Float =
         (canvas.bottom - margin - height).coerceAtLeast(canvas.top)
 

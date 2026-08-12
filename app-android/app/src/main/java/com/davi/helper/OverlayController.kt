@@ -31,14 +31,23 @@ class OverlayController(private val context: Context) {
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
 
-    /** 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다. */
-    fun showGuide(bounds: Rect?, instruction: String) {
+    /**
+     * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
+     *
+     * [avoid]는 안내창이 가리지 말아야 할 영역이다(키보드·다이얼로그). 강조 대상은 여기 넣지
+     * 않는다 — 뷰가 이미 절대 회피로 다룬다.
+     */
+    fun showGuide(
+        bounds: Rect?,
+        instruction: String,
+        avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+    ) {
         if (!canDraw()) {
             Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
             return
         }
         val target = view ?: createView() ?: return
-        target.setGuide(bounds, instruction)
+        target.setGuide(bounds, instruction, avoid)
     }
 
     fun clear() {

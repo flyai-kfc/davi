@@ -22,7 +22,16 @@ object ActiveWindowResolver {
     /** 이보다 작은 창은 상태표시줄·네비게이션바 따위로 보고 후보에서 뺀다(실제 화면 대비 비율). */
     private const val MIN_AREA_RATIO = 0.15
 
-    fun resolve(service: AccessibilityService): AccessibilityNodeInfo? {
+    /**
+     * 활성 창이 화면의 이 비율을 못 채우면 다이얼로그로 본다.
+     * 상태표시줄·컷아웃만큼만 작게 잡히는 앱 창을 오인하지 않도록 여유를 둔다.
+     */
+    private const val FULL_SCREEN_MIN_AREA_RATIO = 0.9
+
+    /** 고른 창의 루트와 그 창이 화면에서 차지한 영역. [bounds]는 폴백 경로에서 null이다. */
+    data class Resolved(val root: AccessibilityNodeInfo, val bounds: Rect?)
+
+    fun resolve(service: AccessibilityService): Resolved? {
         val ownPackage = service.packageName
 
         val candidates = runCatching { service.windows }.getOrNull().orEmpty()
@@ -40,8 +49,23 @@ object ActiveWindowResolver {
         return candidates
             .filter { (window, _) -> area(window).toDouble() / displayArea >= MIN_AREA_RATIO }
             .maxByOrNull { (window, _) -> area(window) }
-            ?.second
-            ?: fallbackRoot(service, ownPackage)
+            ?.let { (window, root) -> Resolved(root, Rect().also { window.getBoundsInScreen(it) }) }
+            ?: fallbackRoot(service, ownPackage)?.let { Resolved(it, null) }
+    }
+
+    /**
+     * 이 창이 화면 전체가 아니면 다이얼로그로 본다.
+     *
+     * **layer 비교로는 알 수 없다.** 다이얼로그가 뜨면 뒤의 앱 창이 창 목록에서 아예 빠져
+     * 비교 대상이 없다(2026-08-12 SM-S921N 실측: "강제 중지" 확인 창이 유일한
+     * `TYPE_APPLICATION`이었고 bounds는 화면 하단 밴드였다).
+     */
+    fun isPartial(windowArea: Long, displayArea: Long): Boolean =
+        windowArea.toDouble() / displayArea.coerceAtLeast(1L) < FULL_SCREEN_MIN_AREA_RATIO
+
+    fun displayArea(service: AccessibilityService): Long {
+        val metrics = service.resources.displayMetrics
+        return (metrics.widthPixels.toLong() * metrics.heightPixels.toLong()).coerceAtLeast(1L)
     }
 
     /**
@@ -56,11 +80,6 @@ object ActiveWindowResolver {
     ): AccessibilityNodeInfo? {
         val root = service.rootInActiveWindow ?: return null
         return if (root.packageName?.toString() == ownPackage) null else root
-    }
-
-    private fun displayArea(service: AccessibilityService): Long {
-        val metrics = service.resources.displayMetrics
-        return (metrics.widthPixels.toLong() * metrics.heightPixels.toLong()).coerceAtLeast(1L)
     }
 
     private fun area(window: AccessibilityWindowInfo): Long {
