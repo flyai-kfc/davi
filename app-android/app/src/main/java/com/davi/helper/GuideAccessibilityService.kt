@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,6 +29,9 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+
+    /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
+    private var activeWindowBounds: Rect? = null
 
     /** 도그푸딩 화이트리스트용 해시(#41). debug에서만 값이 있고 release는 항상 null이다. */
     private var dogfoodDeviceId: String? = null
@@ -126,7 +130,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun sampleScreen() {
         val session = GuideSession.active() ?: return
 
-        val root = ActiveWindowResolver.resolve(this)
+        val resolved = ActiveWindowResolver.resolve(this)
+        activeWindowBounds = resolved?.bounds
+        val root = resolved?.root
         if (root == null) {
             // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
             // 내용은 display가 기억한다 — 유효 화면으로 돌아오면 아래 redisplay가 되살린다.
@@ -216,8 +222,48 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        overlay?.showGuide(rect, content.text)
+        overlay?.showGuide(rect, content.text, avoidRegions(content.actionType))
     }
+
+    /**
+     * 안내창이 가리지 말아야 할 영역(#38 4·5번). 창 목록은 서비스만 볼 수 있어 여기서 모은다.
+     * 메인 스레드에서만 불린다 — 응답 경로도 [mainHandler]를 거친다.
+     *
+     * 등급은 "가리면 지금 안내한 조작이 불가능해지는가"로 가른다. 타이핑 안내의 키보드는
+     * 조작 대상 자체라 절대 회피고, 무관하게 떠 있는 키보드와 다이얼로그 본문은 최선 노력이다.
+     */
+    private fun avoidRegions(actionType: ActionType?): List<GuideBoxLayout.Avoid> {
+        val regions = mutableListOf<GuideBoxLayout.Avoid>()
+
+        // IME 창은 focused·active가 둘 다 false로 온다(2026-08-12 SM-S921N 실측) — type으로 찾는다.
+        runCatching { windows }.getOrNull().orEmpty()
+            .firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            ?.let { ime -> Rect().also { ime.getBoundsInScreen(it) } }
+            ?.takeIf { !it.isEmpty }
+            ?.let { regions += avoid(it, hard = actionType == ActionType.TYPE) }
+
+        // 다이얼로그는 따로 찾지 않는다 — 뜨는 순간 그게 곧 활성 창이다(ActiveWindowResolver.isPartial).
+        activeWindowBounds
+            ?.takeIf {
+                ActiveWindowResolver.isPartial(
+                    windowArea = it.width().toLong() * it.height().toLong(),
+                    displayArea = ActiveWindowResolver.displayArea(this),
+                )
+            }
+            ?.let { regions += avoid(it, hard = false) }
+
+        return regions
+    }
+
+    private fun avoid(rect: Rect, hard: Boolean) = GuideBoxLayout.Avoid(
+        bounds = GuideBoxLayout.Bounds(
+            left = rect.left.toFloat(),
+            top = rect.top.toFloat(),
+            right = rect.right.toFloat(),
+            bottom = rect.bottom.toFloat(),
+        ),
+        hard = hard,
+    )
 
     /** @return 요청이 실제로 시작됐는가. 시작하지 못했으면 호출자가 "보냈다"고 기록하면 안 된다. */
     private fun requestNextStep(
@@ -425,7 +471,7 @@ class GuideAccessibilityService : AccessibilityService() {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
-        draw(display.show(requestSignature, bounds, action.instruction))
+        draw(display.show(requestSignature, bounds, action.instruction, action.actionType))
     }
 
     private fun logScreenDetails(result: UiTreeSerializer.Result) {
