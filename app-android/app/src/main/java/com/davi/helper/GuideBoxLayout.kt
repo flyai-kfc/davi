@@ -56,11 +56,37 @@ object GuideBoxLayout {
         val right = canvas.right - margin
         // 줄바꿈 기준은 **상자 안쪽 폭**이다. 상자 폭 그대로 재면 글자가 상자 밖으로 삐져나온다.
         val textWidth = (right - left - padding * 2).coerceAtLeast(1f)
-        val lines = wrapLines(instruction, textWidth, measure)
+        val wrapped = wrapLines(instruction, textWidth, measure)
+
+        // 높이 상한. 상자가 화면보다 커지면 자리 후보가 0개가 되어 회피 등급 전체가 무효가
+        // 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
+        // 반이면 위나 아래 어느 한쪽은 반드시 비므로 후보가 산다. 잘림 표현은 W8에서 재론.
+        val maxLines = (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2) / lineHeight)
+            .toInt().coerceAtLeast(1)
+        val lines = truncate(wrapped, maxLines, textWidth, measure)
         val height = lines.size * lineHeight + padding * 2
 
         val top = topFor(height, left, right, canvas, target, avoid, margin)
         return Layout(lines, Bounds(left, top, right, top + height))
+    }
+
+    /** 상한을 넘는 줄을 버리고 마지막 줄 끝에 말줄임을 단다. 말줄임도 폭 안에 들어가야 한다. */
+    private fun truncate(
+        lines: List<String>,
+        maxLines: Int,
+        maxWidth: Float,
+        measure: Measure,
+    ): List<String> {
+        if (lines.size <= maxLines) return lines
+        val kept = lines.take(maxLines).toMutableList()
+        var last = kept.last()
+        while (last.isNotEmpty()) {
+            val candidate = last + ELLIPSIS
+            if (measure.fits(candidate, maxWidth) >= candidate.length) break
+            last = last.dropLast(1).trimEnd()
+        }
+        kept[kept.size - 1] = last + ELLIPSIS
+        return kept
     }
 
     /**
@@ -152,4 +178,9 @@ object GuideBoxLayout {
         }
         return lines
     }
+
+    /** 상자가 그리기 영역에서 차지할 수 있는 최대 비율. [truncate]가 이 상한을 강제한다. */
+    private const val MAX_HEIGHT_RATIO = 0.5f
+
+    private const val ELLIPSIS = "…"
 }

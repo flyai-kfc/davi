@@ -146,6 +146,43 @@ class GuideBoxLayoutTest {
         assertEquals(1000f - MARGIN, layout?.box?.right)
     }
 
+    @Test
+    fun `화면보다 긴 안내문은 절반 상한에서 잘리고 말줄임이 붙는다`() {
+        // canvas 높이 2000 → 상한 1000 → (1000-32)/30 = 32줄.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long)
+
+        assertEquals(32, layout?.lines?.size)
+        assertTrue(layout!!.lines.last().endsWith("…"))
+        assertTrue(layout.box.bottom - layout.box.top <= 1000f)
+    }
+
+    @Test
+    fun `말줄임이 붙은 마지막 줄도 폭 안에 들어간다`() {
+        // 좁은 화면: 안쪽 폭 6글자. 마지막 줄이 꽉 찬 채 말줄임을 덧붙이면 폭을 넘는다.
+        val narrow = GuideBoxLayout.Bounds(0f, 0f, MARGIN * 2 + PADDING * 2 + CHAR_WIDTH * 6, 200f)
+        val long = (1..10).joinToString("\n") { "가나다라마바" }
+
+        val layout = compute(long, canvas = narrow)
+
+        assertTrue(layout!!.lines.last().endsWith("…"))
+        assertTrue(layout.lines.last().length <= 6)
+    }
+
+    @Test
+    fun `상한으로 잘린 뒤에는 회피가 다시 동작한다`() {
+        // 잘리기 전이라면 상자가 화면을 넘어 후보 0개 → 회피 무시 폴백이었다(2026-08-12 실측).
+        // 상한 덕에 후보가 살아나 hard 키보드를 피하는 것을 고정한다.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+        val keyboardTop = 1150f
+
+        val layout = compute(long, target = TARGET, avoid = listOf(keyboard(hard = true)))
+
+        // 키보드(1150~2000)와 겹치지 않는 유일한 방향은 위쪽이다.
+        assertTrue(layout!!.box.bottom <= keyboardTop)
+    }
+
     private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
 
     private fun keyboard(hard: Boolean) =
