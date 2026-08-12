@@ -184,6 +184,20 @@ class GuideBoxLayoutTest {
     }
 
     @Test
+    fun `작은 영역을 통째로 가리느니 큰 영역을 조금 가린다`() {
+        // 넓이로 재면 작은 것이 언제나 먼저 희생된다 — 입력칸(12,000)을 통째로 덮는 자리가
+        // 키보드를 62px 무는 자리(59,520)보다 싸게 나온다. 비율로 재면 1.0 vs 0.07이다.
+        val screen = GuideBoxLayout.Bounds(0f, 880f, 1000f, 2000f)
+        val field = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(400f, 900f, 600f, 960f), hard = true)
+        val keyboard = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1200f, 1000f, 2000f), hard = true)
+
+        val layout = compute("가나다", canvas = screen, avoid = listOf(field, keyboard))
+
+        // 입력칸(900~960)을 덮는 화면 위(900)가 아니라 키보드를 조금 무는 화면 아래(1918).
+        assertEquals(1918f, layout?.box?.top)
+    }
+
+    @Test
     fun `절반 상자로 hard를 못 피하면 3줄로 떨어진다`() {
         // 캡처 9 배치의 축약: 대상(1000~1100) 위 공간 980, hard 키보드(1150~) 위 빈 띠 50.
         // 절반 상자(32줄, 992)는 어디에도 못 들어가 대상을 물고, 3줄 상자(122)는

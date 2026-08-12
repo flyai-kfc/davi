@@ -65,7 +65,7 @@ object GuideBoxLayout {
             .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
-        if (primary.hardOverlap == 0f) return primary.layout
+        if (primary.hardCoverage == 0f) return primary.layout
 
         // 2차: 절반으로도 절대 회피가 안 피해지면 3줄로 줄여 한 번 재시도한다.
         // 줄 수 고정인 이유: 비율 상한은 글자가 작아지면 줄 수가 늘어 상자가 도로 커진다 —
@@ -79,12 +79,12 @@ object GuideBoxLayout {
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
             canvas, target, avoid, margin, padding, lineHeight, measure)
         // 상자를 줄여도 이득이 없으면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
-        return if (compact.hardOverlap < primary.hardOverlap) compact.layout else primary.layout
+        return if (compact.hardCoverage < primary.hardCoverage) compact.layout else primary.layout
     }
 
-    private data class Attempt(val layout: Layout, val hardOverlap: Float)
+    private data class Attempt(val layout: Layout, val hardCoverage: Float)
 
-    /** [maxLines]로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 넓이를 함께 돌려준다. */
+    /** [maxLines]로 줄을 자르고 자리를 고른 뒤, 그 자리의 절대 회피 침범 비율을 함께 돌려준다. */
     private fun attempt(
         maxLines: Int,
         wrapped: List<String>,
@@ -106,7 +106,7 @@ object GuideBoxLayout {
         val top = topFor(height, left, right, canvas, target, avoid, margin)
         val box = Bounds(left, top, right, top + height)
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
-        return Attempt(Layout(lines, box), overlap(box, hard))
+        return Attempt(Layout(lines, box), coverage(box, hard))
     }
 
     /** 상한을 넘는 줄을 버리고 마지막 줄 끝에 말줄임을 단다. 말줄임도 폭 안에 들어가야 한다. */
@@ -129,8 +129,12 @@ object GuideBoxLayout {
     }
 
     /**
-     * 들어갈 수 있는 자리 중 **절대 회피를 안 건드리는 자리**를 고르고, 그중 최선 노력 영역과
-     * 겹치는 넓이가 가장 작은 것을 쓴다. 전부 겹치면 덜 겹치는 쪽이다.
+     * 들어갈 수 있는 자리 중 **절대 회피를 안 건드리는 자리**를 고르고, 그중 최선 노력 영역을
+     * 가장 덜 가리는 것을 쓴다. 전부 가리면 덜 가리는 쪽이다.
+     *
+     * **넓이가 아니라 비율로 잰다.** 넓이로 재면 작은 것이 언제나 먼저 희생된다 — 입력칸을
+     * 통째로 덮는 자리가 키보드를 살짝 물는 자리보다 "싸게" 나온다. 가려진 입력칸은 친 글자를
+     * 확인할 수 없고, 가려진 키는 누를 수 없다. 어느 쪽도 넓이에 비례해 나빠지지 않는다.
      *
      * 동점이면 후보 순서를 따른다(대상 위 → 대상 아래 → 화면 아래 → 화면 위).
      * [minWith]가 첫 최솟값을 돌려주므로 기존 우선순위가 그대로 유지된다.
@@ -153,7 +157,7 @@ object GuideBoxLayout {
 
         fun boxAt(top: Float) = Bounds(left, top, right, top + height)
         return candidates.minWith(
-            compareBy({ overlap(boxAt(it), hard) }, { overlap(boxAt(it), soft) }),
+            compareBy({ coverage(boxAt(it), hard) }, { coverage(boxAt(it), soft) }),
         )
     }
 
@@ -174,8 +178,15 @@ object GuideBoxLayout {
         return tops.filter { it >= canvas.top && it + height <= canvas.bottom }.distinct()
     }
 
-    private fun overlap(box: Bounds, regions: List<Bounds>): Float =
-        regions.fold(0f) { sum, region -> sum + intersectionArea(box, region) }
+    /**
+     * 회피 영역 중 **가장 심하게 가려지는 것의 비율**(0~1). 하나라도 통째로 가려지면 1에 가깝다.
+     * 합이 아니라 최댓값인 이유는, 여러 개를 조금씩 가리는 것보다 하나를 다 가리는 쪽이 나쁘기 때문이다.
+     */
+    private fun coverage(box: Bounds, regions: List<Bounds>): Float =
+        regions.maxOfOrNull { intersectionArea(box, it) / areaOf(it) } ?: 0f
+
+    private fun areaOf(bounds: Bounds): Float =
+        ((bounds.right - bounds.left) * (bounds.bottom - bounds.top)).coerceAtLeast(1f)
 
     private fun intersectionArea(a: Bounds, b: Bounds): Float {
         val width = minOf(a.right, b.right) - maxOf(a.left, b.left)
@@ -218,11 +229,17 @@ object GuideBoxLayout {
         return lines
     }
 
+    // ── 조정 지점 ─────────────────────────────────────────────────────────────
+    // 아래 두 값은 실측이 부족한 상태에서 정한 임시값이다(2026-08-12, 검증 기기 한 대·
+    // 글자 배율 두 개 기준). 조정은 이 두 줄만 고치면 되고, 근거는 실사용 화면이 쌓인 뒤
+    // 다시 잡는다. dp/px가 아니라 비율·개수라 dimens.xml로 빼지 않는다.
+
     /** 상자가 그리기 영역에서 차지할 수 있는 최대 비율. [truncate]가 이 상한을 강제한다. */
     private const val MAX_HEIGHT_RATIO = 0.5f
 
-    /** 절반 상자로 절대 회피를 못 피할 때 떨어지는 축소 줄 수. 임시값(2026-08-12). */
+    /** 절반 상자로 절대 회피를 못 피할 때 떨어지는 축소 줄 수. */
     private const val COMPACT_MAX_LINES = 3
+    // ─────────────────────────────────────────────────────────────────────────
 
     private const val ELLIPSIS = "…"
 }
