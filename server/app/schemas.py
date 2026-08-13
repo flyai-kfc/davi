@@ -1,7 +1,7 @@
 """앱 <-> 서버 계약. 이 스키마가 곧 API 계약이다(테스트로 고정한다).
 
 이 파일은 앱·서버·eval 셋이 동시에 무는 지점이라 바꾸면 세 곳이 함께 움직인다.
-결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C14) 참고.
+결정 근거는 server/CLAUDE.md "API 계약 결정"(C1~C15) 참고.
 
 두 가지 규칙을 지킨다(HANDOFF §10 실측):
 - **근거 필드가 먼저 온다.** GuideAction의 필드 선언 순서가 곧 Gemini `propertyOrdering`이고,
@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Self
 from uuid import UUID
@@ -316,4 +317,159 @@ class SlotFillState(BaseModel):
             raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
         if self.status is IntentDialogueStatus.READY and self.goal is None:
             raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        return self
+
+
+# --- 목표 앱 후보와 기기 내 대조 (#102, #128) -------------------------------
+
+MAX_APP_CANDIDATES = 5
+MAX_APP_PACKAGE_NAMES = 5
+MAX_APP_LABEL_ALIASES = 5
+MAX_APP_NAME_LENGTH = 100
+MAX_APP_CAPABILITY_LENGTH = 80
+APP_PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+
+
+class AppCandidateAvailability(StrEnum):
+    """기기 index가 후보 하나를 판정한 결과. 설치 여부 일반화가 아니라 launcher 범위다."""
+
+    LAUNCHABLE = "launchable"
+    NOT_FOUND = "not_found"
+    AMBIGUOUS = "ambiguous"
+    UNKNOWN = "unknown"
+
+
+class AppResolutionStatus(StrEnum):
+    """후보 생성 1단계와 기기 대조 뒤 최종 상태를 한 endpoint에서 구분한다."""
+
+    CANDIDATES = "candidates"
+    RESOLVED = "resolved"
+    NEEDS_USER_CHOICE = "needs_user_choice"
+    NEEDS_APP_NAME = "needs_app_name"
+    UNAVAILABLE_OR_UNKNOWN = "unavailable_or_unknown"
+
+
+class AppCandidate(BaseModel):
+    """서버가 제안한 일반 후보. 기기에서 발견한 package·label은 이 모델에 넣지 않는다."""
+
+    candidate_id: str = Field(pattern=r"^candidate-[1-5]$")
+    canonical_name: str = Field(min_length=1, max_length=MAX_APP_NAME_LENGTH)
+    package_names: list[str] = Field(default_factory=list, max_length=MAX_APP_PACKAGE_NAMES)
+    label_aliases: list[str] = Field(default_factory=list, max_length=MAX_APP_LABEL_ALIASES)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("canonical_name")
+    @classmethod
+    def normalize_canonical_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("후보 이름은 공백일 수 없다")
+        return stripped
+
+    @field_validator("package_names", "label_aliases")
+    @classmethod
+    def normalize_candidate_strings(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("후보 package/alias는 공백일 수 없다")
+        if any(len(value) > MAX_APP_NAME_LENGTH for value in normalized):
+            raise ValueError("후보 package/alias가 길이 상한을 넘었다")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("후보 package/alias는 중복될 수 없다")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_package_names(self) -> Self:
+        if any(APP_PACKAGE_NAME_PATTERN.fullmatch(value) is None for value in self.package_names):
+            raise ValueError("후보 Android package 이름이 올바르지 않다")
+        return self
+
+
+class AppCandidatePlan(BaseModel):
+    """목표에 직접 관련된 소수 후보. 앱은 이 값을 로컬 index 대조에만 쓴다."""
+
+    capability: str = Field(min_length=1, max_length=MAX_APP_CAPABILITY_LENGTH)
+    candidates: list[AppCandidate] = Field(default_factory=list, max_length=MAX_APP_CANDIDATES)
+
+    @field_validator("capability")
+    @classmethod
+    def normalize_capability(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("앱 capability는 공백일 수 없다")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_unique_candidates(self) -> Self:
+        ids = [candidate.candidate_id for candidate in self.candidates]
+        if len(set(ids)) != len(ids):
+            raise ValueError("candidate_id는 중복될 수 없다")
+        return self
+
+
+class AppCandidateResult(BaseModel):
+    candidate_id: str = Field(pattern=r"^candidate-[1-5]$")
+    status: AppCandidateAvailability
+
+
+class AppResolutionFeedback(BaseModel):
+    """서버가 제안한 plan을 무상태로 되돌리고 기기 판정은 ID/status만 붙인다."""
+
+    plan: AppCandidatePlan
+    candidate_results: list[AppCandidateResult] = Field(max_length=MAX_APP_CANDIDATES)
+
+    @model_validator(mode="after")
+    def validate_result_coverage(self) -> Self:
+        expected = [candidate.candidate_id for candidate in self.plan.candidates]
+        actual = [result.candidate_id for result in self.candidate_results]
+        if len(set(actual)) != len(actual) or set(actual) != set(expected):
+            raise ValueError(
+                "candidate_results는 plan의 candidate_id를 정확히 한 번씩 포함해야 한다"
+            )
+        return self
+
+
+class AppResolutionRequest(BaseModel):
+    """feedback이 없으면 후보 생성, 있으면 무상태 최종 판정 요청이다."""
+
+    goal: str = Field(min_length=1, max_length=MAX_VOICE_TEXT_LENGTH)
+    feedback: AppResolutionFeedback | None = None
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_resolution_goal(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("앱 대조 목표는 공백일 수 없다")
+        return stripped
+
+
+class AppResolutionState(BaseModel):
+    status: AppResolutionStatus
+    message: str = Field(min_length=1, max_length=MAX_INTENT_MESSAGE_LENGTH)
+    plan: AppCandidatePlan | None = None
+    selected_candidate_id: str | None = Field(default=None, pattern=r"^candidate-[1-5]$")
+    goal: str | None = Field(default=None, max_length=MAX_VOICE_TEXT_LENGTH)
+
+    @field_validator("message")
+    @classmethod
+    def normalize_resolution_message(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("앱 대조 안내는 공백일 수 없다")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_status_payload(self) -> Self:
+        if self.status is AppResolutionStatus.CANDIDATES:
+            if self.plan is None or self.selected_candidate_id is not None or self.goal is not None:
+                raise ValueError("candidates 상태에는 plan만 있어야 한다")
+            return self
+        if self.plan is not None:
+            raise ValueError("최종 앱 대조 상태에는 plan이 없어야 한다")
+        if self.status is AppResolutionStatus.RESOLVED:
+            if self.selected_candidate_id is None or self.goal is None:
+                raise ValueError("resolved 상태에는 선택 candidate와 goal이 필요하다")
+        elif self.selected_candidate_id is not None or self.goal is not None:
+            raise ValueError("미해결 상태에는 선택 candidate나 goal이 없어야 한다")
         return self

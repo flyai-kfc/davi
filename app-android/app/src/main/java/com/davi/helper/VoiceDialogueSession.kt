@@ -120,6 +120,15 @@ class VoiceDialogueSession(
         }
     }
 
+    /** 슬롯 응답 뒤 앱 후보 왕복이 이어지는 동안에도 같은 사용자 턴인지 확인한다(#128). */
+    @Synchronized
+    fun isPending(pending: PendingRequest): Boolean {
+        val current = active ?: return false
+        return current.generation == pending.generation &&
+            current.pendingTurnIndex == pending.turnIndex &&
+            stage == Stage.REQUESTING
+    }
+
     /** 질문 TTS가 끝났거나 실패해 화면 문구로 대체됐을 때 같은 대화를 다시 듣기 상태로 옮긴다. */
     @Synchronized
     fun continueListening(generation: Long): Boolean {

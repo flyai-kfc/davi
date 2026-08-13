@@ -149,6 +149,8 @@ SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 �
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존
 2. 항상 실행: 결정론적 fake LLM 반복 가드 회귀(#36). 실기기 fixture를 로더로 읽고 같은
    `screen_signature + action_type + direction + target_node_id`의 세 번째 후보를 검사한다.
+   목표 앱 후보는 fake resolver로 후보 누락·오패키지 `not_found`·복수 후보·profile `unknown`을
+   재현해 자동 선택이나 미설치 단정을 막는다(#128).
 3. `main` 주 1회·수동 관측: 실제 모델 + LLM judge(#42, #68)
 
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture

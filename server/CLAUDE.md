@@ -10,6 +10,8 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **모델 호출** — `gemini-3.5-flash-lite`. `DAVI_MODEL` 환경변수로 교체 가능(`Settings.davi_model`).
 - **완료 검증** — `expected_result`/`evidence`를 써내게 하고 비교해 조기 종료 방지.
 - **음성 목표 정리** — 고정 슬롯·문자열 조건 없이 LLM 구조화 출력으로 질문 필요/goal 준비를 판정.
+- **목표 앱 후보** — 전체 설치 목록 없이 일반 후보 최대 5개를 만들고 기기의 ID/status 피드백을
+  무상태로 판정한다. 기기에서만 발견한 앱 정보는 받지 않는다(#102·#128).
 - **에러 분류** — QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST. 앱이 사용자에게 다르게 안내하도록.
 
 ## 추론 아키텍처 (§5-3: 계획→실행→검증 3단으로 재설계)
@@ -62,7 +64,7 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   두 번째 위반은 PARSE로 닫는다. 로그에는 고정 reason code만 남긴다.
 - 무료 티어 rate limit: flash-lite ≈ 15 RPM / 1,000 RPD. 429 `prepayment credits are depleted`는 사용량 초과가 아니라 결제 경로 문제일 수 있다. RPD 리셋은 한국시간 17:00.
 
-## API 계약 결정 (2026-07-24 리뷰 → **2026-08-11 C1~C14 반영**)
+## API 계약 결정 (2026-07-24 리뷰 → **2026-08-13 C1~C15 반영**)
 
 `app/schemas.py`는 앱·서버·eval 셋이 동시에 무는 지점이라 굳기 전에 검토했다.
 아래 확정 사항은 코드에 반영됐고 `tests/test_contract.py`가 고정한다. 계약을 바꾸려면
@@ -85,6 +87,7 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
 | C12 | **앱이 비식별 `X-Davi-Logical-Request-ID`와 `X-Davi-Attempt`를 HTTP header로 보내고 서버가 검증·echo·단계별 로그 연결에 사용한다. JSON 본문은 바꾸지 않는다.** | 앱이 10초에 timeout된 뒤 서버가 최대 20초 넘게 처리해 같은 화면 호출 5건이 겹쳤지만, 서버가 나중에 만든 `X-Request-ID`는 응답을 못 받은 앱과 대조할 수 없었다. ID는 무작위 UUID이며 goal·label·화면 서명·기기 ID에서 파생하지 않는다. #81은 관측만, dedupe·cache·timeout은 #82다. |
 | C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`만 반환한다.** 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. 내부 Gemini 모델은 짧은 `decision_basis`를 먼저 생성하며 wire·로그에는 내보내지 않는다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. 결론보다 근거를 먼저 생성하는 C1 순서를 새 LLM 경계에도 유지한다. |
 | C14 | **`UiElement.editable`·`focused`와 선택 `Screen.ime_visible`을 서로 다른 입력 상태로 보낸다.** | `editable+focused`는 사용자가 입력 대상을 선택했다는 주 신호이고, `ime_visible`은 소프트 키보드 창 관측이다(#112). 둘만으로 추가 입력이 필요하다고 단정하지 않는다. 입력 준비 상태에서는 목표에 맞는 결과·후속 UI가 이미 보이는지 LLM이 먼저 판단하고, 보이면 포커스와 IME가 유지돼도 그 조작을 우선한다(#120). 그런 UI가 없고 입력이 더 필요할 때 `true`이면 같은 칸의 재탭보다 `type`, `false`이면 키보드를 여는 탭을 먼저 안내한다. 미관측 `None`은 기존 앱의 입력 안내를 막지 않는다. 일반 입력 원문과 IME 키 트리는 보내지 않는다. 구조 검증된 `NumberPicker`의 짧은 숫자는 사용자 입력 원문이 아니라 직접 조정한 선택 상태이므로 예외로 보존한다(#117). 어느 상태로도 입력 완료·목표 완료를 추론하지 않는다. 낡은 앱의 필드 누락은 `false`·`None`, 빈 window 목록은 미관측 `None`으로 받는다. |
+| C15 | **`/v1/intent/app-resolution`은 goal→일반 후보 plan, plan+기기 `candidate_id/status`→최종 상태의 2단 무상태 계약이다.** 후보는 최대 5개이고 앱이 server-origin plan을 echo하므로 서버 세션 캐시가 없다. | LLM은 앱 의미를 알지만 설치 상태를 모르고, Android는 launcher 앱을 알지만 의미를 일반화할 수 없다. 전체 설치 목록이나 기기 고유 label/package를 보내지 않고 두 판단을 결합한다(#102·#128). |
 
 ### C11 반복 가드 정책
 

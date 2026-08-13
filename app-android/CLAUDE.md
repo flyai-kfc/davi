@@ -18,6 +18,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **음성 목표 입력** — `SpeechRecognizer`는 온디바이스를 우선하고, 서버의 LLM 질문은 Android
   TTS로 읽는다. 이전 user/assistant 쌍은 최대 5왕복만 메모리에 두며 완성 goal은 기존 입력칸에
   넣는다. 자동으로 안내를 시작하지 않는다. 발화·질문·goal·대화 UUID는 logcat에 남기지 않는다.
+- **실행 가능 앱 index** — `QUERY_ALL_PACKAGES` 없이 `LauncherApps`의 현재 profile launcher
+  activity만 메모리에 유지한다. 서버의 최대 5개 후보를 package exact→정규화 alias 순으로 기기
+  안에서 대조하고, 기기 고유 package·label·component·profile이나 전체 목록은 전송·저장하지 않는다.
 - **정체 감지** — 시간(폴링) 기반. 조작 이벤트에 의존하지 않는다(목록 끝에서 이벤트가 안 옴).
   **아직 없다(#39).** 지금은 접근성 이벤트에만 반응해서, 화면이 안 바뀌면 다음 안내가 오지 않는다.
 - **반복 가드 이력** — 서버가 돌려준 구조 기반 화면 서명과 action/direction/target을 활성

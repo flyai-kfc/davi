@@ -35,6 +35,7 @@ class ConversationActivity : AppCompatActivity() {
     private lateinit var binding: ActivityConversationBinding
     private val voiceSession = VoiceDialogueSession()
     private val voiceRequestTracker = LogicalRequestTracker()
+    private val appResolutionRequestTracker = LogicalRequestTracker()
     private val voiceExecutor = Executors.newSingleThreadExecutor()
     private var speechRecognizerHelper: SpeechRecognizerHelper? = null
     private var textToSpeechHelper: TextToSpeechHelper? = null
@@ -69,6 +70,24 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
+    private val appResolutionApiClient: AppResolutionApiClient by lazy {
+        AppResolutionApiClient(
+            BuildConfig.SERVER_URL,
+            devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+        )
+    }
+
+    private val launchableAppIndex: LaunchableAppIndex by lazy {
+        LaunchableAppIndex(AndroidLaunchableAppSource(applicationContext))
+    }
+    private val appResolutionFlow: AppResolutionFlow by lazy {
+        AppResolutionFlow(
+            launchableAppIndex,
+            appResolutionApiClient,
+            appResolutionRequestTracker,
+        )
+    }
+
     private val requestRecordAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             audioPermissionRequested = true
@@ -100,6 +119,7 @@ class ConversationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        launchableAppIndex.start()
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
 
         // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
@@ -176,6 +196,7 @@ class ConversationActivity : AppCompatActivity() {
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
+        launchableAppIndex.stop()
         voiceExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -288,16 +309,80 @@ class ConversationActivity : AppCompatActivity() {
             )
             GuideTelemetry.voiceRequestStarted(logicalRequest, pending.turnIndex)
             lateinit var result: SlotFillResult
+            var appResolutionOutcome: AppResolutionCoordinator.Outcome? = null
             val durationMs = measureTimeMillis {
                 result = slotFillApiClient.resolve(pending.request, logicalRequest)
             }
             recordVoiceRequestResult(logicalRequest, result, durationMs)
+            if (
+                result is SlotFillResult.Success &&
+                result.state.status == IntentDialogueStatus.READY &&
+                result.state.goal != null
+            ) {
+                appResolutionOutcome = resolveGoalApp(pending, result.state.goal)
+            }
             if (!destroyed) {
                 runOnUiThread {
-                    if (!destroyed) handleSlotFillResult(pending, logicalRequest, result)
+                    if (!destroyed) {
+                        handleResolvedVoiceTurn(
+                            pending,
+                            logicalRequest,
+                            result,
+                            appResolutionOutcome,
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private fun handleResolvedVoiceTurn(
+        pending: VoiceDialogueSession.PendingRequest,
+        logicalRequest: LogicalRequestAttempt,
+        slotResult: SlotFillResult,
+        appOutcome: AppResolutionCoordinator.Outcome?,
+    ) {
+        when (appOutcome) {
+            null -> handleSlotFillResult(pending, logicalRequest, slotResult)
+            AppResolutionCoordinator.Outcome.Dropped ->
+                GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
+            is AppResolutionCoordinator.Outcome.Completed -> {
+                if (
+                    !voiceSession.isPending(pending) ||
+                    launchableAppIndex.current().revision != appOutcome.indexRevision
+                ) {
+                    GuideTelemetry.voiceResponseDropped(logicalRequest, "app_index_changed")
+                    if (voiceSession.fail(pending)) {
+                        setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
+                    }
+                    return
+                }
+                val trace = (slotResult as SlotFillResult.Success).trace
+                handleSlotFillResult(
+                    pending,
+                    logicalRequest,
+                    SlotFillResult.Success(appOutcome.state, trace),
+                )
+            }
+            is AppResolutionCoordinator.Outcome.Failure ->
+                handleSlotFillResult(
+                    pending,
+                    logicalRequest,
+                    appOutcome.result.toSlotFillFailure(),
+                )
+        }
+    }
+
+    private fun resolveGoalApp(
+        pending: VoiceDialogueSession.PendingRequest,
+        goal: String,
+    ): AppResolutionCoordinator.Outcome {
+        return appResolutionFlow.resolve(
+            goal,
+            pending.generation,
+            pending.turnIndex,
+            isCurrent = { voiceSession.isPending(pending) },
+        )
     }
 
     private fun handleSlotFillResult(
@@ -320,6 +405,7 @@ class ConversationActivity : AppCompatActivity() {
                     -> {
                         // 기존 goalInput 텍스트 폴백을 실패 화면(5초 뒤 홈)으로 대체(#123)
                         voiceRequestTracker.reset()
+                        appResolutionRequestTracker.reset()
                         setState(stateForOutcome(outcome))
                     }
                 }
@@ -331,6 +417,7 @@ class ConversationActivity : AppCompatActivity() {
             -> {
                 if (voiceSession.fail(pending)) {
                     voiceRequestTracker.reset()
+                    appResolutionRequestTracker.reset()
                     setState(ConversationUiState.Home(statusRes = errorMessageFor(result)))
                 }
             }
@@ -378,6 +465,7 @@ class ConversationActivity : AppCompatActivity() {
         GuideTelemetry.voiceState("recognition_error", error)
         voiceSession.cancel()
         voiceRequestTracker.reset()
+        appResolutionRequestTracker.reset()
         // 인식 실패·무응답의 재시도 흐름은 #106 범위 — 여기서는 홈에 문구만 남긴다.
         val message = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
@@ -467,6 +555,7 @@ class ConversationActivity : AppCompatActivity() {
         textToSpeechHelper?.stop()
         voiceSession.cancel()
         voiceRequestTracker.reset()
+        appResolutionRequestTracker.reset()
     }
 
     private fun speechHelper(): SpeechRecognizerHelper =

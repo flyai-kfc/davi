@@ -4,6 +4,69 @@ import android.util.Log
 
 /** 원문 화면·목표·안내를 인자로 받지 않는 비식별 앱 이벤트 경계(#81). */
 object GuideTelemetry {
+    fun appIndexRefreshed(count: Int, complete: Boolean, revision: Long) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "app_index_refreshed",
+                "launchable_count" to count,
+                "complete" to complete,
+                "revision" to revision,
+            ),
+        )
+    }
+
+    fun appResolution(phase: String, candidateCount: Int? = null, status: String? = null) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "app_resolution",
+                "phase" to phase,
+                "candidate_count" to candidateCount,
+                "status" to status,
+            ),
+        )
+    }
+
+    fun appResolutionRequestStarted(request: LogicalRequestAttempt, phase: String) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "app_resolution_request_started",
+                "logical_request_id" to request.logicalRequestId,
+                "attempt" to request.attempt,
+                "phase" to phase,
+            ),
+        )
+    }
+
+    fun appResolutionRequestFinished(
+        request: LogicalRequestAttempt,
+        phase: String,
+        outcome: String,
+        durationMs: Long,
+        statusCode: Int? = null,
+        errorKind: String? = null,
+        serverRequestId: String? = null,
+        exceptionClass: String? = null,
+    ) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "app_resolution_request_finished",
+                "logical_request_id" to request.logicalRequestId,
+                "attempt" to request.attempt,
+                "phase" to phase,
+                "outcome" to outcome,
+                "duration_ms" to durationMs,
+                "status_code" to statusCode,
+                "error_kind" to errorKind,
+                "server_request_id" to serverRequestId,
+                "exception_class" to exceptionClass,
+            ),
+        )
+    }
+
     fun screenStable(result: UiTreeSerializer.Result) {
         val screen = result.screen
         Log.i(
