@@ -43,4 +43,7 @@
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>
     <dimen name="davi_logo_size">72dp</dimen>
+    <dimen name="davi_utterance_card_min_height">120dp</dimen>
+    <!-- 바닥 고정 컨트롤(마이크·확인쌍)이 차지하는 높이. 위 열은 이만큼을 비워 둔다. -->
+    <dimen name="davi_conversation_control_reserve">178dp</dimen>
 </resources>

@@ -28,9 +28,15 @@
             </intent-filter>
         </activity>
 
+        <!--
+          configChanges: 회전으로 Activity가 재생성되면 onPause가 대화를 접어 진행 중인
+          왕복이 사라진다. 화면이 고정 배치라 재생성 없이 그대로 두는 편이 맞다.
+          fontScale·uiMode는 일부러 넣지 않는다 — 글꼴 크기·다크 전환은 재생성돼야 반영된다.
+        -->
         <activity
             android:name=".ConversationActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
         <!-- 화면 읽기 + 안내 루프의 본체. 시스템이 이름으로 바인딩하므로 exported=true -->
         <service

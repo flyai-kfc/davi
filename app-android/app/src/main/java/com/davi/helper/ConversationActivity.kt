@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.speech.SpeechRecognizer
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -117,9 +118,20 @@ class ConversationActivity : AppCompatActivity() {
         render(uiState)
     }
 
-    /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 그린다. */
+    /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
     override fun onResume() {
         super.onResume()
+        // 두 권한은 밖에서 꺼질 수 있다(설정 회수·앱 업데이트). 없는 채로 ○를 누르면
+        // GuideSession은 시작되는데 화면을 못 읽거나 오버레이가 안 그려져 사용자가 런처에
+        // 혼자 남는다 — 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
+        //
+        // #29(상태·오류 문구) 참고: 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다**.
+        // 권한 소실을 사용자에게 알리려면 토스트·헤드업처럼 화면 전환에 살아남는 수단이어야 한다.
+        if (!canStartGuide()) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
         GuideSession.addListener(sessionListener)
         render(uiState)
     }
@@ -162,6 +174,13 @@ class ConversationActivity : AppCompatActivity() {
     /** 렌더 판단은 renderModelOf(순수 함수)에 있고 여기는 대입만 한다. */
     private fun render(state: ConversationUiState) {
         val model = renderModelOf(state, guideActive = GuideSession.isActive)
+        // 대화 중에는 화면을 켜 둔다. 어르신이 무엇을 말할지 생각하는 20~30초 동안 손이
+        // 화면에 닿지 않아 디스플레이 타임아웃이 걸리면, onPause가 왕복 전체를 접는다.
+        if (state is ConversationUiState.Home) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         binding.spaceHomeTop.isVisible(model.homeVisible)
         binding.spaceHomeMid.isVisible(model.homeVisible)
         binding.homeTitle.isVisible(model.homeVisible)

@@ -1,12 +1,10 @@
 package com.davi.helper
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -54,20 +52,9 @@ class OnboardingActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (hasAccessibilityPermission() && Settings.canDrawOverlays(this)) {
+        if (canStartGuide()) {
             startActivity(Intent(this, ConversationActivity::class.java))
             finish()
         }
-    }
-
-    private fun hasAccessibilityPermission(): Boolean {
-        val manager = getSystemService(AccessibilityManager::class.java) ?: return false
-        return manager
-            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            .any {
-                val info = it.resolveInfo.serviceInfo
-                info.packageName == packageName &&
-                    info.name == GuideAccessibilityService::class.java.name
-            }
     }
 }
