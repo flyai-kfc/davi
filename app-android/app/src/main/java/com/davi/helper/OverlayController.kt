@@ -10,13 +10,18 @@ import android.view.Gravity
 import android.view.WindowManager
 
 /**
- * 다른 앱 위에 강조를 띄우는 창을 관리한다.
+ * 다른 앱 위에 뜨는 오버레이 **둘**을 소유한다(#126).
+ *
+ * - **표시 오버레이**([HighlightOverlayView]) — 전체 화면, `FLAG_NOT_TOUCHABLE`. 안내 하이라이트를
+ *   그리고 안내창 자리도 여기서 계산한다.
+ * - **조작 오버레이**([ControlOverlay]) — 안내창 크기, 터치를 받는다. 안내창과 칩이 산다.
  *
  * **중요한 플래그 세 가지** (HANDOFF §7, §3-1):
  * - `FLAG_LAYOUT_IN_SCREEN` — 없으면 접근성 `bounds`와 좌표계가 상태표시줄 높이만큼 어긋난다.
- * - `FLAG_NOT_TOUCHABLE` — 강조 영역을 눌렀을 때 터치가 아래 앱으로 통과해야 한다.
- *   우리는 **안내만** 하고 대신 조작하지 않으므로, 사용자가 직접 누를 수 있어야 한다(SPEC §2).
- * - `FLAG_NOT_FOCUSABLE` — 키 입력을 가로채지 않는다.
+ * - `FLAG_NOT_TOUCHABLE` — **표시 오버레이에만** 준다. 강조 영역을 눌렀을 때 터치가 아래 앱으로
+ *   통과해야 한다 — 우리는 **안내만** 하고 대신 조작하지 않는다(SPEC §2). 조작 오버레이는 이
+ *   플래그가 없어 자기 영역의 터치를 받지만, 그 터치로 끝내는 것은 **우리 세션뿐**이다.
+ * - `FLAG_NOT_FOCUSABLE` — 둘 다 준다. 키 입력·IME 포커스를 가로채면 아래 앱에 글자를 못 친다.
  *
  * 설정 앱(`com.android.settings`) 위에는 오버레이가 **아예 그려지지 않는다**(탭재킹 방지, 우회 불가).
  * 그 화면에서는 헤드업 알림으로 떨어져야 하지만 그건 다음 작업이다.
@@ -27,6 +32,7 @@ class OverlayController(private val context: Context) {
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private var view: HighlightOverlayView? = null
+    private val control = ControlOverlay(context, windowManager)
 
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
@@ -56,7 +62,8 @@ class OverlayController(private val context: Context) {
 
     /**
      * 읽는 중 테두리(GD-1)를 켜고 끈다. 안내와 **독립 레이어**라 [clear]가 이것까지 지우지
-     * 않는다 — 끄는 것은 호출자 책임이다.
+     * 않는다 — 끄는 것은 호출자 책임이다. 테두리는 **표시 오버레이**에 그려지므로 조작
+     * 오버레이와 무관하다(#126).
      *
      * 끌 때는 창을 만들지 않는다. 세션 종료·화면 소실 경로가 이 함수로 false를 반복해서
      * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
@@ -73,8 +80,14 @@ class OverlayController(private val context: Context) {
         createView()?.setReading(true)
     }
 
-    /** 서비스가 내려갈 때 창을 반드시 걷는다. 안 그러면 유령 오버레이가 남는다. */
+    /**
+     * 서비스가 내려갈 때 창을 반드시 걷는다. 안 그러면 유령 오버레이가 남는다.
+     *
+     * **조작 오버레이는 여기서 따로 걷어야 한다.** 평소에는 [clear] → `clearTarget` → 콜백 null로
+     * 저절로 내려가지만, 이 경로만 `clearTarget`을 거치지 않아 콜백이 오지 않는다.
+     */
     fun destroy() {
+        control.hide()
         view?.let {
             runCatching { windowManager.removeView(it) }
                 .onFailure { e -> Log.w(TAG, "overlay: removeView 실패", e) }
@@ -84,14 +97,36 @@ class OverlayController(private val context: Context) {
 
     private fun createView(): HighlightOverlayView? {
         val created = HighlightOverlayView(context)
+        // addView 전에 물린다 — 창 크기가 처음 잡힐 때(onSizeChanged) 도는 첫 계산도 놓치지 않는다.
+        created.guideBoxListener = HighlightOverlayView.GuideBoxListener { rect, lines ->
+            if (rect == null) control.hide() else control.show(rect, lines)
+        }
         return runCatching {
-            windowManager.addView(created, layoutParams())
+            windowManager.addView(created, OverlayWindowParams.create(touchable = false))
             view = created
             created
         }.onFailure { Log.e(TAG, "overlay: addView 실패", it) }.getOrNull()
     }
 
-    private fun layoutParams(): WindowManager.LayoutParams {
+    private companion object {
+        const val TAG = GuideAccessibilityService.TAG
+    }
+}
+
+/**
+ * 두 오버레이의 창 속성을 **한 곳에서** 만든다.
+ *
+ * 차이는 `FLAG_NOT_TOUCHABLE` 하나뿐이어야 한다 — 나머지가 갈리면 두 창의 프레임 원점이 달라지고,
+ * 그러면 표시 오버레이가 계산한 로컬 좌표를 조작 오버레이에 그대로 넣을 수 없다. `LAYOUT_IN_SCREEN`을
+ * 줘도 창마다 인셋이 다르게 붙는 실측이 있어(런처에서만 밀림) 이 대칭이 유일한 보장이다.
+ */
+internal object OverlayWindowParams {
+
+    fun create(
+        touchable: Boolean,
+        width: Int = WindowManager.LayoutParams.MATCH_PARENT,
+        height: Int = WindowManager.LayoutParams.MATCH_PARENT,
+    ): WindowManager.LayoutParams {
         @Suppress("DEPRECATION")
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -99,23 +134,15 @@ class OverlayController(private val context: Context) {
             WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
         }
 
-        return WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        if (!touchable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+
+        return WindowManager.LayoutParams(width, height, type, flags, PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
         }
-    }
-
-    private companion object {
-        const val TAG = GuideAccessibilityService.TAG
     }
 }

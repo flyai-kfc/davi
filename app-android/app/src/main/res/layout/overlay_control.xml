@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  조작 오버레이의 내용(#126). 창 자체가 안내창 크기로 잡히므로 여기서는 자리를 정하지 않는다 —
+  안내창은 창을 꽉 채우고, 칩은 GuideBoxLayout이 상자 바닥에 비워 둔 컨트롤 행에 앉는다.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/control_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.davi.helper.GuideBoxView
+        android:id="@+id/guide_box"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</FrameLayout>
