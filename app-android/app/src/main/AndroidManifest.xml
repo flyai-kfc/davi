@@ -21,7 +21,8 @@
         <!-- 릴리스 진입점: 온보딩 → 대화 화면(#123). 대화 화면은 외부 인텐트를 받지 않는다. -->
         <activity
             android:name=".OnboardingActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -29,13 +30,15 @@
         </activity>
 
         <!--
-          configChanges: 회전으로 Activity가 재생성되면 onPause가 대화를 접어 진행 중인
-          왕복이 사라진다. 화면이 고정 배치라 재생성 없이 그대로 두는 편이 맞다.
+          세로 고정: 고정 배치라 가로에서는 질문·발화 카드가 화면 밖으로 밀린다(실기기 실측).
+          configChanges는 세로 고정과 함께 남긴다 — 회전 외에도 멀티윈도우·접힘 등으로
+          구성이 바뀌면 재생성되고, 그때 onPause가 진행 중인 왕복을 접기 때문이다.
           fontScale·uiMode는 일부러 넣지 않는다 — 글꼴 크기·다크 전환은 재생성돼야 반영된다.
         -->
         <activity
             android:name=".ConversationActivity"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
         <!-- 화면 읽기 + 안내 루프의 본체. 시스템이 이름으로 바인딩하므로 exported=true -->
