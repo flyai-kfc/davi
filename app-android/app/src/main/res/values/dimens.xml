@@ -49,6 +49,8 @@
       이보다 크면 부모가 카드를 잘라 내부 스크롤이 닿지 않는 영역이 생긴다.
     -->
     <dimen name="davi_question_card_max_height">220dp</dimen>
+    <!-- 최종 확인은 발화 카드가 숨어 세로 여유가 가장 크다 — 승인 대상을 넓은 창으로 읽힌다. -->
+    <dimen name="davi_question_card_max_height_confirm">400dp</dimen>
     <!-- 바닥 고정 컨트롤(마이크·확인쌍)이 차지하는 높이. 위 열은 이만큼을 비워 둔다. -->
     <dimen name="davi_conversation_control_reserve">178dp</dimen>
 </resources>

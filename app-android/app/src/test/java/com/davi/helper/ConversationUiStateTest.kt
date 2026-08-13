@@ -46,6 +46,7 @@ class ConversationUiStateTest {
     fun `첫 청취는 초기 프롬프트를 띄운다`() {
         val model = renderModelOf(ConversationUiState.Listening())
         assertEquals(R.string.conversation_prompt_initial, model.questionRes)
+        assertEquals(R.dimen.davi_question_card_max_height, model.questionMaxHeightRes)
         assertNull(model.questionText)
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
@@ -86,6 +87,8 @@ class ConversationUiStateTest {
     fun `최종 확인은 goal과 확인쌍만 보이고 마이크와 닫기는 숨긴다`() {
         val model = renderModelOf(ConversationUiState.Confirm("카카오톡으로 손자에게 사진 보내기"))
         assertEquals("카카오톡으로 손자에게 사진 보내기", model.questionText)
+        // 승인 대상이라 발화 카드가 숨은 여유만큼 카드를 넓힌다
+        assertEquals(R.dimen.davi_question_card_max_height_confirm, model.questionMaxHeightRes)
         assertTrue(model.confirmVisible)
         assertFalse(model.micVisible)
         assertFalse(model.closeVisible)

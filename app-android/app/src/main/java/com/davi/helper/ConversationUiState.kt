@@ -44,6 +44,12 @@ data class ConversationRenderModel(
     val logoVisible: Boolean = false,
     val questionRes: Int? = null,
     val questionText: String? = null,
+    /**
+     * 질문 카드 높이 상한(dimen). 상한은 dp 고정이라 글꼴을 키울수록 보이는 줄 수가 줄어드는데,
+     * 그 사용자가 스크롤이 제일 어려운 사용자다. 발화 카드가 숨는 최종 확인에서는 세로 여유가
+     * 있으므로 상한을 넓게 잡는다(PR #125 리뷰).
+     */
+    val questionMaxHeightRes: Int = R.dimen.davi_question_card_max_height,
     val utteranceVisible: Boolean = false,
     val utteranceText: String = "",
     val micVisible: Boolean = false,
@@ -99,6 +105,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
     is ConversationUiState.Confirm -> ConversationRenderModel(
         logoVisible = true,
         questionText = state.goal,
+        questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
         confirmVisible = true,
     )
     ConversationUiState.Failed -> ConversationRenderModel(
@@ -107,11 +114,6 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
     )
 }
 
-/**
- * 서버 응답 Outcome → 다음 UI 상태. Ask의 TTS 재생·Ready의 message TTS는 Activity가
- * 이 상태로 바꾼 뒤 수행한다. LimitReached는 기존 goalInput 텍스트 폴백을 대체해
- * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
- */
 /**
  * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
  * (Listening=인식 타임아웃, Speaking=TTS 완료, Requesting=서버 응답).
@@ -128,6 +130,11 @@ fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
 const val FAILED_RETURN_DELAY_MS = 5_000L
 const val CONFIRM_TIMEOUT_MS = 120_000L
 
+/**
+ * 서버 응답 Outcome → 다음 UI 상태. Ask의 TTS 재생·Ready의 message TTS는 Activity가
+ * 이 상태로 바꾼 뒤 수행한다. LimitReached는 기존 goalInput 텍스트 폴백을 대체해
+ * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
+ */
 fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState = when (outcome) {
     is VoiceDialogueSession.Outcome.Ask ->
         ConversationUiState.Speaking(outcome.message, outcome.generation)

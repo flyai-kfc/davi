@@ -45,7 +45,16 @@ class ConversationActivity : AppCompatActivity() {
     // 스스로 끝나지 않는 상태(실패·최종 확인)의 홈 복귀 타이머.
     // setState()가 상태 전이마다 제거하므로 유령 타이머가 없다.
     private val autoReturnHandler = Handler(Looper.getMainLooper())
-    private val autoReturnRunnable = Runnable { setState(ConversationUiState.Home()) }
+    private val autoReturnRunnable = Runnable {
+        // 홈으로 가는 다른 경로(× 칩·확인쌍 ×·onPause)와 같은 정리를 거친다. Confirm에서
+        // TTS 완료 콜백이 오지 않으면 세션이 READY로 살아 있어, 안 접으면 홈 화면에서
+        // 계속 말하는 상태가 된다.
+        cancelVoiceDialogue()
+        setState(ConversationUiState.Home())
+    }
+
+    /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
+    private var lastQuestionKey: Any? = null
 
     @Volatile
     private var destroyed = false
@@ -196,12 +205,18 @@ class ConversationActivity : AppCompatActivity() {
         model.statusRes?.let { binding.homeStatus.setText(it) }
         binding.logo.isVisible(model.logoVisible)
         binding.cardQuestion.isVisible(model.questionRes != null || model.questionText != null)
+        binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
             model.questionText != null -> binding.cardQuestion.text = model.questionText
         }
-        // 이전 문구를 스크롤한 채로 새 문구가 들어오면 중간부터 보인다.
-        binding.cardQuestion.scrollTo(0, 0)
+        // 새 문구가 들어올 때만 맨 위로. render()는 부분 인식마다 불리므로 무조건 되돌리면
+        // 긴 질문을 스크롤해 읽던 중 말을 시작한 순간 카드가 계속 튄다.
+        val questionKey = model.questionRes ?: model.questionText
+        if (questionKey != lastQuestionKey) {
+            lastQuestionKey = questionKey
+            binding.cardQuestion.scrollTo(0, 0)
+        }
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
