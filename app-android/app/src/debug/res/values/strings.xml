@@ -1,4 +1,4 @@
 <resources>
-    <!-- 미리보기 런처 이름. 개발 전용이라 릴리스 APK에 넣지 않는다. -->
-    <string name="voice_home_preview_label">다비 MA-1 미리보기</string>
+    <!-- debug 백업 런처(개발 화면) 이름. 릴리스 아이콘(다비 도우미)과 구분한다. -->
+    <string name="main_backup_label">다비 개발 화면(백업)</string>
 </resources>
