@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.speech.SpeechRecognizer
+import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -41,9 +42,10 @@ class ConversationActivity : AppCompatActivity() {
 
     private var uiState: ConversationUiState = ConversationUiState.Home()
 
-    // 실패 화면 → 5초 뒤 홈 복귀. setState()가 상태 전이마다 제거하므로 유령 타이머가 없다.
-    private val failedReturnHandler = Handler(Looper.getMainLooper())
-    private val failedReturnRunnable = Runnable { setState(ConversationUiState.Home()) }
+    // 스스로 끝나지 않는 상태(실패·최종 확인)의 홈 복귀 타이머.
+    // setState()가 상태 전이마다 제거하므로 유령 타이머가 없다.
+    private val autoReturnHandler = Handler(Looper.getMainLooper())
+    private val autoReturnRunnable = Runnable { setState(ConversationUiState.Home()) }
 
     @Volatile
     private var destroyed = false
@@ -115,6 +117,10 @@ class ConversationActivity : AppCompatActivity() {
         binding.confirmPair.btnConfirmAccept.setOnClickListener { onConfirmAccepted() }
         binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
 
+        // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
+        // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
+        binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
+
         render(uiState)
     }
 
@@ -128,6 +134,10 @@ class ConversationActivity : AppCompatActivity() {
         // #29(상태·오류 문구) 참고: 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다**.
         // 권한 소실을 사용자에게 알리려면 토스트·헤드업처럼 화면 전환에 살아남는 수단이어야 한다.
         if (!canStartGuide()) {
+            // 세션을 여기서 끊는다. 접근성이 꺼진 경우는 onUnbind가 정리하지만,
+            // **오버레이만 회수되면** 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
+            // 안내만 안 그려진다 — 그대로 두면 세션은 도는데 중지 수단만 손이 닿지 않는다.
+            GuideSession.stop()
             startActivity(Intent(this, OnboardingActivity::class.java))
             finish()
             return
@@ -154,20 +164,18 @@ class ConversationActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         destroyed = true
-        failedReturnHandler.removeCallbacks(failedReturnRunnable)
+        autoReturnHandler.removeCallbacks(autoReturnRunnable)
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
         voiceExecutor.shutdownNow()
         super.onDestroy()
     }
 
-    /** 상태 전이의 단일 지점 — 실패 복귀 타이머 정리와 렌더가 항상 함께 간다. */
+    /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
     private fun setState(state: ConversationUiState) {
         uiState = state
-        failedReturnHandler.removeCallbacks(failedReturnRunnable)
-        if (state == ConversationUiState.Failed) {
-            failedReturnHandler.postDelayed(failedReturnRunnable, FAILED_RETURN_DELAY_MS)
-        }
+        autoReturnHandler.removeCallbacks(autoReturnRunnable)
+        autoReturnDelayMs(state)?.let { autoReturnHandler.postDelayed(autoReturnRunnable, it) }
         render(state)
     }
 
@@ -192,6 +200,8 @@ class ConversationActivity : AppCompatActivity() {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
             model.questionText != null -> binding.cardQuestion.text = model.questionText
         }
+        // 이전 문구를 스크롤한 채로 새 문구가 들어오면 중간부터 보인다.
+        binding.cardQuestion.scrollTo(0, 0)
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
@@ -470,6 +480,5 @@ class ConversationActivity : AppCompatActivity() {
 
     private companion object {
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
-        const val FAILED_RETURN_DELAY_MS = 5_000L
     }
 }

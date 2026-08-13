@@ -44,6 +44,11 @@
     <dimen name="davi_confirm_chip_width">96dp</dimen>
     <dimen name="davi_logo_size">72dp</dimen>
     <dimen name="davi_utterance_card_min_height">120dp</dimen>
+    <!--
+      질문 카드 높이 상한. fontScale 2.0에서 로고·발화 카드·바닥 컨트롤을 뺀 잔여로 잡았다 —
+      이보다 크면 부모가 카드를 잘라 내부 스크롤이 닿지 않는 영역이 생긴다.
+    -->
+    <dimen name="davi_question_card_max_height">220dp</dimen>
     <!-- 바닥 고정 컨트롤(마이크·확인쌍)이 차지하는 높이. 위 열은 이만큼을 비워 둔다. -->
     <dimen name="davi_conversation_control_reserve">178dp</dimen>
 </resources>

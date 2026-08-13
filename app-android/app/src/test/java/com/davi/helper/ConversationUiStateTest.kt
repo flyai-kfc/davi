@@ -104,6 +104,17 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `스스로 끝나지 않는 상태만 복귀 타이머를 갖는다`() {
+        assertEquals(FAILED_RETURN_DELAY_MS, autoReturnDelayMs(ConversationUiState.Failed))
+        // ×/○ 탭 말고 빠져나갈 길이 없어 화면이 계속 켜진 채 남는다
+        assertEquals(CONFIRM_TIMEOUT_MS, autoReturnDelayMs(ConversationUiState.Confirm("카카오톡 열기")))
+        assertNull(autoReturnDelayMs(ConversationUiState.Home()))
+        assertNull(autoReturnDelayMs(ConversationUiState.Listening()))
+        assertNull(autoReturnDelayMs(ConversationUiState.Speaking("누구에게?", generation = 1L)))
+        assertNull(autoReturnDelayMs(ConversationUiState.Requesting("손자에게")))
+    }
+
+    @Test
     fun `Ask는 질문 재생 상태로 간다`() {
         val state = stateForOutcome(VoiceDialogueSession.Outcome.Ask(generation = 1L, message = "누구에게?"))
         assertEquals(ConversationUiState.Speaking("누구에게?", generation = 1L), state)

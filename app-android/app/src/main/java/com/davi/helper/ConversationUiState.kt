@@ -112,6 +112,22 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
  * 이 상태로 바꾼 뒤 수행한다. LimitReached는 기존 goalInput 텍스트 폴백을 대체해
  * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
  */
+/**
+ * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
+ * (Listening=인식 타임아웃, Speaking=TTS 완료, Requesting=서버 응답).
+ *
+ * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
+ * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
+ */
+fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
+    ConversationUiState.Failed -> FAILED_RETURN_DELAY_MS
+    is ConversationUiState.Confirm -> CONFIRM_TIMEOUT_MS
+    else -> null
+}
+
+const val FAILED_RETURN_DELAY_MS = 5_000L
+const val CONFIRM_TIMEOUT_MS = 120_000L
+
 fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState = when (outcome) {
     is VoiceDialogueSession.Outcome.Ask ->
         ConversationUiState.Speaking(outcome.message, outcome.generation)

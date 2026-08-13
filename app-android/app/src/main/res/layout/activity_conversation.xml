@@ -7,7 +7,10 @@
   **조작 수단은 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
   잘라내는데, 그 자리에 마이크·확인쌍을 두면 큰 글꼴에서 유일한 조작 수단이 사라진다
   (PR #125 리뷰). 컨트롤을 FrameLayout 바닥에 붙이고 위 열에는 그만큼 padding을 비워 둔다.
-  카드의 maxLines는 그 열이 컨트롤 영역을 밀어내지 못하게 하는 상한이다.
+
+  질문 카드는 maxHeight로 묶고 **내부 스크롤**로 넘긴다 — 이 카드에는 최종 확인의 goal도
+  들어오는데(renderModelOf), maxLines+ellipsize면 사용자가 다 읽지 못한 문구를 ○로 승인하게
+  된다. 높이를 묶어야 부모가 카드를 잘라내지 않아 내부 스크롤이 실제로 닿는다.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/conversation_root"
@@ -74,8 +77,8 @@
             android:padding="@dimen/davi_spacing_lg"
             android:gravity="center"
             android:lineSpacingMultiplier="1.3"
-            android:maxLines="5"
-            android:ellipsize="end"
+            android:maxHeight="@dimen/davi_question_card_max_height"
+            android:scrollbars="vertical"
             android:accessibilityLiveRegion="polite"
             android:background="@drawable/bg_davi_card"
             android:textAppearance="@style/TextAppearance.Davi.Subtitle" />
