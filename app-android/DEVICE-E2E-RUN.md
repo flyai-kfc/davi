@@ -36,8 +36,11 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 6. 선택한 test class를 실제 Gemini opt-in으로 실행한다.
 7. 성공·실패와 무관하게 시나리오 정리를 수행한다.
 8. 비식별 Markdown 보고서를 생성한다.
+9. Davi 앱은 유지하고 launcher가 없는 driver/test helper 패키지를 제거한다.
 
 실행기가 새로 만든 `adb reverse`만 종료 시 제거한다. 이미 있던 reverse는 그대로 둔다.
+따라서 테스트 중에는 별도 helper APK가 필요하지만 사용자가 실행하거나 계속 설치해 둘 두 번째 앱은
+아니다. 다음 실행 때 실행기가 다시 설치한다.
 
 ## 보고서 위치
 

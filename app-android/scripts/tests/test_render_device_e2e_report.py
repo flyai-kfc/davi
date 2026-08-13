@@ -15,6 +15,36 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DeviceE2eReportTest(unittest.TestCase):
+    def test_android_junit_success_code_is_reported_as_passed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            instrumentation = root / "instrumentation.txt"
+            safe_log = root / "safe.log"
+            instrumentation.write_text(
+                "Time: 12.5\n\nOK (1 test)\n\nINSTRUMENTATION_CODE: -1\n",
+                encoding="utf-8",
+            )
+            safe_log.write_text("I DaviE2e: cleanup=success\n", encoding="utf-8")
+            args = argparse.Namespace(
+                instrumentation_result=instrumentation,
+                safe_log=safe_log,
+                output=root / "report.md",
+                model="test-model",
+                device_model="test-device",
+                android_version="15",
+                commit="abcdef0",
+                started_at="2026-08-13T12:00:00+09:00",
+                scenario="safe-scenario",
+                scenario_description="비식별 테스트 설명",
+                test_class="SafeTest",
+                shell_status=0,
+            )
+
+            report = MODULE.render(args)
+
+            self.assertIn("| 판정 | **통과** |", report)
+            self.assertIn("| 실패 코드 | `-` |", report)
+
     def test_renders_only_structured_trace_and_failure_code(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -85,6 +85,8 @@ export ANDROID_SERIAL='<adb serial>'
 
 실행기는 처음부터 꺼져 있던 접근성 권한을 임의로 허가하지 않는다. 권한이 켜진 상태에서만 APK
 교체 중 Davi 항목을 잠시 내렸다가 원래 목록에 복구하며, 다른 접근성 서비스는 유지한다.
+실행 중에는 Davi와 분리된 UIAutomator helper/test APK를 임시 설치한다. 두 패키지에는 launcher
+화면이 없으며 실행 종료 시 자동 제거되고 Davi 앱만 남는다.
 
 ## 5. 현재 시나리오의 기기 조건
 

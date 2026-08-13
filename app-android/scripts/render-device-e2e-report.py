@@ -20,6 +20,8 @@ STEP_PATTERN = re.compile(
     r"step=(\d+) action=([a-z_]+) target=(true|false) verified=(true|false)"
 )
 CLEANUP_PATTERN = re.compile(r"cleanup=(success|failed)")
+SUCCESS_CODE_PATTERN = re.compile(r"^INSTRUMENTATION_CODE:\s*-1\s*$", re.MULTILINE)
+JUNIT_OK_PATTERN = re.compile(r"^OK \(\d+ tests?\)\s*$", re.MULTILINE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,7 +50,12 @@ def safe_value(value: str) -> str:
 def render(args: argparse.Namespace) -> str:
     instrumentation = args.instrumentation_result.read_text(encoding="utf-8", errors="replace")
     safe_log = args.safe_log.read_text(encoding="utf-8", errors="replace")
-    passed = args.shell_status == 0 and "INSTRUMENTATION_CODE: 0" in instrumentation
+    passed = (
+        args.shell_status == 0
+        and SUCCESS_CODE_PATTERN.search(instrumentation) is not None
+        and JUNIT_OK_PATTERN.search(instrumentation) is not None
+        and "FAILURES!!!" not in instrumentation
+    )
     failure_match = FAILURE_PATTERN.search(instrumentation)
     failure_code = failure_match.group(1) if failure_match else ("-" if passed else "instrumentation_failed")
     duration_match = TIME_PATTERN.search(instrumentation)

@@ -265,12 +265,20 @@ try {
     Write-Host "최신 결과: $latestReport" -ForegroundColor Green
 
     $instrumentationText = Get-Content $instrumentationResult -Raw
-    if ($instrumentationStatus -ne 0 -or $instrumentationText -notmatch '(?m)^INSTRUMENTATION_CODE: 0\r?$') {
+    if ($instrumentationStatus -ne 0 -or
+        $instrumentationText -notmatch '(?m)^INSTRUMENTATION_CODE: -1\r?$' -or
+        $instrumentationText -notmatch '(?m)^OK \(\d+ tests?\)\r?$' -or
+        $instrumentationText -match '(?m)^FAILURES!!!') {
         throw '실기기 instrumentation이 실패했습니다. 화면/안내 원문은 출력하지 않았습니다.'
     }
 }
 finally {
     try { Restore-DaviAccessibility } catch { Write-Warning $_ }
+    # Davi 앱은 유지하고 launcher가 없는 테스트 전용 helper/test 패키지만 치운다.
+    $uninstallTestArgs = $adbDevice + @('uninstall', 'com.davi.helper.e2edriver.test')
+    $uninstallDriverArgs = $adbDevice + @('uninstall', 'com.davi.helper.e2edriver')
+    try { & $adb @uninstallTestArgs *> $null } catch { }
+    try { & $adb @uninstallDriverArgs *> $null } catch { }
     if ($reverseCreated) {
         $removeReverseArgs = $adbDevice + @('reverse', '--remove', 'tcp:8000')
         try { & $adb @removeReverseArgs *> $null } catch { }

@@ -122,6 +122,9 @@ restore_davi_accessibility() {
 cleanup() {
     restore_davi_accessibility || true
     rm -f "$INSTRUMENTATION_RESULT" "$SAFE_LOG_RESULT"
+    # Davi 앱은 유지하고 launcher가 없는 테스트 전용 helper/test 패키지만 치운다.
+    "${ADB_DEVICE[@]}" uninstall com.davi.helper.e2edriver.test >/dev/null 2>&1 || true
+    "${ADB_DEVICE[@]}" uninstall com.davi.helper.e2edriver >/dev/null 2>&1 || true
     if [[ "$REVERSE_WAS_PRESENT" == false ]]; then
         "${ADB_DEVICE[@]}" reverse --remove tcp:8000 >/dev/null 2>&1 || true
     fi
@@ -232,7 +235,9 @@ printf '\n결과 문서: %s\n' "$REPORT_PATH"
 printf '최신 결과: %s\n' "$LATEST_REPORT"
 
 if [[ "$INSTRUMENTATION_SHELL_STATUS" -ne 0 ]] ||
-    ! grep -q '^INSTRUMENTATION_CODE: 0$' "$INSTRUMENTATION_RESULT"; then
+    ! grep -q '^INSTRUMENTATION_CODE: -1$' "$INSTRUMENTATION_RESULT" ||
+    ! grep -Eq '^OK \([0-9]+ tests?\)$' "$INSTRUMENTATION_RESULT" ||
+    grep -q '^FAILURES!!!' "$INSTRUMENTATION_RESULT"; then
     printf '실기기 instrumentation이 실패했습니다. 화면/안내 원문은 출력하지 않았습니다.\n' >&2
     exit 1
 fi
