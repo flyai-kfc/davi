@@ -89,10 +89,14 @@ class ExampleGeminiTest {
 ## 5. 개인정보와 실패 출력
 
 - 고정 테스트 이름만 사용하고 개인 label을 assertion에 넣지 않는다.
-- 화면 트리, 안내 문장, 목표 원문, 모델 원문을 로그나 실패 메시지에 출력하지 않는다.
+- 원본 화면 트리, 안내 문장, 목표 원문, 모델 원문을 logcat이나 실패 메시지에 출력하지 않는다.
 - 실패는 `GuidedScenarioFailure("safe_code", step)`처럼 구조화 코드로 남긴다.
 - API 키는 서버에만 두며 Android fixture·manifest·BuildConfig에 넣지 않는다.
 - `cleanup` 실패도 원문 대신 구조화 코드로 표현한다.
+
+기본으로 생성되는 `build/reports/device-e2e-private/` 상세 보고서는 예외적으로 앱이 서버에 보낸
+1차 마스킹 요청과 파싱된 구조화 응답을 단계별로 보존한다. 시나리오 구현은 이 파일을 assertion이나
+로그 입력으로 사용하지 않으며, 개발자는 저장소·PR·이슈에 공유하지 않는다.
 
 ## 6. 로컬 검증 순서
 
@@ -112,7 +116,8 @@ python -m unittest discover -s scripts/tests -p 'test_*.py'
 .\scripts\run-device-e2e.ps1 -Scenario example-flow
 ```
 
-실행 결과는 `build/reports/device-e2e/example-flow/`에 타임스탬프별로 누적된다.
+기본 결과는 `build/reports/device-e2e/example-flow/`, 로컬 상세 결과는
+`build/reports/device-e2e-private/example-flow/`에 타임스탬프별로 누적된다.
 
 ## 리뷰 체크리스트
 
@@ -120,6 +125,7 @@ python -m unittest discover -s scripts/tests -p 'test_*.py'
 - [ ] 개인 데이터 대상은 실행 전에 차단한다.
 - [ ] 완료를 외부 앱 상태로 독립 검증한다.
 - [ ] 성공·실패·준비 실패 모두 테스트 데이터를 정리한다.
-- [ ] 실패와 보고서에 화면·안내·개인 원문이 없다.
+- [ ] logcat·실패 메시지·기본 보고서에 화면·안내·개인 원문이 없다.
+- [ ] 상세 보고서는 Git 제외 경로에만 생성되고 원본 Accessibility 트리·키·serial이 없다.
 - [ ] registry ID가 고유하고 test class가 실제로 존재한다.
 - [ ] 키 없는 빌드와 보고서 렌더러 테스트가 통과한다.

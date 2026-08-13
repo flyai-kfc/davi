@@ -11,7 +11,8 @@
 [CmdletBinding()]
 param(
     [string]$Scenario = '',
-    [switch]$ListScenarios
+    [switch]$ListScenarios,
+    [switch]$NoDetailedReport
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,7 @@ $appDir = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $appDir
 $registryPath = Join-Path $appDir 'device-e2e-scenarios.json'
 $reportRenderer = Join-Path $PSScriptRoot 'render-device-e2e-report.py'
+$privateReportRenderer = Join-Path $PSScriptRoot 'render-device-e2e-private-report.py'
 $serverUrl = 'http://127.0.0.1:8000'
 $runner = 'com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner'
 $service = 'com.davi.helper/com.davi.helper.GuideAccessibilityService'
@@ -133,11 +135,18 @@ function Invoke-AdbChecked {
 
 $instrumentationResult = [System.IO.Path]::GetTempFileName()
 $safeLogResult = [System.IO.Path]::GetTempFileName()
+$privateTraceResult = [System.IO.Path]::GetTempFileName()
+$detailedReport = -not $NoDetailedReport
+$privateTraceAvailable = $false
 $runStartedAt = (Get-Date).ToString('o')
 $reportStamp = (Get-Date).ToString("yyyyMMdd'T'HHmmssfffzzz").Replace(':', '')
 $reportDir = Join-Path (Join-Path $appDir 'build\reports\device-e2e') $Scenario
 $reportPath = Join-Path $reportDir "$reportStamp.md"
 $latestReport = Join-Path $reportDir 'latest.md'
+$privateReportDir = Join-Path (Join-Path $appDir 'build\reports\device-e2e-private') $Scenario
+$privateReportPath = Join-Path $privateReportDir "$reportStamp.md"
+$latestPrivateReport = Join-Path $privateReportDir 'latest.md'
+$devicePrivateTrace = '/sdcard/Android/data/com.davi.helper.e2edriver/files/davi-e2e-private-trace.jsonl'
 $deviceModel = ((Invoke-AdbCapture @('shell', 'getprop', 'ro.product.model') '기기 모델 조회') -join '').Trim()
 $androidVersion = ((Invoke-AdbCapture @('shell', 'getprop', 'ro.build.version.release') 'Android 버전 조회') -join '').Trim()
 $gitCommit = ((Invoke-CapturedNative 'git' @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD') 'Git commit 조회') -join '').Trim()
@@ -215,10 +224,12 @@ try {
 
     $instrumentationArgs = $adbDevice + @(
         'shell', 'am', 'instrument', '-w', '-r',
-        '-e', 'davi.liveGemini', 'true',
-        '-e', 'class', "$($selected.test_class)",
-        $runner
+        '-e', 'davi.liveGemini', 'true'
     )
+    if (-not $detailedReport) {
+        $instrumentationArgs += @('-e', 'davi.detailedReport', 'false')
+    }
+    $instrumentationArgs += @('-e', 'class', "$($selected.test_class)", $runner)
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
@@ -242,6 +253,16 @@ try {
     Write-Host '비식별 실기기 검증 로그:' -ForegroundColor Cyan
     $safeLogs | Where-Object { $_ -match 'GuideSvc|DaviE2e' } | ForEach-Object { Write-Host $_ }
 
+    if ($detailedReport) {
+        try {
+            Invoke-AdbChecked @('pull', $devicePrivateTrace, $privateTraceResult) '상세 분석 trace 가져오기'
+            $privateTraceAvailable = $true
+        }
+        catch {
+            Write-Warning '상세 분석 trace를 가져오지 못했습니다. 기본 비식별 보고서는 계속 생성합니다.'
+        }
+    }
+
     New-Item -ItemType Directory -Force $reportDir | Out-Null
     $renderArgs = $python.Prefix + @(
         $reportRenderer,
@@ -263,6 +284,23 @@ try {
     Write-Host ''
     Write-Host "결과 문서: $reportPath" -ForegroundColor Green
     Write-Host "최신 결과: $latestReport" -ForegroundColor Green
+    if ($detailedReport -and $privateTraceAvailable) {
+        $privateRenderArgs = $python.Prefix + @(
+            $privateReportRenderer,
+            '--trace', $privateTraceResult,
+            '--output', $privateReportPath,
+            '--model', $model,
+            '--device-model', $deviceModel,
+            '--android-version', $androidVersion,
+            '--commit', $gitCommit,
+            '--started-at', $runStartedAt,
+            '--scenario', $Scenario
+        )
+        Invoke-CheckedNative $python.Path $privateRenderArgs '상세 분석 문서 생성'
+        Copy-Item $privateReportPath $latestPrivateReport -Force
+        Write-Host "상세 분석 문서(로컬 전용): $privateReportPath" -ForegroundColor Yellow
+        Write-Host "최신 상세 분석(로컬 전용): $latestPrivateReport" -ForegroundColor Yellow
+    }
 
     $instrumentationText = Get-Content $instrumentationResult -Raw
     if ($instrumentationStatus -ne 0 -or
@@ -283,7 +321,7 @@ finally {
         $removeReverseArgs = $adbDevice + @('reverse', '--remove', 'tcp:8000')
         try { & $adb @removeReverseArgs *> $null } catch { }
     }
-    Remove-Item $instrumentationResult, $safeLogResult -Force -ErrorAction SilentlyContinue
+    Remove-Item $instrumentationResult, $safeLogResult, $privateTraceResult -Force -ErrorAction SilentlyContinue
     if ($null -eq $originalAndroidSerial) { Remove-Item Env:ANDROID_SERIAL -ErrorAction SilentlyContinue }
     else { $env:ANDROID_SERIAL = $originalAndroidSerial }
     if ($null -eq $originalJavaToolOptions) { Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue }

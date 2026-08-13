@@ -47,6 +47,9 @@ data class DisplayedDecision(
     val targetClickable: Boolean,
     val targetEditable: Boolean,
     val verified: Boolean,
+    /** 앱이 서버로 보낸 1차 마스킹 완료 요청과 파싱한 구조화 응답. 로컬 상세 보고서 전용이다. */
+    val requestJson: String,
+    val responseJson: String,
 )
 
 /** Davi debug manifest와 driver 사이의 서명 보호된 IPC 계약. 값 변경 시 양쪽을 함께 고친다. */
@@ -70,4 +73,6 @@ internal object GuideE2eContract {
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
     const val EXTRA_VERIFIED = "verified"
+    const val EXTRA_REQUEST_GZIP = "request_gzip"
+    const val EXTRA_RESPONSE_GZIP = "response_gzip"
 }

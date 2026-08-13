@@ -15,33 +15,59 @@ class GuidedScenarioRunner(private val device: UiDevice) {
         var state: State? = null
         var primaryFailure: Throwable? = null
         val queue = GuideDecisionQueue(context)
+        val detailedTrace = DetailedTraceWriter.create(context)
         try {
             val prepared = scenario.prepare(device)
             state = prepared
             GuideControl.start(context, scenario.goal(prepared))
             val executor = GuidedActionExecutor(device)
+            var activeGeneration: Long? = null
+            var previousSignature: String? = null
 
             for (step in 1..scenario.maxSteps) {
-                val decision = queue.await(scenario.decisionTimeoutMs, step)
-                GuideInstructionQuality.validate(decision, step)
-                Log.i(
-                    TRACE_TAG,
-                    "step=$step action=${decision.action.actionType.wire} " +
-                        "target=${decision.targetBounds?.size == 4} verified=${decision.verified}",
-                )
+                var decision: DisplayedDecision? = null
+                try {
+                    val discard: (String) -> Unit = { reason ->
+                        Log.i(TRACE_TAG, "decision_discarded reason=$reason")
+                        detailedTrace.recordDiscard(reason)
+                    }
+                    decision = queue.await(
+                        timeoutMs = scenario.decisionTimeoutMs,
+                        step = step,
+                        expectedGeneration = activeGeneration,
+                        previousSignature = previousSignature,
+                        onDiscard = discard,
+                    )
+                    if (activeGeneration == null) activeGeneration = decision.generation
+                    detailedTrace.recordDecision(step, decision)
+                    GuideInstructionQuality.validate(decision, step)
+                    Log.i(
+                        TRACE_TAG,
+                        "step=$step action=${decision.action.actionType.wire} " +
+                            "target=${decision.targetBounds?.size == 4} verified=${decision.verified}",
+                    )
 
-                if (decision.action.actionType == GuidedActionType.DONE) {
-                    if (!scenario.isGoalSatisfied(device, prepared)) {
-                        throw GuidedScenarioFailure("done_before_goal", step)
+                    if (decision.action.actionType == GuidedActionType.DONE) {
+                        if (!scenario.isGoalSatisfied(device, prepared)) {
+                            throw GuidedScenarioFailure("done_before_goal", step)
+                        }
+                        if (!decision.verified) {
+                            throw GuidedScenarioFailure("done_unverified", step)
+                        }
+                        detailedTrace.recordStepOutcome(step, "done_verified")
+                        return
                     }
-                    if (!decision.verified) {
-                        throw GuidedScenarioFailure("done_unverified", step)
-                    }
-                    return
+
+                    scenario.validateBeforeExecute(device, prepared, step, decision)
+                    // 현재 결정 검증 중 같은 화면에서 중복 방송된 값은 실제 조작 뒤 실행하지 않는다.
+                    queue.discardPending(discard)
+                    executor.execute(decision, scenario.textFor(prepared, step, decision), step)
+                    previousSignature = decision.requestSignature
+                    detailedTrace.recordStepOutcome(step, "executed")
+                } catch (failure: Throwable) {
+                    detailedTrace.recordStepOutcome(step, "failed", failure)
+                    throw failure
                 }
-
-                scenario.validateBeforeExecute(device, prepared, step, decision)
-                executor.execute(decision, scenario.textFor(prepared, step, decision), step)
             }
             throw GuidedScenarioFailure("step_limit")
         } catch (failure: Throwable) {
@@ -53,12 +79,16 @@ class GuidedScenarioRunner(private val device: UiDevice) {
             val cleanup = runCatching { scenario.cleanup(device, state) }
             cleanup.exceptionOrNull()?.let { cleanupFailure ->
                 Log.i(TRACE_TAG, "cleanup=failed")
+                detailedTrace.recordCleanup("failed")
                 if (primaryFailure != null) {
                     primaryFailure?.addSuppressed(cleanupFailure)
                 } else {
                     throw cleanupFailure
                 }
-            } ?: Log.i(TRACE_TAG, "cleanup=success")
+            } ?: run {
+                Log.i(TRACE_TAG, "cleanup=success")
+                detailedTrace.recordCleanup("success")
+            }
         }
     }
 

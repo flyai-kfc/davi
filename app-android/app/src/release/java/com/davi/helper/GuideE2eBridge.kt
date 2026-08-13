@@ -10,9 +10,8 @@ class GuideE2ePublisher(@Suppress("UNUSED_PARAMETER") context: Context) {
     fun displayed(
         generation: Long,
         requestSignature: String,
-        screen: Screen,
-        action: GuideAction,
+        request: NextStepRequest,
+        response: NextStepResponse,
         target: UiElement?,
-        verified: Boolean,
     ) = Unit
 }

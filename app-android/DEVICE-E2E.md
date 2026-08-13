@@ -26,9 +26,10 @@ UIAutomator로 검증한다. 첫 시나리오는 SM-S921N의 한국어 삼성 �
 시나리오는 기존 개인 알람을 보호하기 위해 알람 추가, 시간 picker, 테스트 이름, 저장만 허용하며
 그 밖의 target은 조작 전에 안전한 오류 코드로 실패시킨다.
 
-안내 문장은 exact-match하지 않는다. 대신 비어 있지 않은 근거·기대 결과, action과 맞는 한국어
-동작 표현, 현재 화면에 존재하는 target과 bounds, 실제 화면 진행, 조기 완료 여부와 최종 목표
-달성으로 품질을 검사한다. 화면·안내 원문은 테스트 결과나 logcat에 출력하지 않는다.
+안내 문장은 exact-match하거나 특정 한국어 동사 목록으로 제한하지 않는다. 대신 비어 있지 않은
+근거·기대 결과, 현재 화면에 존재하는 target과 bounds, 실제 화면 진행, 조기 완료 여부와 최종 목표
+달성으로 실행 품질을 검사한다. 문장의 의미 품질은 상세 분석 보고서와 별도 eval judge에서 본다.
+화면·안내 원문은 기본 테스트 결과나 logcat에 출력하지 않는다.
 실패 진단에는 단계, 구조화 action 종류, target bounds 존재 여부, 검증 여부만 남긴다.
 
 ## 실행 전 준비
@@ -70,9 +71,10 @@ Android의 `dumpsys accessibility`에 보이는 Bound 상태는 앱의 실제 `o
 
 instrumentation을 제품 앱과 분리한 이유는 Android가 instrumentation 대상 프로세스를 시작하면서
 같은 패키지의 접근성 서비스를 중단하기 때문이다. debug 앱만 세션 시작·결정 전달 receiver를
-포함하며, debug 앱·driver·test APK는 같은 debug key의 `signature` 권한으로 통신한다. release 구현은 no-op이고 receiver와
-권한 선언도 없다. 채널에는 구조화 action, target bounds와 품질 판정 필드만 전달하며 화면 트리나
-화면 label은 전달하지 않는다.
+포함하며, debug 앱·driver·test APK는 같은 debug key의 `signature` 권한으로 통신한다. release 구현은
+no-op이고 receiver와 권한 선언도 없다. 채널에는 구조화 action과 target 정보 외에 앱이 서버로 보낸
+1차 마스킹 완료 요청 snapshot 및 파싱된 응답을 압축해 전달한다. 원본 Accessibility 트리는 전달하지
+않지만 요청의 화면 label과 모델 문장(안내·기대 결과·근거)은 포함된다. 값은 logcat에 출력하지 않는다.
 
 UIAutomator는 화면 조회·조작 때 기본 `UiAutomation`을 반복해서 요청한다. test APK의
 `DaviE2eRunner`는 모든 요청에 `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`를 합쳐 Davi 접근성
@@ -86,14 +88,22 @@ UIAutomator는 화면 조회·조작 때 기본 `UiAutomation`을 반복해서 �
 
 구현 시 실제 기기 검증 결과와 해석은 [`DEVICE-E2E-RESULTS.md`](DEVICE-E2E-RESULTS.md)에 있다.
 실행기는 성공·실패와 무관하게 시나리오별 타임스탬프 보고서를 누적하고 `latest.md`도 갱신한다.
+기본 실행은 별도의 로컬 상세 분석 보고서도 함께 만든다.
 
 ```text
 build/reports/device-e2e/<scenario>/<timestamp>.md
 build/reports/device-e2e/<scenario>/latest.md
+build/reports/device-e2e-private/<scenario>/<timestamp>.md
+build/reports/device-e2e-private/<scenario>/latest.md
 ```
 
-보고서는 구조화 action과 판정 메타데이터만 사용한다. 화면·안내 원문과 기기 serial은 읽기 좋은
-결과를 만들기 위해서도 수집하지 않는다. 렌더러 자체는 다음 명령으로 API 키 없이 검증한다.
+기본 보고서는 구조화 action과 판정 메타데이터만 사용한다. 상세 보고서는 각 가이드의 요청 당시
+`Screen.elements`, `recent_instructions`, `recent_actions`와 응답의 `expected_result`, `evidence`,
+`instruction`, `action_type`, `direction`, `target_node_id`를 함께 보여 준다. 상세 파일은 마스킹 뒤에도
+개인 앱 이름 등이 남을 수 있는 **로컬 민감 산출물**이며 `.gitignore` 대상이다. PR·이슈에 첨부하지
+않는다. 생성하지 않으려면 `--no-detailed-report` 또는 `-NoDetailedReport`를 사용한다.
+
+두 렌더러는 다음 명령으로 API 키 없이 검증한다.
 
 ```bash
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
@@ -117,6 +127,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 5. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
 6. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.
 
-시나리오나 실패 메시지에 원본 화면 트리, 개인 label, 목표 원문, 모델 원문 응답, API 키를 저장하거나
-출력하지 않는다. 앱별 resource ID와 문구 selector는 준비·검증·정리에만 사용할 수 있으며 본 안내
-동작을 정답으로 덮어쓰는 데 사용하지 않는다.
+시나리오·실패 메시지·logcat에는 원본 화면 트리, 개인 label, 목표 원문, 모델 원문 응답, API 키를
+저장하거나 출력하지 않는다. 상세 보고서도 원본 트리가 아니라 앱이 실제로 전송한 1차 마스킹
+요청과 파싱된 구조화 응답만 쓴다. 앱별 resource ID와 문구 selector는 준비·검증·정리에만 사용할 수
+있으며 본 안내 동작을 정답으로 덮어쓰는 데 사용하지 않는다.

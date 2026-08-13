@@ -24,6 +24,17 @@ cd app-android
 시나리오를 생략하면 `device-e2e-scenarios.json`의 `default_scenario`가 실행된다. 두 실행기는 같은
 registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않는다.
 
+상세 분석 보고서는 기본으로 함께 생성된다. 화면·모델 문장이 포함된 로컬 상세 파일이 필요 없는
+실행에서는 다음처럼 끈다.
+
+```bash
+./scripts/run-device-e2e.sh --no-detailed-report
+```
+
+```powershell
+.\scripts\run-device-e2e.ps1 -NoDetailedReport
+```
+
 ## 실행 순서
 
 실행기는 다음을 자동 수행한다.
@@ -52,11 +63,17 @@ build/reports/device-e2e/
     ├── 20260813T120000123+0900.md
     ├── 20260813T123000456+0900.md
     └── latest.md
+
+build/reports/device-e2e-private/
+└── samsung-clock-create-alarm/
+    ├── 20260813T120000123+0900.md
+    └── latest.md
 ```
 
 타임스탬프 파일은 과거 실행 비교용으로 계속 남고, `latest.md`는 해당 시나리오의 가장 최근 결과를
-가리키는 복사본이다. `build/`는 Git에서 제외되므로 보고서를 공유하려면 필요한 파일만 PR 설명이나
-승인된 결과 저장소에 첨부한다.
+가리키는 복사본이다. `build/`와 상세 보고서 경로는 Git에서 제외된다. 기본 비식별 보고서만 필요한
+부분을 PR 설명이나 승인된 결과 저장소에 옮길 수 있다. `device-e2e-private` 파일은 마스킹된 label이라도
+식별 가능한 앱 이름과 모델 문장이 남을 수 있으므로 공유하지 않는다.
 
 ## 보고서에서 확인할 내용
 
@@ -69,12 +86,19 @@ build/reports/device-e2e/
 | 단계 trace | action, target bounds 존재 여부, 완료 검증 여부 |
 | 테스트 데이터 정리 | 성공·실패 뒤 테스트 전용 데이터 삭제 결과 |
 
+상세 분석 보고서는 각 가이드 번호 아래에서 다음을 함께 보여 준다.
+
+- 요청 시점의 package/page/scroll/IME 및 전달된 화면 요소 전체
+- 그 요청에 실제 포함된 `recent_instructions`와 구조화 `recent_actions`
+- 응답의 model/verified/screen signature와 전체 `GuideAction` 필드
+- 해석된 target bounds·role과 실행/실패 결과
+
 `step_limit`은 Gemini 할당량 제한이 아니다. 시나리오가 정한 최대 안내 단계 안에 목표를 완료하지
 못했다는 품질 실패다. API rate/quota 문제는 서버 호출 실패나 HTTP 429 계열로 별도 나타난다.
 
 ## 기록하지 않는 정보
 
-보고서와 콘솔의 비식별 trace에는 다음을 넣지 않는다.
+기본 보고서와 콘솔의 비식별 trace에는 다음을 넣지 않는다.
 
 - 화면 트리와 화면 label
 - 안내 문장과 모델 원문 응답
@@ -82,6 +106,10 @@ build/reports/device-e2e/
 - 기기 serial과 개인 데이터
 
 기기 모델·Android 버전·모델명·Git commit은 재현에 필요한 비식별 실행 메타데이터로 기록한다.
+
+상세 보고서는 원본 Accessibility 트리나 API 키·기기 serial을 넣지 않지만, 위 항목 중 앱이 전송한
+1차 마스킹 화면 label과 파싱된 모델 문장을 의도적으로 포함한다. 실행 중간 JSONL은 보고서 생성 뒤
+삭제되고 test APK 제거로 기기 파일도 함께 제거된다.
 
 ## 키 없이 확인할 회귀
 

@@ -287,22 +287,18 @@ class GuideAccessibilityService : AccessibilityService() {
             val startedAt = SystemClock.elapsedRealtime()
             GuideTelemetry.requestStarted(logicalRequest)
             try {
-                when (
-                    val result = client.nextStep(
-                        NextStepRequest(
-                            goal = session.goal,
-                            screen = screen,
-                            // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
-                            deviceId = dogfoodDeviceId,
-                            // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
-                            recentInstructions = session.recentInstructions,
-                            // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
-                            recentActions = session.recentActions,
-                            clientVersion = BuildConfig.VERSION_NAME,
-                        ),
-                        logicalRequest,
-                    )
-                ) {
+                val request = NextStepRequest(
+                    goal = session.goal,
+                    screen = screen,
+                    // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
+                    deviceId = dogfoodDeviceId,
+                    // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
+                    recentInstructions = session.recentInstructions,
+                    // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
+                    recentActions = session.recentActions,
+                    clientVersion = BuildConfig.VERSION_NAME,
+                )
+                when (val result = client.nextStep(request, logicalRequest)) {
                     is NextStepResult.Success -> {
                         val action = result.response.action
                         GuideTelemetry.requestFinished(
@@ -323,7 +319,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         )
                         mainHandler.post {
                             logicalRequests.markHttpResponse(logicalRequest, 200)
-                            applyAction(screen, signature, result.response, session, logicalRequest)
+                            applyAction(request, signature, result.response, session, logicalRequest)
                         }
                     }
 
@@ -410,12 +406,13 @@ class GuideAccessibilityService : AccessibilityService() {
      * 중지 후 같은 목표로 다시 시작하면 문자열이 같아 이전 응답이 그대로 통과한다.
      */
     private fun applyAction(
-        screen: Screen,
+        request: NextStepRequest,
         requestSignature: String,
         response: NextStepResponse,
         session: GuideSession.Active,
         logicalRequest: LogicalRequestAttempt,
     ) {
+        val screen = request.screen
         if (!GuideSession.isCurrent(session.generation)) {
             GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             return
@@ -437,10 +434,9 @@ class GuideAccessibilityService : AccessibilityService() {
             e2ePublisher?.displayed(
                 generation = session.generation,
                 requestSignature = requestSignature,
-                screen = screen,
-                action = action,
+                request = request,
+                response = response,
                 target = null,
-                verified = response.verified,
             )
             when (GuideSession.onDone(session.generation, response.verified)) {
                 GuideSession.DoneOutcome.STOP ->
@@ -488,10 +484,9 @@ class GuideAccessibilityService : AccessibilityService() {
         e2ePublisher?.displayed(
             generation = session.generation,
             requestSignature = requestSignature,
-            screen = screen,
-            action = action,
+            request = request,
+            response = response,
             target = target,
-            verified = response.verified,
         )
     }
 

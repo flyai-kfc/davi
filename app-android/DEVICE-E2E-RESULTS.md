@@ -25,8 +25,9 @@
 | 실제 Gemini 호출 | 통과 | stub이 아닌 모델 schema 요청과 HTTP 200 응답 확인 |
 | 안내 기반 조작 | 통과 | 정답 selector가 아니라 Gemini action과 target bounds로 외부 앱 조작 |
 | 편집 화면 진입 | 통과 | 알람 목록에서 알람 편집 화면까지 실제 화면 전환 확인 |
-| 시나리오 최종 완료 | **실패** | 최대 18단계 안에 목표 알람 생성과 검증된 `done`에 도달하지 못함 |
+| 시나리오 최종 완료 | **실패** | 리뷰 반영 후 실행에서 모델의 목표 미달 `done`을 독립 검증기가 거부함 |
 | 실패 시 데이터 정리 | 통과 | 실행 뒤 `DAVI_E2E_TEST` 알람이 남아 있지 않음을 별도 확인 |
+| 로컬 상세 분석 보고서 | 통과 | 기본 생성, Git 제외 경로 누적, 명시적으로 끌 때만 생략 |
 | API 키 없는 회귀 빌드 | 통과 | debug 앱, driver test APK와 JVM 테스트 컴파일 성공 |
 | release 격리 | 통과 | release APK에 E2E receiver와 signature 권한이 없음을 확인 |
 
@@ -34,15 +35,27 @@
 
 ### 실행 1 — 문장과 구조화 action 불일치
 
-첫 화면의 실제 Gemini 요청은 성공했지만, 안내 문장에 구조화 action과 맞는 최소 동작 표현이 없어
-`instruction_action_mismatch` 품질 게이트에서 중단됐다. 문장 exact-match가 아니라 action별 한국어
-동작 어휘의 존재만 검사한 결과다.
+초기 구현은 안내 문장에 구조화 action과 맞는 고정 한국어 동작 어휘가 없으면
+`instruction_action_mismatch`로 중단했다. 이 판정은 자연어 표현의 다양성을 잘못 거부할 수 있어 리뷰
+반영 과정에서 제거했다. 현재 driver는 구조화 action·target·시나리오 상태를 검사하고, 문장 의미 품질은
+로컬 상세 보고서와 별도 eval judge에서 분석한다.
 
 ### 실행 2 — 단계 상한 도달
 
 재실행에서는 알람 추가 대상을 선택해 편집 화면까지 진입했고 실제 Gemini 응답과 UIAutomator 조작이
 이어졌다. 그러나 허용된 최대 18단계 안에 목표 시간·테스트 이름·저장·검증된 완료까지 도달하지 못해
 `step_limit`으로 실패했다. 이 코드는 API 사용량 제한이 아니라 **시나리오 진행 단계 상한**이다.
+
+### 실행 3 — 목표 미달 완료 응답 거부
+
+리뷰 수정 후 재실행에서는 알람 추가, 시간 선택, 테스트 이름 입력, 저장까지 7개의 실제 Gemini 결정을
+따라 진행했다. 저장 뒤 모델이 `done`을 반환했지만, 독립적인 Samsung Clock robot이 실제 저장 결과가
+목표 시간과 일치하지 않음을 확인해 `done_before_goal`로 거부했다. 테스트 전용 알람 정리는 성공했다.
+
+기본 활성화된 로컬 상세 보고서를 통해 요청마다 전달된 화면 요소·최근 안내·최근 action과 구조화 응답,
+해결된 target, 실행 결과를 같은 가이드 번호에서 대조할 수 있었다. 이 과정에서 안내의 설명과 실제
+`target_node_id`가 가리키는 시간 값이 어긋난 단계를 확인했다. 화면 label과 모델 문장 원문은 로컬
+Git 제외 보고서에만 남기고 이 문서에는 옮기지 않았다.
 
 따라서 현재 결론은 다음과 같다.
 
@@ -59,9 +72,11 @@ OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매
 ```text
 app-android/build/reports/device-e2e/samsung-clock-create-alarm/<timestamp>.md
 app-android/build/reports/device-e2e/samsung-clock-create-alarm/latest.md
+app-android/build/reports/device-e2e-private/samsung-clock-create-alarm/<timestamp>.md
+app-android/build/reports/device-e2e-private/samsung-clock-create-alarm/latest.md
 ```
 
-보고서에는 다음 내용만 포함된다.
+기본 비식별 보고서에는 다음 내용만 포함된다.
 
 - 통과/실패와 구조화 실패 코드
 - 실행 시각, 모델명, 기기 모델·Android 버전, Git commit
@@ -69,5 +84,10 @@ app-android/build/reports/device-e2e/samsung-clock-create-alarm/latest.md
 - 단계별 `action`, target bounds 존재 여부, 완료 검증 여부
 - 테스트 전용 데이터 정리 성공 여부
 
-화면/안내 원문과 개인·인증 정보는 보고서에 포함하지 않는다. `build/` 아래의 자동 결과는 로컬
-산출물이므로 Git에는 커밋되지 않는다.
+별도의 상세 분석 보고서는 기본으로 함께 생성되며, 각 가이드의 앱 전송 요청 스냅샷과 구조화 응답을
+같은 순서로 보여 준다. 원본 Accessibility 트리, API 키, 기기 serial, `device_id`는 포함하지 않지만,
+1차 마스킹 뒤 화면 label과 모델 문장이 있으므로 로컬 민감 산출물로 취급한다. `--no-detailed-report`
+또는 `-NoDetailedReport`로 명시적으로 끌 수 있다.
+
+두 경로 모두 `build/` 아래이고 상세 경로는 루트 `.gitignore`에도 명시되어 자동 커밋되지 않는다.
+특히 `device-e2e-private` 보고서는 PR·이슈·채팅에 첨부하지 않는다.

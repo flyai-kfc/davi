@@ -6,7 +6,6 @@ import androidx.test.uiautomator.UiDevice
 internal class SamsungClockAlarmScenario : GuidedScenario<SamsungClockAlarmScenario.State> {
     data class State(
         val target: SamsungClockRobot.PickerTime,
-        var labelInputIssued: Boolean = false,
     )
 
     override val id: String = "samsung-clock-create-alarm"
@@ -36,7 +35,7 @@ internal class SamsungClockAlarmScenario : GuidedScenario<SamsungClockAlarmScena
         if (decision.screenPackage != SamsungClockRobot.PACKAGE) {
             throw GuidedScenarioFailure("unexpected_package", step)
         }
-        if (robot.hasTestAlarm()) throw GuidedScenarioFailure("action_after_goal", step)
+        if (robot.hasSavedTestAlarm()) throw GuidedScenarioFailure("action_after_goal", step)
 
         val targetKind = robot.targetKind(decision.targetBounds)
         when (robot.screenKind()) {
@@ -64,8 +63,8 @@ internal class SamsungClockAlarmScenario : GuidedScenario<SamsungClockAlarmScena
                     else -> false
                 }
                 if (!safe) throw GuidedScenarioFailure("unsafe_alarm_editor_target", step)
-                if (targetKind == SamsungClockRobot.TargetKind.SAVE && !state.labelInputIssued) {
-                    // 이름 없는 알람은 실패 뒤 식별해 지울 수 없으므로 저장 전에 차단한다.
+                if (targetKind == SamsungClockRobot.TargetKind.SAVE && !robot.hasEnteredTestLabel()) {
+                    // 시도 플래그가 아니라 현재 편집창의 실제 값을 읽어 이름 없는 알람 저장을 차단한다.
                     throw GuidedScenarioFailure("save_before_test_label", step)
                 }
             }
@@ -82,9 +81,7 @@ internal class SamsungClockAlarmScenario : GuidedScenario<SamsungClockAlarmScena
     ): String? {
         if (decision.action.actionType != GuidedActionType.TYPE) return null
         return when (robot.targetKind(decision.targetBounds)) {
-            SamsungClockRobot.TargetKind.NAME -> SamsungClockRobot.TEST_LABEL.also {
-                state.labelInputIssued = true
-            }
+            SamsungClockRobot.TargetKind.NAME -> SamsungClockRobot.TEST_LABEL
             SamsungClockRobot.TargetKind.HOUR -> state.target.hour.toString()
             SamsungClockRobot.TargetKind.MINUTE -> state.target.minute.toString().padStart(2, '0')
             else -> throw GuidedScenarioFailure("unknown_type_target", step)

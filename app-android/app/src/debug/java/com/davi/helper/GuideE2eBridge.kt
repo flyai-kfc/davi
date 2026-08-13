@@ -4,6 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPOutputStream
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /** debug 앱과 별도 UIAutomator driver APK 사이의 서명 보호된 테스트 전용 채널(#124). */
 class GuideE2ePublisher(private val context: Context) {
@@ -13,17 +17,17 @@ class GuideE2ePublisher(private val context: Context) {
     fun displayed(
         generation: Long,
         requestSignature: String,
-        screen: Screen,
-        action: GuideAction,
+        request: NextStepRequest,
+        response: NextStepResponse,
         target: UiElement?,
-        verified: Boolean,
     ) {
         if (!GuideE2eRunState.active) return
+        val action = response.action
         val intent = Intent(GuideE2eContract.ACTION_DECISION)
             .setPackage(GuideE2eContract.DRIVER_PACKAGE)
             .putExtra(GuideE2eContract.EXTRA_GENERATION, generation)
             .putExtra(GuideE2eContract.EXTRA_SIGNATURE, requestSignature)
-            .putExtra(GuideE2eContract.EXTRA_SCREEN_PACKAGE, screen.packageName)
+            .putExtra(GuideE2eContract.EXTRA_SCREEN_PACKAGE, request.screen.packageName)
             .putExtra(GuideE2eContract.EXTRA_ACTION_TYPE, action.actionType.name.lowercase())
             .putExtra(GuideE2eContract.EXTRA_DIRECTION, action.direction?.name?.lowercase())
             .putExtra(GuideE2eContract.EXTRA_INSTRUCTION, action.instruction)
@@ -33,9 +37,24 @@ class GuideE2ePublisher(private val context: Context) {
             .putExtra(GuideE2eContract.EXTRA_TARGET_ROLE, target?.role)
             .putExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, target?.clickable ?: false)
             .putExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, target?.editable ?: false)
-            .putExtra(GuideE2eContract.EXTRA_VERIFIED, verified)
-        // 수신 앱도 signature 권한을 가져야 한다. 화면·안내 원문은 저장하거나 로그하지 않는다.
+            .putExtra(GuideE2eContract.EXTRA_VERIFIED, response.verified)
+            // 실기기 E2E test process만 파일로 남긴다. Binder 상한을 피하려고 JSON을 압축한다.
+            .putExtra(GuideE2eContract.EXTRA_REQUEST_GZIP, gzip(JSON.encodeToString(request)))
+            .putExtra(GuideE2eContract.EXTRA_RESPONSE_GZIP, gzip(JSON.encodeToString(response)))
+        // 수신 앱도 signature 권한을 가져야 한다. 화면·안내 원문은 logcat에 출력하지 않는다.
         context.sendBroadcast(intent, GuideE2eContract.PERMISSION)
+    }
+
+    private fun gzip(value: String): ByteArray = ByteArrayOutputStream().use { output ->
+        GZIPOutputStream(output).bufferedWriter(Charsets.UTF_8).use { it.write(value) }
+        output.toByteArray()
+    }
+
+    private companion object {
+        val JSON = Json {
+            encodeDefaults = true
+            explicitNulls = false
+        }
     }
 }
 
@@ -86,4 +105,6 @@ internal object GuideE2eContract {
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
     const val EXTRA_VERIFIED = "verified"
+    const val EXTRA_REQUEST_GZIP = "request_gzip"
+    const val EXTRA_RESPONSE_GZIP = "response_gzip"
 }

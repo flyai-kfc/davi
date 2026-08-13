@@ -30,7 +30,16 @@ internal class SamsungClockRobot(private val device: UiDevice) {
         else -> ScreenKind.UNKNOWN
     }
 
-    fun hasTestAlarm(): Boolean = device.hasObject(By.text(TEST_LABEL))
+    /** 편집창의 같은 문자열을 저장 완료로 오인하지 않고 알람 목록 카드 안에서만 찾는다. */
+    fun hasSavedTestAlarm(): Boolean {
+        if (screenKind() != ScreenKind.ALARM_LIST) return false
+        val list = device.findObject(By.res(PACKAGE, ID_LIST)) ?: return false
+        return list.findObject(By.text(TEST_LABEL)) != null
+    }
+
+    fun hasEnteredTestLabel(): Boolean =
+        screenKind() == ScreenKind.ALARM_EDITOR &&
+            device.findObject(By.res(PACKAGE, ID_NAME))?.text == TEST_LABEL
 
     /** Gemini target bounds 중심에 있는 삼성 시계 노드를 찾아 안전 허용 종류로만 축약한다. */
     fun targetKind(boundsValues: IntArray?): TargetKind {
@@ -42,6 +51,7 @@ internal class SamsungClockRobot(private val device: UiDevice) {
             .filter { it.visibleBounds.contains(centerX, centerY) }
             .sortedBy { it.visibleBounds.width().toLong() * it.visibleBounds.height().toLong() }
         candidates.forEach { node ->
+            pickerKind(node)?.let { return it }
             when (node.resourceName) {
                 "$PACKAGE:id/$ID_ADD" -> return TargetKind.ADD
                 "$PACKAGE:id/$ID_NAME" -> return TargetKind.NAME
@@ -58,6 +68,25 @@ internal class SamsungClockRobot(private val device: UiDevice) {
             }
         }
         return TargetKind.OTHER
+    }
+
+    /** 선택값 위·아래 버튼처럼 resource ID가 없는 NumberPicker 자손도 같은 picker로 판정한다. */
+    private fun pickerKind(node: UiObject2): TargetKind? {
+        var current: UiObject2? = node
+        repeat(MAX_PICKER_ANCESTORS) {
+            val candidate = current ?: return null
+            if (candidate.className == "android.widget.NumberPicker") {
+                val value = candidate.findObject(By.res(PACKAGE, ID_PICKER_INPUT))?.text.orEmpty()
+                return when {
+                    value == TEXT_AM || value == TEXT_PM -> TargetKind.PERIOD
+                    HOUR.containsMatchIn(value) -> TargetKind.HOUR
+                    MINUTE.containsMatchIn(value) -> TargetKind.MINUTE
+                    else -> null
+                }
+            }
+            current = candidate.parent
+        }
+        return null
     }
 
     fun openAlarmList() {
@@ -204,6 +233,7 @@ internal class SamsungClockRobot(private val device: UiDevice) {
         private val MINUTE = Regex("(\\d{1,2}),\\s*분")
         private const val MAX_LIST_SWIPES = 10
         private const val MAX_ANCESTORS = 8
+        private const val MAX_PICKER_ANCESTORS = 4
         private const val WINDOW_TIMEOUT_MS = 5_000L
         private const val IDLE_TIMEOUT_MS = 1_500L
     }

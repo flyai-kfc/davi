@@ -26,6 +26,8 @@ infra/azure/parameters.dev.json
 local.properties
 app-android/build/
 app-android/**/build/
+# 실기기 E2E 상세 요청·응답 보고서 — 로컬 분석 전용, 공유·커밋 금지
+app-android/build/reports/device-e2e-private/
 .idea/
 *.keystore
 *.jks

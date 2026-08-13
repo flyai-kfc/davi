@@ -1,6 +1,8 @@
 package com.davi.helper.e2e
 
 import android.graphics.Rect
+import android.view.accessibility.AccessibilityWindowInfo
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
@@ -48,7 +50,7 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
         focused.text = value
         // 입력 원문은 화면 시그니처에서 빠진다. 사용자가 입력을 마치고 키보드를 닫는 것까지 TYPE
         // 한 동작의 commit으로 재현해야 IME/focus 상태 변화 뒤 다음 안내를 받을 수 있다.
-        device.pressBack()
+        if (isImeVisible()) device.pressBack()
     }
 
     private fun scroll(decision: DisplayedDecision, step: Int) {
@@ -97,6 +99,11 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
         if (bounds.isEmpty) throw GuidedScenarioFailure("target_bounds_empty", step)
         return bounds
     }
+
+    private fun isImeVisible(): Boolean = runCatching {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.windows
+            .any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    }.getOrDefault(false)
 
     private companion object {
         const val SWIPE_STEPS = 24

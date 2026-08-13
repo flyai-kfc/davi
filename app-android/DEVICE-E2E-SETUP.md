@@ -33,6 +33,10 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 Gemini API 키는 서버에만 둔다. 앱 소스, `local.properties`, 테스트 시나리오, 결과 보고서에는 넣지
 않는다. `server/.env`는 Git에서 제외된다.
 
+기본 실행은 `build/reports/device-e2e-private/`에 앱이 전송한 1차 마스킹 화면과 모델 문장을 담은
+로컬 상세 보고서를 만든다. 이 경로는 Git에서 제외되지만 개발자가 직접 첨부하면 유출될 수 있으므로
+PR·이슈·메신저로 공유하지 않는다.
+
 ```dotenv
 GEMINI_API_KEY=<개발자 개인 키>
 DAVI_USE_STUB_LLM=false

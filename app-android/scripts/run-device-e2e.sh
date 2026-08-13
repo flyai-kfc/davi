@@ -18,9 +18,12 @@ SERVER_URL="http://127.0.0.1:8000"
 RUNNER="com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner"
 SERVICE="com.davi.helper/com.davi.helper.GuideAccessibilityService"
 REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-report.py"
+PRIVATE_REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-private-report.py"
 SCENARIO_REGISTRY="$APP_DIR/device-e2e-scenarios.json"
 SCENARIO=""
 LIST_SCENARIOS=false
+DETAILED_REPORT=true
+PRIVATE_TRACE_AVAILABLE=false
 
 usage() {
     cat <<'EOF'
@@ -29,6 +32,7 @@ usage() {
 옵션:
   --scenario ID      실행할 시나리오 ID (생략 시 registry 기본값)
   --list-scenarios   실행 가능한 시나리오 목록 출력
+  --no-detailed-report  로컬 상세 요청·응답 보고서를 생성하지 않음
   -h, --help         도움말 출력
 EOF
 }
@@ -41,6 +45,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --list-scenarios) LIST_SCENARIOS=true; shift ;;
+        --no-detailed-report) DETAILED_REPORT=false; shift ;;
         -h|--help) usage; exit 0 ;;
         *) printf '알 수 없는 옵션: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
@@ -97,11 +102,16 @@ DAVI_DISABLED=false
 WITHOUT_DAVI=""
 INSTRUMENTATION_RESULT="$(mktemp -t davi-e2e-result.XXXXXX)"
 SAFE_LOG_RESULT="$(mktemp -t davi-e2e-safe-log.XXXXXX)"
+PRIVATE_TRACE_RESULT="$(mktemp -t davi-e2e-private-trace.XXXXXX)"
 RUN_STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 REPORT_STAMP="$(python3 -c 'from datetime import datetime; n=datetime.now().astimezone(); print(n.strftime("%Y%m%dT%H%M%S") + f"{n.microsecond // 1000:03d}" + n.strftime("%z"))')"
 REPORT_DIR="$APP_DIR/build/reports/device-e2e/$SCENARIO"
 REPORT_PATH="$REPORT_DIR/$REPORT_STAMP.md"
 LATEST_REPORT="$REPORT_DIR/latest.md"
+PRIVATE_REPORT_DIR="$APP_DIR/build/reports/device-e2e-private/$SCENARIO"
+PRIVATE_REPORT_PATH="$PRIVATE_REPORT_DIR/$REPORT_STAMP.md"
+LATEST_PRIVATE_REPORT="$PRIVATE_REPORT_DIR/latest.md"
+DEVICE_PRIVATE_TRACE="/sdcard/Android/data/com.davi.helper.e2edriver/files/davi-e2e-private-trace.jsonl"
 DEVICE_MODEL="$("${ADB_DEVICE[@]}" shell getprop ro.product.model | tr -d '\r')"
 ANDROID_VERSION="$("${ADB_DEVICE[@]}" shell getprop ro.build.version.release | tr -d '\r')"
 GIT_COMMIT="$(git -C "$APP_DIR/.." rev-parse --short HEAD)"
@@ -121,7 +131,7 @@ restore_davi_accessibility() {
 
 cleanup() {
     restore_davi_accessibility || true
-    rm -f "$INSTRUMENTATION_RESULT" "$SAFE_LOG_RESULT"
+    rm -f "$INSTRUMENTATION_RESULT" "$SAFE_LOG_RESULT" "$PRIVATE_TRACE_RESULT"
     # Davi 앱은 유지하고 launcher가 없는 테스트 전용 helper/test 패키지만 치운다.
     "${ADB_DEVICE[@]}" uninstall com.davi.helper.e2edriver.test >/dev/null 2>&1 || true
     "${ADB_DEVICE[@]}" uninstall com.davi.helper.e2edriver >/dev/null 2>&1 || true
@@ -201,9 +211,11 @@ if ! "${ADB_DEVICE[@]}" shell appops get com.davi.helper SYSTEM_ALERT_WINDOW | g
 fi
 
 set +e
-"${ADB_DEVICE[@]}" shell am instrument -w -r \
-    -e davi.liveGemini true \
-    -e class "$TEST_CLASS" \
+INSTRUMENTATION_ARGS=(-w -r -e davi.liveGemini true -e class "$TEST_CLASS")
+if [[ "$DETAILED_REPORT" == false ]]; then
+    INSTRUMENTATION_ARGS+=(-e davi.detailedReport false)
+fi
+"${ADB_DEVICE[@]}" shell am instrument "${INSTRUMENTATION_ARGS[@]}" \
     "$RUNNER" | tee "$INSTRUMENTATION_RESULT"
 # pipefail이 켜져 있어 adb 또는 tee 어느 쪽이든 실패하면 이 status가 실패다. Bash 3의
 # PIPESTATUS 배열과 nounset 조합은 빈 배열로 평가될 수 있어 직전 pipeline status를 직접 쓴다.
@@ -217,6 +229,13 @@ print_safe_logs() {
 }
 
 print_safe_logs
+if [[ "$DETAILED_REPORT" == true ]]; then
+    if "${ADB_DEVICE[@]}" pull "$DEVICE_PRIVATE_TRACE" "$PRIVATE_TRACE_RESULT" >/dev/null 2>&1; then
+        PRIVATE_TRACE_AVAILABLE=true
+    else
+        printf '상세 분석 trace를 가져오지 못했습니다. 기본 비식별 보고서는 계속 생성합니다.\n' >&2
+    fi
+fi
 python3 "$REPORT_RENDERER" \
     --instrumentation-result "$INSTRUMENTATION_RESULT" \
     --safe-log "$SAFE_LOG_RESULT" \
@@ -233,11 +252,26 @@ python3 "$REPORT_RENDERER" \
 cp "$REPORT_PATH" "$LATEST_REPORT"
 printf '\n결과 문서: %s\n' "$REPORT_PATH"
 printf '최신 결과: %s\n' "$LATEST_REPORT"
+if [[ "$DETAILED_REPORT" == true && "$PRIVATE_TRACE_AVAILABLE" == true ]]; then
+    python3 "$PRIVATE_REPORT_RENDERER" \
+        --trace "$PRIVATE_TRACE_RESULT" \
+        --output "$PRIVATE_REPORT_PATH" \
+        --model "$MODEL" \
+        --device-model "$DEVICE_MODEL" \
+        --android-version "$ANDROID_VERSION" \
+        --commit "$GIT_COMMIT" \
+        --started-at "$RUN_STARTED_AT" \
+        --scenario "$SCENARIO"
+    cp "$PRIVATE_REPORT_PATH" "$LATEST_PRIVATE_REPORT"
+    printf '상세 분석 문서(로컬 전용): %s\n' "$PRIVATE_REPORT_PATH"
+    printf '최신 상세 분석(로컬 전용): %s\n' "$LATEST_PRIVATE_REPORT"
+fi
 
+INSTRUMENTATION_NORMALIZED="$(tr -d '\r' < "$INSTRUMENTATION_RESULT")"
 if [[ "$INSTRUMENTATION_SHELL_STATUS" -ne 0 ]] ||
-    ! grep -q '^INSTRUMENTATION_CODE: -1$' "$INSTRUMENTATION_RESULT" ||
-    ! grep -Eq '^OK \([0-9]+ tests?\)$' "$INSTRUMENTATION_RESULT" ||
-    grep -q '^FAILURES!!!' "$INSTRUMENTATION_RESULT"; then
+    ! grep -q '^INSTRUMENTATION_CODE: -1$' <<<"$INSTRUMENTATION_NORMALIZED" ||
+    ! grep -Eq '^OK \([0-9]+ tests?\)$' <<<"$INSTRUMENTATION_NORMALIZED" ||
+    grep -q '^FAILURES!!!' <<<"$INSTRUMENTATION_NORMALIZED"; then
     printf '실기기 instrumentation이 실패했습니다. 화면/안내 원문은 출력하지 않았습니다.\n' >&2
     exit 1
 fi
