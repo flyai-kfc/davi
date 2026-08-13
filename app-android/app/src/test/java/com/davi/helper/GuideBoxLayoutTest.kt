@@ -23,6 +23,7 @@ class GuideBoxLayoutTest {
         target: GuideBoxLayout.Bounds? = null,
         canvas: GuideBoxLayout.Bounds = GuideBoxLayout.Bounds(0f, 0f, 1000f, 2000f),
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+        controlHeight: Float = 0f,
     ) = GuideBoxLayout.compute(
         instruction = instruction,
         canvas = canvas,
@@ -32,6 +33,7 @@ class GuideBoxLayoutTest {
         lineHeight = LINE_HEIGHT,
         measure = measure,
         avoid = avoid,
+        controlHeight = controlHeight,
     )
 
     @Test
@@ -278,6 +280,45 @@ class GuideBoxLayoutTest {
         assertTrue(layout!!.box.bottom <= 1500f)
     }
 
+    @Test
+    fun `컨트롤 행만큼 상자가 높아지되 줄바꿈은 그대로다`() {
+        val text = "여기를 누르세요"
+
+        val plain = compute(text)
+        val withRow = compute(text, controlHeight = CONTROL_ROW)
+
+        assertEquals(plain?.lines, withRow?.lines)
+        assertEquals(
+            plain!!.box.bottom - plain.box.top + CONTROL_ROW,
+            withRow!!.box.bottom - withRow.box.top,
+            0.01f,
+        )
+    }
+
+    @Test
+    fun `컨트롤 행은 절반 상한 예산에서 먼저 빠진다`() {
+        // 안 빼면 칩 높이만큼 절반을 넘는다. (1000 - 32 - 90) / 30 = 29줄.
+        val long = (1..40).joinToString("\n") { "줄$it" }
+
+        val layout = compute(long, controlHeight = CONTROL_ROW)
+
+        assertEquals(29, layout?.lines?.size)
+        assertTrue(layout!!.box.bottom - layout.box.top <= 1000f)
+    }
+
+    @Test
+    fun `컨트롤 행이 회피 대상을 물면 다른 자리로 옮긴다`() {
+        // 칩 자리도 상자의 일부다 — 텍스트 높이로만 재면 칩이 회피 영역을 덮는다(#126).
+        val band = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 850f, 1000f, 900f), hard = true)
+        val text = "여기를 누르세요"
+
+        val plain = compute(text, target = TARGET, avoid = listOf(band))
+        val withRow = compute(text, target = TARGET, avoid = listOf(band), controlHeight = CONTROL_ROW)
+
+        assertEquals(918f, plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
+        assertEquals(1120f, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
+    }
+
     private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
 
     private fun keyboard(hard: Boolean) =
@@ -288,6 +329,9 @@ class GuideBoxLayoutTest {
         const val MARGIN = 20f
         const val PADDING = 16f
         const val LINE_HEIGHT = 30f
+
+        /** 칩이 앉는 컨트롤 행 높이(#126). */
+        const val CONTROL_ROW = 90f
 
         /** 상자 안쪽 폭 928 / 글자폭 10. */
         const val LINE_CHARS = 92
