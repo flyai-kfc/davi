@@ -52,6 +52,15 @@
             android:textAppearance="@style/TextAppearance.Davi.Body"
             android:textColor="@color/davi_text_secondary" />
 
+        <!-- 안내 세션이 도는 동안만 보이는 임시 중단 수단 — 오버레이 X 칩은 터치 계약 [미결] -->
+        <Button
+            android:id="@+id/btn_stop_guide"
+            style="@style/Widget.Davi.Button.Secondary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:text="@string/btn_stop" />
+
         <TextView
             android:id="@+id/card_question"
             android:layout_width="match_parent"

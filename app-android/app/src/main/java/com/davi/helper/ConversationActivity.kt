@@ -47,6 +47,9 @@ class ConversationActivity : AppCompatActivity() {
     @Volatile
     private var destroyed = false
 
+    // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
+    private val sessionListener = GuideSession.Listener { runOnUiThread { render(uiState) } }
+
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
             BuildConfig.SERVER_URL,
@@ -109,7 +112,15 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.Home())
         }
         binding.confirmPair.btnConfirmAccept.setOnClickListener { onConfirmAccepted() }
+        binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
 
+        render(uiState)
+    }
+
+    /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 그린다. */
+    override fun onResume() {
+        super.onResume()
+        GuideSession.addListener(sessionListener)
         render(uiState)
     }
 
@@ -119,6 +130,7 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        GuideSession.removeListener(sessionListener)
         // 화면을 떠나면 대화를 접는다 — Confirm의 goal도 함께 사라진다(임시 디자인에서
         // 수용, 디자인 확정 시 재검토). 복귀 시 유령 상태가 없도록 홈으로 되돌린다.
         cancelVoiceDialogue()
@@ -149,7 +161,7 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 렌더 판단은 renderModelOf(순수 함수)에 있고 여기는 대입만 한다. */
     private fun render(state: ConversationUiState) {
-        val model = renderModelOf(state)
+        val model = renderModelOf(state, guideActive = GuideSession.isActive)
         binding.spaceHomeTop.isVisible(model.homeVisible)
         binding.spaceHomeMid.isVisible(model.homeVisible)
         binding.homeTitle.isVisible(model.homeVisible)
@@ -165,6 +177,8 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
+        binding.btnMic.isActivated = model.micActivated
+        binding.btnStopGuide.isVisible(model.stopGuideVisible)
         binding.confirmPair.root.isVisible(model.confirmVisible)
         binding.btnClose.isVisible(model.closeVisible)
     }

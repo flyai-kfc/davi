@@ -1,26 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   마이크 버튼: 흰 원 + 상태별 링 색. Figma button/mic와 1:1.
-  상태 축은 늘어날 수 있다(듣는 중 UI 확정 시) — 새 상태는 여기 selector에 item으로 추가.
+  activated 항목이 disabled보다 먼저 온다 — 듣는 중(activated)은 조작 불가(disabled)와
+  겹치므로 순서가 바뀌면 회색이 이긴다. 상태 축은 늘어날 수 있다(듣는 중 UI 확정 시).
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 조작 불필요(이미 듣는 중이거나 처리 중): 회색 링, ripple 없음 -->
+    <!-- 듣는 중: 강조색 링 -->
+    <item android:state_activated="true">
+        <shape android:shape="oval">
+            <solid android:color="@color/davi_bg" />
+            <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_highlight" />
+        </shape>
+    </item>
+    <!-- 조작 불필요(질문 재생·응답 대기): 회색 링 -->
     <item android:state_enabled="false">
         <shape android:shape="oval">
             <solid android:color="@color/davi_bg" />
             <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_border" />
         </shape>
-    </item>
-    <!-- 듣는 중 표시: 강조색 링 -->
-    <item android:state_activated="true">
-        <ripple android:color="@color/davi_state_layer_pressed">
-            <item>
-                <shape android:shape="oval">
-                    <solid android:color="@color/davi_bg" />
-                    <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_highlight" />
-                </shape>
-            </item>
-        </ripple>
     </item>
     <!-- 기본(홈): 주 버튼 색 링 -->
     <item>

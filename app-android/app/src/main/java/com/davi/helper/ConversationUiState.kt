@@ -44,17 +44,27 @@ data class ConversationRenderModel(
     val utteranceText: String = "",
     val micVisible: Boolean = false,
     val micEnabled: Boolean = false,
+    val micActivated: Boolean = false,
+    val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
     val closeVisible: Boolean = false,
 )
 
-/** 상태 → 렌더 모델. 발화 카드(핑크)는 대화 진행 중(듣는 중·재생 중·대기 중) 내내 보인다. */
-fun renderModelOf(state: ConversationUiState): ConversationRenderModel = when (state) {
+/**
+ * 상태 → 렌더 모델. 발화 카드(핑크)는 대화 진행 중(듣는 중·재생 중·대기 중) 내내 보인다.
+ * 마이크 링: 홈=주 버튼 색(탭 가능) / 듣는 중=강조색(activated) / 그 외=회색 — TTS 재생과
+ * 듣는 중을 구분한다(임시 디자인, 확정 시 재검토).
+ *
+ * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다 — 새 화면에
+ * 세션 중단 수단이 없던 공백의 임시 조치(#123). 오버레이 X 칩은 터치 계약 [미결].
+ */
+fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
     is ConversationUiState.Home -> ConversationRenderModel(
         homeVisible = true,
         statusRes = state.statusRes,
         micVisible = true,
-        micEnabled = true,
+        micEnabled = !guideActive,
+        stopGuideVisible = guideActive,
     )
     is ConversationUiState.Listening -> ConversationRenderModel(
         logoVisible = true,
@@ -63,6 +73,7 @@ fun renderModelOf(state: ConversationUiState): ConversationRenderModel = when (s
         utteranceVisible = true,
         utteranceText = state.partial,
         micVisible = true,
+        micActivated = true,
         closeVisible = true,
     )
     is ConversationUiState.Speaking -> ConversationRenderModel(

@@ -19,12 +19,22 @@ class ConversationUiStateTest {
         assertTrue(model.micVisible)
         assertTrue(model.micEnabled)
         assertNull(model.statusRes)
+        assertFalse(model.micActivated)
+        assertFalse(model.stopGuideVisible)
         assertFalse(model.logoVisible)
         assertNull(model.questionRes)
         assertNull(model.questionText)
         assertFalse(model.utteranceVisible)
         assertFalse(model.confirmVisible)
         assertFalse(model.closeVisible)
+    }
+
+    @Test
+    fun `안내 세션 중 홈은 중지 버튼을 보이고 마이크를 잠근다`() {
+        val model = renderModelOf(ConversationUiState.Home(), guideActive = true)
+        assertTrue(model.stopGuideVisible)
+        assertFalse(model.micEnabled)
+        assertTrue(model.micVisible)
     }
 
     @Test
@@ -42,6 +52,7 @@ class ConversationUiStateTest {
         assertEquals("", model.utteranceText)
         assertTrue(model.micVisible)
         assertFalse(model.micEnabled) // 이미 듣는 중 — 조작 불필요
+        assertTrue(model.micActivated) // 강조 링 — TTS 재생·대기와 구분
         assertTrue(model.closeVisible)
     }
 
@@ -56,11 +67,12 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `질문 재생 중에는 마이크가 비활성이다`() {
+    fun `질문 재생 중에는 마이크가 비활성이고 강조 링도 꺼진다`() {
         val model = renderModelOf(ConversationUiState.Speaking("누구에게 보내시겠어요?"))
         assertEquals("누구에게 보내시겠어요?", model.questionText)
         assertTrue(model.micVisible)
         assertFalse(model.micEnabled)
+        assertFalse(model.micActivated) // 듣는 중(강조 링)과 구분되는 지점
         assertTrue(model.utteranceVisible)
     }
 
