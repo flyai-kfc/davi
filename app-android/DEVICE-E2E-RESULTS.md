@@ -53,10 +53,12 @@
 
 ## 이후 실행 결과 확인
 
-`./scripts/run-samsung-clock-e2e.sh`를 실행하면 매번 다음 로컬 문서가 새로 생성된다.
+OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매번 타임스탬프 문서가
+누적되고 시나리오별 최신 복사본도 갱신된다.
 
 ```text
-app-android/build/reports/device-e2e/latest.md
+app-android/build/reports/device-e2e/samsung-clock-create-alarm/<timestamp>.md
+app-android/build/reports/device-e2e/samsung-clock-create-alarm/latest.md
 ```
 
 보고서에는 다음 내용만 포함된다.

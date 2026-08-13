@@ -47,8 +47,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
 - `HANDOFF.md` §3-15의 "CLI 빌드 불가"는 **해결됐다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓이었고, 소켓 임시 폴더를 옮기면 정상 동작한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
-- 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`와
-  `scripts/run-samsung-clock-e2e.sh`를 쓴다. API 키는 서버에만 두고, 일반 CI는
+- 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
+  `scripts/run-device-e2e.sh` 또는 `.ps1`을 쓴다. API 키는 서버에만 두고, 일반 CI는
   `assembleDebugAndroidTest`로 test APK 컴파일까지만 수행한다.
 - **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로 `./scripts/dev-install.ps1 -SkipBuild`로 권한만 복구한다(2초).
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).

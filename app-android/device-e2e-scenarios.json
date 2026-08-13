@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "default_scenario": "samsung-clock-create-alarm",
+  "scenarios": [
+    {
+      "id": "samsung-clock-create-alarm",
+      "test_class": "com.davi.helper.e2e.SamsungClockAlarmGeminiTest",
+      "description": "한국어 삼성 시계에서 실제 Gemini 안내를 따라 테스트 전용 알람을 만들고 삭제한다.",
+      "requirements": "Samsung Clock 12.4.10.10의 한국어 UI로 검증됨"
+    }
+  ]
+}

@@ -3,21 +3,74 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
-ADB="$SDK_ROOT/platform-tools/adb"
+SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [[ -n "$SDK_ROOT" && -x "$SDK_ROOT/platform-tools/adb" ]]; then
+    ADB="$SDK_ROOT/platform-tools/adb"
+elif [[ -x "$HOME/Library/Android/sdk/platform-tools/adb" ]]; then
+    SDK_ROOT="$HOME/Library/Android/sdk"
+    ADB="$SDK_ROOT/platform-tools/adb"
+elif command -v adb >/dev/null 2>&1; then
+    ADB="$(command -v adb)"
+else
+    ADB="${SDK_ROOT:+$SDK_ROOT/platform-tools/}adb"
+fi
 SERVER_URL="http://127.0.0.1:8000"
-TEST_CLASS="com.davi.helper.e2e.SamsungClockAlarmGeminiTest"
 RUNNER="com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner"
 SERVICE="com.davi.helper/com.davi.helper.GuideAccessibilityService"
 REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-report.py"
-REPORT_PATH="$APP_DIR/build/reports/device-e2e/latest.md"
+SCENARIO_REGISTRY="$APP_DIR/device-e2e-scenarios.json"
+SCENARIO=""
+LIST_SCENARIOS=false
+
+usage() {
+    cat <<'EOF'
+사용법: ./scripts/run-device-e2e.sh [옵션]
+
+옵션:
+  --scenario ID      실행할 시나리오 ID (생략 시 registry 기본값)
+  --list-scenarios   실행 가능한 시나리오 목록 출력
+  -h, --help         도움말 출력
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --scenario)
+            if [[ $# -lt 2 ]]; then printf '%s\n' '--scenario 값이 필요합니다.' >&2; exit 2; fi
+            SCENARIO="$2"
+            shift 2
+            ;;
+        --list-scenarios) LIST_SCENARIOS=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) printf '알 수 없는 옵션: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+if [[ "$LIST_SCENARIOS" == true ]]; then
+    python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); [print("{}\t{}".format(s["id"], s["description"])) for s in d["scenarios"]]' "$SCENARIO_REGISTRY"
+    exit 0
+fi
+
+if [[ -z "$SCENARIO" ]]; then
+    SCENARIO="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["default_scenario"])' "$SCENARIO_REGISTRY")"
+fi
+if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); any(x["id"] == sys.argv[2] for x in d["scenarios"]) or sys.exit(2)' "$SCENARIO_REGISTRY" "$SCENARIO"; then
+    printf '등록되지 않은 시나리오: %s\n' "$SCENARIO" >&2
+    printf '%s\n' '--list-scenarios로 목록을 확인하세요.' >&2
+    exit 2
+fi
+TEST_CLASS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(next(x for x in d["scenarios"] if x["id"] == sys.argv[2])["test_class"])' "$SCENARIO_REGISTRY" "$SCENARIO")"
+SCENARIO_DESCRIPTION="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(next(x for x in d["scenarios"] if x["id"] == sys.argv[2])["description"])' "$SCENARIO_REGISTRY" "$SCENARIO")"
 
 if [[ ! -x "$ADB" ]]; then
     printf 'Android SDK의 adb를 찾을 수 없습니다. ANDROID_HOME을 확인하세요.\n' >&2
     exit 2
 fi
 
-HEALTH_JSON="$(curl --fail --silent --show-error "$SERVER_URL/health")"
+if ! HEALTH_JSON="$(curl --fail --silent --show-error "$SERVER_URL/health")"; then
+    printf '127.0.0.1:8000의 서버 health를 확인할 수 없습니다.\n' >&2
+    exit 2
+fi
 if ! printf '%s' "$HEALTH_JSON" |
     python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("stub_llm") is False'; then
     printf '127.0.0.1:8000에 DAVI_USE_STUB_LLM=false인 서버가 필요합니다.\n' >&2
@@ -45,9 +98,13 @@ WITHOUT_DAVI=""
 INSTRUMENTATION_RESULT="$(mktemp -t davi-e2e-result.XXXXXX)"
 SAFE_LOG_RESULT="$(mktemp -t davi-e2e-safe-log.XXXXXX)"
 RUN_STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+REPORT_STAMP="$(python3 -c 'from datetime import datetime; n=datetime.now().astimezone(); print(n.strftime("%Y%m%dT%H%M%S") + f"{n.microsecond // 1000:03d}" + n.strftime("%z"))')"
+REPORT_DIR="$APP_DIR/build/reports/device-e2e/$SCENARIO"
+REPORT_PATH="$REPORT_DIR/$REPORT_STAMP.md"
+LATEST_REPORT="$REPORT_DIR/latest.md"
 DEVICE_MODEL="$("${ADB_DEVICE[@]}" shell getprop ro.product.model | tr -d '\r')"
 ANDROID_VERSION="$("${ADB_DEVICE[@]}" shell getprop ro.build.version.release | tr -d '\r')"
-GIT_COMMIT="$(git rev-parse --short HEAD)"
+GIT_COMMIT="$(git -C "$APP_DIR/.." rev-parse --short HEAD)"
 if "${ADB_DEVICE[@]}" reverse --list | awk '{print $2}' | grep -qx 'tcp:8000'; then
     REVERSE_WAS_PRESENT=true
 else
@@ -71,8 +128,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export ANDROID_HOME="$SDK_ROOT"
-export ANDROID_SDK_ROOT="$SDK_ROOT"
+if [[ -n "$SDK_ROOT" ]]; then
+    export ANDROID_HOME="$SDK_ROOT"
+    export ANDROID_SDK_ROOT="$SDK_ROOT"
+fi
 if [[ -z "${JAVA_HOME:-}" && -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]]; then
     export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 fi
@@ -164,9 +223,13 @@ python3 "$REPORT_RENDERER" \
     --android-version "$ANDROID_VERSION" \
     --commit "$GIT_COMMIT" \
     --started-at "$RUN_STARTED_AT" \
+    --scenario "$SCENARIO" \
+    --scenario-description "$SCENARIO_DESCRIPTION" \
     --test-class "$TEST_CLASS" \
     --shell-status "$INSTRUMENTATION_SHELL_STATUS"
+cp "$REPORT_PATH" "$LATEST_REPORT"
 printf '\n결과 문서: %s\n' "$REPORT_PATH"
+printf '최신 결과: %s\n' "$LATEST_REPORT"
 
 if [[ "$INSTRUMENTATION_SHELL_STATUS" -ne 0 ]] ||
     ! grep -q '^INSTRUMENTATION_CODE: 0$' "$INSTRUMENTATION_RESULT"; then

@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--android-version", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--started-at", required=True)
+    parser.add_argument("--scenario", required=True)
+    parser.add_argument("--scenario-description", required=True)
     parser.add_argument("--test-class", required=True)
     parser.add_argument("--shell-status", type=int, required=True)
     return parser.parse_args()
@@ -64,7 +66,7 @@ def render(args: argparse.Namespace) -> str:
     lines = [
         "# Davi 실제 Gemini 실기기 E2E 결과",
         "",
-        "> 이 파일은 `run-samsung-clock-e2e.sh`가 자동 생성한 로컬 보고서입니다. ",
+        "> 이 파일은 실기기 E2E 실행기가 자동 생성한 로컬 보고서입니다. ",
         "> 화면 트리·화면 label·안내 문장·API 키·기기 serial은 포함하지 않습니다.",
         "",
         "## 실행 요약",
@@ -79,6 +81,8 @@ def render(args: argparse.Namespace) -> str:
         f"| 모델 | `{safe_value(args.model)}` |",
         f"| 기기 | `{safe_value(args.device_model)}` / Android `{safe_value(args.android_version)}` |",
         f"| Git commit | `{safe_value(args.commit)}` |",
+        f"| 시나리오 | `{safe_value(args.scenario)}` |",
+        f"| 시나리오 설명 | {safe_value(args.scenario_description)} |",
         f"| 테스트 | `{safe_value(args.test_class)}` |",
         f"| 관측한 안내 단계 | {len(steps)} |",
         f"| 시작된 서버 요청 | {request_count} |",

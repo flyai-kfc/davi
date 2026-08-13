@@ -4,6 +4,13 @@
 UIAutomator로 검증한다. 첫 시나리오는 SM-S921N의 한국어 삼성 시계에서 테스트 전용 알람을
 만들고, 결과를 확인한 뒤 성공·실패와 무관하게 자동 삭제한다(#124).
 
+처음 사용하는 개발자는 다음 순서로 읽는다.
+
+1. [`DEVICE-E2E-SETUP.md`](DEVICE-E2E-SETUP.md) — OS별 환경과 실기기 권한
+2. [`DEVICE-E2E-RUN.md`](DEVICE-E2E-RUN.md) — CLI 시나리오 선택과 누적 보고서
+3. [`DEVICE-E2E-SCENARIOS.md`](DEVICE-E2E-SCENARIOS.md) — 새 앱/흐름 추가
+4. [`DEVICE-E2E-RESULTS.md`](DEVICE-E2E-RESULTS.md) — 구현 시 실제 Gemini 검증 결과
+
 ## 무엇을 검증하는가
 
 테스트는 삼성 시계의 정답 버튼을 미리 찾아 대신 누르지 않는다.
@@ -45,7 +52,7 @@ DAVI_USE_STUB_LLM=false .venv/bin/python -m uvicorn app.main:app \
 
 ```bash
 cd app-android
-./scripts/run-samsung-clock-e2e.sh
+./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm
 ```
 
 스크립트는 `/health`의 `stub_llm=false`를 먼저 확인하고, `adb reverse tcp:8000 tcp:8000`,
@@ -78,10 +85,11 @@ UIAutomator는 화면 조회·조작 때 기본 `UiAutomation`을 반복해서 �
 ## 결과 문서
 
 구현 시 실제 기기 검증 결과와 해석은 [`DEVICE-E2E-RESULTS.md`](DEVICE-E2E-RESULTS.md)에 있다.
-실행 스크립트는 성공·실패와 무관하게 매번 다음 비식별 로컬 보고서를 덮어쓴다.
+실행기는 성공·실패와 무관하게 시나리오별 타임스탬프 보고서를 누적하고 `latest.md`도 갱신한다.
 
 ```text
-build/reports/device-e2e/latest.md
+build/reports/device-e2e/<scenario>/<timestamp>.md
+build/reports/device-e2e/<scenario>/latest.md
 ```
 
 보고서는 구조화 action과 판정 메타데이터만 사용한다. 화면·안내 원문과 기기 serial은 읽기 좋은

@@ -93,7 +93,13 @@ jobs:
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
       - name: 실기기 결과 문서 렌더러 테스트
-        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+          ./scripts/run-device-e2e.sh --list-scenarios
+
+      - name: Windows PowerShell 실행기 구문·registry 테스트
+        shell: pwsh
+        run: ./scripts/run-device-e2e.ps1 -ListScenarios
 
       - name: debug 평문 허용 host 제한
         env:

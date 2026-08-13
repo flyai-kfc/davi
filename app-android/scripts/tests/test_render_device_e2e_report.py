@@ -1,5 +1,7 @@
 import argparse
 import importlib.util
+import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +40,8 @@ class DeviceE2eReportTest(unittest.TestCase):
                 android_version="15",
                 commit="abcdef0",
                 started_at="2026-08-13T12:00:00+09:00",
+                scenario="safe-scenario",
+                scenario_description="비식별 테스트 설명",
                 test_class="SafeTest",
                 shell_status=1,
             )
@@ -48,7 +52,31 @@ class DeviceE2eReportTest(unittest.TestCase):
             self.assertIn("| 1 | `tap` | true | false |", report)
             self.assertIn("| 시작된 서버 요청 | 1 |", report)
             self.assertIn("| 테스트 데이터 정리 | `success` |", report)
+            self.assertIn("| 시나리오 | `safe-scenario` |", report)
             self.assertNotIn("logical_request_id", report)
+
+    def test_scenario_registry_is_safe_and_points_to_test_classes(self):
+        app_dir = Path(__file__).parents[2]
+        registry = json.loads((app_dir / "device-e2e-scenarios.json").read_text(encoding="utf-8"))
+        scenarios = registry["scenarios"]
+        ids = [scenario["id"] for scenario in scenarios]
+
+        self.assertEqual(registry["schema_version"], 1)
+        self.assertIn(registry["default_scenario"], ids)
+        self.assertEqual(len(ids), len(set(ids)))
+        for scenario in scenarios:
+            self.assertRegex(scenario["id"], re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$"))
+            self.assertTrue(scenario["description"].strip())
+            self.assertTrue(scenario["requirements"].strip())
+            self.assertNotRegex(scenario["description"], re.compile(r"[\r\n]"))
+            self.assertNotRegex(scenario["requirements"], re.compile(r"[\r\n]"))
+            self.assertRegex(
+                scenario["test_class"],
+                re.compile(r"^com\.davi\.helper\.e2e\.[A-Za-z][A-Za-z0-9]*Test$"),
+            )
+            class_name = scenario["test_class"].rsplit(".", 1)[-1]
+            source = app_dir / "e2e-driver/src/androidTest/java/com/davi/helper/e2e" / f"{class_name}.kt"
+            self.assertTrue(source.is_file(), source)
 
 
 if __name__ == "__main__":
