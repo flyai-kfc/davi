@@ -47,6 +47,9 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 무엇이 보여야 하는지의 판정. 재표시·정체 접미사 규칙이 여기 있다(PR #63 리뷰 P1). */
     private val display = GuideDisplayState()
 
+    /** 직전 샘플의 판정. null이면 세션 시작 후 첫 샘플 전이다([ReadingBorder.isReading]). */
+    private var lastDecision: ScreenStabilityTracker.Decision? = null
+
     /** 이벤트가 없어도 도는 샘플러. 세션이 있는 동안에만 스스로 다시 예약한다(#39). */
     private val sampleRunnable = Runnable { sampleScreen() }
 
@@ -64,12 +67,15 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            lastDecision = null
             if (goal == null) {
                 mainHandler.removeCallbacks(sampleRunnable)
                 overlay?.clear()
             } else {
                 scheduleSample(SETTLE_MS)
             }
+            // 시작이면 첫 샘플까지의 공백(SETTLE_MS)부터 읽는 중으로 덮는다.
+            updateReading()
         }
     }
 
@@ -142,6 +148,9 @@ class GuideAccessibilityService : AccessibilityService() {
             }
             overlay?.clear()
             display.onCleared()
+            // 아래에 그릴 대상이 없다. 읽는 중도 함께 내린다 — clear()는 안내만 지운다.
+            lastDecision = null
+            updateReading()
             scheduleSample(POLL_MS)
             return
         }
@@ -164,6 +173,8 @@ class GuideAccessibilityService : AccessibilityService() {
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
         val decision = stability.onSample(signature, now)
+        lastDecision = decision
+        updateReading()
 
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
@@ -217,6 +228,21 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun showStuckNotice() {
         display.stuckContent(getString(R.string.guide_stuck))?.let { draw(it) }
+    }
+
+    /**
+     * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1). 판정은 [ReadingBorder]에 있고 여기서는
+     * 값을 모아 넘기기만 한다. 멱등이라 같은 값으로 반복 호출해도 안전하다.
+     */
+    private fun updateReading() {
+        overlay?.setReading(
+            ReadingBorder.isReading(
+                sessionActive = GuideSession.active() != null,
+                screenReadable = !rootUnavailable,
+                decision = lastDecision,
+                requestInFlight = requestInFlight.get(),
+            ),
+        )
     }
 
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
@@ -378,6 +404,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 요청이 도는 동안 화면이 바뀌었을 수 있다. 다음 폴링까지 기다리지 않고 바로 다시 뜬다.
                 mainHandler.post {
                     stability.markFinished()
+                    // 안내가 방금 떴다(또는 실패했다). 다음 샘플까지 기다리면 안내와 테두리가
+                    // 겹쳐 남는다.
+                    lastDecision = ScreenStabilityTracker.Decision.IDLE
+                    updateReading()
                     scheduleSample(SETTLE_MS)
                 }
             }
@@ -521,6 +551,8 @@ class GuideAccessibilityService : AccessibilityService() {
         Log.w(TAG, "interrupted")
         overlay?.clear()
         display.onCleared()
+        lastDecision = null
+        overlay?.setReading(false)
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
