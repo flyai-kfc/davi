@@ -54,6 +54,22 @@ class OverlayController(private val context: Context) {
         view?.clearTarget()
     }
 
+    /**
+     * 읽는 중 테두리(GD-1)를 켜고 끈다. 안내와 **독립 레이어**라 [clear]가 이것까지 지우지
+     * 않는다 — 끄는 것은 호출자 책임이다.
+     *
+     * 끌 때는 창을 만들지 않는다. 세션 종료·화면 소실 경로가 이 함수로 false를 반복해서
+     * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
+     */
+    fun setReading(on: Boolean) {
+        if (!on) {
+            view?.setReading(false)
+            return
+        }
+        if (!canDraw()) return
+        (view ?: createView())?.setReading(true)
+    }
+
     /** 서비스가 내려갈 때 창을 반드시 걷는다. 안 그러면 유령 오버레이가 남는다. */
     fun destroy() {
         view?.let {
