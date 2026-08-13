@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 발화 카드(핑크): 사용자 발화·부분 인식 결과가 실시간으로 차는 자리. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_surface_secondary" />
+    <corners android:radius="@dimen/davi_radius_md" />
+</shape>

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  대화 화면 (docs/SCREENS.md MA-1~4 + 실패 — 임시 와이어프레임 디자인, #123).
+  상태 6개가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
+  고정 배치 — 루트 스크롤 컨벤션은 폼형 화면에만 적용한다(app-android/CLAUDE.md).
+
+  **조작 수단은 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
+  잘라내는데, 그 자리에 마이크·확인쌍을 두면 큰 글꼴에서 유일한 조작 수단이 사라진다
+  (PR #125 리뷰). 컨트롤을 FrameLayout 바닥에 붙이고 위 열에는 그만큼 padding을 비워 둔다.
+
+  질문 카드는 maxHeight로 묶고 **내부 스크롤**로 넘긴다 — 이 카드에는 최종 확인의 goal도
+  들어오는데(renderModelOf), maxLines+ellipsize면 사용자가 다 읽지 못한 문구를 ○로 승인하게
+  된다. 높이를 묶어야 부모가 카드를 잘라내지 않아 내부 스크롤이 실제로 닿는다.
+  상한값은 상태마다 달라서(최종 확인은 발화 카드가 숨어 여유가 크다) 렌더 모델이 정한다.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/conversation_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/davi_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingLeft="@dimen/davi_spacing_xl"
+        android:paddingRight="@dimen/davi_spacing_xl"
+        android:paddingBottom="@dimen/davi_conversation_control_reserve">
+
+        <Space
+            android:id="@+id/space_home_top"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2" />
+
+        <ImageView
+            android:id="@+id/logo"
+            android:layout_width="@dimen/davi_logo_size"
+            android:layout_height="@dimen/davi_logo_size"
+            android:layout_marginTop="@dimen/davi_spacing_lg"
+            android:src="@drawable/ic_davi_logo"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            android:id="@+id/home_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/voice_home_title"
+            android:textAppearance="@style/TextAppearance.Davi.Title"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/home_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_lg"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:accessibilityLiveRegion="polite"
+            android:textAppearance="@style/TextAppearance.Davi.Body"
+            android:textColor="@color/davi_text_secondary" />
+
+        <!-- 안내 세션이 도는 동안만 보이는 임시 중단 수단 — 오버레이 X 칩은 터치 계약 [미결] -->
+        <Button
+            android:id="@+id/btn_stop_guide"
+            style="@style/Widget.Davi.Button.Secondary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:text="@string/btn_stop" />
+
+        <TextView
+            android:id="@+id/card_question"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:padding="@dimen/davi_spacing_lg"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:scrollbars="vertical"
+            android:accessibilityLiveRegion="polite"
+            android:background="@drawable/bg_davi_card"
+            android:textAppearance="@style/TextAppearance.Davi.Subtitle" />
+
+        <TextView
+            android:id="@+id/card_utterance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:minHeight="@dimen/davi_utterance_card_min_height"
+            android:padding="@dimen/davi_spacing_lg"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:background="@drawable/bg_davi_card_utterance"
+            android:textAppearance="@style/TextAppearance.Davi.BodyLg" />
+
+        <Space
+            android:id="@+id/space_home_mid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="3" />
+    </LinearLayout>
+
+    <!-- 조작 수단: 마이크와 확인쌍은 동시에 보이지 않으므로 같은 자리를 쓴다. -->
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/davi_spacing_xl">
+
+        <include
+            android:id="@+id/confirm_pair"
+            layout="@layout/view_davi_confirm_pair"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+
+        <ImageButton
+            android:id="@+id/btn_mic"
+            android:layout_width="@dimen/davi_mic_button_size"
+            android:layout_height="@dimen/davi_mic_button_size"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_davi_mic_button"
+            android:src="@drawable/ic_davi_mic"
+            android:tint="@color/davi_mic_icon"
+            android:scaleType="fitCenter"
+            android:padding="@dimen/davi_mic_button_padding"
+            android:elevation="@dimen/davi_mic_button_elevation"
+            android:contentDescription="@string/voice_home_mic_desc" />
+    </FrameLayout>
+
+    <ImageButton
+        android:id="@+id/btn_close"
+        android:layout_width="@dimen/davi_size_touch_target"
+        android:layout_height="@dimen/davi_size_touch_target"
+        android:layout_gravity="top|end"
+        android:layout_margin="@dimen/davi_spacing_lg"
+        android:padding="@dimen/davi_spacing_md"
+        android:background="@drawable/bg_davi_close_button"
+        android:src="@drawable/ic_davi_x"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/conversation_close_desc" />
+</FrameLayout>

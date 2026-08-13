@@ -1,40 +1,38 @@
 package com.davi.helper
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.speech.SpeechRecognizer
+import android.text.method.ScrollingMovementMethod
+import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityManager
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
-import com.davi.helper.databinding.ActivityMainBinding
+import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
 /**
- * MA-1 미리보기(debug)가 음성 대화를 바로 시작하도록 요청하는 extra.
- *
- * 소비하는 쪽은 debug 빌드에서만 동작한다 — `MainActivity`가 exported라 게이트가 없으면
- * 릴리스에서 임의 앱이 인텐트 하나로 마이크 청취를 시작시킬 수 있다.
+ * 음성 대화 화면 — 홈(MA-1)부터 최종 확인(MA-4)·실패까지 상태 6개를 한 레이아웃에서
+ * 렌더한다(#123, 임시 와이어프레임 디자인). 음성 파이프라인은 기존 개발 화면
+ * (debug MainActivity)에서 이식 — 발화·질문·goal은 화면과 메모리에만 두고 logcat에
+ * 넘기지 않는다. ○ 확인 시 GuideSession을 시작하고 런처로 나간다(안내는 런처에서 시작).
+ * 사용자를 대신해 조작하지 않는다.
  */
-internal const val EXTRA_START_VOICE = "com.davi.helper.extra.START_VOICE"
+class ConversationActivity : AppCompatActivity() {
 
-/**
- * 온보딩 + 텍스트/음성 목표 입력 화면. 음성은 목표를 입력칸까지 옮길 뿐 안내를 자동 시작하거나
- * 사용자를 대신해 조작하지 않는다. 발화·질문·goal은 화면과 메모리에만 두고 logcat에 넘기지 않는다.
- */
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var binding: ActivityConversationBinding
     private val voiceSession = VoiceDialogueSession()
     private val voiceRequestTracker = LogicalRequestTracker()
     private val voiceExecutor = Executors.newSingleThreadExecutor()
@@ -42,8 +40,27 @@ class MainActivity : AppCompatActivity() {
     private var textToSpeechHelper: TextToSpeechHelper? = null
     private var audioPermissionRequested = false
 
+    private var uiState: ConversationUiState = ConversationUiState.Home()
+
+    // 스스로 끝나지 않는 상태(실패·최종 확인)의 홈 복귀 타이머.
+    // setState()가 상태 전이마다 제거하므로 유령 타이머가 없다.
+    private val autoReturnHandler = Handler(Looper.getMainLooper())
+    private val autoReturnRunnable = Runnable {
+        // 홈으로 가는 다른 경로(× 칩·확인쌍 ×·onPause)와 같은 정리를 거친다. Confirm에서
+        // TTS 완료 콜백이 오지 않으면 세션이 READY로 살아 있어, 안 접으면 홈 화면에서
+        // 계속 말하는 상태가 된다.
+        cancelVoiceDialogue()
+        setState(ConversationUiState.Home())
+    }
+
+    /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
+    private var lastQuestionKey: Any? = null
+
     @Volatile
     private var destroyed = false
+
+    // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
+    private val sessionListener = GuideSession.Listener { runOnUiThread { render(uiState) } }
 
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
@@ -52,23 +69,20 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // 서버가 done을 주면 서비스 쪽에서 세션이 끝난다. 그때도 버튼이 따라 바뀌어야 한다.
-    private val sessionListener = GuideSession.Listener { runOnUiThread { refreshUi() } }
-
     private val requestRecordAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             audioPermissionRequested = true
             if (granted) beginVoiceDialogue()
-            else setVoiceStatus(R.string.voice_permission_denied)
-            refreshUi()
+            else setState(ConversationUiState.Home(statusRes = R.string.voice_permission_denied))
         }
 
     private val voiceRecognitionListener = object : SpeechRecognizerHelper.Listener {
         override fun onPartialResult(text: String) {
             runOnUiThread {
-                if (voiceSession.stage == VoiceDialogueSession.Stage.LISTENING) {
-                    // 사용자에게만 보이는 일시적 받아쓰기. 저장·로그하지 않는다.
-                    binding.voiceStatus.text = text
+                // 사용자에게만 보이는 일시적 받아쓰기. 저장·로그하지 않는다.
+                val state = uiState
+                if (state is ConversationUiState.Listening) {
+                    setState(state.copy(partial = text))
                 }
             }
         }
@@ -84,16 +98,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
+        binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
 
-        // targetSdk 35+는 edge-to-edge 강제라 manifest의 adjustResize만으로는 창이 안 줄어든다.
-        // 인셋을 마진으로 반영해야 ScrollView의 가시 영역이 IME 위로 실제로 줄어든다(#78).
+        // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime(),
-            )
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left
                 topMargin = bars.top
@@ -103,20 +114,45 @@ class MainActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        binding.btnAccessibility.setOnClickListener { openAccessibilitySettings() }
-        binding.btnOverlay.setOnClickListener { openOverlaySettings() }
-        binding.btnVoice.setOnClickListener { onVoiceInputTapped() }
-        binding.btnStart.setOnClickListener { startGuide() }
-        binding.btnStop.setOnClickListener { GuideSession.stop() }
-
-        // MA-1 미리보기(debug)에서 마이크로 진입한 경우 음성 대화를 바로 시작한다.
-        // 재생성(회전 등)에서 반복 시작되지 않게 최초 생성에서만 처리한다.
-        if (BuildConfig.DEBUG &&
-            savedInstanceState == null &&
-            intent?.getBooleanExtra(EXTRA_START_VOICE, false) == true
-        ) {
-            onVoiceInputTapped()
+        binding.btnMic.setOnClickListener { onMicTapped() }
+        binding.btnClose.setOnClickListener {
+            cancelVoiceDialogue()
+            setState(ConversationUiState.Home())
         }
+        binding.confirmPair.btnConfirmReject.setOnClickListener {
+            cancelVoiceDialogue()
+            setState(ConversationUiState.Home())
+        }
+        binding.confirmPair.btnConfirmAccept.setOnClickListener { onConfirmAccepted() }
+        binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
+
+        // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
+        // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
+        binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
+
+        render(uiState)
+    }
+
+    /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
+    override fun onResume() {
+        super.onResume()
+        // 두 권한은 밖에서 꺼질 수 있다(설정 회수·앱 업데이트). 없는 채로 ○를 누르면
+        // GuideSession은 시작되는데 화면을 못 읽거나 오버레이가 안 그려져 사용자가 런처에
+        // 혼자 남는다 — 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
+        //
+        // #29(상태·오류 문구) 참고: 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다**.
+        // 권한 소실을 사용자에게 알리려면 토스트·헤드업처럼 화면 전환에 살아남는 수단이어야 한다.
+        if (!canStartGuide()) {
+            // 세션을 여기서 끊는다. 접근성이 꺼진 경우는 onUnbind가 정리하지만,
+            // **오버레이만 회수되면** 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
+            // 안내만 안 그려진다 — 그대로 두면 세션은 도는데 중지 수단만 손이 닿지 않는다.
+            GuideSession.stop()
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+        GuideSession.addListener(sessionListener)
+        render(uiState)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -124,71 +160,126 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    /** 권한은 설정 화면에 다녀와야 켜진다. 돌아올 때마다 다시 읽는다. */
-    override fun onResume() {
-        super.onResume()
-        GuideSession.addListener(sessionListener)
-        refreshUi()
-    }
-
     override fun onPause() {
         GuideSession.removeListener(sessionListener)
-        speechRecognizerHelper?.stop()
-        textToSpeechHelper?.stop()
-        voiceSession.cancel()
-        voiceRequestTracker.reset()
+        // 화면을 떠나면 대화를 접는다 — Confirm의 goal도 함께 사라진다(임시 디자인에서
+        // 수용, 디자인 확정 시 재검토). 복귀 시 유령 상태가 없도록 홈으로 되돌린다.
+        cancelVoiceDialogue()
+        if (uiState !is ConversationUiState.Home) {
+            setState(ConversationUiState.Home())
+        }
         super.onPause()
     }
 
     override fun onDestroy() {
         destroyed = true
+        autoReturnHandler.removeCallbacks(autoReturnRunnable)
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
         voiceExecutor.shutdownNow()
         super.onDestroy()
     }
 
-    private fun startGuide() {
-        val goal = binding.goalInput.text?.toString().orEmpty().trim()
-        if (goal.isEmpty()) {
-            binding.goalInput.error = getString(R.string.goal_required)
-            binding.goalInput.requestFocus()
-            return
-        }
-        cancelVoiceDialogue()
-        GuideSession.start(goal)
+    /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
+    private fun setState(state: ConversationUiState) {
+        uiState = state
+        autoReturnHandler.removeCallbacks(autoReturnRunnable)
+        autoReturnDelayMs(state)?.let { autoReturnHandler.postDelayed(autoReturnRunnable, it) }
+        render(state)
     }
 
-    private fun onVoiceInputTapped() {
-        when {
-            hasRecordAudioPermission() -> beginVoiceDialogue()
-            audioPermissionRequested &&
-                !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
-                setVoiceStatus(R.string.voice_permission_open_settings)
-                openAppSettings()
-            }
-            else -> {
-                audioPermissionRequested = true
-                requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
-            }
+    /** 렌더 판단은 renderModelOf(순수 함수)에 있고 여기는 대입만 한다. */
+    private fun render(state: ConversationUiState) {
+        val model = renderModelOf(state, guideActive = GuideSession.isActive)
+        // 대화 중에는 화면을 켜 둔다. 어르신이 무엇을 말할지 생각하는 20~30초 동안 손이
+        // 화면에 닿지 않아 디스플레이 타임아웃이 걸리면, onPause가 왕복 전체를 접는다.
+        if (state is ConversationUiState.Home) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        binding.spaceHomeTop.isVisible(model.homeVisible)
+        binding.spaceHomeMid.isVisible(model.homeVisible)
+        binding.homeTitle.isVisible(model.homeVisible)
+        binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
+        model.statusRes?.let { binding.homeStatus.setText(it) }
+        binding.logo.isVisible(model.logoVisible)
+        binding.cardQuestion.isVisible(model.questionRes != null || model.questionText != null)
+        binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
+        when {
+            model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
+            model.questionText != null -> binding.cardQuestion.text = model.questionText
+        }
+        // 새 문구가 들어올 때만 맨 위로. render()는 부분 인식마다 불리므로 무조건 되돌리면
+        // 긴 질문을 스크롤해 읽던 중 말을 시작한 순간 카드가 계속 튄다.
+        val questionKey = model.questionRes ?: model.questionText
+        if (questionKey != lastQuestionKey) {
+            lastQuestionKey = questionKey
+            binding.cardQuestion.scrollTo(0, 0)
+        }
+        binding.cardUtterance.isVisible(model.utteranceVisible)
+        binding.cardUtterance.text = model.utteranceText
+        binding.btnMic.isVisible(model.micVisible)
+        binding.btnMic.isEnabled = model.micEnabled
+        binding.btnStopGuide.isVisible(model.stopGuideVisible)
+        binding.confirmPair.root.isVisible(model.confirmVisible)
+        binding.btnClose.isVisible(model.closeVisible)
+    }
+
+    private fun onMicTapped() {
+        when (val state = uiState) {
+            is ConversationUiState.Home -> when {
+                hasRecordAudioPermission() -> beginVoiceDialogue()
+                audioPermissionRequested &&
+                    !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
+                    setState(ConversationUiState.Home(statusRes = R.string.voice_permission_open_settings))
+                    openAppSettings()
+                }
+                else -> {
+                    audioPermissionRequested = true
+                    requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+            // barge-in: 질문 재생을 끊고 바로 답한다. TTS 정리 콜백이 늦게 와도
+            // continueListening은 SPEAKING에서 한 번만 참이라 이중 시작이 없다.
+            is ConversationUiState.Speaking -> {
+                textToSpeechHelper?.stop()
+                if (voiceSession.continueListening(state.generation)) {
+                    setState(ConversationUiState.Listening(question = state.question))
+                    GuideTelemetry.voiceState("listening_barge_in")
+                    speechHelper().start()
+                }
+            }
+            else -> return
+        }
+    }
+
+    /** MA-4 ○ — 안내를 시작하고 런처로 나간다. 안내는 런처 화면에서 시작된다(GD-1). */
+    private fun onConfirmAccepted() {
+        val state = uiState as? ConversationUiState.Confirm ?: return
+        cancelVoiceDialogue()
+        GuideSession.start(state.goal)
+        setState(ConversationUiState.Home())
+        startActivity(
+            Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     private fun beginVoiceDialogue() {
         cancelVoiceDialogue()
         voiceSession.start()
-        setVoiceStatus(R.string.voice_listening)
+        setState(ConversationUiState.Listening())
         GuideTelemetry.voiceState("listening")
-        refreshUi()
         speechHelper().start()
     }
 
     private fun submitVoiceTurn(text: String) {
         speechRecognizerHelper?.stop()
         val pending = voiceSession.nextRequest(text) ?: return
-        setVoiceStatus(R.string.voice_processing)
+        setState(ConversationUiState.Requesting(utterance = text))
         GuideTelemetry.voiceState("requesting")
-        refreshUi()
 
         voiceExecutor.execute {
             val logicalRequest = voiceRequestTracker.next(
@@ -224,15 +315,12 @@ class MainActivity : AppCompatActivity() {
                 when (outcome) {
                     is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
                     is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome)
-                    VoiceDialogueSession.Outcome.LimitReached -> {
-                        setVoiceStatus(R.string.voice_dialogue_limit)
+                    VoiceDialogueSession.Outcome.LimitReached,
+                    VoiceDialogueSession.Outcome.InvalidResponse,
+                    -> {
+                        // 기존 goalInput 텍스트 폴백을 실패 화면(5초 뒤 홈)으로 대체(#123)
                         voiceRequestTracker.reset()
-                        refreshUi()
-                    }
-                    VoiceDialogueSession.Outcome.InvalidResponse -> {
-                        setVoiceStatus(R.string.voice_server_error)
-                        voiceRequestTracker.reset()
-                        refreshUi()
+                        setState(stateForOutcome(outcome))
                     }
                 }
             }
@@ -242,25 +330,22 @@ class MainActivity : AppCompatActivity() {
             is SlotFillResult.ParseFailure,
             -> {
                 if (voiceSession.fail(pending)) {
-                    setVoiceStatus(errorMessageFor(result))
                     voiceRequestTracker.reset()
-                    refreshUi()
+                    setState(ConversationUiState.Home(statusRes = errorMessageFor(result)))
                 }
             }
         }
     }
 
     private fun speakFollowUp(outcome: VoiceDialogueSession.Outcome.Ask) {
-        binding.voiceStatus.text = outcome.message
+        setState(stateForOutcome(outcome)) // Speaking(질문)
         GuideTelemetry.voiceState("speaking_question")
-        refreshUi()
         speak(
             outcome.message,
             onFinished = {
                 if (voiceSession.continueListening(outcome.generation)) {
-                    setVoiceStatus(R.string.voice_listening)
+                    setState(ConversationUiState.Listening(question = outcome.message))
                     GuideTelemetry.voiceState("listening_follow_up")
-                    refreshUi()
                     speechHelper().start()
                 }
             },
@@ -268,18 +353,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showReadyGoal(outcome: VoiceDialogueSession.Outcome.Ready) {
-        binding.goalInput.setText(outcome.goal)
-        binding.voiceStatus.text = outcome.message
+        setState(stateForOutcome(outcome)) // Confirm(goal)
         GuideTelemetry.voiceState("goal_ready")
-        refreshUi()
         speak(
             outcome.message,
-            onFinished = {
-                if (voiceSession.finish(outcome.generation)) {
-                    setVoiceStatus(R.string.voice_goal_ready)
-                    refreshUi()
-                }
-            },
+            // 세션 정리만 — 화면은 ○/× 입력을 기다린다. goal은 UiState가 들고 있다.
+            onFinished = { voiceSession.finish(outcome.generation) },
         )
     }
 
@@ -299,6 +378,7 @@ class MainActivity : AppCompatActivity() {
         GuideTelemetry.voiceState("recognition_error", error)
         voiceSession.cancel()
         voiceRequestTracker.reset()
+        // 인식 실패·무응답의 재시도 흐름은 #106 범위 — 여기서는 홈에 문구만 남긴다.
         val message = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
@@ -309,8 +389,7 @@ class MainActivity : AppCompatActivity() {
             -> R.string.voice_recognizer_unavailable
             else -> R.string.voice_recognition_error
         }
-        setVoiceStatus(message)
-        refreshUi()
+        setState(ConversationUiState.Home(statusRes = message))
     }
 
     private fun recordVoiceRequestResult(
@@ -390,21 +469,6 @@ class MainActivity : AppCompatActivity() {
         voiceRequestTracker.reset()
     }
 
-    private fun refreshUi() {
-        val ready = hasAccessibilityPermission() && Settings.canDrawOverlays(this)
-        val active = GuideSession.isActive
-        val voiceBusy = voiceSession.stage != VoiceDialogueSession.Stage.IDLE
-
-        binding.goalInput.isEnabled = !active && !voiceBusy
-        binding.btnVoice.isEnabled = !active && !voiceBusy
-        binding.btnStart.isEnabled = ready && !active && !voiceBusy
-        binding.btnStop.isEnabled = active
-    }
-
-    private fun setVoiceStatus(stringRes: Int) {
-        binding.voiceStatus.setText(stringRes)
-    }
-
     private fun speechHelper(): SpeechRecognizerHelper =
         speechRecognizerHelper ?: SpeechRecognizerHelper(this, voiceRecognitionListener).also {
             speechRecognizerHelper = it
@@ -416,30 +480,6 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
 
-    private fun hasAccessibilityPermission(): Boolean {
-        val manager = getSystemService(AccessibilityManager::class.java) ?: return false
-        return manager
-            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            .any {
-                val info = it.resolveInfo.serviceInfo
-                info.packageName == packageName &&
-                    info.name == GuideAccessibilityService::class.java.name
-            }
-    }
-
-    private fun openAccessibilitySettings() {
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    private fun openOverlaySettings() {
-        startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName"),
-            ),
-        )
-    }
-
     private fun openAppSettings() {
         startActivity(
             Intent(
@@ -447,6 +487,10 @@ class MainActivity : AppCompatActivity() {
                 Uri.parse("package:$packageName"),
             ),
         )
+    }
+
+    private fun View.isVisible(visible: Boolean) {
+        visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private companion object {

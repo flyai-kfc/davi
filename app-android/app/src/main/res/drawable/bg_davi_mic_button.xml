@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 마이크 버튼(MA-1): 흰 원 + 주 버튼 색 링. Figma button/mic와 1:1. -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed">
-    <item>
+<!--
+  마이크 버튼: 흰 원 + 상태별 링 색. Figma button/mic와 1:1.
+  active(누를 수 있음: 홈 idle·질문 재생 중 barge-in)=주 버튼 색 /
+  deactive(듣는 중·응답 대기)=회색. 듣는 중과 대기의 시각 구분은 추후(웨이브폼 등).
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
         <shape android:shape="oval">
             <solid android:color="@color/davi_bg" />
-            <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_button_primary" />
+            <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_border" />
         </shape>
     </item>
-</ripple>
+    <item>
+        <ripple android:color="@color/davi_state_layer_pressed">
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/davi_bg" />
+                    <stroke android:width="@dimen/davi_mic_button_stroke" android:color="@color/davi_button_primary" />
+                </shape>
+            </item>
+        </ripple>
+    </item>
+</selector>
