@@ -52,12 +52,13 @@ class GuidedScenarioRunner(private val device: UiDevice) {
             queue.close()
             val cleanup = runCatching { scenario.cleanup(device, state) }
             cleanup.exceptionOrNull()?.let { cleanupFailure ->
+                Log.i(TRACE_TAG, "cleanup=failed")
                 if (primaryFailure != null) {
                     primaryFailure?.addSuppressed(cleanupFailure)
                 } else {
                     throw cleanupFailure
                 }
-            }
+            } ?: Log.i(TRACE_TAG, "cleanup=success")
         }
     }
 

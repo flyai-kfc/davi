@@ -92,6 +92,9 @@ jobs:
       - name: debug/release/test APK 빌드 + 단위 테스트
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
+      - name: 실기기 결과 문서 렌더러 테스트
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
       - name: debug 평문 허용 host 제한
         env:
           DAVI_DEBUG_SERVER_URL: http://192.168.1.2:8000

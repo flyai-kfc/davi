@@ -75,6 +75,22 @@ UIAutomator는 화면 조회·조작 때 기본 `UiAutomation`을 반복해서 �
 실제 Gemini 호출은 비용·비결정성이 있으므로 `-e davi.liveGemini true` 없이는 테스트가 skip된다.
 일반 CI는 `assembleDebugAndroidTest`로 라이브러리와 test APK만 키 없이 컴파일한다.
 
+## 결과 문서
+
+구현 시 실제 기기 검증 결과와 해석은 [`DEVICE-E2E-RESULTS.md`](DEVICE-E2E-RESULTS.md)에 있다.
+실행 스크립트는 성공·실패와 무관하게 매번 다음 비식별 로컬 보고서를 덮어쓴다.
+
+```text
+build/reports/device-e2e/latest.md
+```
+
+보고서는 구조화 action과 판정 메타데이터만 사용한다. 화면·안내 원문과 기기 serial은 읽기 좋은
+결과를 만들기 위해서도 수집하지 않는다. 렌더러 자체는 다음 명령으로 API 키 없이 검증한다.
+
+```bash
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+```
+
 ## 시나리오 추가
 
 새 시나리오는 다음 네 부분을 분리한다.

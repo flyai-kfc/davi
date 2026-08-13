@@ -9,17 +9,21 @@ SERVER_URL="http://127.0.0.1:8000"
 TEST_CLASS="com.davi.helper.e2e.SamsungClockAlarmGeminiTest"
 RUNNER="com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner"
 SERVICE="com.davi.helper/com.davi.helper.GuideAccessibilityService"
+REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-report.py"
+REPORT_PATH="$APP_DIR/build/reports/device-e2e/latest.md"
 
 if [[ ! -x "$ADB" ]]; then
     printf 'Android SDK의 adb를 찾을 수 없습니다. ANDROID_HOME을 확인하세요.\n' >&2
     exit 2
 fi
 
-if ! curl --fail --silent --show-error "$SERVER_URL/health" |
+HEALTH_JSON="$(curl --fail --silent --show-error "$SERVER_URL/health")"
+if ! printf '%s' "$HEALTH_JSON" |
     python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("stub_llm") is False'; then
     printf '127.0.0.1:8000에 DAVI_USE_STUB_LLM=false인 서버가 필요합니다.\n' >&2
     exit 2
 fi
+MODEL="$(printf '%s' "$HEALTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("model", "unknown"))')"
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
     SERIAL="$ANDROID_SERIAL"
@@ -39,6 +43,11 @@ REVERSE_WAS_PRESENT=false
 DAVI_DISABLED=false
 WITHOUT_DAVI=""
 INSTRUMENTATION_RESULT="$(mktemp -t davi-e2e-result.XXXXXX)"
+SAFE_LOG_RESULT="$(mktemp -t davi-e2e-safe-log.XXXXXX)"
+RUN_STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+DEVICE_MODEL="$("${ADB_DEVICE[@]}" shell getprop ro.product.model | tr -d '\r')"
+ANDROID_VERSION="$("${ADB_DEVICE[@]}" shell getprop ro.build.version.release | tr -d '\r')"
+GIT_COMMIT="$(git rev-parse --short HEAD)"
 if "${ADB_DEVICE[@]}" reverse --list | awk '{print $2}' | grep -qx 'tcp:8000'; then
     REVERSE_WAS_PRESENT=true
 else
@@ -55,7 +64,7 @@ restore_davi_accessibility() {
 
 cleanup() {
     restore_davi_accessibility || true
-    rm -f "$INSTRUMENTATION_RESULT"
+    rm -f "$INSTRUMENTATION_RESULT" "$SAFE_LOG_RESULT"
     if [[ "$REVERSE_WAS_PRESENT" == false ]]; then
         "${ADB_DEVICE[@]}" reverse --remove tcp:8000 >/dev/null 2>&1 || true
     fi
@@ -141,14 +150,26 @@ set -e
 
 print_safe_logs() {
     printf '\n비식별 실기기 검증 로그:\n'
-    "${ADB_DEVICE[@]}" logcat -d -s GuideSvc:I DaviE2e:I '*:S'
+    "${ADB_DEVICE[@]}" logcat -d -s GuideSvc:I DaviE2e:I '*:S' > "$SAFE_LOG_RESULT"
+    sed -n '/GuideSvc\|DaviE2e/p' "$SAFE_LOG_RESULT"
 }
+
+print_safe_logs
+python3 "$REPORT_RENDERER" \
+    --instrumentation-result "$INSTRUMENTATION_RESULT" \
+    --safe-log "$SAFE_LOG_RESULT" \
+    --output "$REPORT_PATH" \
+    --model "$MODEL" \
+    --device-model "$DEVICE_MODEL" \
+    --android-version "$ANDROID_VERSION" \
+    --commit "$GIT_COMMIT" \
+    --started-at "$RUN_STARTED_AT" \
+    --test-class "$TEST_CLASS" \
+    --shell-status "$INSTRUMENTATION_SHELL_STATUS"
+printf '\n결과 문서: %s\n' "$REPORT_PATH"
 
 if [[ "$INSTRUMENTATION_SHELL_STATUS" -ne 0 ]] ||
     ! grep -q '^INSTRUMENTATION_CODE: 0$' "$INSTRUMENTATION_RESULT"; then
-    print_safe_logs
     printf '실기기 instrumentation이 실패했습니다. 화면/안내 원문은 출력하지 않았습니다.\n' >&2
     exit 1
 fi
-
-print_safe_logs
