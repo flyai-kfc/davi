@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 마이크 아이콘 tint: 링 색(bg_davi_mic_button selector)과 항목 순서까지 함께 움직인다. -->
+<!-- 마이크 아이콘 tint: 링 색(bg_davi_mic_button selector)과 함께 움직인다. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_activated="true" android:color="@color/davi_highlight" />
     <item android:state_enabled="false" android:color="@color/davi_border" />
     <item android:color="@color/davi_button_primary" />
 </selector>

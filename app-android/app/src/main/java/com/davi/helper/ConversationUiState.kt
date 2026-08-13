@@ -16,8 +16,12 @@ sealed interface ConversationUiState {
     /** MA-2 듣는 중. [question]이 null이면 첫 청취(초기 프롬프트), 아니면 서버 후속 질문. */
     data class Listening(val question: String? = null, val partial: String = "") : ConversationUiState
 
-    /** MA-3 서버 질문 TTS 재생 중. 끝나면 Activity가 Listening으로 되돌린다. */
-    data class Speaking(val question: String) : ConversationUiState
+    /**
+     * MA-3 서버 질문 TTS 재생 중. 끝나면 Activity가 Listening으로 되돌린다(자동 재청취는
+     * 잠정 — 미결). mic을 누르면 재생을 끊고 바로 듣기로 들어간다(barge-in) —
+     * [generation]은 그 전이를 세션에 대조하는 값이다.
+     */
+    data class Speaking(val question: String, val generation: Long) : ConversationUiState
 
     /** 서버 응답 대기("잠시만요"). [utterance]는 방금 인식된 발화 — 발화 카드에 유지한다. */
     data class Requesting(val utterance: String) : ConversationUiState
@@ -44,7 +48,6 @@ data class ConversationRenderModel(
     val utteranceText: String = "",
     val micVisible: Boolean = false,
     val micEnabled: Boolean = false,
-    val micActivated: Boolean = false,
     val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
     val closeVisible: Boolean = false,
@@ -52,8 +55,8 @@ data class ConversationRenderModel(
 
 /**
  * 상태 → 렌더 모델. 발화 카드(핑크)는 대화 진행 중(듣는 중·재생 중·대기 중) 내내 보인다.
- * 마이크 링: 홈=주 버튼 색(탭 가능) / 듣는 중=강조색(activated) / 그 외=회색 — TTS 재생과
- * 듣는 중을 구분한다(임시 디자인, 확정 시 재검토).
+ * 마이크: active=누를 수 있는 상태(홈 idle, 질문 재생 중 barge-in) / deactive=누르지 못하는
+ * 상태(듣는 중·응답 대기 — 둘의 시각 구분은 추후 웨이브폼 등으로).
  *
  * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다 — 새 화면에
  * 세션 중단 수단이 없던 공백의 임시 조치(#123). 오버레이 X 칩은 터치 계약 [미결].
@@ -73,7 +76,6 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceVisible = true,
         utteranceText = state.partial,
         micVisible = true,
-        micActivated = true,
         closeVisible = true,
     )
     is ConversationUiState.Speaking -> ConversationRenderModel(
@@ -81,6 +83,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionText = state.question,
         utteranceVisible = true,
         micVisible = true,
+        micEnabled = true, // barge-in — 재생을 끊고 바로 답할 수 있다
         closeVisible = true,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
@@ -108,7 +111,8 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
  * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
  */
 fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState = when (outcome) {
-    is VoiceDialogueSession.Outcome.Ask -> ConversationUiState.Speaking(outcome.message)
+    is VoiceDialogueSession.Outcome.Ask ->
+        ConversationUiState.Speaking(outcome.message, outcome.generation)
     is VoiceDialogueSession.Outcome.Ready -> ConversationUiState.Confirm(outcome.goal)
     VoiceDialogueSession.Outcome.LimitReached -> ConversationUiState.Failed
     VoiceDialogueSession.Outcome.InvalidResponse -> ConversationUiState.Failed

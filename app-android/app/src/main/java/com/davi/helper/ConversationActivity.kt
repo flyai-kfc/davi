@@ -177,25 +177,36 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
-        binding.btnMic.isActivated = model.micActivated
         binding.btnStopGuide.isVisible(model.stopGuideVisible)
         binding.confirmPair.root.isVisible(model.confirmVisible)
         binding.btnClose.isVisible(model.closeVisible)
     }
 
     private fun onMicTapped() {
-        if (uiState !is ConversationUiState.Home) return
-        when {
-            hasRecordAudioPermission() -> beginVoiceDialogue()
-            audioPermissionRequested &&
-                !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
-                setState(ConversationUiState.Home(statusRes = R.string.voice_permission_open_settings))
-                openAppSettings()
+        when (val state = uiState) {
+            is ConversationUiState.Home -> when {
+                hasRecordAudioPermission() -> beginVoiceDialogue()
+                audioPermissionRequested &&
+                    !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
+                    setState(ConversationUiState.Home(statusRes = R.string.voice_permission_open_settings))
+                    openAppSettings()
+                }
+                else -> {
+                    audioPermissionRequested = true
+                    requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
             }
-            else -> {
-                audioPermissionRequested = true
-                requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+            // barge-in: 질문 재생을 끊고 바로 답한다. TTS 정리 콜백이 늦게 와도
+            // continueListening은 SPEAKING에서 한 번만 참이라 이중 시작이 없다.
+            is ConversationUiState.Speaking -> {
+                textToSpeechHelper?.stop()
+                if (voiceSession.continueListening(state.generation)) {
+                    setState(ConversationUiState.Listening(question = state.question))
+                    GuideTelemetry.voiceState("listening_barge_in")
+                    speechHelper().start()
+                }
             }
+            else -> return
         }
     }
 

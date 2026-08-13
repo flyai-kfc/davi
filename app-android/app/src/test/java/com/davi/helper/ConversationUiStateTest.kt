@@ -19,7 +19,6 @@ class ConversationUiStateTest {
         assertTrue(model.micVisible)
         assertTrue(model.micEnabled)
         assertNull(model.statusRes)
-        assertFalse(model.micActivated)
         assertFalse(model.stopGuideVisible)
         assertFalse(model.logoVisible)
         assertNull(model.questionRes)
@@ -51,8 +50,7 @@ class ConversationUiStateTest {
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
         assertTrue(model.micVisible)
-        assertFalse(model.micEnabled) // 이미 듣는 중 — 조작 불필요
-        assertTrue(model.micActivated) // 강조 링 — TTS 재생·대기와 구분
+        assertFalse(model.micEnabled) // 이미 듣는 중 — 누를 수 없는(deactive) 상태
         assertTrue(model.closeVisible)
     }
 
@@ -67,12 +65,11 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `질문 재생 중에는 마이크가 비활성이고 강조 링도 꺼진다`() {
-        val model = renderModelOf(ConversationUiState.Speaking("누구에게 보내시겠어요?"))
+    fun `질문 재생 중에는 마이크를 눌러 끊고 답할 수 있다`() {
+        val model = renderModelOf(ConversationUiState.Speaking("누구에게 보내시겠어요?", generation = 1L))
         assertEquals("누구에게 보내시겠어요?", model.questionText)
         assertTrue(model.micVisible)
-        assertFalse(model.micEnabled)
-        assertFalse(model.micActivated) // 듣는 중(강조 링)과 구분되는 지점
+        assertTrue(model.micEnabled) // barge-in — 듣는 중(deactive)과 구분되는 지점
         assertTrue(model.utteranceVisible)
     }
 
@@ -109,7 +106,7 @@ class ConversationUiStateTest {
     @Test
     fun `Ask는 질문 재생 상태로 간다`() {
         val state = stateForOutcome(VoiceDialogueSession.Outcome.Ask(generation = 1L, message = "누구에게?"))
-        assertEquals(ConversationUiState.Speaking("누구에게?"), state)
+        assertEquals(ConversationUiState.Speaking("누구에게?", generation = 1L), state)
     }
 
     @Test
