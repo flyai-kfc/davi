@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "davi"
 include(":app")
+include(":e2e-driver")

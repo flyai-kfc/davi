@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- instrumentation은 test APK UID로 broadcast를 보내므로 test APK도 서명 권한을 가져야 한다. -->
+    <uses-permission android:name="com.davi.helper.permission.CONTROL_E2E" />
+</manifest>

@@ -79,7 +79,10 @@ if (legacyServerUrl.isNotEmpty()) {
 }
 
 // 기본값 10.0.2.2 = 에뮬레이터에서 본 호스트 PC.
-val debugServerProperty = debugSetting("DAVI_DEBUG_SERVER_URL")
+// 실기기 E2E 스크립트는 개발자의 local.properties를 덮어쓰지 않고 이 일회성 Gradle 속성으로
+// adb reverse 대상만 고정한다. release 검증에서는 다른 debug URL과 똑같이 금지된다(#124).
+val e2eServerUrl = providers.gradleProperty("daviE2eServerUrl").orNull?.trim().orEmpty()
+val debugServerProperty = e2eServerUrl.ifEmpty { debugSetting("DAVI_DEBUG_SERVER_URL") }
 val debugServerUrl = debugServerProperty.ifEmpty { "http://10.0.2.2:8000" }
 val debugAccessToken = debugSetting("DAVI_DEBUG_ACCESS_TOKEN")
 val parsedDebugUrl = runCatching { URI(debugServerUrl) }.getOrElse {

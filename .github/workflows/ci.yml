@@ -88,8 +88,9 @@ jobs:
       - name: Gradle 셋업
         uses: gradle/actions/setup-gradle@v4
 
-      - name: debug/release 빌드 + 단위 테스트
-        run: ./gradlew assembleDebug assembleRelease test
+      # 실기기/Gemini 시나리오는 opt-in이지만 androidTest 소스와 APK는 키 없이 항상 컴파일한다.
+      - name: debug/release/test APK 빌드 + 단위 테스트
+        run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
       - name: debug 평문 허용 host 제한
         env:

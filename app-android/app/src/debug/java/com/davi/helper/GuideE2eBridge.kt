@@ -1,0 +1,89 @@
+package com.davi.helper
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.util.Log
+
+/** debug 앱과 별도 UIAutomator driver APK 사이의 서명 보호된 테스트 전용 채널(#124). */
+class GuideE2ePublisher(private val context: Context) {
+    val suppressDetailedScreenLogs: Boolean
+        get() = GuideE2eRunState.active
+
+    fun displayed(
+        generation: Long,
+        requestSignature: String,
+        screen: Screen,
+        action: GuideAction,
+        target: UiElement?,
+        verified: Boolean,
+    ) {
+        if (!GuideE2eRunState.active) return
+        val intent = Intent(GuideE2eContract.ACTION_DECISION)
+            .setPackage(GuideE2eContract.DRIVER_PACKAGE)
+            .putExtra(GuideE2eContract.EXTRA_GENERATION, generation)
+            .putExtra(GuideE2eContract.EXTRA_SIGNATURE, requestSignature)
+            .putExtra(GuideE2eContract.EXTRA_SCREEN_PACKAGE, screen.packageName)
+            .putExtra(GuideE2eContract.EXTRA_ACTION_TYPE, action.actionType.name.lowercase())
+            .putExtra(GuideE2eContract.EXTRA_DIRECTION, action.direction?.name?.lowercase())
+            .putExtra(GuideE2eContract.EXTRA_INSTRUCTION, action.instruction)
+            .putExtra(GuideE2eContract.EXTRA_EXPECTED_RESULT, action.expectedResult)
+            .putExtra(GuideE2eContract.EXTRA_EVIDENCE, action.evidence)
+            .putExtra(GuideE2eContract.EXTRA_TARGET_BOUNDS, target?.bounds?.toIntArray())
+            .putExtra(GuideE2eContract.EXTRA_TARGET_ROLE, target?.role)
+            .putExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, target?.clickable ?: false)
+            .putExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, target?.editable ?: false)
+            .putExtra(GuideE2eContract.EXTRA_VERIFIED, verified)
+        // 수신 앱도 signature 권한을 가져야 한다. 화면·안내 원문은 저장하거나 로그하지 않는다.
+        context.sendBroadcast(intent, GuideE2eContract.PERMISSION)
+    }
+}
+
+/** 별도 test driver가 세션을 시작·정지하는 debug 전용 진입점. 제품 앱 UI를 우회하지 않는다. */
+class GuideE2eControlReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+        when (intent?.action) {
+            GuideE2eContract.ACTION_START -> {
+                val goal = intent.getStringExtra(GuideE2eContract.EXTRA_GOAL)?.trim().orEmpty()
+                if (goal.isNotEmpty()) {
+                    GuideE2eRunState.active = true
+                    GuideSession.start(goal)
+                    Log.i(GuideAccessibilityService.TAG, "e2e control=start")
+                }
+            }
+
+            GuideE2eContract.ACTION_STOP -> {
+                GuideSession.stop()
+                GuideE2eRunState.active = false
+                Log.i(GuideAccessibilityService.TAG, "e2e control=stop")
+            }
+        }
+    }
+}
+
+private object GuideE2eRunState {
+    @Volatile
+    var active: Boolean = false
+}
+
+internal object GuideE2eContract {
+    const val PERMISSION = "com.davi.helper.permission.CONTROL_E2E"
+    const val DRIVER_PACKAGE = "com.davi.helper.e2edriver"
+    const val ACTION_START = "com.davi.helper.e2e.START"
+    const val ACTION_STOP = "com.davi.helper.e2e.STOP"
+    const val ACTION_DECISION = "com.davi.helper.e2e.DECISION"
+    const val EXTRA_GOAL = "goal"
+    const val EXTRA_GENERATION = "generation"
+    const val EXTRA_SIGNATURE = "signature"
+    const val EXTRA_SCREEN_PACKAGE = "screen_package"
+    const val EXTRA_ACTION_TYPE = "action_type"
+    const val EXTRA_DIRECTION = "direction"
+    const val EXTRA_INSTRUCTION = "instruction"
+    const val EXTRA_EXPECTED_RESULT = "expected_result"
+    const val EXTRA_EVIDENCE = "evidence"
+    const val EXTRA_TARGET_BOUNDS = "target_bounds"
+    const val EXTRA_TARGET_ROLE = "target_role"
+    const val EXTRA_TARGET_CLICKABLE = "target_clickable"
+    const val EXTRA_TARGET_EDITABLE = "target_editable"
+    const val EXTRA_VERIFIED = "verified"
+}

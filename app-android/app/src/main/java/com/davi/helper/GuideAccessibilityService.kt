@@ -29,6 +29,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+    private var e2ePublisher: GuideE2ePublisher? = null
 
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
@@ -76,6 +77,7 @@ class GuideAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
+        e2ePublisher = GuideE2ePublisher(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
@@ -90,6 +92,9 @@ class GuideAccessibilityService : AccessibilityService() {
             null
         }
         GuideSession.addListener(sessionListener)
+        // debug E2E 제어 receiver가 접근성 callback보다 먼저 세션을 시작한 경합도 복구한다.
+        // 보통은 listener가 시작 이벤트를 받지만, 시스템의 Bound 표시는 callback보다 먼저 바뀔 수 있다.
+        if (GuideSession.isActive) scheduleSample(SETTLE_MS)
         // dogfoodDeviceId는 화이트리스트 등록의 유일한 추출 경로다(DogfoodDeviceId 참고).
         Log.i(
             TAG,
@@ -187,7 +192,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)
                     // raw 상세 로그의 debug/release 분리는 #58. #81은 같은 화면 retry의 반복만 막는다.
-                    logScreenDetails(result)
+                    if (e2ePublisher?.suppressDetailedScreenLogs != true) logScreenDetails(result)
                 }
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
@@ -429,6 +434,14 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val action = response.action
         if (action.actionType == ActionType.DONE) {
+            e2ePublisher?.displayed(
+                generation = session.generation,
+                requestSignature = requestSignature,
+                screen = screen,
+                action = action,
+                target = null,
+                verified = response.verified,
+            )
             when (GuideSession.onDone(session.generation, response.verified)) {
                 GuideSession.DoneOutcome.STOP ->
                     Log.i(TAG, "session done") // 리스너가 오버레이를 지운다
@@ -472,6 +485,14 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
         draw(display.show(requestSignature, bounds, action.instruction, action.actionType))
+        e2ePublisher?.displayed(
+            generation = session.generation,
+            requestSignature = requestSignature,
+            screen = screen,
+            action = action,
+            target = target,
+            verified = response.verified,
+        )
     }
 
     private fun logScreenDetails(result: UiTreeSerializer.Result) {
@@ -533,6 +554,7 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay?.destroy()
         overlay = null
         guideApiClient = null
+        e2ePublisher = null
         apiExecutor.shutdownNow()
         return super.onUnbind(intent)
     }

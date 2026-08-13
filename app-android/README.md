@@ -2,6 +2,9 @@
 
 Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은 `CLAUDE.md`, 방향은 `../SPEC.md`.
 
+실제 Gemini 안내를 따라 다른 앱을 조작하는 opt-in UIAutomator 실기기 테스트는
+[`DEVICE-E2E.md`](DEVICE-E2E.md)를 참고한다. 일반 CI는 API 키 없이 test APK까지만 컴파일한다.
+
 ## 빌드·설치 (CLI 한 줄)
 
 ```powershell
