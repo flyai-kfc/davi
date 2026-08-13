@@ -94,9 +94,10 @@ export ANDROID_SERIAL='<adb serial>'
 
 ## 5. 현재 시나리오의 기기 조건
 
-`samsung-clock-create-alarm`은 SM-S921N, Android 15, 한국어 Samsung Clock 12.4.10.10에서 검증됐다.
-다른 삼성 시계 버전에서는 resource ID나 화면 구조 차이로 안전 검사가 실패할 수 있다. 이것은 테스트가
-임의로 우회할 조건이 아니라 호환성 결과로 기록할 조건이다.
+`samsung-clock-create-alarm-full-journey`는 SM-S921N, Android 15, 한국어 Samsung launcher와
+Samsung Clock 12.4.10.10에서 검증됐다. `samsung-clock-create-alarm-focused`는 같은 시계의 알람
+목록부터 시작하는 진단용이다. 다른 런처·시계 버전에서는 label, resource ID나 화면 구조 차이로 안전
+검사가 실패할 수 있다. 이것은 테스트가 임의로 우회할 조건이 아니라 호환성 결과로 기록할 조건이다.
 
 ## 6. 준비 확인
 

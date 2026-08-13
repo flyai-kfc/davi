@@ -82,7 +82,10 @@ class DeviceE2eReportTest(unittest.TestCase):
                 encoding="utf-8",
             )
             safe_log.write_text(
-                "I DaviE2e: step=1 action=tap target=true verified=false\n"
+                "I DaviE2e: step=1 action=open_app_drawer "
+                "package=com.sec.android.app.launcher target=false verified=false\n"
+                "I DaviE2e: step=2 action=tap "
+                "package=com.sec.android.app.clockpackage target=true verified=false\n"
                 "I GuideSvc: event=request_started logical_request_id=opaque attempt=1\n"
                 "I DaviE2e: cleanup=success\n",
                 encoding="utf-8",
@@ -105,7 +108,14 @@ class DeviceE2eReportTest(unittest.TestCase):
             report = MODULE.render(args)
 
             self.assertIn("`step_limit`", report)
-            self.assertIn("| 1 | `tap` | true | false |", report)
+            self.assertIn(
+                "| 1 | `com.sec.android.app.launcher` | `open_app_drawer` | false | false |",
+                report,
+            )
+            self.assertIn(
+                "`com.sec.android.app.launcher → com.sec.android.app.clockpackage`",
+                report,
+            )
             self.assertIn("| 시작된 서버 요청 | 1 |", report)
             self.assertIn("| 테스트 데이터 정리 | `success` |", report)
             self.assertIn("| 시나리오 | `safe-scenario` |", report)
@@ -118,6 +128,10 @@ class DeviceE2eReportTest(unittest.TestCase):
         ids = [scenario["id"] for scenario in scenarios]
 
         self.assertEqual(registry["schema_version"], 1)
+        self.assertEqual(
+            registry["default_scenario"],
+            "samsung-clock-create-alarm-full-journey",
+        )
         self.assertIn(registry["default_scenario"], ids)
         self.assertEqual(len(ids), len(set(ids)))
         for scenario in scenarios:

@@ -32,6 +32,7 @@ enum class GuidedSwipeDirection(val wire: String) {
 data class ObservedGuideAction(
     val actionType: GuidedActionType,
     val direction: GuidedSwipeDirection?,
+    val targetNodeId: String?,
     val instruction: String,
     val expectedResult: String,
     val evidence: String,
@@ -57,6 +58,7 @@ internal object GuideE2eContract {
     const val PERMISSION = "com.davi.helper.permission.CONTROL_E2E"
     const val DAVI_PACKAGE = "com.davi.helper"
     const val ACTION_START = "com.davi.helper.e2e.START"
+    const val ACTION_START_JOURNEY = "com.davi.helper.e2e.START_JOURNEY"
     const val ACTION_STOP = "com.davi.helper.e2e.STOP"
     const val ACTION_DECISION = "com.davi.helper.e2e.DECISION"
     const val EXTRA_GOAL = "goal"
@@ -65,6 +67,7 @@ internal object GuideE2eContract {
     const val EXTRA_SCREEN_PACKAGE = "screen_package"
     const val EXTRA_ACTION_TYPE = "action_type"
     const val EXTRA_DIRECTION = "direction"
+    const val EXTRA_TARGET_NODE_ID = "target_node_id"
     const val EXTRA_INSTRUCTION = "instruction"
     const val EXTRA_EXPECTED_RESULT = "expected_result"
     const val EXTRA_EVIDENCE = "evidence"

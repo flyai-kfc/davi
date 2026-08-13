@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 
 /** 실제 Gemini 결정과 외부 앱 화면을 닫힌 루프로 잇는 별도 프로세스 실기기 러너. */
 class GuidedScenarioRunner(private val device: UiDevice) {
@@ -19,7 +21,7 @@ class GuidedScenarioRunner(private val device: UiDevice) {
         try {
             val prepared = scenario.prepare(device)
             state = prepared
-            GuideControl.start(context, scenario.goal(prepared))
+            GuideControl.start(context, device, scenario.goal(prepared), scenario.start)
             val executor = GuidedActionExecutor(device)
             var activeGeneration: Long? = null
             var previousSignature: String? = null
@@ -44,6 +46,7 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                     Log.i(
                         TRACE_TAG,
                         "step=$step action=${decision.action.actionType.wire} " +
+                            "package=${decision.screenPackage} " +
                             "target=${decision.targetBounds?.size == 4} verified=${decision.verified}",
                     )
 
@@ -98,9 +101,39 @@ class GuidedScenarioRunner(private val device: UiDevice) {
 }
 
 private object GuideControl {
-    fun start(context: Context, goal: String) {
+    fun start(
+        context: Context,
+        device: UiDevice,
+        goal: String,
+        start: GuidedScenarioStart,
+    ) {
+        if (start == GuidedScenarioStart.DAVI_TO_ANDROID_HOME) {
+            context.startActivity(
+                Intent()
+                    .setComponent(
+                        ComponentName(
+                            GuideE2eContract.DAVI_PACKAGE,
+                            "${GuideE2eContract.DAVI_PACKAGE}.OnboardingActivity",
+                        ),
+                    )
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            )
+            // 권한이 준비된 실제 앱 진입점은 Onboarding을 지나 최신 Conversation 화면으로 온다.
+            if (!device.wait(
+                    Until.hasObject(By.res(GuideE2eContract.DAVI_PACKAGE, DAVI_MIC_RESOURCE)),
+                    APP_START_TIMEOUT_MS,
+                )
+            ) {
+                throw GuidedScenarioFailure("davi_conversation_not_ready")
+            }
+        }
+
+        val action = when (start) {
+            GuidedScenarioStart.PREPARED_SCREEN -> GuideE2eContract.ACTION_START
+            GuidedScenarioStart.DAVI_TO_ANDROID_HOME -> GuideE2eContract.ACTION_START_JOURNEY
+        }
         context.sendBroadcast(
-            Intent(GuideE2eContract.ACTION_START)
+            Intent(action)
                 .setComponent(
                     ComponentName(
                         GuideE2eContract.DAVI_PACKAGE,
@@ -110,6 +143,15 @@ private object GuideControl {
                 .putExtra(GuideE2eContract.EXTRA_GOAL, goal),
             GuideE2eContract.PERMISSION,
         )
+
+        if (start == GuidedScenarioStart.DAVI_TO_ANDROID_HOME) {
+            val launcher = device.launcherPackageName
+                ?: throw GuidedScenarioFailure("launcher_package_missing")
+            if (!device.wait(Until.hasObject(By.pkg(launcher).depth(0)), HOME_TIMEOUT_MS)) {
+                throw GuidedScenarioFailure("android_home_not_visible")
+            }
+            Log.i("DaviE2e", "journey=start package=$launcher")
+        }
     }
 
     fun stop(context: Context) {
@@ -123,4 +165,8 @@ private object GuideControl {
             GuideE2eContract.PERMISSION,
         )
     }
+
+    private const val DAVI_MIC_RESOURCE = "btn_mic"
+    private const val APP_START_TIMEOUT_MS = 10_000L
+    private const val HOME_TIMEOUT_MS = 10_000L
 }

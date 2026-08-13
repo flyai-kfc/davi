@@ -12,7 +12,7 @@
 | 대상 앱 | Samsung Clock 12.4.10.10 |
 | 서버 | 로컬 개발 서버, `DAVI_USE_STUB_LLM=false` |
 | 모델 | `gemini-3.5-flash-lite` |
-| 시나리오 | 테스트 전용 이름과 목표 시간을 가진 알람 생성 후 자동 삭제 |
+| 시나리오 | Davi 최신 화면 → Android 홈 → 삼성 시계 → 테스트 알람 생성 후 자동 삭제 |
 
 기기 serial, API 키, 화면 트리, 개인 알람 label, Gemini 응답 원문과 안내 문장은 기록하지 않았다.
 
@@ -24,8 +24,10 @@
 | 접근성 서비스 공존 | 통과 | 실행 중 Davi `Bound`, `Crashed services` 비어 있음 |
 | 실제 Gemini 호출 | 통과 | stub이 아닌 모델 schema 요청과 HTTP 200 응답 확인 |
 | 안내 기반 조작 | 통과 | 정답 selector가 아니라 Gemini action과 target bounds로 외부 앱 조작 |
+| Davi → 홈 전환 | 통과 | 최신 Conversation 화면 확인 뒤 앱 프로세스가 안내 세션을 열고 홈 전환 |
+| 앱 간 관통 | 통과 | 런처 탐색 뒤 Samsung Clock package로 이동하고 같은 안내 이력 유지 |
 | 편집 화면 진입 | 통과 | 알람 목록에서 알람 편집 화면까지 실제 화면 전환 확인 |
-| 시나리오 최종 완료 | **실패** | 리뷰 반영 후 실행에서 모델의 목표 미달 `done`을 독립 검증기가 거부함 |
+| 시나리오 최종 완료 | **실패** | 저장 완료 뒤 모델이 추가 조작을 제시해 `action_after_goal`로 거부함 |
 | 실패 시 데이터 정리 | 통과 | 실행 뒤 `DAVI_E2E_TEST` 알람이 남아 있지 않음을 별도 확인 |
 | 로컬 상세 분석 보고서 | 통과 | 기본 생성, Git 제외 경로 누적, 명시적으로 끌 때만 생략 |
 | API 키 없는 회귀 빌드 | 통과 | debug 앱, driver test APK와 JVM 테스트 컴파일 성공 |
@@ -57,6 +59,22 @@
 `target_node_id`가 가리키는 시간 값이 어긋난 단계를 확인했다. 화면 label과 모델 문장 원문은 로컬
 Git 제외 보고서에만 남기고 이 문서에는 옮기지 않았다.
 
+### 실행 4 — Davi에서 시작하는 전체 여정
+
+기본 시나리오를 Davi 최신 대화 화면에서 시작하도록 확장했다. 테스트 목표는 음성 인식 대신 debug
+서명 채널로 주입했고, 앱 프로세스가 실제 제품 경로와 같은 Android 홈 intent를 실행했다. 이후
+UIAutomator는 런처에서 검색을 거쳐 Samsung Clock으로 이동하고 알람 편집·테스트 이름 입력·저장까지
+총 10개의 실제 Gemini 결정을 수행했다.
+
+저장 뒤 테스트 알람이 이미 존재했지만 모델이 추가 tap을 제시해 `action_after_goal`로 실패했다.
+정답 selector로 `done`을 대신 만들지 않았으며 테스트 전용 알람 정리는 성공했다. 이 실행으로 다음을
+확인했다.
+
+- 한 세션의 `recent_instructions`와 `recent_actions`가 런처 → Samsung Clock 전환 뒤에도 이어진다.
+- 대상 없는 전역 `scroll`도 서버 계약에 맞게 전체 화면 제스처로 실행된다.
+- 비식별 보고서가 단계별 package와 `경유한 package`를 남겨 앱 전환 지점을 보여 준다.
+- 잘못된 런처 target은 개인 앱이 열리기 전에 구조화 실패로 차단할 수 있다.
+
 따라서 현재 결론은 다음과 같다.
 
 - 실제 Gemini를 포함한 닫힌 루프 E2E 인프라는 동작한다.
@@ -70,10 +88,10 @@ OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매
 누적되고 시나리오별 최신 복사본도 갱신된다.
 
 ```text
-app-android/build/reports/device-e2e/samsung-clock-create-alarm/<timestamp>.md
-app-android/build/reports/device-e2e/samsung-clock-create-alarm/latest.md
-app-android/build/reports/device-e2e-private/samsung-clock-create-alarm/<timestamp>.md
-app-android/build/reports/device-e2e-private/samsung-clock-create-alarm/latest.md
+app-android/build/reports/device-e2e/samsung-clock-create-alarm-full-journey/<timestamp>.md
+app-android/build/reports/device-e2e/samsung-clock-create-alarm-full-journey/latest.md
+app-android/build/reports/device-e2e-private/samsung-clock-create-alarm-full-journey/<timestamp>.md
+app-android/build/reports/device-e2e-private/samsung-clock-create-alarm-full-journey/latest.md
 ```
 
 기본 비식별 보고서에는 다음 내용만 포함된다.
@@ -81,7 +99,7 @@ app-android/build/reports/device-e2e-private/samsung-clock-create-alarm/latest.m
 - 통과/실패와 구조화 실패 코드
 - 실행 시각, 모델명, 기기 모델·Android 버전, Git commit
 - 관측한 단계 수와 서버 요청 시작 수
-- 단계별 `action`, target bounds 존재 여부, 완료 검증 여부
+- 단계별 package, `action`, target bounds 존재 여부, 완료 검증 여부와 경유 package 순서
 - 테스트 전용 데이터 정리 성공 여부
 
 별도의 상세 분석 보고서는 기본으로 함께 생성되며, 각 가이드의 앱 전송 요청 스냅샷과 구조화 응답을

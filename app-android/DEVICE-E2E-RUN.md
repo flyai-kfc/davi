@@ -10,7 +10,7 @@ macOS/Linux:
 ```bash
 cd app-android
 ./scripts/run-device-e2e.sh --list-scenarios
-./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm
+./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey
 ```
 
 Windows PowerShell:
@@ -18,7 +18,7 @@ Windows PowerShell:
 ```powershell
 cd app-android
 .\scripts\run-device-e2e.ps1 -ListScenarios
-.\scripts\run-device-e2e.ps1 -Scenario samsung-clock-create-alarm
+.\scripts\run-device-e2e.ps1 -Scenario samsung-clock-create-alarm-full-journey
 ```
 
 시나리오를 생략하면 `device-e2e-scenarios.json`의 `default_scenario`가 실행된다. 두 실행기는 같은
@@ -45,9 +45,10 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 4. Davi debug 앱, 별도 driver APK와 test APK를 설치한다.
 5. Davi 접근성 서비스의 실제 연결 callback을 기다린다.
 6. 선택한 test class를 실제 Gemini opt-in으로 실행한다.
-7. 성공·실패와 무관하게 시나리오 정리를 수행한다.
-8. 비식별 Markdown 보고서를 생성한다.
-9. Davi 앱은 유지하고 launcher가 없는 driver/test helper 패키지를 제거한다.
+7. full-journey이면 Davi 최신 화면 → Android 홈 → 외부 앱 package 전환을 같은 세션에서 수행한다.
+8. 성공·실패와 무관하게 시나리오 정리를 수행한다.
+9. 비식별 Markdown 보고서를 생성한다.
+10. Davi 앱은 유지하고 launcher가 없는 driver/test helper 패키지를 제거한다.
 
 실행기가 새로 만든 `adb reverse`만 종료 시 제거한다. 이미 있던 reverse는 그대로 둔다.
 따라서 테스트 중에는 별도 helper APK가 필요하지만 사용자가 실행하거나 계속 설치해 둘 두 번째 앱은
@@ -59,13 +60,13 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 
 ```text
 build/reports/device-e2e/
-└── samsung-clock-create-alarm/
+└── samsung-clock-create-alarm-full-journey/
     ├── 20260813T120000123+0900.md
     ├── 20260813T123000456+0900.md
     └── latest.md
 
 build/reports/device-e2e-private/
-└── samsung-clock-create-alarm/
+└── samsung-clock-create-alarm-full-journey/
     ├── 20260813T120000123+0900.md
     └── latest.md
 ```
@@ -84,6 +85,7 @@ build/reports/device-e2e-private/
 | 관측한 안내 단계 | driver가 실제로 받은 Gemini 결정 수 |
 | 시작된 서버 요청 | Davi가 서버에 시작한 논리 요청 수 |
 | 단계 trace | action, target bounds 존재 여부, 완료 검증 여부 |
+| 경유한 package | 안내가 런처와 외부 앱 사이에서 이동한 순서 |
 | 테스트 데이터 정리 | 성공·실패 뒤 테스트 전용 데이터 삭제 결과 |
 
 상세 분석 보고서는 각 가이드 번호 아래에서 다음을 함께 보여 준다.

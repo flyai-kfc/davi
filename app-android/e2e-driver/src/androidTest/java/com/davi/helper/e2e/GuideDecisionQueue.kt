@@ -97,6 +97,7 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
             direction = GuidedSwipeDirection.fromWire(
                 getStringExtra(GuideE2eContract.EXTRA_DIRECTION),
             ),
+            targetNodeId = getStringExtra(GuideE2eContract.EXTRA_TARGET_NODE_ID),
             instruction = getStringExtra(GuideE2eContract.EXTRA_INSTRUCTION).orEmpty(),
             expectedResult = getStringExtra(GuideE2eContract.EXTRA_EXPECTED_RESULT).orEmpty(),
             evidence = getStringExtra(GuideE2eContract.EXTRA_EVIDENCE).orEmpty(),

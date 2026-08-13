@@ -258,13 +258,9 @@ class ConversationActivity : AppCompatActivity() {
     private fun onConfirmAccepted() {
         val state = uiState as? ConversationUiState.Confirm ?: return
         cancelVoiceDialogue()
-        GuideSession.start(state.goal)
-        setState(ConversationUiState.Home())
-        startActivity(
-            Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_HOME)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        GuideJourneyStarter.start(this, state.goal) {
+            setState(ConversationUiState.Home())
+        }
     }
 
     private fun beginVoiceDialogue() {

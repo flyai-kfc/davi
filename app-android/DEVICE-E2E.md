@@ -1,8 +1,9 @@
 # 실제 Gemini 실기기 안내 E2E
 
-`e2e-driver/src/androidTest/java/com/davi/helper/e2e/`는 Davi가 다른 앱 위에서 안내하는 닫힌 루프를
-UIAutomator로 검증한다. 첫 시나리오는 SM-S921N의 한국어 삼성 시계에서 테스트 전용 알람을
-만들고, 결과를 확인한 뒤 성공·실패와 무관하게 자동 삭제한다(#124).
+`e2e-driver/src/androidTest/java/com/davi/helper/e2e/`는 Davi에서 안내를 시작해 Android 홈과
+하나 이상의 외부 앱을 오가며 목표를 끝내는 닫힌 루프를 UIAutomator로 검증한다. 기본 시나리오는
+SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 찾고 테스트 전용 알람을 만든 뒤,
+성공·실패와 무관하게 자동 삭제한다(#124).
 
 처음 사용하는 개발자는 다음 순서로 읽는다.
 
@@ -15,16 +16,22 @@ UIAutomator로 검증한다. 첫 시나리오는 SM-S921N의 한국어 삼성 �
 
 테스트는 삼성 시계의 정답 버튼을 미리 찾아 대신 누르지 않는다.
 
-1. 실제 삼성 시계 화면을 Davi 접근성 서비스가 직렬화한다.
-2. 개발 서버가 실제 Gemini로 `GuideAction`을 만든다.
-3. 앱이 `target_node_id`를 현재 화면 요소와 연결해 오버레이를 그린다.
-4. 별도 driver APK가 서명 권한으로 보호된 debug 전용 채널에서 동일한 action과 target bounds를 받는다.
-5. UIAutomator가 그 bounds를 탭·스크롤·입력한다.
-6. 바뀐 실제 화면을 다시 수집하고, 최종 알람 시간·이름과 검증된 `done`을 확인한다.
+1. driver가 Davi의 최신 대화 화면이 실제로 준비됐는지 확인한다.
+2. debug 서명 채널로 테스트 목표를 넣고, 앱 프로세스가 안내 세션을 시작해 Android 홈으로 나간다.
+3. 런처와 이후 외부 앱 화면을 Davi 접근성 서비스가 직렬화한다.
+4. 개발 서버가 실제 Gemini로 `GuideAction`을 만든다.
+5. 앱이 `target_node_id`를 현재 화면 요소와 연결해 오버레이를 그린다.
+6. 별도 driver APK가 동일한 action과 target bounds를 받고 UIAutomator로 수행한다. 대상 없는 scroll은
+   사용자의 전역 쓸기처럼 전체 화면에서 수행한다.
+7. package가 바뀌어도 같은 세션과 이력을 이어가며, 최종 알람 시간·이름과 검증된 `done`을 확인한다.
 
-따라서 Gemini가 잘못된 대상을 고르면 UIAutomator가 정답 selector로 보정하지 않는다. 삼성 시계
-시나리오는 기존 개인 알람을 보호하기 위해 알람 추가, 시간 picker, 테스트 이름, 저장만 허용하며
-그 밖의 target은 조작 전에 안전한 오류 코드로 실패시킨다.
+따라서 Gemini가 잘못된 대상을 고르면 UIAutomator가 정답 selector로 보정하지 않는다. 런처에서는
+앱서랍·검색·스크롤과 삼성 시계 진입만 허용해 다른 개인 앱을 열기 전에 막는다. 삼성 시계에서는 기존
+개인 알람을 보호하기 위해 알람 추가, 시간 picker, 테스트 이름, 저장만 허용한다.
+
+이 full-journey는 최신 Davi 화면과 홈 전환부터 검증하지만 음성 인식의 비결정성을 섞지 않기 위해
+목표 문장은 debug 서명 채널로 주입한다. 음성 인식·후속 질문·사용자의 최종 확인 UI 품질은 별도
+대화 테스트 범위다. `samsung-clock-create-alarm-focused`는 알람 목록부터 시작하는 빠른 진단용이다.
 
 안내 문장은 exact-match하거나 특정 한국어 동사 목록으로 제한하지 않는다. 대신 비어 있지 않은
 근거·기대 결과, 현재 화면에 존재하는 target과 bounds, 실제 화면 진행, 조기 완료 여부와 최종 목표
@@ -53,7 +60,7 @@ DAVI_USE_STUB_LLM=false .venv/bin/python -m uvicorn app.main:app \
 
 ```bash
 cd app-android
-./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm
+./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey
 ```
 
 스크립트는 `/health`의 `stub_llm=false`를 먼저 확인하고, `adb reverse tcp:8000 tcp:8000`,
@@ -113,7 +120,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 새 시나리오는 다음 네 부분을 분리한다.
 
-- `GuidedScenario<State>`: 목표, 최대 단계, 입력값, 최종 검증, 정리 정책
+- `GuidedScenario<State>`: 시작 모드, 목표, 최대 단계, package별 안전 검사, 입력값, 최종 검증, 정리 정책
 - `GuidedScenarioRunner`: 결정 대기, 공통 품질 검사, 세션 수명, 항상 실행되는 정리
 - `GuidedActionExecutor`: Gemini target bounds를 실제 손동작으로 변환
 - 앱별 Robot: 안내 흐름이 아닌 준비·독립 검증·테스트 데이터 삭제용 selector
@@ -121,11 +128,12 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 추가 절차:
 
 1. 앱별 Robot으로 테스트 전용 데이터와 안전한 초기 상태를 만든다.
-2. `GuidedScenario`에서 목표와 TYPE 입력값을 정의한다.
-3. `validateBeforeExecute`에 개인 데이터 보호를 위한 최소 허용 target을 정의한다.
-4. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
-5. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
-6. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.
+2. 전체 여정은 `start = DAVI_TO_ANDROID_HOME`, 앱 내부 진단은 `PREPARED_SCREEN`을 선택한다.
+3. `GuidedScenario`에서 목표와 TYPE 입력값을 정의한다.
+4. `validateBeforeExecute`를 package별로 나눠 각 전환에서 허용할 최소 target을 정의한다.
+5. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
+6. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
+7. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.
 
 시나리오·실패 메시지·logcat에는 원본 화면 트리, 개인 label, 목표 원문, 모델 원문 응답, API 키를
 저장하거나 출력하지 않는다. 상세 보고서도 원본 트리가 아니라 앱이 실제로 전송한 1차 마스킹

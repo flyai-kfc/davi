@@ -22,5 +22,6 @@ internal object GuideInstructionQuality {
     }
 
     private val TARGETED_ACTIONS =
-        setOf(GuidedActionType.TAP, GuidedActionType.SCROLL, GuidedActionType.TYPE)
+        // scroll은 계약상 target_node_id가 없는 전역 제스처일 수 있다. tap/type만 요소가 필수다.
+        setOf(GuidedActionType.TAP, GuidedActionType.TYPE)
 }

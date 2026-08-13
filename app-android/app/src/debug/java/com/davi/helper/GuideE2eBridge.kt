@@ -30,6 +30,7 @@ class GuideE2ePublisher(private val context: Context) {
             .putExtra(GuideE2eContract.EXTRA_SCREEN_PACKAGE, request.screen.packageName)
             .putExtra(GuideE2eContract.EXTRA_ACTION_TYPE, action.actionType.name.lowercase())
             .putExtra(GuideE2eContract.EXTRA_DIRECTION, action.direction?.name?.lowercase())
+            .putExtra(GuideE2eContract.EXTRA_TARGET_NODE_ID, action.targetNodeId)
             .putExtra(GuideE2eContract.EXTRA_INSTRUCTION, action.instruction)
             .putExtra(GuideE2eContract.EXTRA_EXPECTED_RESULT, action.expectedResult)
             .putExtra(GuideE2eContract.EXTRA_EVIDENCE, action.evidence)
@@ -71,6 +72,15 @@ class GuideE2eControlReceiver : BroadcastReceiver() {
                 }
             }
 
+            GuideE2eContract.ACTION_START_JOURNEY -> {
+                val goal = intent.getStringExtra(GuideE2eContract.EXTRA_GOAL)?.trim().orEmpty()
+                if (goal.isNotEmpty() && context != null) {
+                    GuideE2eRunState.active = true
+                    GuideJourneyStarter.start(context, goal)
+                    Log.i(GuideAccessibilityService.TAG, "e2e control=start_journey")
+                }
+            }
+
             GuideE2eContract.ACTION_STOP -> {
                 GuideSession.stop()
                 GuideE2eRunState.active = false
@@ -89,6 +99,7 @@ internal object GuideE2eContract {
     const val PERMISSION = "com.davi.helper.permission.CONTROL_E2E"
     const val DRIVER_PACKAGE = "com.davi.helper.e2edriver"
     const val ACTION_START = "com.davi.helper.e2e.START"
+    const val ACTION_START_JOURNEY = "com.davi.helper.e2e.START_JOURNEY"
     const val ACTION_STOP = "com.davi.helper.e2e.STOP"
     const val ACTION_DECISION = "com.davi.helper.e2e.DECISION"
     const val EXTRA_GOAL = "goal"
@@ -97,6 +108,7 @@ internal object GuideE2eContract {
     const val EXTRA_SCREEN_PACKAGE = "screen_package"
     const val EXTRA_ACTION_TYPE = "action_type"
     const val EXTRA_DIRECTION = "direction"
+    const val EXTRA_TARGET_NODE_ID = "target_node_id"
     const val EXTRA_INSTRUCTION = "instruction"
     const val EXTRA_EXPECTED_RESULT = "expected_result"
     const val EXTRA_EVIDENCE = "evidence"

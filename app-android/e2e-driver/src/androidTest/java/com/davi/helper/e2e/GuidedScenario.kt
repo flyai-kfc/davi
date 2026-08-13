@@ -2,8 +2,17 @@ package com.davi.helper.e2e
 
 import androidx.test.uiautomator.UiDevice
 
+/** 안내를 어느 사용자 여정 지점에서 시작할지 정한다. */
+enum class GuidedScenarioStart {
+    /** 준비된 외부 앱 화면에서 안내 루프만 빠르게 검증한다. */
+    PREPARED_SCREEN,
+
+    /** Davi 최신 화면을 거쳐 안내 세션을 시작하고 Android 홈에서 전체 여정을 시작한다. */
+    DAVI_TO_ANDROID_HOME,
+}
+
 /**
- * 다른 앱을 대상으로 하는 안내 E2E 시나리오.
+ * Davi에서 시작해 하나 이상의 외부 앱을 오갈 수 있는 안내 E2E 시나리오.
  *
  * 앱별 selector는 준비·최종 검증·정리에만 둔다. 본 흐름의 조작 대상은 항상 Gemini 결정의
  * `target_node_id -> bounds`를 사용한다. 앱별 구현은 잘못된 결정이 개인 데이터에 영향을 주지
@@ -11,6 +20,8 @@ import androidx.test.uiautomator.UiDevice
  */
 interface GuidedScenario<State> {
     val id: String
+    val start: GuidedScenarioStart
+        get() = GuidedScenarioStart.PREPARED_SCREEN
     val maxSteps: Int
         get() = 20
     val decisionTimeoutMs: Long

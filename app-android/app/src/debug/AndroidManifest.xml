@@ -35,6 +35,7 @@
             android:permission="com.davi.helper.permission.CONTROL_E2E">
             <intent-filter>
                 <action android:name="com.davi.helper.e2e.START" />
+                <action android:name="com.davi.helper.e2e.START_JOURNEY" />
                 <action android:name="com.davi.helper.e2e.STOP" />
             </intent-filter>
         </receiver>

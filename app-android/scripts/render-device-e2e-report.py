@@ -16,11 +16,16 @@ FAILURE_DESCRIPTIONS = {
     "unsafe_alarm_editor_target": "알람 편집 화면에서 허용하지 않은 대상을 조작 전에 차단했습니다.",
     "save_before_test_label": "정리 가능한 테스트 이름이 실제 입력되지 않아 저장을 차단했습니다.",
     "action_after_goal": "이미 저장된 테스트 알람이 있는 상태에서 추가 조작을 차단했습니다.",
+    "unsafe_launcher_target": "런처에서 허용한 탐색 요소나 목표 앱이 아닌 대상을 실행 전에 차단했습니다.",
+    "unsafe_launcher_type": "런처 검색창이 아닌 곳에 시나리오 입력값을 넣는 동작을 차단했습니다.",
+    "davi_conversation_not_ready": "Davi 최신 대화 화면이 준비되지 않아 전체 여정을 시작하지 못했습니다.",
+    "android_home_not_visible": "Davi에서 안내를 시작한 뒤 Android 홈 화면 전환을 확인하지 못했습니다.",
 }
 FAILURE_PATTERN = re.compile(r"guided scenario failed code=([a-z0-9_-]+)")
 TIME_PATTERN = re.compile(r"^Time:\s*([0-9.]+)", re.MULTILINE)
 STEP_PATTERN = re.compile(
-    r"step=(\d+) action=([a-z_]+) target=(true|false) verified=(true|false)"
+    r"step=(\d+) action=([a-z_]+) "
+    r"(?:package=([A-Za-z0-9._]+) )?target=(true|false) verified=(true|false)"
 )
 CLEANUP_PATTERN = re.compile(r"cleanup=(success|failed)")
 SUCCESS_CODE_PATTERN = re.compile(r"^INSTRUMENTATION_CODE: -1\r?$", re.MULTILINE)
@@ -64,6 +69,7 @@ def render(args: argparse.Namespace) -> str:
     duration_match = TIME_PATTERN.search(instrumentation)
     duration = f"{duration_match.group(1)}초" if duration_match else "측정 불가"
     steps = STEP_PATTERN.findall(safe_log)
+    traversed_packages = list(dict.fromkeys(package for _, _, package, _, _ in steps if package))
     cleanup_matches = CLEANUP_PATTERN.findall(safe_log)
     cleanup = cleanup_matches[-1] if cleanup_matches else "unobserved"
     request_count = safe_log.count("event=request_started")
@@ -95,6 +101,7 @@ def render(args: argparse.Namespace) -> str:
         f"| 시나리오 설명 | {safe_value(args.scenario_description)} |",
         f"| 테스트 | `{safe_value(args.test_class)}` |",
         f"| 관측한 안내 단계 | {len(steps)} |",
+        f"| 경유한 package | `{' → '.join(traversed_packages) if traversed_packages else '-'}` |",
         f"| 시작된 서버 요청 | {request_count} |",
         f"| 테스트 데이터 정리 | `{cleanup}` |",
         "",
@@ -102,10 +109,13 @@ def render(args: argparse.Namespace) -> str:
         "",
     ]
     if steps:
-        lines += ["| 단계 | action | target bounds | 완료 검증 |", "|---:|---|---|---|"]
         lines += [
-            f"| {step} | `{action}` | {target} | {verified} |"
-            for step, action, target, verified in steps
+            "| 단계 | package | action | target bounds | 완료 검증 |",
+            "|---:|---|---|---|---|",
+        ]
+        lines += [
+            f"| {step} | `{package or '-'}` | `{action}` | {target} | {verified} |"
+            for step, action, package, target, verified in steps
         ]
     else:
         lines.append("표시된 결정을 실행하기 전 실패했거나 구조화 trace를 관측하지 못했습니다.")
@@ -115,6 +125,7 @@ def render(args: argparse.Namespace) -> str:
         "## 이 결과가 확인하는 범위",
         "",
         "- Davi 접근성 화면 수집 → 실제 서버/Gemini → 구조화 action 응답 경로",
+        "- Davi 최신 화면 → Android 홈 → 하나 이상의 외부 앱으로 이어지는 package 전환",
         "- 앱이 표시한 action과 target bounds를 별도 UIAutomator driver가 그대로 수행하는 경로",
         "- 구조화 응답 필드, 안전한 대상, 조기 완료, 최종 외부 앱 상태",
         "- 성공·실패와 무관한 테스트 전용 데이터 정리 결과",

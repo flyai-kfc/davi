@@ -56,7 +56,14 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
     private fun scroll(decision: DisplayedDecision, step: Int) {
         val direction = decision.action.direction
             ?: throw GuidedScenarioFailure("scroll_direction_missing", step)
-        swipe(targetBounds(decision, step), direction)
+        val values = decision.targetBounds
+        if (values == null) {
+            // 서버 계약은 대상 없는 scroll을 전역 제스처로 허용한다. 실제 사용자도 빈 화면 영역에서
+            // 쓸 수 있으므로, 앱별 시나리오가 허용한 경우에만 전체 화면으로 재현한다.
+            swipeWholeScreen(direction)
+        } else {
+            swipe(targetBounds(decision, step), direction)
+        }
     }
 
     private fun swipeWholeScreen(direction: GuidedSwipeDirection) {

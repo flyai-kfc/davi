@@ -36,6 +36,7 @@ Robot selector로 다음 정답 대상을 찾아 Gemini 선택을 바꾸거나 �
 
 | 메서드 | 구현 기준 |
 |---|---|
+| `start` | 전체 여정은 `DAVI_TO_ANDROID_HOME`, 특정 화면 진단은 `PREPARED_SCREEN` |
 | `prepare` | 이전 테스트 부산물을 정리하고 안전한 초기 상태 수집 |
 | `goal` | 실제 사용자가 요청할 목표. 테스트 전용 데이터만 포함 |
 | `validateBeforeExecute` | 현재 package·화면·action·target의 안전성 확인 |
@@ -44,6 +45,11 @@ Robot selector로 다음 정답 대상을 찾아 Gemini 선택을 바꾸거나 �
 | `cleanup` | `state=null`인 준비 실패까지 고려해 테스트 데이터만 삭제 |
 
 `maxSteps`는 성공에 필요한 합리적 상한으로 둔다. 상한을 크게 올려 모델 반복을 성공처럼 숨기지 않는다.
+
+여러 앱을 오가는 시나리오는 `validateBeforeExecute`를 `decision.screenPackage`별로 분기한다. 다음 앱을
+연 뒤 package를 검사하는 것은 늦다. 잘못된 개인 앱 화면이 서버에 전달되기 전에, 현재 요청 snapshot의
+`target_node_id`와 label을 이용해 허용한 앱·시스템 탐색 요소만 탭해야 한다. 대상 없는 `scroll`은
+계약상 전역 제스처일 수 있으므로, 그 package에서 전체 화면 쓸기가 안전한지도 시나리오가 결정한다.
 
 ## 3. test class 연결
 
@@ -123,6 +129,7 @@ python -m unittest discover -s scripts/tests -p 'test_*.py'
 
 - [ ] Gemini action/target을 정답 selector로 덮어쓰지 않는다.
 - [ ] 개인 데이터 대상은 실행 전에 차단한다.
+- [ ] full-journey가 Davi → 홈 → 모든 경유 package를 같은 세션에서 검증한다.
 - [ ] 완료를 외부 앱 상태로 독립 검증한다.
 - [ ] 성공·실패·준비 실패 모두 테스트 데이터를 정리한다.
 - [ ] logcat·실패 메시지·기본 보고서에 화면·안내·개인 원문이 없다.
