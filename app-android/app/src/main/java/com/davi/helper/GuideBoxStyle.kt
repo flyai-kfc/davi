@@ -30,4 +30,13 @@ object GuideBoxStyle {
     /** 상자와 화면 가장자리 사이 여백. */
     fun margin(context: Context): Float =
         context.resources.getDimension(R.dimen.overlay_instruction_margin)
+
+    /**
+     * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).
+     *
+     * 계산 쪽은 이만큼 상자를 키우고, 그리기 쪽은 이 자리에 글자를 쓰지 않는다. 값이 갈리면
+     * 칩이 글자를 덮거나 상자 아래가 비어 보인다.
+     */
+    fun controlRow(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_control_row)
 }

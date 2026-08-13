@@ -30,8 +30,13 @@
     <string name="btn_stop">안내 중지</string>
     <string name="guide_hint">시작을 누른 뒤 하려던 앱으로 이동하면 화면 위에 안내가 뜹니다.</string>
     <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 보세요.</string>
-    <!-- 미검증 done 상한(#55). 최종 문구는 안내 상태 표시(#29)에서 다시 정한다. -->
-    <string name="guide_done_unconfirmed">다 된 것 같은데 확인하지 못했어요.\n끝났으면 \'안내 중지\'를 눌러 주세요.</string>
+    <!-- 안내창 X 칩(#126). 이 라벨을 바꾸면 아래 guide_done_unconfirmed의 인용도 함께 고친다. -->
+    <string name="overlay_stop_chip">그만 볼래요</string>
+    <!--
+      미검증 done 상한(#55). 안내창에서 바로 끝낼 수 있게 되어 앱 버튼 대신 칩을 가리킨다(#126).
+      칩이 어디 있는지는 쓰지 않는다 — 자리가 아직 임시다. 최종 문구는 #29에서 함께 확정한다.
+    -->
+    <string name="guide_done_unconfirmed">다 되었는지 확인하지 못했어요.\n끝났다면 \'그만 볼래요\'를 눌러 주세요.</string>
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 

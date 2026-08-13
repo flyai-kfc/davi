@@ -21,6 +21,8 @@ import android.view.WindowManager
 class ControlOverlay(
     private val context: Context,
     private val windowManager: WindowManager,
+    /** X 칩을 눌렀을 때. 세션을 끝내는 것은 호출자 몫이다 — 이 창은 무엇이 끝나는지 모른다. */
+    private val onStop: () -> Unit,
 ) {
 
     private var root: View? = null
@@ -53,6 +55,7 @@ class ControlOverlay(
         // 서비스 Context에는 테마가 없다. 테마 속성을 참조하는 리소스가 하나라도 끼면 inflate가 터진다.
         val themed = ContextThemeWrapper(context, R.style.Theme_Davi)
         val created = LayoutInflater.from(themed).inflate(R.layout.overlay_control, null)
+        created.findViewById<View>(R.id.btn_stop_chip).setOnClickListener { onStop() }
         return runCatching {
             windowManager.addView(created, params(rect))
             root = created

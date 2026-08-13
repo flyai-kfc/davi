@@ -26,13 +26,17 @@ import android.view.WindowManager
  * 설정 앱(`com.android.settings`) 위에는 오버레이가 **아예 그려지지 않는다**(탭재킹 방지, 우회 불가).
  * 그 화면에서는 헤드업 알림으로 떨어져야 하지만 그건 다음 작업이다.
  */
-class OverlayController(private val context: Context) {
+class OverlayController(
+    private val context: Context,
+    /** 안내창 X 칩을 눌렀을 때. 메인 스레드에서 불린다. */
+    onStop: () -> Unit,
+) {
 
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private var view: HighlightOverlayView? = null
-    private val control = ControlOverlay(context, windowManager)
+    private val control = ControlOverlay(context, windowManager, onStop)
 
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)

@@ -70,6 +70,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPaint = GuideBoxStyle.textPaint(context)
     private val instructionPadding = GuideBoxStyle.padding(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
+    private val controlRow = GuideBoxStyle.controlRow(context)
 
     // ── 읽는 중 테두리(GD-1) ──────────────────────────────────────────────────
     private val readingInset = resources.getDimension(R.dimen.davi_overlay_reading_inset)
@@ -252,6 +253,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                         instructionPaint.breakText(text, true, maxWidth, null)
                     },
                     avoid = avoid,
+                    controlHeight = controlRow,
                 )
             },
         )
