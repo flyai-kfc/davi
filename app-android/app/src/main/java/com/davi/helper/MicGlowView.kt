@@ -51,13 +51,15 @@ class MicGlowView @JvmOverloads constructor(
 
     override fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float) {
         shownLevel = WaveMotion.approach(shownLevel, targetLevel, deltaSeconds, levelFollowSeconds)
-        breathTurns = if (reactsToVoice) {
-            // 듣는 중 — 파도와 같은 규칙. 말하지 않으면 멈춘다(2026-08-14 결정).
-            WaveMotion.advancePhase(breathTurns, deltaSeconds, glowPeriodSeconds, shownLevel)
+        // 듣는 중이면 파도와 같은 규칙으로 말할 때만 숨 쉰다(2026-08-14 결정).
+        // 홈 유도는 계속 숨 쉰다 — 멈추면 "누르세요"라는 신호 자체가 사라진다.
+        val level = if (reactsToVoice) shownLevel else 1f
+        val turnsPerSecond = if (glowPeriodSeconds > 0f) {
+            WaveMotion.flowSpeed(level) / glowPeriodSeconds
         } else {
-            // 홈 유도 — 계속 숨 쉰다. 멈추면 "누르세요"라는 신호 자체가 사라진다.
-            WaveMotion.advancePhase(breathTurns, deltaSeconds, glowPeriodSeconds, level = 1f)
+            0f
         }
+        breathTurns = WaveMotion.advanceTurns(breathTurns, turnsPerSecond, deltaSeconds)
     }
 
     fun onRmsChanged(rmsdB: Float) {
@@ -97,8 +99,9 @@ class MicGlowView @JvmOverloads constructor(
         // 숨 쉬는 주기 위에 음량을 얹는다. 모션이 꺼져 있으면 위상이 0에 머물러
         // 정지 프레임 한 장이 그려진다(MotionDriver).
         val breath = (sin(TWO_PI * breathTurns) + 1f) / 2f
-        val level = if (reactsToVoice) shownLevel else 0f
-        val scale = MIN_SCALE + (breath * BREATH_RANGE + level * LEVEL_RANGE).coerceAtMost(1f - MIN_SCALE)
+        val voiceLevel = if (reactsToVoice) shownLevel else 0f
+        val scale =
+            MIN_SCALE + (breath * BREATH_RANGE + voiceLevel * LEVEL_RANGE).coerceAtMost(1f - MIN_SCALE)
         canvas.scale(scale, scale, width / 2f, height / 2f)
         canvas.drawCircle(width / 2f, height / 2f, min(width, height) / 2f, paint)
         canvas.restore()

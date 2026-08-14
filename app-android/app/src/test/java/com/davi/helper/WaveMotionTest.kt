@@ -53,7 +53,7 @@ class WaveMotionTest {
     fun `같은 시각 같은 자리에서 세 겹의 높이가 서로 다르다`() {
         // 세 겹이 같은 값이면 한 덩어리로 붙어 움직인다.
         val offsets = WaveMotion.LAYERS.map {
-            WaveMotion.offsetAt(it, xFraction = 0.5f, phaseTurns = 0.31f, amplitude = 100f)
+            WaveMotion.offsetAt(it, xFraction = 0.5f, baseTurns = 0.31f, rippleTurns = 0.5f, amplitude = 100f)
         }
         assertEquals(offsets.size, offsets.distinct().size)
     }
@@ -61,8 +61,8 @@ class WaveMotionTest {
     @Test
     fun `한 겹은 시간이 흐르면 모양이 바뀐다`() {
         val layer = WaveMotion.LAYERS.first()
-        val at0 = WaveMotion.offsetAt(layer, 0.25f, phaseTurns = 0f, amplitude = 100f)
-        val at1 = WaveMotion.offsetAt(layer, 0.25f, phaseTurns = 0.25f, amplitude = 100f)
+        val at0 = WaveMotion.offsetAt(layer, 0.25f, baseTurns = 0f, rippleTurns = 0f, amplitude = 100f)
+        val at1 = WaveMotion.offsetAt(layer, 0.25f, baseTurns = 0.25f, rippleTurns = 0.4f, amplitude = 100f)
         assertNotEquals(at0, at1)
     }
 
@@ -76,29 +76,37 @@ class WaveMotionTest {
     @Test
     fun `진폭이 0이면 모든 겹이 평평하다`() {
         WaveMotion.LAYERS.forEach {
-            assertEquals(0f, WaveMotion.offsetAt(it, 0.5f, phaseTurns = 0.4f, amplitude = 0f), TOLERANCE)
+            assertEquals(0f, WaveMotion.offsetAt(it, 0.5f, baseTurns = 0.4f, rippleTurns = 0.6f, amplitude = 0f), TOLERANCE)
         }
     }
 
     @Test
     fun `주기가 0이면 위상이 흐르지 않는다`() {
         // 모션 끄기에서 정지 프레임을 그릴 때 0으로 나누는 사고가 없어야 한다.
-        assertEquals(0.3f, WaveMotion.advancePhase(0.3f, 9f, periodSeconds = 0f, level = 1f), TOLERANCE)
+        WaveMotion.LAYERS.forEach {
+            assertEquals(0f, WaveMotion.baseTurnsPerSecond(it, periodSeconds = 0f, level = 1f), TOLERANCE)
+            assertEquals(0f, WaveMotion.rippleTurnsPerSecond(it, periodSeconds = 0f, level = 1f), TOLERANCE)
+        }
     }
 
     // --- 위상 누적 (요동) ---------------------------------------------------------
 
     @Test
-    fun `말하면 위상이 앞으로 흐른다`() {
-        assertTrue(WaveMotion.advancePhase(0f, 0.5f, 4.2f, level = 1f) > 0f)
+    fun `말하면 위상이 흐른다`() {
+        WaveMotion.LAYERS.forEach {
+            assertNotEquals(0f, WaveMotion.baseTurnsPerSecond(it, 4.2f, level = 1f))
+        }
     }
 
     @Test
     fun `말하지 않으면 파도가 멈춘다`() {
         // 2026-08-14 결정 — 파도가 떠 있다는 것 자체가 "말할 차례"라는 신호이므로,
         // 멈춰 있어도 안 듣고 있는 것으로 읽히지 않는다.
-        assertEquals(0.42f, WaveMotion.advancePhase(0.42f, 1f, 4.2f, level = 0f), TOLERANCE)
         assertEquals(0f, WaveMotion.flowSpeed(0f), TOLERANCE)
+        WaveMotion.LAYERS.forEach {
+            assertEquals(0f, WaveMotion.baseTurnsPerSecond(it, 4.2f, level = 0f), TOLERANCE)
+            assertEquals(0f, WaveMotion.rippleTurnsPerSecond(it, 4.2f, level = 0f), TOLERANCE)
+        }
     }
 
     @Test
@@ -131,25 +139,78 @@ class WaveMotionTest {
     @Test
     fun `음량이 클수록 위상이 빨리 흐른다`() {
         // 말할 때 요동치는 인상의 절반이 빠르기에서 나온다.
-        val soft = WaveMotion.advancePhase(0f, 0.1f, 4.2f, level = 0.3f)
-        val loud = WaveMotion.advancePhase(0f, 0.1f, 4.2f, level = 1f)
-        assertTrue("음량이 크면 더 많이 흘러야 한다", loud > soft)
+        WaveMotion.LAYERS.forEach {
+            val soft = abs(WaveMotion.baseTurnsPerSecond(it, 4.2f, level = 0.3f))
+            val loud = abs(WaveMotion.baseTurnsPerSecond(it, 4.2f, level = 1f))
+            assertTrue("음량이 크면 더 빨리 흘러야 한다", loud > soft)
+        }
     }
 
     @Test
     fun `위상은 한 바퀴마다 접혀 무한히 커지지 않는다`() {
-        var phase = 0f
-        repeat(2000) { phase = WaveMotion.advancePhase(phase, 0.5f, 4.2f, level = 1f) }
-        assertTrue("위상이 $phase 로 발산했다", phase in 0f..1f)
+        // 반대로 흐르는 겹이 있으므로 음수로도 발산하지 않아야 한다.
+        WaveMotion.LAYERS.forEach { layer ->
+            var base = 0f
+            var ripple = 0f
+            val baseRate = WaveMotion.baseTurnsPerSecond(layer, 4.2f, level = 1f)
+            val rippleRate = WaveMotion.rippleTurnsPerSecond(layer, 4.2f, level = 1f)
+            repeat(5000) {
+                base = WaveMotion.advanceTurns(base, baseRate, 0.5f)
+                ripple = WaveMotion.advanceTurns(ripple, rippleRate, 0.5f)
+            }
+            assertTrue("기본파 위상이 $base 로 발산했다", base in 0f..1f)
+            assertTrue("잔물결 위상이 $ripple 로 발산했다", ripple in 0f..1f)
+        }
     }
 
     @Test
-    fun `위상을 접어도 파형은 이어진다`() {
-        // 0.999 -> 0.001로 접히는 지점에서 값이 튀면 파도가 끊겨 보인다.
-        val layer = WaveMotion.LAYERS.first()
-        val before = WaveMotion.offsetAt(layer, 0.5f, phaseTurns = 0.999f, amplitude = 50f)
-        val after = WaveMotion.offsetAt(layer, 0.5f, phaseTurns = 0.001f, amplitude = 50f)
-        assertEquals("한 바퀴는 원점과 같아야 한다", before, after, 1f)
+    fun `모든 겹이 위상을 접어도 기본파와 잔물결이 이어진다`() {
+        // PR #136 리뷰 회귀. 이전 구현은 공유 위상 하나를 접은 뒤 겹의 속도를 곱해서,
+        // 속도가 1.00인 첫 겹만 이어지고 나머지(-0.62, 1.37)는 접히는 순간 순간이동했다.
+        // 최대 음량에서 약 2초마다 눈에 띄는 점프가 생겼다.
+        //
+        // 겹마다 for 문을 도는 것이 핵심이다 — first()만 검사하면 하필 유일하게
+        // 멀쩡한 겹을 보게 되어 이 버그를 다시 놓친다.
+        WaveMotion.LAYERS.forEachIndexed { index, layer ->
+            val baseRate = WaveMotion.baseTurnsPerSecond(layer, 4.2f, level = 1f)
+            val rippleRate = WaveMotion.rippleTurnsPerSecond(layer, 4.2f, level = 1f)
+            val step = 1f / 60f
+
+            // 접히기 직전 상태를 만든다.
+            var base = if (baseRate > 0f) 1f - abs(baseRate) * step / 2f else abs(baseRate) * step / 2f
+            var ripple = if (rippleRate > 0f) 1f - abs(rippleRate) * step / 2f else abs(rippleRate) * step / 2f
+
+            val x = 0.5f
+            val before = WaveMotion.offsetAt(layer, x, base, ripple, amplitude = 50f, choppiness = 1f)
+            base = WaveMotion.advanceTurns(base, baseRate, step)
+            ripple = WaveMotion.advanceTurns(ripple, rippleRate, step)
+            val after = WaveMotion.offsetAt(layer, x, base, ripple, amplitude = 50f, choppiness = 1f)
+
+            // 한 프레임 사이의 정상 변화량. 이보다 크게 벌어지면 순간이동이다.
+            val normalStep = 50f * TWO_PI_APPROX * (abs(baseRate) + abs(rippleRate)) * step * 2f
+            assertTrue(
+                "겹 $index 이 접히는 순간 ${abs(after - before)} 만큼 튀었다(정상 $normalStep)",
+                abs(after - before) <= normalStep,
+            )
+        }
+    }
+
+    @Test
+    fun `접힌 위상은 한 바퀴 전과 같은 값을 준다`() {
+        // 위상 0과 1은 같은 지점이어야 한다 — 겹마다 확인한다.
+        WaveMotion.LAYERS.forEachIndexed { index, layer ->
+            val at0 = WaveMotion.offsetAt(layer, 0.5f, 0f, 0f, 50f, choppiness = 1f)
+            val at1 = WaveMotion.offsetAt(layer, 0.5f, 1f, 1f, 50f, choppiness = 1f)
+            assertEquals("겹 $index", at0, at1, 0.01f)
+        }
+    }
+
+    @Test
+    fun `반대로 흐르는 겹도 위상이 음수로 새지 않는다`() {
+        val backward = WaveMotion.LAYERS.first { it.speed < 0f }
+        val rate = WaveMotion.baseTurnsPerSecond(backward, 4.2f, level = 1f)
+        assertTrue("이 겹은 반대로 흘러야 한다", rate < 0f)
+        assertTrue(WaveMotion.advanceTurns(0f, rate, 0.5f) in 0f..1f)
     }
 
     // --- 잔물결 (요동) -----------------------------------------------------------
@@ -157,16 +218,16 @@ class WaveMotionTest {
     @Test
     fun `조용하면 잔물결이 없다`() {
         val layer = WaveMotion.LAYERS.first()
-        val plain = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f, choppiness = 0f)
-        val default = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f)
+        val plain = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f, choppiness = 0f)
+        val default = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f)
         assertEquals("기본값은 잔물결 없음이어야 한다", plain, default, TOLERANCE)
     }
 
     @Test
     fun `말하면 잔물결이 얹혀 결이 달라진다`() {
         val layer = WaveMotion.LAYERS.first()
-        val smooth = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f, choppiness = 0f)
-        val choppy = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f, choppiness = 1f)
+        val smooth = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f, choppiness = 0f)
+        val choppy = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f, choppiness = 1f)
         assertNotEquals(smooth, choppy)
     }
 
@@ -176,7 +237,7 @@ class WaveMotionTest {
         val layer = WaveMotion.LAYERS.first()
         val amplitude = 50f
         val worst = (0..200).maxOf { i ->
-            abs(WaveMotion.offsetAt(layer, i / 200f, 0.37f, amplitude, choppiness = 1f))
+            abs(WaveMotion.offsetAt(layer, i / 200f, 0.37f, 0.62f, amplitude, choppiness = 1f))
         }
         val ceiling = amplitude * layer.amplitudeScale * 1.5f
         assertTrue("최대 $worst 가 상한 $ceiling 을 넘었다", worst <= ceiling)
@@ -185,8 +246,8 @@ class WaveMotionTest {
     @Test
     fun `잔물결 세기는 범위를 벗어나도 접힌다`() {
         val layer = WaveMotion.LAYERS.first()
-        val over = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f, choppiness = 5f)
-        val max = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 50f, choppiness = 1f)
+        val over = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f, choppiness = 5f)
+        val max = WaveMotion.offsetAt(layer, 0.4f, 0.2f, 0.3f, 50f, choppiness = 1f)
         assertEquals(max, over, TOLERANCE)
     }
 
@@ -267,5 +328,6 @@ class WaveMotionTest {
 
     private companion object {
         const val TOLERANCE = 0.0001f
+        const val TWO_PI_APPROX = 6.2832f
     }
 }

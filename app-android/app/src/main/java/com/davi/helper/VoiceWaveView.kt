@@ -34,6 +34,14 @@ class VoiceWaveView @JvmOverloads constructor(
     private class LayerBrush(val motion: WaveMotion.Layer, val color: Int) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val path = Path()
+
+        /**
+         * 이 겹의 누적 위상. **겹마다 따로 갖고, 기본파와 잔물결도 따로 갖는다.**
+         * 공유 위상 하나를 접은 뒤 겹의 속도를 곱하면 접히는 순간 겹마다 다르게 튄다
+         * (PR #136 리뷰 지적). 자세한 근거는 [WaveMotion.baseTurnsPerSecond].
+         */
+        var baseTurns = 0f
+        var rippleTurns = 0f
     }
 
     private val layers: List<LayerBrush>
@@ -48,12 +56,21 @@ class VoiceWaveView @JvmOverloads constructor(
     private var targetLevel = 0f
     private var shownLevel = 0f
 
-    /** 누적 위상. 음량에 따라 흐르는 빠르기가 변하므로 절대 시간으로 계산하지 않는다. */
-    private var phaseTurns = 0f
-
     override fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float) {
         shownLevel = WaveMotion.approach(shownLevel, targetLevel, deltaSeconds, levelFollowSeconds)
-        phaseTurns = WaveMotion.advancePhase(phaseTurns, deltaSeconds, wavePeriodSeconds, shownLevel)
+        // 위상은 겹마다 따로 민다. 음량에 따라 빠르기가 변하므로 절대 시간으로 계산하지 않는다.
+        layers.forEach { layer ->
+            layer.baseTurns = WaveMotion.advanceTurns(
+                layer.baseTurns,
+                WaveMotion.baseTurnsPerSecond(layer.motion, wavePeriodSeconds, shownLevel),
+                deltaSeconds,
+            )
+            layer.rippleTurns = WaveMotion.advanceTurns(
+                layer.rippleTurns,
+                WaveMotion.rippleTurnsPerSecond(layer.motion, wavePeriodSeconds, shownLevel),
+                deltaSeconds,
+            )
+        }
     }
 
     init {
@@ -137,7 +154,8 @@ class VoiceWaveView @JvmOverloads constructor(
         WaveMotion.offsetAt(
             layer = layer.motion,
             xFraction = xFraction,
-            phaseTurns = phaseTurns,
+            baseTurns = layer.baseTurns,
+            rippleTurns = layer.rippleTurns,
             amplitude = currentAmplitude,
             // 목소리가 클수록 결이 거칠어진다.
             choppiness = shownLevel,

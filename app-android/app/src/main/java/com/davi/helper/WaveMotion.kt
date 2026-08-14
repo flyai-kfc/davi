@@ -102,18 +102,41 @@ object WaveMotion {
      *
      * @param level 정규화된 음량(0..1). **무음이면 흐르지 않는다** — [flowSpeed] 참고.
      */
-    fun advancePhase(
+    fun advanceTurns(
         currentTurns: Float,
+        turnsPerSecond: Float,
         deltaSeconds: Float,
-        periodSeconds: Float,
-        level: Float,
-    ): Float {
-        if (periodSeconds <= 0f) return currentTurns
-        val speed = flowSpeed(level)
-        if (speed <= 0f) return currentTurns
-        val next = currentTurns + deltaSeconds * speed / periodSeconds
-        // 계속 커지면 언젠가 float 정밀도가 무너져 파도가 각져 보인다. 한 바퀴마다 접는다.
-        return next % 1f
+    ): Float = wrapTurns(currentTurns + turnsPerSecond * deltaSeconds)
+
+    /**
+     * 한 겹의 **기본파**가 초당 몇 바퀴 흐르는가. 겹의 속도가 여기 이미 곱해져 있다.
+     *
+     * **속도를 위상에 곱하지 않고 여기서 미리 반영하는 것이 핵심이다.** 공유 위상 하나를
+     * 접은 뒤 겹마다 비정수 속도를 곱하면, 접히는 순간 겹마다 다른 크기로 순간이동한다 —
+     * 속도가 1.00인 겹만 우연히 이어지고 나머지는 튄다(PR #136 리뷰에서 실측으로 지적됐다).
+     * 겹마다 자기 위상을 갖고 각자 1바퀴에서 접으면 어느 겹도 튀지 않는다.
+     */
+    fun baseTurnsPerSecond(layer: Layer, periodSeconds: Float, level: Float): Float {
+        if (periodSeconds <= 0f) return 0f
+        return layer.speed * flowSpeed(level) / periodSeconds
+    }
+
+    /**
+     * 한 겹의 **잔물결**이 초당 몇 바퀴 흐르는가. 기본파보다 빠르다.
+     *
+     * 잔물결도 자기 위상을 따로 갖는다. 기본파 위상에 배수를 곱해 쓰면 기본파가 접히는
+     * 순간 잔물결은 그 배수만큼 튄다.
+     */
+    fun rippleTurnsPerSecond(layer: Layer, periodSeconds: Float, level: Float): Float =
+        baseTurnsPerSecond(layer, periodSeconds, level) * RIPPLE_SPEED
+
+    /**
+     * 위상을 0..1로 접는다. 계속 커지게 두면 언젠가 float 정밀도가 무너져 파도가 각져 보인다.
+     * 음수 속도(반대로 흐르는 겹)가 있으므로 `%`만으로는 부족하다 — 한 번 더 올려 준다.
+     */
+    private fun wrapTurns(turns: Float): Float {
+        val wrapped = turns % 1f
+        return if (wrapped < 0f) wrapped + 1f else wrapped
     }
 
     /**
@@ -144,24 +167,26 @@ object WaveMotion {
      * 얹어 결이 거칠어지게 한다 — 조용할 때는 매끈하고, 말할 때 요동친다.
      *
      * @param xFraction 뷰 왼쪽 끝 0, 오른쪽 끝 1.
-     * @param phaseTurns [advancePhase]가 누적한 위상.
+     * @param baseTurns 이 겹의 기본파 누적 위상([advanceTurns]로 민다). **속도가 이미 반영돼
+     *   있으므로 여기서 다시 곱하지 않는다** — 그렇게 하면 접히는 순간 튄다.
+     * @param rippleTurns 이 겹의 잔물결 누적 위상. 기본파와 따로 접힌다.
      * @param amplitude 진폭(px). 겹의 [Layer.amplitudeScale]은 이 안에서 곱해진다.
      * @param choppiness 잔물결 세기(0..1). 보통 정규화된 음량을 그대로 넘긴다.
      */
     fun offsetAt(
         layer: Layer,
         xFraction: Float,
-        phaseTurns: Float,
+        baseTurns: Float,
+        rippleTurns: Float,
         amplitude: Float,
         choppiness: Float = 0f,
     ): Float {
         val cycles = xFraction / layer.waveLengthFraction
-        val travel = layer.speed * phaseTurns
-        val base = sin(TWO_PI * (cycles + travel + layer.phase))
+        val base = sin(TWO_PI * (cycles + baseTurns + layer.phase))
         // 잔물결은 파장이 짧고 더 빨리 흐른다. 배수를 정수로 두지 않아야 마루가 겹쳐
         // 규칙적으로 커지는 자리가 생기지 않는다.
         val ripple = sin(
-            TWO_PI * (cycles * RIPPLE_FREQUENCY + travel * RIPPLE_SPEED + layer.phase * 1.7f),
+            TWO_PI * (cycles * RIPPLE_FREQUENCY + rippleTurns + layer.phase * 1.7f),
         )
         val shaped = base + ripple * choppiness.coerceIn(0f, 1f) * RIPPLE_WEIGHT
         return -shaped * amplitude * layer.amplitudeScale
