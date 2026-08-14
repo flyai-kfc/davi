@@ -18,6 +18,19 @@
     <integer name="davi_motion_glow_period_ms">1800</integer>
 
     <!--
+      응답 대기 점 3개 (#142). **시안이 준 값이다** — 메인 v2 캡션
+      "점 3개가 순서대로 커졌다 작아짐 (0.6s 주기, 0.15s 간격)".
+    -->
+    <integer name="davi_motion_dots_period_ms">600</integer>
+    <integer name="davi_motion_dots_stagger_ms">150</integer>
+    <!--
+      점을 띄우기 전 기다리는 시간. 응답이 빠르면 점이 한 번 깜빡이고 사라져 오히려 산만하다
+      (#127이 읽는 중 표시에서 같은 함정을 적어 뒀다). 이 구간에는 "잠시만요" 문구만 보인다.
+      **시안에 없는 값이라 첫 추정치다** — 실사용 응답 시간을 보고 조정한다.
+    -->
+    <integer name="davi_motion_dots_delay_ms">400</integer>
+
+    <!--
       음량(RMS)을 화면이 따라가는 데 쓰는 시간 상수. onRmsChanged는 화면 주사율과 무관하게
       오므로 값을 그대로 그리면 튄다. 목표값으로 두고 이 시간에 걸쳐 수렴시킨다.
       짧을수록 즉각적이고 거칠며, 길수록 매끄럽고 굼뜨다.

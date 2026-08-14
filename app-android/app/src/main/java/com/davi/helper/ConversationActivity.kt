@@ -57,6 +57,9 @@ class ConversationActivity : AppCompatActivity() {
     /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
     private var lastQuestionKey: Any? = null
 
+    /** 직전 렌더에서 응답 대기 점이 떠 있었는가. 대기에 **새로** 들어갈 때만 지연을 다시 센다(#142). */
+    private var loadingDotsShown = false
+
     @Volatile
     private var destroyed = false
 
@@ -234,7 +237,10 @@ class ConversationActivity : AppCompatActivity() {
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
         binding.logo.isVisible(model.logoVisible)
-        binding.cardQuestion.isVisible(model.questionRes != null || model.questionText != null)
+        // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
+        val questionVisible = model.questionRes != null || model.questionText != null
+        binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
+        binding.cardQuestion.isVisible(questionVisible)
         binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
@@ -258,6 +264,12 @@ class ConversationActivity : AppCompatActivity() {
         // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
         // 직전 발화의 크기로 튀어나온다. 프레임 루프는 뷰가 가시성 변화에서 알아서 멈춘다.
         renderVoiceMotion(model)
+
+        // 응답 대기 점(#142). 대기에 새로 들어갈 때만 처음부터 센다 — render()는 한 대기
+        // 구간에서도 여러 번 불리므로 무조건 되돌리면 지연이 매번 다시 시작돼 점이 안 나온다.
+        if (model.loadingDotsVisible && !loadingDotsShown) binding.loadingDots.restart()
+        loadingDotsShown = model.loadingDotsVisible
+        binding.loadingDots.isVisible(model.loadingDotsVisible)
     }
 
     private fun renderVoiceMotion(model: ConversationRenderModel) {

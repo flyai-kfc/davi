@@ -102,4 +102,14 @@
       확정 디자인에서 컨트롤 크기를 다시 잡을 때 함께 재계산한다.
     -->
     <dimen name="davi_glow_mic_margin_bottom">-54dp</dimen>
+
+    <!--
+      응답 대기 점 3개 (#142). 시안 실측은 지름 16 / 11, 중심 간격 28(300 폭 프레임 기준)이다.
+      시안의 카드 폭 252 대 실제 카드 폭(검증 기기에서 약 312dp)의 비 1.24를 곱해 키웠다 —
+      파도·글로우와 같은 방침으로, 비율이 아니라 **눈에 보이는 크기**를 맞춘다.
+    -->
+    <dimen name="davi_loading_dot_size_max">20dp</dimen>
+    <dimen name="davi_loading_dot_size_min">13dp</dimen>
+    <!-- 점 사이 여백(가장 큰 점 가장자리 기준). 중심 간격 35dp - 지름 20dp. -->
+    <dimen name="davi_loading_dot_spacing">15dp</dimen>
 </resources>

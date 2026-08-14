@@ -180,6 +180,24 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `응답 대기에서만 로딩 점이 보인다`() {
+        assertTrue(renderModelOf(ConversationUiState.Requesting("발화")).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Home()).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Listening()).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Failed).loadingDotsVisible)
+    }
+
+    @Test
+    fun `응답 대기는 잠시만요 문구와 점을 함께 보인다`() {
+        // 시안(메인 6)은 문구를 점으로 대체하지 않는다.
+        val model = renderModelOf(ConversationUiState.Requesting("발화"))
+        assertEquals(R.string.conversation_requesting, model.questionRes)
+        assertTrue(model.loadingDotsVisible)
+    }
+
+    @Test
     fun `다비가 말하는 중에는 파도도 글로우도 없다`() {
         val model = renderModelOf(ConversationUiState.Speaking("질문", generation = 1L))
         assertFalse(model.waveVisible)
