@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,6 +23,7 @@ class AppResolutionCoordinatorTest {
         assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
         outcome as AppResolutionCoordinator.Outcome.Completed
         assertEquals(IntentDialogueStatus.NEEDS_CLARIFICATION, outcome.state.status)
+        assertNull(outcome.indexRevision)
         assertEquals(1, requests.size)
     }
 
@@ -133,6 +135,41 @@ class AppResolutionCoordinatorTest {
         assertEquals(IntentDialogueStatus.NEEDS_CLARIFICATION, outcome.state.status)
     }
 
+    @Test
+    fun `unstable snapshot is retried before device feedback is sent`() {
+        val source = FakeSource(
+            listOf(record("com.example.delivery", "배달 앱")),
+            invalidationsDuringQuery = 2,
+        )
+        val index = LaunchableAppIndex(source) {}.also { it.start() }
+        var feedbackCalls = 0
+        val gateway = AppResolutionGateway { request ->
+            if (request.feedback == null) return@AppResolutionGateway candidateResponse()
+            feedbackCalls++
+            assertEquals(
+                AppCandidateAvailability.LAUNCHABLE,
+                request.feedback.candidateResults.single().status,
+            )
+            AppResolutionResult.Success(
+                AppResolutionState(
+                    AppResolutionStatus.RESOLVED,
+                    "목표 정리",
+                    selectedCandidateId = "candidate-1",
+                    goal = "치킨 주문 (사용할 앱: 배달 앱)",
+                ),
+                trace(),
+            )
+        }
+
+        val outcome = AppResolutionCoordinator(index, gateway).resolve("치킨 주문", 1) { true }
+
+        assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
+        outcome as AppResolutionCoordinator.Outcome.Completed
+        assertEquals(IntentDialogueStatus.READY, outcome.state.status)
+        assertEquals(index.revision(), outcome.indexRevision)
+        assertEquals(1, feedbackCalls)
+    }
+
     private fun candidateResponse() = AppResolutionResult.Success(
         AppResolutionState(
             AppResolutionStatus.CANDIDATES,
@@ -158,9 +195,18 @@ class AppResolutionCoordinatorTest {
 
     private fun trace() = ServerResponseTrace(null, null, null)
 
-    private class FakeSource(var records: List<LaunchableAppRecord>) : LaunchableAppSource {
+    private class FakeSource(
+        var records: List<LaunchableAppRecord>,
+        var invalidationsDuringQuery: Int = 0,
+    ) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null
-        override fun query() = LaunchableAppQuery.Available(records, complete = true)
+        override fun query(): LaunchableAppQuery {
+            if (invalidationsDuringQuery > 0) {
+                invalidationsDuringQuery--
+                callback?.invoke()
+            }
+            return LaunchableAppQuery.Available(records, complete = true)
+        }
         override fun register(onChanged: () -> Unit) {
             callback = onChanged
         }

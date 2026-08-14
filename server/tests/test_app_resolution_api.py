@@ -7,8 +7,9 @@ import logging
 import uuid
 
 import app.main as main_module
+from app.app_resolution import resolve_app_request as resolve_app_request_impl
 from app.main import app
-from app.schemas import AppCandidatePlan
+from app.schemas import AppCandidatePlan, AppResolutionState, AppResolutionStatus
 from fastapi.testclient import TestClient
 
 client = TestClient(app, client=("127.0.0.1", 50000))
@@ -27,6 +28,61 @@ def test_keyless_empty_candidates_need_app_name_without_feedback_request():
     assert initial.status_code == 200
     assert initial.json()["status"] == "needs_app_name"
     assert initial.json().get("plan") is None
+
+
+def test_keyless_two_phase_contract_round_trip(monkeypatch, caplog):
+    plan = AppCandidatePlan.model_validate(
+        {
+            "capability": "camera",
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "canonical_name": "카메라",
+                    "package_names": ["com.example.camera"],
+                    "label_aliases": ["카메라"],
+                    "confidence": 1.0,
+                }
+            ],
+        }
+    )
+
+    def resolve_with_contract_candidate(request):
+        if request.feedback is None:
+            return AppResolutionState(
+                status=AppResolutionStatus.CANDIDATES,
+                message="앱 후보를 확인했어요.",
+                plan=plan,
+            )
+        return resolve_app_request_impl(request)
+
+    monkeypatch.setattr(main_module, "resolve_app_request", resolve_with_contract_candidate)
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.davi.requests"):
+        initial = client.post(PATH, json={"goal": "카메라를 열고 싶어"}, headers=_headers())
+        initial_body = initial.json()
+        feedback = client.post(
+            PATH,
+            json={
+                "goal": "카메라를 열고 싶어",
+                "feedback": {
+                    "plan": initial_body["plan"],
+                    "candidate_results": [{"candidate_id": "candidate-1", "status": "launchable"}],
+                },
+            },
+            headers=_headers(),
+        )
+
+    assert initial.status_code == 200
+    assert initial_body["status"] == "candidates"
+    assert initial_body["plan"] == plan.model_dump()
+    assert feedback.status_code == 200
+    assert feedback.json()["status"] == "resolved"
+    assert feedback.json()["selected_candidate_id"] == "candidate-1"
+
+    events = [json.loads(record.getMessage()) for record in caplog.records]
+    assert events[-1]["resolution_phase"] == "feedback"
+    assert events[-1]["candidate_count"] == 1
+    assert events[-1]["resolution_status"] == "resolved"
 
 
 def test_invalid_feedback_returns_safe_bad_request():

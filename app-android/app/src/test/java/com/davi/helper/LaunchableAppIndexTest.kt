@@ -1,6 +1,8 @@
 package com.davi.helper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LaunchableAppIndexTest {
@@ -108,6 +110,27 @@ class LaunchableAppIndexTest {
         assertEquals(emptyList<LaunchableAppRecord>(), snapshot.records)
     }
 
+    @Test
+    fun `repeated invalidation returns an unstable snapshot until refresh succeeds`() {
+        val source = FakeSource(
+            LaunchableAppQuery.Available(
+                listOf(record("com.example.one", "하나", "Main")),
+                complete = true,
+            )
+        )
+        val index = LaunchableAppIndex(source) {}
+        index.start()
+        source.invalidationsDuringQuery = 2
+
+        val unstable = index.current()
+        val refreshed = index.current()
+
+        assertFalse(unstable.isStable)
+        assertTrue(refreshed.isStable)
+        assertEquals(unstable.revision, refreshed.revision)
+        assertEquals(3, source.queryCount)
+    }
+
     private fun plan(vararg candidates: AppCandidate) =
         AppCandidatePlan("test", candidates.toList())
 
@@ -125,8 +148,13 @@ class LaunchableAppIndexTest {
     private class FakeSource(var query: LaunchableAppQuery) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null
         var queryCount = 0
+        var invalidationsDuringQuery = 0
         override fun query(): LaunchableAppQuery {
             queryCount++
+            if (invalidationsDuringQuery > 0) {
+                invalidationsDuringQuery--
+                callback?.invoke()
+            }
             return query
         }
         override fun register(onChanged: () -> Unit) {

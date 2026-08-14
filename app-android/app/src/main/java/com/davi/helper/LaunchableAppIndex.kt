@@ -38,6 +38,8 @@ internal data class LaunchableAppSnapshot(
     val records: List<LaunchableAppRecord>,
     val complete: Boolean,
     val revision: Long,
+    /** false면 조회 중 연속 무효화되어 이 snapshot으로 후보를 판정하면 안 된다. */
+    val isStable: Boolean = true,
 )
 
 /**
@@ -105,7 +107,7 @@ internal class LaunchableAppIndex(
                 return it
             }
         }
-        return synchronized(lock) { snapshotCopyLocked() }
+        return synchronized(lock) { snapshotCopyLocked().copy(isStable = false) }
     }
 
     fun revision(): Long = synchronized(lock) { snapshot.revision }

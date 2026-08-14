@@ -8,7 +8,8 @@ internal class AppResolutionCoordinator(
     sealed interface Outcome {
         data class Completed(
             val state: SlotFillState,
-            val indexRevision: Long,
+            /** 후보를 기기 index와 대조한 결과에만 revision 가드를 적용한다. */
+            val indexRevision: Long?,
         ) : Outcome
 
         data class Failure(val result: AppResolutionResult) : Outcome
@@ -27,18 +28,19 @@ internal class AppResolutionCoordinator(
         val plan = initial.state.plan
         if (initial.state.status != AppResolutionStatus.CANDIDATES || plan == null) {
             return initial.state.toDialogueState()?.let {
-                Outcome.Completed(it, index.revision())
+                Outcome.Completed(it, indexRevision = null)
             } ?: Outcome.Failure(invalidState())
         }
 
         repeat(MAX_INDEX_ATTEMPTS) {
             if (!isCurrent(generation)) return Outcome.Dropped
             val snapshot = index.current()
+            if (!snapshot.isStable) return@repeat
             val candidateResults = AppCandidateMatcher.match(plan, snapshot)
             val feedback = AppResolutionFeedback(plan, candidateResults)
             val final = gateway.resolve(AppResolutionRequest(goal, feedback))
             if (!isCurrent(generation)) return Outcome.Dropped
-            if (index.current().revision != snapshot.revision) return@repeat
+            if (index.revision() != snapshot.revision) return@repeat
             if (final !is AppResolutionResult.Success) return Outcome.Failure(final)
             return final.state.toDialogueState()?.let {
                 Outcome.Completed(it, snapshot.revision)

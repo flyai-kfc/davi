@@ -74,6 +74,6 @@ def test_fake_llm_multiple_launchable_candidates_are_never_auto_selected():
     assert result.selected_candidate_id is None
 
 
-def test_fake_llm_unknown_profile_state_is_distinct_from_not_found():
+def test_fake_llm_accessible_profile_query_failure_is_distinct_from_not_found():
     result = _round_trip([AppCandidateAvailability.UNKNOWN])
     assert result.status is AppResolutionStatus.UNAVAILABLE_OR_UNKNOWN
