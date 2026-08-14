@@ -61,6 +61,10 @@ def render(args: argparse.Namespace) -> str:
     events = load_events(args.trace)
     decisions = {event["step"]: event for event in events if event["event"] == "decision"}
     outcomes = {event["step"]: event for event in events if event["event"] == "step_outcome"}
+    deviations: dict[int, list[str]] = {}
+    for event in events:
+        if event["event"] == "step_deviation":
+            deviations.setdefault(event["step"], []).append(event.get("code", "unknown"))
     discarded = Counter(
         event.get("reason", "unknown") for event in events if event["event"] == "decision_discarded"
     )
@@ -196,6 +200,7 @@ def render(args: argparse.Namespace) -> str:
             "|---|---|",
             f"| outcome | `{cell(outcome.get('outcome', 'unobserved'))}` |",
             f"| failure_code | `{cell(outcome.get('failure_code'))}` |",
+            f"| deviation_codes | `{cell(deviations.get(step) or None)}` |",
             "",
         ]
 

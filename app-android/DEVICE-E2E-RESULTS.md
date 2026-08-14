@@ -3,6 +3,9 @@
 이 문서는 #124에서 삼성 시계 알람 시나리오용 UIAutomator driver를 구현하면서 실제 SM-S921N에서
 확인한 결과를 기록한다. 실행 방법과 판정 기준은 [`DEVICE-E2E.md`](DEVICE-E2E.md)에 있다.
 
+> 아래 실행은 #143 이전의 즉시 중단 기준으로 기록한 역사적 결과다. 현재는 `action_after_goal`,
+> `unknown_clock_screen` 같은 회복 가능한 경로 이탈을 비종료 코드로 기록하고 최대 단계까지 속행한다.
+
 ## 검증 환경
 
 | 항목 | 값 |
@@ -99,7 +102,7 @@ app-android/build/reports/device-e2e-private/samsung-clock-create-alarm-full-jou
 - 통과/실패와 구조화 실패 코드
 - 실행 시각, 모델명, 기기 모델·Android 버전, Git commit
 - 관측한 단계 수와 서버 요청 시작 수
-- 단계별 package, `action`, target bounds 존재 여부, 완료 검증 여부와 경유 package 순서
+- 단계별 package, `action`, target bounds 존재 여부, 완료 검증 여부, 비종료 이탈과 경유 package 순서
 - 테스트 전용 데이터 정리 성공 여부
 
 별도의 상세 분석 보고서는 기본으로 함께 생성되며, 각 가이드의 앱 전송 요청 스냅샷과 구조화 응답을
