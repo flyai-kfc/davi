@@ -107,6 +107,15 @@ object GuideSession {
     private var pendingConfirmSignature: String? = null
 
     /**
+     * 확인 화면을 띄운 앱의 package. "사용자가 떠났는가"는 **서명이 아니라 이걸로** 본다.
+     *
+     * 서명으로 보면 확인 화면이 자기 때문에 즉시 해제된다 — 안내창이 화면 아래를 덮으면서
+     * 가려진 요소가 트리에서 빠져 서명이 달라진다(2026-08-14 SM-S921N 실측: 확인 표시
+     * 0.6초 뒤 매번 해제). package는 오버레이가 가려도 바뀌지 않는다.
+     */
+    private var pendingConfirmPackage: String? = null
+
+    /**
      * 사용자가 "아직요"로 완료를 부정한 화면의 서명. 그 화면에서 다시 오는 done은 확인 화면을
      * 띄우지 않는다 — 안 그러면 같은 화면이 done을 계속 주는 동안 확인 화면이 무한 반복된다.
      * 다른 화면의 done이 오면(= 사용자가 진행했다) 지운다.
@@ -147,7 +156,12 @@ object GuideSession {
      * 이전 세대의 늦은 done은 여기서도 버린다(null).
      */
     @Synchronized
-    fun onDone(generation: Long, verified: Boolean, screenSignature: String?): DoneOutcome? {
+    fun onDone(
+        generation: Long,
+        verified: Boolean,
+        screenSignature: String?,
+        screenPackage: String? = null,
+    ): DoneOutcome? {
         if (!isCurrent(generation)) return null
 
         // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
@@ -155,7 +169,7 @@ object GuideSession {
         if (!rejected) rejectedSignature = null
 
         if (verified && !rejected) {
-            awaitConfirm(screenSignature)
+            awaitConfirm(screenSignature, screenPackage)
             return DoneOutcome.CONFIRM_CONFIDENT
         }
 
@@ -164,13 +178,41 @@ object GuideSession {
         unverifiedDones++
         if (unverifiedDones < MAX_UNVERIFIED_DONE) return DoneOutcome.RETRY
         if (rejected) return DoneOutcome.NOTICE_ONLY
-        awaitConfirm(screenSignature)
+        awaitConfirm(screenSignature, screenPackage)
         return DoneOutcome.CONFIRM_UNSURE
     }
 
-    private fun awaitConfirm(screenSignature: String?) {
+    private fun awaitConfirm(screenSignature: String?, screenPackage: String?) {
         awaitingConfirm = true
         pendingConfirmSignature = screenSignature
+        pendingConfirmPackage = screenPackage
+    }
+
+    /**
+     * 확인을 띄운 **앱**을 사용자가 떠났다. 답 대신 진행했다는 뜻이므로 대기를 풀고 안내를
+     * 잇는다. 부정 이력은 남기지 않는다 — 화면을 떠난 것은 그 완료가 틀렸다는 근거가 아니다.
+     *
+     * 이 경로가 없으면 세션이 갇힌다. 확인 화면은 같은 화면에서만 되살아나는데(재표시 계약),
+     * 대기 중에는 요청도 나가지 않아 **화면에 아무것도 없고 물어보지도 않는 상태**가 된다.
+     *
+     * **서명이 아니라 package로 본다** — 이유는 [pendingConfirmPackage]에 있다. 대신 같은 앱
+     * 안에서 화면만 옮기는 이동은 놓치는데, 그때는 확인 화면이 그 위에 그대로 떠 있어
+     * ×아직요로 빠져나갈 수 있다. 완전히 갇히는 경로는 우리 앱을 거칠 때뿐이고 그건 package가
+     * 바뀐다.
+     *
+     * package를 못 받은 확인은 떠났는지 판정할 수 없어 그대로 기다린다.
+     *
+     * @return 대기가 실제로 풀렸는가. 호출자가 표시를 정리할지 판단한다.
+     */
+    @Synchronized
+    fun confirmScreenLeft(currentPackage: String?): Boolean {
+        if (!awaitingConfirm || currentPackage == null) return false
+        val pending = pendingConfirmPackage ?: return false
+        if (pending == currentPackage) return false
+        awaitingConfirm = false
+        pendingConfirmSignature = null
+        pendingConfirmPackage = null
+        return true
     }
 
     /** 사용자가 "됐어요"를 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다. */
@@ -194,6 +236,7 @@ object GuideSession {
         // 남기면 다음 화면의 완료까지 부정한 것으로 다룬다.
         rejectedSignature = pendingConfirmSignature
         pendingConfirmSignature = null
+        pendingConfirmPackage = null
         unverifiedDones = 0
     }
 
@@ -273,6 +316,7 @@ object GuideSession {
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.
             awaitingConfirm = false
             pendingConfirmSignature = null
+            pendingConfirmPackage = null
             rejectedSignature = null
         }
         listeners.forEach { it.onSessionChanged(next) }

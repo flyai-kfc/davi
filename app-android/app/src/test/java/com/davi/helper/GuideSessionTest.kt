@@ -24,6 +24,8 @@ class GuideSessionTest {
     /** 서버가 label 없이 만들어 준 화면 서명. 값 자체에는 의미가 없고 같은지 다른지만 본다. */
     private val SIGNATURE = "screen-a"
     private val OTHER_SIGNATURE = "screen-b"
+    private val PACKAGE = "com.example.alpha"
+    private val OTHER_PACKAGE = "com.example.beta"
 
     private fun currentGeneration(): Long = GuideSession.active()!!.generation
 
@@ -451,6 +453,69 @@ class GuideSessionTest {
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
             GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE),
         )
+    }
+
+    // --- 확인 화면을 떠났을 때 -----------------------------------------------------
+    //
+    // 대기 중에는 요청이 나가지 않으므로, 떠난 것을 못 알아채면 세션이 갇힌다 —
+    // 화면에 아무것도 없고 물어보지도 않는 상태가 된다.
+
+    @Test
+    fun `확인을 띄운 앱을 떠나면 대기가 풀린다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), true, SIGNATURE, PACKAGE)
+
+        assertTrue(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
+
+        assertFalse(GuideSession.awaitingConfirm)
+        assertTrue(GuideSession.isActive)
+    }
+
+    /**
+     * 서명으로 보면 확인 화면이 자기 때문에 즉시 해제된다 — 안내창이 화면 아래를 덮으면서
+     * 가려진 요소가 트리에서 빠져 서명이 달라진다(2026-08-14 실기기 실측).
+     */
+    @Test
+    fun `같은 앱 안에서 화면이 바뀌어도 대기를 풀지 않는다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), true, SIGNATURE, PACKAGE)
+
+        assertFalse(GuideSession.confirmScreenLeft(PACKAGE))
+
+        assertTrue(GuideSession.awaitingConfirm)
+    }
+
+    /** ×와 달리 부정 이력을 남기지 않는다 — 앱을 떠난 것은 그 완료가 틀렸다는 근거가 아니다. */
+    @Test
+    fun `앱을 떠난 것은 부정으로 세지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
+        GuideSession.confirmScreenLeft(OTHER_PACKAGE)
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(generation, true, SIGNATURE, PACKAGE),
+        )
+    }
+
+    @Test
+    fun `확인 대기가 아니면 아무 일도 없다`() {
+        GuideSession.start("카메라 열기")
+
+        assertFalse(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
+    }
+
+    /** package를 못 받으면 떠났는지 판정할 수 없다. 섣불리 풀면 답할 자리가 사라진다. */
+    @Test
+    fun `package가 없으면 대기를 유지한다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), true, SIGNATURE, screenPackage = null)
+
+        assertFalse(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
+        assertFalse(GuideSession.confirmScreenLeft(null))
+
+        assertTrue(GuideSession.awaitingConfirm)
     }
 
     /** 낡은 서버는 화면 서명을 주지 않는다. 그때는 어느 화면과도 같지 않게 다뤄 확인을 띄운다. */
