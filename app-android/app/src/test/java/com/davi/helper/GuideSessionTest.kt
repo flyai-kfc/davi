@@ -21,6 +21,10 @@ class GuideSessionTest {
         GuideSession.stop()
     }
 
+    /** 서버가 label 없이 만들어 준 화면 서명. 값 자체에는 의미가 없고 같은지 다른지만 본다. */
+    private val SIGNATURE = "screen-a"
+    private val OTHER_SIGNATURE = "screen-b"
+
     private fun currentGeneration(): Long = GuideSession.active()!!.generation
 
     private fun history(): List<String> = GuideSession.active()?.recentInstructions.orEmpty()
@@ -260,41 +264,122 @@ class GuideSessionTest {
         assertFalse(GuideSession.isCurrent(generation))
     }
 
-    // --- done 판정 (#55) --------------------------------------------------------
+    // --- done 판정 (#55, #139) ---------------------------------------------------
     //
-    // `verified`는 계약에만 있고 소비되지 않았다 — done이면 검증과 무관하게 세션이 끝났다.
-    // 조기 종료를 막으라고 만든 필드이므로, 미검증 done은 세션 종료로 쓰지 않는다.
+    // `verified=false`인 done은 조기 종료일 수 있어 종료 신호로 쓰지 않는다(#55).
+    // `verified=true`인 done도 이제 세션을 끝내지 않는다 — 성공 오탐을 사용자에게 한 번
+    // 묻고, 종료는 "됐어요"만이 만든다(#139 GD-3).
 
     @Test
-    fun `검증된 done은 세션을 끝낸다`() {
+    fun `검증된 done은 세션을 끝내지 않고 확인을 기다린다`() {
         GuideSession.start("카메라 열기")
 
-        val outcome = GuideSession.onDone(currentGeneration(), verified = true)
+        val outcome = GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
 
-        assertEquals(GuideSession.DoneOutcome.STOP, outcome)
+        assertEquals(GuideSession.DoneOutcome.CONFIRM_CONFIDENT, outcome)
+        assertTrue(GuideSession.isActive)
+        assertTrue(GuideSession.awaitingConfirm)
+    }
+
+    @Test
+    fun `됐어요를 누르면 세션이 끝난다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+
+        GuideSession.confirmAccepted()
+
         assertFalse(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    @Test
+    fun `아직요를 누르면 세션이 유지되고 대기가 풀린다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+
+        GuideSession.confirmRejected()
+
+        assertTrue(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    /** 부정한 화면이 done을 또 줘도 같은 질문을 다시 하지 않는다 — 확인 화면 무한 반복 방지. */
+    @Test
+    fun `부정한 화면의 done은 확인을 다시 띄우지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+        )
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    /** 재질의가 무한정 돌지 않게 상한은 그대로 걸린다. 다만 확인 화면이 아니라 문구로 끝난다. */
+    @Test
+    fun `부정한 화면에서 done이 상한까지 반복되면 문구만 남긴다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.NOTICE_ONLY,
+            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+        )
+        assertTrue(GuideSession.isActive)
+    }
+
+    /** 다른 화면으로 진행했다면 부정 이력은 그 화면의 것이 아니다 — 다시 확인을 받는다. */
+    @Test
+    fun `부정 뒤 다른 화면의 검증된 done은 다시 확인을 띄운다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(generation, verified = true, screenSignature = OTHER_SIGNATURE),
+        )
     }
 
     @Test
     fun `미검증 done은 세션을 끝내지 않는다`() {
         GuideSession.start("카메라 열기")
 
-        val outcome = GuideSession.onDone(currentGeneration(), verified = false)
+        val outcome = GuideSession.onDone(currentGeneration(), verified = false, screenSignature = SIGNATURE)
 
         assertEquals(GuideSession.DoneOutcome.RETRY, outcome)
         assertTrue(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
     }
 
     /** 상한에서도 done으로 끝내지 않는다 — 막힘을 성공으로 오인시킨다(C11과 같은 근거). */
     @Test
-    fun `미검증 done이 상한에 닿으면 사용자에게 넘기고 세션은 유지된다`() {
+    fun `미검증 done이 상한에 닿으면 확인을 띄우고 세션은 유지된다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
 
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
-        assertEquals(GuideSession.DoneOutcome.LIMIT_REACHED, GuideSession.onDone(generation, false))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, SIGNATURE),
+        )
         assertTrue(GuideSession.isActive)
+        assertTrue(GuideSession.awaitingConfirm)
     }
 
     /** 상한 뒤에 또 와도(화면이 바뀌어 재질의된 경우) 재시도로 되돌아가지 않는다. */
@@ -302,9 +387,12 @@ class GuideSessionTest {
     fun `상한 이후의 미검증 done도 사용자에게 넘긴다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        repeat(3) { GuideSession.onDone(generation, false) }
+        repeat(3) { GuideSession.onDone(generation, false, SIGNATURE) }
 
-        assertEquals(GuideSession.DoneOutcome.LIMIT_REACHED, GuideSession.onDone(generation, false))
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, SIGNATURE),
+        )
     }
 
     /** 연속이 아니라 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다. */
@@ -312,12 +400,12 @@ class GuideSessionTest {
     fun `다른 안내가 표시되면 미검증 done 연속이 끊긴다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, false)
-        GuideSession.onDone(generation, false)
+        GuideSession.onDone(generation, false, SIGNATURE)
+        GuideSession.onDone(generation, false, SIGNATURE)
 
         GuideSession.recordInstruction(generation, "카메라를 누르세요.")
 
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
     }
 
     /** 늦게 도착한 이전 세션의 done은 검증 여부와 무관하게 새 세션을 건드리면 안 된다. */
@@ -328,23 +416,54 @@ class GuideSessionTest {
         GuideSession.stop()
         GuideSession.start("카메라 열기")
 
-        assertNull(GuideSession.onDone(stale, verified = true))
+        assertNull(GuideSession.onDone(stale, verified = true, screenSignature = SIGNATURE))
         assertTrue(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
     }
 
     @Test
     fun `중지 후 다시 시작하면 미검증 done 카운트도 비워진다`() {
         GuideSession.start("카메라 열기")
         val before = currentGeneration()
-        GuideSession.onDone(before, false)
-        GuideSession.onDone(before, false)
+        GuideSession.onDone(before, false, SIGNATURE)
+        GuideSession.onDone(before, false, SIGNATURE)
 
         GuideSession.stop()
         GuideSession.start("카메라 열기")
 
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(currentGeneration(), false),
+            GuideSession.onDone(currentGeneration(), false, SIGNATURE),
+        )
+    }
+
+    /** 부정 이력이 세션을 넘어가면, 새 세션의 첫 완료가 확인 없이 지나간다. */
+    @Test
+    fun `중지 후 다시 시작하면 부정 이력도 비워진다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        GuideSession.confirmRejected()
+
+        GuideSession.stop()
+        GuideSession.start("카메라 열기")
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE),
+        )
+    }
+
+    /** 낡은 서버는 화면 서명을 주지 않는다. 그때는 어느 화면과도 같지 않게 다뤄 확인을 띄운다. */
+    @Test
+    fun `서명 없는 done은 부정 이력과 같은 화면으로 보지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, verified = true, screenSignature = null)
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(generation, verified = true, screenSignature = null),
         )
     }
 

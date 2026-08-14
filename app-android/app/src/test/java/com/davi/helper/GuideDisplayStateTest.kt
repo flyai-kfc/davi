@@ -19,6 +19,7 @@ class GuideDisplayStateTest {
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
+    private val confirmText = "다 됐어요! 해결되셨나요?"
 
     @Test
     fun `상한 안내는 지워진 뒤 같은 화면에서 재표시된다`() {
@@ -113,6 +114,42 @@ class GuideDisplayStateTest {
     fun `안내가 없으면 재표시도 정체 알림도 없다`() {
         assertNull(state.redisplay(sigA, true))
         assertNull(state.stuckContent(stuck))
+    }
+
+    // --- 완료 확인 (GD-3, #139) --------------------------------------------------
+
+    /** 확인 대기 중 우리 앱을 열면 확인쌍이 지워진다 — 답할 자리가 그대로 사라지면 안 된다. */
+    @Test
+    fun `확인 화면은 지워진 뒤 같은 화면에서 재표시된다`() {
+        state.showConfirm(sigA, confirmText)
+
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, confirmText, confirm = true),
+            state.redisplay(sigA, true),
+        )
+    }
+
+    /** 확인은 지금 시킬 행동이 아니다 — "한 번 더 해 보세요"가 붙으면 답을 재촉하는 말이 된다. */
+    @Test
+    fun `확인 화면에는 정체 접미사가 붙지 않는다`() {
+        state.showConfirm(sigA, confirmText)
+
+        assertEquals(
+            GuideDisplayState.Content(null, confirmText, confirm = true),
+            state.stuckContent(stuck),
+        )
+    }
+
+    /** ×아직요 뒤의 새 안내는 확인쌍을 물려받지 않는다. */
+    @Test
+    fun `확인 뒤 새 안내는 일반 안내로 돌아온다`() {
+        state.showConfirm(sigA, confirmText)
+
+        val next = state.show(sigB, null, "설정을 누르세요.")
+
+        assertEquals(GuideDisplayState.Content(null, "설정을 누르세요."), next)
     }
 
     /** 상한 안내 뒤에 새 안내가 오면(화면이 바뀌어 재질의) 접미사 규칙도 일반으로 돌아온다. */

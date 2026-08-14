@@ -16,11 +16,15 @@ class GuideDisplayState {
      *
      * [actionType]은 안내창이 무엇을 피해야 하는지를 가른다 — 타이핑 안내면 키보드가 곧
      * 조작 대상이라 절대 가리면 안 된다(#38 5번). 우리가 만든 안내(정체·상한)는 null이다.
+     *
+     * [confirm]이면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다(GD-3). 무엇을 그릴지의 판정이라
+     * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      */
     data class Content(
         val bounds: List<Int>?,
         val text: String,
         val actionType: ActionType? = null,
+        val confirm: Boolean = false,
     )
 
     private var guide: Content? = null
@@ -55,6 +59,25 @@ class GuideDisplayState {
     /** [signature] 화면에 미검증 done 상한 안내를 표시한다(#55). STUCK 접미사를 붙이지 않는다. */
     fun showCapNotice(signature: String, text: String): Content {
         val content = Content(null, text)
+        guide = content
+        guideSignature = signature
+        stuckSuffixAllowed = false
+        visible = true
+        return content
+    }
+
+    /**
+     * [signature] 화면에 완료 확인을 표시한다(GD-3, #139). 문구는 확신 있음/없음 두 갈래를
+     * 호출자가 고른다 — 여기서는 확인쌍을 띄운다는 것만 안다.
+     *
+     * STUCK 접미사를 붙이지 않는 이유는 상한 안내와 같다. 화면이 안 바뀌는 것은 사용자가
+     * 답을 고르는 동안 당연하고, "한 번 더 해 보세요"는 지금 시킬 행동이 아니다.
+     *
+     * 재표시 대상에 그대로 들어간다. 확인 대기 중 사용자가 우리 앱을 열면 root=null 청소가
+     * 확인 화면을 지우는데, 세션은 대기 상태로 남아 이 경로가 없으면 답할 자리가 사라진다.
+     */
+    fun showConfirm(signature: String, text: String): Content {
+        val content = Content(bounds = null, text = text, confirm = true)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
