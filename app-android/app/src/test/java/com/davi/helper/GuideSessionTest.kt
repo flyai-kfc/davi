@@ -159,15 +159,6 @@ class GuideSessionTest {
     }
 
     @Test
-    fun `화면 서명이 없는 낡은 서버 응답은 행동 이력에 넣지 않는다`() {
-        GuideSession.start("카카오톡 열기")
-
-        GuideSession.recordAction(currentGeneration(), null, sampleAction())
-
-        assertTrue(actionHistory().isEmpty())
-    }
-
-    @Test
     fun `빈 안내는 기록하지 않는다`() {
         GuideSession.start("카카오톡 열기")
 
@@ -518,18 +509,34 @@ class GuideSessionTest {
         assertTrue(GuideSession.awaitingConfirm)
     }
 
-    /** 낡은 서버는 화면 서명을 주지 않는다. 그때는 어느 화면과도 같지 않게 다뤄 확인을 띄운다. */
+    /**
+     * ×아직요 뒤 같은 화면이 done을 **반복해서** 줘도 확인 화면이 다시 발행되지 않는다.
+     *
+     * 1회만 보던 커버리지에 구멍이 있었다(PR #153 리뷰) — 서명이 선택 필드이던 동안에는 이
+     * 반복 경로에서 `CONFIRM_CONFIDENT`가 매번 재발행됐다. 서명을 required로 좁혀 근원을
+     * 지웠고, 그 사실을 여기서 고정한다.
+     */
     @Test
-    fun `서명 없는 done은 부정 이력과 같은 화면으로 보지 않는다`() {
+    fun `부정 뒤 같은 화면의 done이 반복돼도 확인은 재발행되지 않는다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, verified = true, screenSignature = null)
+        GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
         GuideSession.confirmRejected()
 
+        val outcomes = (1..GuideSession.MAX_UNVERIFIED_DONE).map {
+            GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
+        }
+
         assertEquals(
-            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(generation, verified = true, screenSignature = null),
+            listOf(
+                GuideSession.DoneOutcome.RETRY,
+                GuideSession.DoneOutcome.RETRY,
+                GuideSession.DoneOutcome.NOTICE_ONLY,
+            ),
+            outcomes,
         )
+        assertFalse(GuideSession.awaitingConfirm)
+        assertTrue(GuideSession.isActive)
     }
 
     @Test

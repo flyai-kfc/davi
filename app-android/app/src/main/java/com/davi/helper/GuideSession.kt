@@ -100,10 +100,7 @@ object GuideSession {
     var awaitingConfirm: Boolean = false
         private set
 
-    /**
-     * 확인 화면을 띄운 화면의 서명. [awaitingConfirm]과 따로 두는 이유는 **서명이 null일 수
-     * 있어서다** — 서명을 안 주는 낡은 서버에서도 확인 화면은 떠야 한다.
-     */
+    /** 확인 화면을 띄운 화면의 서명. ×아직요를 받으면 이 값이 부정 이력이 된다. */
     private var pendingConfirmSignature: String? = null
 
     /**
@@ -150,8 +147,7 @@ object GuideSession {
      * **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다(server/CLAUDE.md C11이
      * fallback에서 done을 배제한 것과 같은 근거).
      *
-     * [screenSignature]는 그 done이 온 화면이다. 사용자가 이미 부정한 화면인지 가리는 데 쓰므로,
-     * 서버가 서명을 주지 않은 낡은 응답(null)은 어느 화면과도 같지 않게 다룬다.
+     * [screenSignature]는 그 done이 온 화면이다. 사용자가 이미 부정한 화면인지 이 값으로 가린다.
      *
      * 이전 세대의 늦은 done은 여기서도 버린다(null).
      */
@@ -159,13 +155,13 @@ object GuideSession {
     fun onDone(
         generation: Long,
         verified: Boolean,
-        screenSignature: String?,
+        screenSignature: String,
         screenPackage: String? = null,
     ): DoneOutcome? {
         if (!isCurrent(generation)) return null
 
         // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
-        val rejected = screenSignature != null && screenSignature == rejectedSignature
+        val rejected = screenSignature == rejectedSignature
         if (!rejected) rejectedSignature = null
 
         if (verified && !rejected) {
@@ -182,7 +178,7 @@ object GuideSession {
         return DoneOutcome.CONFIRM_UNSURE
     }
 
-    private fun awaitConfirm(screenSignature: String?, screenPackage: String?) {
+    private fun awaitConfirm(screenSignature: String, screenPackage: String?) {
         awaitingConfirm = true
         pendingConfirmSignature = screenSignature
         pendingConfirmPackage = screenPackage
@@ -232,8 +228,6 @@ object GuideSession {
     fun confirmRejected() {
         if (!awaitingConfirm) return
         awaitingConfirm = false
-        // 서명을 못 받은 확인(낡은 서버)은 이력을 남기지 못한다 — 어느 화면인지 모르는 채로
-        // 남기면 다음 화면의 완료까지 부정한 것으로 다룬다.
         rejectedSignature = pendingConfirmSignature
         pendingConfirmSignature = null
         pendingConfirmPackage = null
@@ -268,12 +262,11 @@ object GuideSession {
     /**
      * 사용자에게 실제로 표시한 행동만 기록한다.
      *
-     * 낡은 서버는 화면 서명을 주지 않으므로 기록하지 않는다. 이전 세대의 늦은 응답도
-     * [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
+     * 이전 세대의 늦은 응답은 [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
      */
     @Synchronized
-    fun recordAction(generation: Long, screenSignature: String?, action: GuideAction) {
-        if (!isCurrent(generation) || screenSignature == null) return
+    fun recordAction(generation: Long, screenSignature: String, action: GuideAction) {
+        if (!isCurrent(generation)) return
         actions.addLast(
             RecentAction(
                 screenSignature = screenSignature,

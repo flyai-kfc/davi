@@ -543,6 +543,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 GuideSession.DoneOutcome.CONFIRM_CONFIDENT -> {
                     Log.i(TAG, "done verified, asking user")
                     draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_confident)))
+                    // 확인 대기로 들어갔으니 읽는 중은 여기서 끈다. 다음 샘플을 기다리면 그때까지
+                    // 브리딩 애니메이터가 헛돈다 — 성공 tone이 먼저 그려져 보이지는 않는다(PR #153 리뷰).
+                    updateReading()
                 }
 
                 GuideSession.DoneOutcome.CONFIRM_UNSURE -> {
@@ -551,6 +554,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 화면이고 문구만 다르다. 문구 확정은 #29.
                     Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
                     draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_unsure)))
+                    updateReading()
                 }
 
                 GuideSession.DoneOutcome.NOTICE_ONLY -> {
