@@ -66,9 +66,12 @@ class LoadingDotsView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         // 지연 구간에는 아무것도 그리지 않는다 — 이때 화면에는 "잠시만요" 문구만 있다.
-        if (!LoadingDotsMotion.isVisibleAt(elapsedSeconds, delaySeconds)) return
+        // 단 모션이 꺼져 있으면 지연을 건너뛴다. 프레임이 한 번뿐이라 기다리면 영영 안 나온다.
+        val motionDisabled = isMotionDisabled
+        if (!LoadingDotsMotion.shouldDrawAt(elapsedSeconds, delaySeconds, motionDisabled)) return
 
-        val animationSeconds = LoadingDotsMotion.animationSecondsAt(elapsedSeconds, delaySeconds)
+        val animationSeconds =
+            LoadingDotsMotion.animationSecondsAt(elapsedSeconds, delaySeconds, motionDisabled)
         // 가장 큰 점 기준으로 한 칸씩. 점이 작아져도 중심은 그대로라 자리가 흔들리지 않는다.
         val step = dotSizeMax + dotSpacing
         val rowWidth = step * LoadingDotsMotion.DOT_COUNT - dotSpacing

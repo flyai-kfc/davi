@@ -33,10 +33,18 @@ abstract class MotionView @JvmOverloads constructor(
     }
 
     /**
+     * 모션이 꺼져 있는가. **지연이나 조건부 표시가 있는 뷰는 이 값을 보고 그 조건을 건너뛰어야
+     * 한다** — 꺼져 있으면 프레임이 한 번뿐이라, 그 하나를 "아직 때가 아니다"로 판정하면
+     * 다음 기회가 영영 오지 않아 아무것도 그려지지 않는다(PR #144 리뷰에서 실제로 겪었다).
+     */
+    protected val isMotionDisabled: Boolean
+        get() = driver.isMotionDisabled
+
+    /**
      * 한 프레임분 상태를 갱신한다. 그리기는 하지 않는다 — 호출 뒤 [invalidate]가 따라온다.
      *
      * 모션이 꺼져 있으면 `(0f, 0f)`으로 **한 번만** 불린다. 그래서 이 함수는 "시간 0의 모습"이
-     * 정지 프레임으로 쓸 만하도록 써야 한다.
+     * 정지 프레임으로 쓸 만하도록 써야 하고, [onDraw]도 그 한 프레임만으로 그려낼 수 있어야 한다.
      */
     protected abstract fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float)
 

@@ -86,32 +86,78 @@ class LoadingDotsMotionTest {
     @Test
     fun `지연 전에는 점을 그리지 않는다`() {
         // 응답이 빠르면 점이 한 번 깜빡이고 사라져 오히려 산만하다. 그 구간에는 문구만 보인다.
-        assertFalse(LoadingDotsMotion.isVisibleAt(0f, DELAY))
-        assertFalse(LoadingDotsMotion.isVisibleAt(DELAY - 0.01f, DELAY))
+        assertFalse(LoadingDotsMotion.shouldDrawAt(0f, DELAY, motionDisabled = false))
+        assertFalse(LoadingDotsMotion.shouldDrawAt(DELAY - 0.01f, DELAY, motionDisabled = false))
     }
 
     @Test
     fun `지연이 지나면 점을 그린다`() {
-        assertTrue(LoadingDotsMotion.isVisibleAt(DELAY, DELAY))
-        assertTrue(LoadingDotsMotion.isVisibleAt(DELAY + 1f, DELAY))
+        assertTrue(LoadingDotsMotion.shouldDrawAt(DELAY, DELAY, motionDisabled = false))
+        assertTrue(LoadingDotsMotion.shouldDrawAt(DELAY + 1f, DELAY, motionDisabled = false))
     }
 
     @Test
     fun `점이 나오는 첫 순간은 시안의 정지 화면과 같다`() {
         // 지연을 빼지 않으면 점이 주기 중간에서 튀어나온다.
-        val animationSeconds = LoadingDotsMotion.animationSecondsAt(DELAY, DELAY)
+        val animationSeconds = LoadingDotsMotion.animationSecondsAt(DELAY, DELAY, motionDisabled = false)
         assertEquals(0f, animationSeconds, 0.001f)
         assertEquals(1f, progress(0, animationSeconds), 0.001f)
     }
 
     @Test
     fun `지연이 0이면 곧바로 그린다`() {
-        assertTrue(LoadingDotsMotion.isVisibleAt(0f, delaySeconds = 0f))
+        assertTrue(LoadingDotsMotion.shouldDrawAt(0f, delaySeconds = 0f, motionDisabled = false))
     }
 
     @Test
     fun `지연 구간의 경과 시간은 음수가 되지 않는다`() {
-        assertEquals(0f, LoadingDotsMotion.animationSecondsAt(0f, DELAY), 0.001f)
+        assertEquals(0f, LoadingDotsMotion.animationSecondsAt(0f, DELAY, motionDisabled = false), 0.001f)
+    }
+
+    // --- 모션 끄기 x 지연 (PR #144 리뷰 회귀) --------------------------------------
+
+    @Test
+    fun `모션이 꺼져 있으면 지연을 기다리지 않고 곧바로 그린다`() {
+        // 이전 구현은 모션이 꺼졌을 때 elapsed=0 프레임 하나를 지연 구간으로 판정해
+        // 아무것도 그리지 않았다. 다음 프레임이 오지 않으므로 점이 영영 안 나왔다 —
+        // 정지 프레임이 아니라 빈 화면이었다.
+        //
+        // **두 조건을 조합해야 잡힌다.** 시간 0의 진행도와 지연을 각각만 검사하면
+        // 둘 다 통과하면서 화면에는 아무것도 없다.
+        assertTrue(LoadingDotsMotion.shouldDrawAt(0f, DELAY, motionDisabled = true))
+    }
+
+    @Test
+    fun `모션이 꺼져 있으면 시간 0의 모습을 그린다`() {
+        val animationSeconds = LoadingDotsMotion.animationSecondsAt(0f, DELAY, motionDisabled = true)
+        assertEquals(0f, animationSeconds, 0.001f)
+        assertEquals("첫 점은 최대여야 한다", 1f, progress(0, animationSeconds), 0.001f)
+        assertEquals("셋째 점은 최소여야 한다", 0f, progress(2, animationSeconds), 0.001f)
+    }
+
+    @Test
+    fun `모션이 꺼진 유일한 프레임으로 점 세 개가 모두 그려진다`() {
+        // MotionDriver가 흘리는 프레임 하나 (elapsed=0, delta=0) 만으로 화면이 완성돼야 한다.
+        val elapsed = 0f
+        assertTrue(LoadingDotsMotion.shouldDrawAt(elapsed, DELAY, motionDisabled = true))
+        val animationSeconds = LoadingDotsMotion.animationSecondsAt(elapsed, DELAY, motionDisabled = true)
+        repeat(LoadingDotsMotion.DOT_COUNT) { index ->
+            val p = progress(index, animationSeconds)
+            assertTrue("점 $index 의 지름이 0이면 안 된다", LoadingDotsMotion.lerp(13f, 20f, p) >= 13f)
+            assertTrue("점 $index 이 완전히 투명하면 안 된다", LoadingDotsMotion.lerp(74f, 255f, p) >= 74f)
+        }
+    }
+
+    @Test
+    fun `모션이 꺼져 있으면 시간이 흘러도 같은 모습이다`() {
+        // 정지 프레임이므로 elapsed가 무엇이든 결과가 같아야 한다.
+        listOf(0f, 1f, 10f).forEach { elapsed ->
+            assertEquals(
+                0f,
+                LoadingDotsMotion.animationSecondsAt(elapsed, DELAY, motionDisabled = true),
+                0.001f,
+            )
+        }
     }
 
     // --- 값 보간 ------------------------------------------------------------------
