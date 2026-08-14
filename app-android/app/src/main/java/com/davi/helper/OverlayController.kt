@@ -54,6 +54,25 @@ class OverlayController(private val context: Context) {
         view?.clearTarget()
     }
 
+    /**
+     * 읽는 중 테두리(GD-1)를 켜고 끈다. 안내와 **독립 레이어**라 [clear]가 이것까지 지우지
+     * 않는다 — 끄는 것은 호출자 책임이다.
+     *
+     * 끌 때는 창을 만들지 않는다. 세션 종료·화면 소실 경로가 이 함수로 false를 반복해서
+     * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
+     */
+    fun setReading(on: Boolean) {
+        // 뷰가 이미 있으면 권한을 다시 묻지 않는다 — 샘플마다 도는 경로라 canDraw()의
+        // AppOps 바인더 왕복이 접근성 처리와 같은 메인 스레드에 그대로 쌓인다.
+        // 창이 붙어 있다는 것이 곧 권한이 있었다는 뜻이고, 권한이 사라지면 시스템이 창을 걷는다.
+        view?.let {
+            it.setReading(on)
+            return
+        }
+        if (!on || !canDraw()) return
+        createView()?.setReading(true)
+    }
+
     /** 서비스가 내려갈 때 창을 반드시 걷는다. 안 그러면 유령 오버레이가 남는다. */
     fun destroy() {
         view?.let {

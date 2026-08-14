@@ -1,16 +1,19 @@
 package com.davi.helper
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
+import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 
 /**
- * 강조할 영역에 테두리를 하나 그리고, 서버가 준 안내문을 상자에 담아 함께 보여주는 뷰.
+ * 오버레이 창의 유일한 루트 뷰. 레이어 셋을 그린다 — **읽는 중 테두리**(화면 가장자리,
+ * 브리딩), **강조 사각형**(대상 영역), **안내창**(서버 문구).
  *
  * **줄바꿈·자리 계산은 [GuideBoxLayout]이 한다.** 이 뷰는 결과를 그리기만 한다(#38 1·2번).
  *
@@ -68,6 +71,76 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPadding = resources.getDimension(R.dimen.overlay_instruction_padding)
     private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
 
+    // ── 읽는 중 테두리(GD-1) ──────────────────────────────────────────────────
+    private val readingInset = resources.getDimension(R.dimen.davi_overlay_reading_inset)
+    private val readingStroke = resources.getDimension(R.dimen.davi_overlay_reading_stroke)
+    private val readingGlow = resources.getDimension(R.dimen.davi_overlay_reading_glow)
+    private val readingRadius = resources.getDimension(R.dimen.davi_overlay_reading_radius)
+
+    // 프레임마다 새로 만들지 않는다 — 애니메이션이 도는 동안 매초 60번 할당된다.
+    private val readingGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = ContextCompat.getColor(context, R.color.davi_overlay_reading)
+    }
+    private val readingCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = ContextCompat.getColor(context, R.color.davi_overlay_reading)
+    }
+    private val readingRect = RectF()
+
+    /** 서비스가 요청한 상태. 실제 표시는 onset 지연 뒤라 [readingVisible]과 다를 수 있다. */
+    private var reading = false
+    private var readingVisible = false
+    private var readingPhase = ReadingBorder.STATIC_PHASE
+
+    private val readingOnset = Runnable {
+        readingVisible = true
+        startBreathing()
+        invalidate()
+    }
+
+    private val breathing = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = ReadingBorder.PERIOD_MS
+        repeatCount = ValueAnimator.INFINITE
+        interpolator = LinearInterpolator()
+        addUpdateListener {
+            readingPhase = it.animatedValue as Float
+            invalidate()
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 읽는 중 표시를 켜고 끈다. **멱등이다** — 화면을 못 읽는 동안 서비스가 폴링마다 false를
+     * 다시 보내고, 켜진 상태로도 샘플마다 true가 다시 온다. 가드가 없으면 매번 애니메이터를
+     * 취소하거나 onset 지연이 리셋돼 테두리가 영영 뜨지 않는다.
+     */
+    fun setReading(on: Boolean) {
+        if (on == reading) return
+        reading = on
+        if (on) {
+            // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
+            postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
+        } else {
+            removeCallbacks(readingOnset)
+            breathing.cancel()
+            readingVisible = false
+            invalidate()
+        }
+    }
+
+    /**
+     * 애니메이터가 시스템 설정(개발자 옵션·절전)으로 꺼진 기기에서는 [ValueAnimator]가 즉시
+     * 끝나 표시가 사라진다. 그때는 브리딩 없이 가장 진한 한 장을 그린다.
+     */
+    private fun startBreathing() {
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            readingPhase = ReadingBorder.STATIC_PHASE
+            return
+        }
+        if (!breathing.isStarted) breathing.start()
+    }
+
     /** 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다. */
     fun setGuide(
         bounds: Rect?,
@@ -90,14 +163,41 @@ class HighlightOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    /**
+     * 화면 가장자리 테두리. 굵고 옅은 글로우 위에 안쪽 선을 얹어 숨 쉬듯 밝기가 오간다.
+     * 어느 것도 대상 영역을 가리키지 않는다 — "지금 읽고 있다"는 배경 표시다.
+     */
+    private fun drawReadingBorder(canvas: Canvas) {
+        if (!readingVisible || width == 0 || height == 0) return
+        val frame = ReadingBorder.frame(readingPhase, readingStroke, readingGlow)
+        // 글로우가 두꺼워져도 화면 밖으로 새지 않게 가장 두꺼운 절반만큼 안으로 물린다.
+        val margin = readingInset + (readingStroke + readingGlow) / 2f
+        readingRect.set(margin, margin, width - margin, height - margin)
+        readingGlowPaint.strokeWidth = frame.glowStroke
+        readingGlowPaint.alpha = frame.glowAlpha
+        canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingGlowPaint)
+        readingCorePaint.strokeWidth = frame.coreStroke
+        readingCorePaint.alpha = frame.coreAlpha
+        canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingCorePaint)
+    }
+
     /** 창 크기가 잡히기 전에 온 안내는 자리를 못 잡는다. 크기가 생기면 그때 계산한다. */
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         relayout()
     }
 
+    override fun onDetachedFromWindow() {
+        removeCallbacks(readingOnset)
+        breathing.cancel()
+        super.onDetachedFromWindow()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        // 읽는 중 테두리는 **뷰 로컬 좌표**라 아래 translate 앞에서 그린다. 창이 밀려 놓이는
+        // 기기에서도 뷰가 실제로 차지한 사각형을 따라가야 잘리지 않는다.
+        drawReadingBorder(canvas)
         if (!hasTarget && instruction.isEmpty()) return
 
         // 화면 좌표 -> 캔버스 좌표 보정.

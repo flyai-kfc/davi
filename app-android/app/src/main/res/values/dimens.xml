@@ -12,6 +12,15 @@
     <dimen name="overlay_instruction_margin">20dp</dimen>
     <!-- 강조 테두리 두께. 기존 raw 12px가 검증 기기(3x)에서 4dp — 시인성 보존값. -->
     <dimen name="davi_overlay_highlight_stroke">4dp</dimen>
+    <!--
+      읽는 중 테두리(GD-1). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
+      확정 디자인이 모양을 다시 잡을 자리라 정합을 정밀하게 맞추지 않는다.
+      radius는 기기 화면 코너 곡률의 근사치다.
+    -->
+    <dimen name="davi_overlay_reading_inset">4dp</dimen>
+    <dimen name="davi_overlay_reading_stroke">4dp</dimen>
+    <dimen name="davi_overlay_reading_glow">12dp</dimen>
+    <dimen name="davi_overlay_reading_radius">24dp</dimen>
 
     <!--
       디자인 토큰(크기). 원본은 Figma Foundations primitives — 이름은 code syntax와 1:1.
