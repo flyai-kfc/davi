@@ -18,7 +18,7 @@ if ! kill -0 "$pid" 2>/dev/null; then
 fi
 
 if ! shared_dev_is_managed_process "$pid"; then
-    shared_dev_die "PID $pid가 이 스크립트가 시작한 davi uvicorn과 일치하지 않아 종료하지 않습니다."
+    shared_dev_die "PID ${pid}가 이 스크립트가 시작한 davi uvicorn과 일치하지 않아 종료하지 않습니다."
 fi
 
 kill -TERM "$pid"
@@ -29,7 +29,7 @@ while kill -0 "$pid" 2>/dev/null && [[ "$attempt" -lt 20 ]]; do
 done
 
 if kill -0 "$pid" 2>/dev/null; then
-    shared_dev_die "PID $pid가 SIGTERM 뒤에도 살아 있습니다. PID 파일을 보존했습니다."
+    shared_dev_die "PID ${pid}가 SIGTERM 뒤에도 살아 있습니다. PID 파일을 보존했습니다."
 fi
 
 rm -f "$SHARED_DEV_PID_FILE"

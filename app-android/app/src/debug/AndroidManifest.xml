@@ -17,18 +17,15 @@
         tools:replace="android:usesCleartextTraffic">
         <!--
           개발용 백업 화면(#123 이전 홈). 클래스가 debug 소스셋에만 있어 릴리스엔
-          아예 포함되지 않는다. 텍스트 목표 입력·안내 시작/중지가 필요할 때 쓴다.
+          아예 포함되지 않는다. 기본 앱 아이콘은 제품 온보딩을 열어야 하므로 launcher로
+          등록하지 않는다. 텍스트 목표 입력·안내 시작/중지가 필요할 때만 명시적 component로 연다:
+          `adb shell am start -n com.davi.helper/.MainActivity`
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/main_backup_label"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:windowSoftInputMode="adjustResize" />
         <receiver
             android:name=".GuideE2eControlReceiver"
             android:exported="true"
