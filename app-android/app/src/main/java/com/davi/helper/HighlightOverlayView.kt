@@ -263,11 +263,11 @@ class HighlightOverlayView(context: Context) : View(context) {
 
             // 후광은 겹을 쌓아 번지게 한다 — 굵은 선 하나로는 이중 테두리로 보인다(실기기 실측).
             // 바깥으로 갈수록 빠르게 옅어져 마이크 뒤 글로우와 같은 인상을 준다(#147).
-            if (frame.glowPeakAlpha > 0) {
+            if (frame.glowBaseAlpha > 0) {
                 highlightGlowPaint.strokeWidth =
                     HighlightMotion.ringStrokeFor(frame.glowSpread, highlightStroke)
                 for (ring in 0 until HighlightMotion.GLOW_RING_COUNT) {
-                    val alpha = HighlightMotion.ringAlphaAt(ring, frame.glowPeakAlpha)
+                    val alpha = HighlightMotion.ringAlphaAt(ring, frame.glowBaseAlpha)
                     if (alpha <= 0) continue
                     val offset = HighlightMotion.ringOffsetAt(ring, frame.glowSpread)
                     highlightGlowPaint.alpha = alpha

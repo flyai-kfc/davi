@@ -27,8 +27,12 @@ class HighlightMotionTest {
     fun `가장 퍼진 후광은 읽는 중 테두리보다 진하다`() {
         // ReadingBorder가 세운 규칙 — 색이 같아도 층이 갈려야 한다. 강조가 배경 표시보다
         // 물러서면 "지금 눌러야 할 곳"이 흐려진다.
-        val strongestHalo = SAMPLE_PHASES.maxOf { HighlightMotion.frame(it, BASE, SPREAD).glowPeakAlpha }
-        val strongestReading = SAMPLE_PHASES.maxOf { ReadingBorder.frame(it, BASE, SPREAD).glowAlpha }
+        val strongestHalo = SAMPLE_PHASES.maxOf { HighlightMotion.frame(it, BASE, SPREAD).glowBaseAlpha }
+        // 읽는 중 테두리에서 더 두드러지는 층은 glow가 아니라 core다 — 둘 중 큰 값과 견준다.
+        val strongestReading = SAMPLE_PHASES.maxOf {
+            val frame = ReadingBorder.frame(it, BASE, SPREAD)
+            maxOf(frame.glowAlpha, frame.coreAlpha)
+        }
         assertTrue(
             "강조 최대 $strongestHalo 가 읽는 중 최대 $strongestReading 이하다",
             strongestHalo > strongestReading,
@@ -40,7 +44,7 @@ class HighlightMotionTest {
         // 그때는 안쪽 선에 겹치므로, 보이면 이중 테두리가 된다.
         val frame = HighlightMotion.frame(0f, BASE, SPREAD)
         assertEquals(0f, frame.glowSpread, TOLERANCE)
-        assertEquals(0, frame.glowPeakAlpha)
+        assertEquals(0, frame.glowBaseAlpha)
     }
 
     @Test
@@ -59,7 +63,7 @@ class HighlightMotionTest {
         val thin = HighlightMotion.frame(0f, BASE, SPREAD)
         val thick = HighlightMotion.frame(0.5f, BASE, SPREAD)
         assertTrue(thick.glowSpread > thin.glowSpread)
-        assertTrue(thick.glowPeakAlpha > thin.glowPeakAlpha)
+        assertTrue(thick.glowBaseAlpha > thin.glowBaseAlpha)
     }
 
     @Test
@@ -74,7 +78,7 @@ class HighlightMotionTest {
         val at0 = HighlightMotion.frame(0f, BASE, SPREAD)
         val at1 = HighlightMotion.frame(1f, BASE, SPREAD)
         assertEquals(at0.glowSpread, at1.glowSpread, TOLERANCE)
-        assertEquals(at0.glowPeakAlpha, at1.glowPeakAlpha)
+        assertEquals(at0.glowBaseAlpha, at1.glowBaseAlpha)
     }
 
     @Test
@@ -88,8 +92,8 @@ class HighlightMotionTest {
     @Test
     fun `위상이 다르면 모습도 다르다`() {
         assertNotEquals(
-            HighlightMotion.frame(0f, BASE, SPREAD).glowPeakAlpha,
-            HighlightMotion.frame(0.5f, BASE, SPREAD).glowPeakAlpha,
+            HighlightMotion.frame(0f, BASE, SPREAD).glowBaseAlpha,
+            HighlightMotion.frame(0.5f, BASE, SPREAD).glowBaseAlpha,
         )
     }
 
@@ -98,16 +102,11 @@ class HighlightMotionTest {
     @Test
     fun `정지 위상은 가장 진한 한 장이다`() {
         // 애니메이터가 꺼진 기기에서 그릴 한 장. 가장 옅은 순간이 걸리면 강조가 약해 보인다.
-        val static = HighlightMotion.frame(HighlightMotion.STATIC_PHASE, BASE, SPREAD)
-        val strongest = SAMPLE_PHASES.maxOf { HighlightMotion.frame(it, BASE, SPREAD).glowPeakAlpha }
-        assertEquals(strongest, static.glowPeakAlpha)
-        assertTrue("정지 화면에서 후광이 보여야 한다", static.glowPeakAlpha > 0)
-    }
-
-    @Test
-    fun `정지 위상은 읽는 중 테두리와 같다`() {
-        // 두 테두리가 같은 애니메이터를 공유하므로 꺼졌을 때 위상도 하나로 맞아야 한다.
-        assertEquals(ReadingBorder.STATIC_PHASE, HighlightMotion.STATIC_PHASE, TOLERANCE)
+        // **기준은 ReadingBorder다** — 애니메이터를 공유하므로 위상도 하나뿐이다.
+        val static = HighlightMotion.frame(ReadingBorder.STATIC_PHASE, BASE, SPREAD)
+        val strongest = SAMPLE_PHASES.maxOf { HighlightMotion.frame(it, BASE, SPREAD).glowBaseAlpha }
+        assertEquals(strongest, static.glowBaseAlpha)
+        assertTrue("정지 화면에서 후광이 보여야 한다", static.glowBaseAlpha > 0)
     }
 
     @Test
@@ -146,7 +145,7 @@ class HighlightMotionTest {
     @Test
     fun `후광 투명도는 언제나 유효 범위 안이다`() {
         SAMPLE_PHASES.forEach {
-            val alpha = HighlightMotion.frame(it, BASE, SPREAD).glowPeakAlpha
+            val alpha = HighlightMotion.frame(it, BASE, SPREAD).glowBaseAlpha
             assertTrue("위상 $it 에서 $alpha", alpha in 0..255)
         }
     }

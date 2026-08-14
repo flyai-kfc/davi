@@ -12,20 +12,29 @@ import kotlin.math.floor
  * 쉬게 하면 그 구분이 무너져, 어느 쪽이 "지금 눌러야 할 곳"인지 흐려진다.
  * 그래서 **바깥 글로우만** 굵기·투명도가 오가고 안쪽 선은 그대로 둔다.
  *
+
  * 위상은 [HighlightOverlayView]가 **읽는 중 테두리와 같은 애니메이터에서** 받는다. 덕분에 둘이
  * 동시에 떠도 위상이 자동으로 맞아 따로 노는 인상이 없다(#147 결정 — 새 구동부를 만들지 않는다).
+ *
+ * **정지 위상 상수를 따로 두지 않는 것도 같은 이유다.** 애니메이터가 하나이므로 위상도 하나뿐이고,
+ * 애니메이터가 꺼진 기기에서 그릴 한 장은 [ReadingBorder.STATIC_PHASE]가 정한다. 여기에 같은
+ * 값을 복제하면 둘이 어긋날 수 있는 것처럼 보이지만, 실제로는 어긋날 수 있는 경로가 없다.
  */
 object HighlightMotion {
 
     /**
      * 한 프레임에 그릴 값. 안쪽 선은 알파가 없다 — 항상 불투명이다.
      *
-     * [glowSpread]는 후광이 안쪽 선 바깥으로 번지는 거리, [glowPeakAlpha]는 가장 안쪽
-     * 후광의 진하기다. 실제 번짐은 [ringOffsetAt]·[ringAlphaAt]으로 여러 겹을 겹쳐 만든다.
+     * [glowSpread]는 후광이 안쪽 선 바깥으로 번지는 거리다.
+     *
+     * [glowBaseAlpha]는 **겹에 감쇠를 적용하기 전의 기준값이지, 어느 겹에 그대로 찍히는 값이
+     * 아니다.** 가장 안쪽 겹도 이미 감쇠를 한 번 받아 기준값의 약 0.9배로 시작한다 —
+     * 0번 겹을 안쪽 선에 겹쳐 놓으면 불투명한 선에 가려 낭비이므로, 한 칸 바깥에서 시작하기
+     * 때문이다([ringOffsetAt]). 실제 번짐은 [ringOffsetAt]·[ringAlphaAt]이 만든다.
      */
     data class Frame(
         val glowSpread: Float,
-        val glowPeakAlpha: Int,
+        val glowBaseAlpha: Int,
         val coreStroke: Float,
     )
 
@@ -52,7 +61,7 @@ object HighlightMotion {
         val breath = (0.5 - 0.5 * cos(wrapped * 2.0 * Math.PI)).toFloat()
         return Frame(
             glowSpread = glowSpread * breath,
-            glowPeakAlpha = (HALO_ALPHA_MIN + (HALO_ALPHA_MAX - HALO_ALPHA_MIN) * breath)
+            glowBaseAlpha = (HALO_ALPHA_MIN + (HALO_ALPHA_MAX - HALO_ALPHA_MIN) * breath)
                 .toInt()
                 .coerceIn(0, 255),
             coreStroke = baseStroke,
@@ -79,10 +88,10 @@ object HighlightMotion {
      * [index]번째 겹의 진하기. **바깥으로 갈수록 빠르게 옅어진다** — 선형으로 줄이면
      * 번짐이 아니라 굵은 띠로 보인다. 마이크 뒤 글로우(`MicGlowView`)의 방사형 감쇠와 같은 인상.
      */
-    fun ringAlphaAt(index: Int, peakAlpha: Int): Int {
+    fun ringAlphaAt(index: Int, baseAlpha: Int): Int {
         val t = (index + 1).toFloat() / GLOW_RING_COUNT
         val falloff = (1f - t) * (1f - t)
-        return (peakAlpha * falloff).toInt().coerceIn(0, 255)
+        return (baseAlpha * falloff).toInt().coerceIn(0, 255)
     }
 
     // ── 조정 지점 ─────────────────────────────────────────────────────────────
@@ -94,9 +103,6 @@ object HighlightMotion {
 
     /** 겹 하나가 간격의 몇 배로 두꺼운가. 클수록 매끄럽고 뿌옇다. */
     private const val RING_OVERLAP = 4f
-
-    /** 애니메이터가 시스템 설정으로 꺼진 기기에서 그릴 정적 한 장의 위상(최대 밝기). */
-    const val STATIC_PHASE = 0.5f
 
     // 오므라든 순간에는 안쪽 선에 겹치므로 아예 보이지 않게 둔다.
     //
