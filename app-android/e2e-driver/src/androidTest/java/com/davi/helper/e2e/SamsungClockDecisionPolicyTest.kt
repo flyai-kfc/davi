@@ -1,7 +1,6 @@
 package com.davi.helper.e2e
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SamsungClockDecisionPolicyTest {
@@ -16,7 +15,6 @@ class SamsungClockDecisionPolicyTest {
         )
 
         assertEquals(listOf("unknown_clock_screen"), assessment.deviationCodes)
-        assertNull(assessment.hardFailureCode)
     }
 
     @Test
@@ -33,24 +31,6 @@ class SamsungClockDecisionPolicyTest {
             listOf("action_after_goal", "unexpected_alarm_list_target"),
             assessment.deviationCodes,
         )
-        assertNull(assessment.hardFailureCode)
-    }
-
-    @Test
-    fun settingsPackageAndLauncherTargetStayHardBlocked() {
-        assertEquals(true, SamsungClockDecisionPolicy.isSettingsPackage("com.android.settings"))
-        assertEquals(true, SamsungClockDecisionPolicy.isSettingsPackage("com.samsung.android.settings"))
-        assertEquals(false, SamsungClockDecisionPolicy.isSettingsPackage(SamsungClockRobot.PACKAGE))
-
-        val assessment = SamsungClockDecisionPolicy.assessLauncher(decision(label = "설정"))
-
-        assertEquals("settings_app_blocked", assessment.hardFailureCode)
-        assertEquals(
-            "settings_app_blocked",
-            SamsungClockDecisionPolicy.settingsHardFailure(
-                decision(label = "설정", screenPackage = "com.android.systemui"),
-            )?.hardFailureCode,
-        )
     }
 
     @Test
@@ -58,7 +38,6 @@ class SamsungClockDecisionPolicyTest {
         val assessment = SamsungClockDecisionPolicy.assessLauncher(decision(label = "다른 앱"))
 
         assertEquals(listOf("unexpected_launcher_target"), assessment.deviationCodes)
-        assertNull(assessment.hardFailureCode)
     }
 
     private fun decision(

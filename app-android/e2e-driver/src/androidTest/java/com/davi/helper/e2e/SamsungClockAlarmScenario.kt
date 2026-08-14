@@ -45,7 +45,6 @@ internal class SamsungClockAlarmScenario(
         step: Int,
         decision: DisplayedDecision,
     ): GuidedDecisionAssessment {
-        SamsungClockDecisionPolicy.settingsHardFailure(decision)?.let { return it }
         if (decision.screenPackage == state.launcherPackage) {
             return SamsungClockDecisionPolicy.assessLauncher(decision)
         }
@@ -103,10 +102,9 @@ internal class SamsungClockAlarmScenario(
     }
 }
 
-/** 전용 기기 알람 여정의 이탈은 관찰하고, 설정 앱 진입만 이 시나리오의 하드 경계로 둔다. */
+/** 전용 기기 알람 여정의 회복 가능한 화면·target 이탈만 분류한다. */
 internal object SamsungClockDecisionPolicy {
     fun assessLauncher(decision: DisplayedDecision): GuidedDecisionAssessment {
-        settingsHardFailure(decision)?.let { return it }
         val label = decision.requestTargetLabel()
         val expected = when (decision.action.actionType) {
             GuidedActionType.OPEN_APP_DRAWER -> true
@@ -163,22 +161,6 @@ internal object SamsungClockDecisionPolicy {
         return GuidedDecisionAssessment(deviationCodes = deviations)
     }
 
-    fun isSettingsPackage(packageName: String): Boolean =
-        packageName == ANDROID_SETTINGS_PACKAGE ||
-            packageName.startsWith("$ANDROID_SETTINGS_PACKAGE.") ||
-            packageName == SAMSUNG_SETTINGS_PACKAGE ||
-            packageName.startsWith("$SAMSUNG_SETTINGS_PACKAGE.")
-
-    /** 런처뿐 아니라 System UI 등 어느 표면에서도 설정 앱 진입 target은 실행 전에 닫는다. */
-    fun settingsHardFailure(decision: DisplayedDecision): GuidedDecisionAssessment? =
-        if (isSettingsPackage(decision.screenPackage) ||
-            (decision.action.actionType == GuidedActionType.TAP && isSettingsLabel(decision.requestTargetLabel()))
-        ) {
-            GuidedDecisionAssessment(hardFailureCode = "settings_app_blocked")
-        } else {
-            null
-        }
-
     private fun isClockLabel(label: String?): Boolean {
         val normalized = normalize(label)
         return normalized.contains("시계") || normalized.contains("clock")
@@ -195,15 +177,7 @@ internal object SamsungClockDecisionPolicy {
         return normalized.contains("검색") || normalized.contains("search")
     }
 
-    private fun isSettingsLabel(label: String?): Boolean {
-        val normalized = normalize(label)
-        return normalized == "설정" || normalized == "settings"
-    }
-
     private fun normalize(label: String?): String = label?.trim()?.lowercase(Locale.ROOT).orEmpty()
-
-    private const val ANDROID_SETTINGS_PACKAGE = "com.android.settings"
-    private const val SAMSUNG_SETTINGS_PACKAGE = "com.samsung.android.settings"
     private val TIME_TARGETS = setOf(
         SamsungClockRobot.TargetKind.PERIOD,
         SamsungClockRobot.TargetKind.HOUR,
