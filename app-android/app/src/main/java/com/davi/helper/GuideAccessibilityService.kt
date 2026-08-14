@@ -237,7 +237,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun updateReading() {
         overlay?.setReading(
             ReadingBorder.isReading(
-                sessionActive = GuideSession.active() != null,
+                // 유무만 필요하다. active()는 잠금을 잡고 이력 리스트 두 개를 복사하는데,
+                // 그 잠금은 네트워크 스레드의 기록 경로와 공유한다.
+                sessionActive = GuideSession.isActive,
                 screenReadable = !rootUnavailable,
                 decision = lastDecision,
                 requestInFlight = requestInFlight.get(),
@@ -405,9 +407,12 @@ class GuideAccessibilityService : AccessibilityService() {
                 mainHandler.post {
                     stability.markFinished()
                     // 안내가 방금 떴다(또는 실패했다). 다음 샘플까지 기다리면 안내와 테두리가
-                    // 겹쳐 남는다.
-                    lastDecision = ScreenStabilityTracker.Decision.IDLE
-                    updateReading()
+                    // 겹쳐 남는다. 단 **이전 세션의 늦은 응답**이면 새 세션의 "첫 샘플 전"
+                    // 상태를 덮어 시작 공백의 표시를 지운다 — applyAction과 같은 세대 가드를 둔다.
+                    if (GuideSession.isCurrent(session.generation)) {
+                        lastDecision = ScreenStabilityTracker.Decision.IDLE
+                        updateReading()
+                    }
                     scheduleSample(SETTLE_MS)
                 }
             }

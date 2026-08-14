@@ -62,12 +62,15 @@ class OverlayController(private val context: Context) {
      * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
      */
     fun setReading(on: Boolean) {
-        if (!on) {
-            view?.setReading(false)
+        // 뷰가 이미 있으면 권한을 다시 묻지 않는다 — 샘플마다 도는 경로라 canDraw()의
+        // AppOps 바인더 왕복이 접근성 처리와 같은 메인 스레드에 그대로 쌓인다.
+        // 창이 붙어 있다는 것이 곧 권한이 있었다는 뜻이고, 권한이 사라지면 시스템이 창을 걷는다.
+        view?.let {
+            it.setReading(on)
             return
         }
-        if (!canDraw()) return
-        (view ?: createView())?.setReading(true)
+        if (!on || !canDraw()) return
+        createView()?.setReading(true)
     }
 
     /** 서비스가 내려갈 때 창을 반드시 걷는다. 안 그러면 유령 오버레이가 남는다. */
