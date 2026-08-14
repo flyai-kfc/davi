@@ -173,7 +173,9 @@ internal class CameraMessageRobot(private val device: UiDevice) {
             SHUTTER_WORDS.any(combined::contains) -> TargetKind.SHUTTER
             USE_PHOTO_WORDS.any(combined::contains) -> TargetKind.USE_PHOTO
             NEW_MESSAGE_WORDS.any(combined::contains) -> TargetKind.NEW_MESSAGE
-            node.className.endsWith("EditText") && RECIPIENT_WORDS.any(combined::contains) ->
+            (node.className.endsWith("EditText") ||
+                node.className.endsWith("AutoCompleteTextView")) &&
+                RECIPIENT_WORDS.any(combined::contains) ->
                 TargetKind.RECIPIENT
             CAMERA_WORDS.any(combined::contains) -> TargetKind.CAMERA
             ATTACHMENT_WORDS.any(combined::contains) -> TargetKind.ATTACHMENT
@@ -219,8 +221,23 @@ internal class CameraMessageRobot(private val device: UiDevice) {
         val SEND_WORDS = listOf("send_button", "button_send", "보내기", "전송", " send")
         val SHUTTER_WORDS = listOf("shutter", "capture_button", "촬영", "셔터")
         val USE_PHOTO_WORDS = listOf("use_photo", "done_button", "사진 사용", "사용", "완료", "확인")
-        val NEW_MESSAGE_WORDS = listOf("new_message", "compose", "새 메시지", "새 대화", "메시지 작성")
-        val RECIPIENT_WORDS = listOf("recipient", "recipients_editor", "받는 사람", "수신자", "전화번호")
+        val NEW_MESSAGE_WORDS = listOf(
+            "new_message",
+            "compose",
+            "새 메시지",
+            "새 대화",
+            "메시지 작성",
+            "1:1 대화",
+        )
+        val RECIPIENT_WORDS = listOf(
+            "recipient",
+            "recipients_editor",
+            "받는 사람",
+            "수신자",
+            "전화번호",
+            "번호 입력",
+            "연락처 검색",
+        )
         val CAMERA_WORDS = listOf("camera", "카메라", "사진 촬영")
         val ATTACHMENT_WORDS = listOf(
             "attach",

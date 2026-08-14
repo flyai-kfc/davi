@@ -133,7 +133,9 @@ internal class CameraMessagePreSendScenario : GuidedScenario<CameraMessagePreSen
 
         val safe = when (decision.action.actionType) {
             GuidedActionType.TAP -> decision.targetClickable && when (kind) {
-                CameraMessageRobot.TargetKind.NEW_MESSAGE -> !state.newMessageStarted
+                // Samsung Messages는 새 메시지 → 1:1 대화의 두 단계 작성 메뉴를 쓴다.
+                CameraMessageRobot.TargetKind.NEW_MESSAGE ->
+                    !state.recipientEntered && !state.captureExecuted
                 CameraMessageRobot.TargetKind.RECIPIENT -> state.newMessageStarted
                 CameraMessageRobot.TargetKind.CONFIGURED_RECIPIENT -> state.recipientEntered
                 CameraMessageRobot.TargetKind.ATTACHMENT,
