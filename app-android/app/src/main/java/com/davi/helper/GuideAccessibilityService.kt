@@ -29,6 +29,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+    private var e2ePublisher: GuideE2ePublisher? = null
 
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
@@ -82,6 +83,7 @@ class GuideAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
+        e2ePublisher = GuideE2ePublisher(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
@@ -96,6 +98,9 @@ class GuideAccessibilityService : AccessibilityService() {
             null
         }
         GuideSession.addListener(sessionListener)
+        // debug E2E 제어 receiver가 접근성 callback보다 먼저 세션을 시작한 경합도 복구한다.
+        // 보통은 listener가 시작 이벤트를 받지만, 시스템의 Bound 표시는 callback보다 먼저 바뀔 수 있다.
+        if (GuideSession.isActive) scheduleSample(SETTLE_MS)
         // dogfoodDeviceId는 화이트리스트 등록의 유일한 추출 경로다(DogfoodDeviceId 참고).
         Log.i(
             TAG,
@@ -198,7 +203,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)
                     // raw 상세 로그의 debug/release 분리는 #58. #81은 같은 화면 retry의 반복만 막는다.
-                    logScreenDetails(result)
+                    if (e2ePublisher?.suppressDetailedScreenLogs != true) logScreenDetails(result)
                 }
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
@@ -310,22 +315,18 @@ class GuideAccessibilityService : AccessibilityService() {
             val startedAt = SystemClock.elapsedRealtime()
             GuideTelemetry.requestStarted(logicalRequest)
             try {
-                when (
-                    val result = client.nextStep(
-                        NextStepRequest(
-                            goal = session.goal,
-                            screen = screen,
-                            // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
-                            deviceId = dogfoodDeviceId,
-                            // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
-                            recentInstructions = session.recentInstructions,
-                            // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
-                            recentActions = session.recentActions,
-                            clientVersion = BuildConfig.VERSION_NAME,
-                        ),
-                        logicalRequest,
-                    )
-                ) {
+                val request = NextStepRequest(
+                    goal = session.goal,
+                    screen = screen,
+                    // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
+                    deviceId = dogfoodDeviceId,
+                    // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
+                    recentInstructions = session.recentInstructions,
+                    // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
+                    recentActions = session.recentActions,
+                    clientVersion = BuildConfig.VERSION_NAME,
+                )
+                when (val result = client.nextStep(request, logicalRequest)) {
                     is NextStepResult.Success -> {
                         val action = result.response.action
                         GuideTelemetry.requestFinished(
@@ -346,7 +347,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         )
                         mainHandler.post {
                             logicalRequests.markHttpResponse(logicalRequest, 200)
-                            applyAction(screen, signature, result.response, session, logicalRequest)
+                            applyAction(request, signature, result.response, session, logicalRequest)
                         }
                     }
 
@@ -440,12 +441,13 @@ class GuideAccessibilityService : AccessibilityService() {
      * 중지 후 같은 목표로 다시 시작하면 문자열이 같아 이전 응답이 그대로 통과한다.
      */
     private fun applyAction(
-        screen: Screen,
+        request: NextStepRequest,
         requestSignature: String,
         response: NextStepResponse,
         session: GuideSession.Active,
         logicalRequest: LogicalRequestAttempt,
     ) {
+        val screen = request.screen
         if (!GuideSession.isCurrent(session.generation)) {
             GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             return
@@ -464,6 +466,13 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val action = response.action
         if (action.actionType == ActionType.DONE) {
+            e2ePublisher?.displayed(
+                generation = session.generation,
+                requestSignature = requestSignature,
+                request = request,
+                response = response,
+                target = null,
+            )
             when (GuideSession.onDone(session.generation, response.verified)) {
                 GuideSession.DoneOutcome.STOP ->
                     Log.i(TAG, "session done") // 리스너가 오버레이를 지운다
@@ -507,6 +516,13 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
         draw(display.show(requestSignature, bounds, action.instruction, action.actionType))
+        e2ePublisher?.displayed(
+            generation = session.generation,
+            requestSignature = requestSignature,
+            request = request,
+            response = response,
+            target = target,
+        )
     }
 
     private fun logScreenDetails(result: UiTreeSerializer.Result) {
@@ -570,6 +586,7 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay?.destroy()
         overlay = null
         guideApiClient = null
+        e2ePublisher = null
         apiExecutor.shutdownNow()
         return super.onUnbind(intent)
     }
