@@ -9,22 +9,36 @@ import android.graphics.RectF
 import android.view.View
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
-import androidx.core.content.res.ResourcesCompat
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
- * 오버레이 창의 유일한 루트 뷰. 레이어 셋을 그린다 — **읽는 중 테두리**(화면 가장자리,
- * 브리딩), **강조 사각형**(대상 영역), **안내창**(서버 문구).
+ * 표시 오버레이의 루트 뷰. 레이어 둘을 그린다 — **읽는 중 테두리**(화면 가장자리, 브리딩)와
+ * **강조 사각형**(대상 영역). 터치는 아래 앱으로 통과한다.
  *
- * **줄바꿈·자리 계산은 [GuideBoxLayout]이 한다.** 이 뷰는 결과를 그리기만 한다(#38 1·2번).
+ * **안내창은 여기서 그리지 않는다**(#126). 자리 계산만 하고([GuideBoxLayout]), 결과를
+ * [guideBoxListener]로 넘기면 조작 오버레이의 [GuideBoxView]가 그린다. 계산이 여기 남는 이유는
+ * 그릴 수 있는 범위·강조 대상·회피 영역을 아는 곳이 이 뷰뿐이라서다.
  *
  * 강조 리플·방향 스와이프 애니메이션은 아직 없다(HANDOFF §4의 `HighlightOverlayView` /
- * `SwipeGuideView` 참고). 안내문이 키보드를 가리는 문제(§3-13)도 다음 작업이다.
+ * `SwipeGuideView` 참고).
  *
  * 좌표는 **화면 좌표 그대로** 받는다. 오버레이 윈도우가 `FLAG_LAYOUT_IN_SCREEN`으로 전체 화면을
  * 차지하므로 접근성 `bounds`와 캔버스 좌표계가 일치한다. 이 플래그가 없으면 상태표시줄 높이만큼
  * 어긋난다(HANDOFF §7 "왜 조금씩 아래로 밀리지?"의 정답).
  */
 class HighlightOverlayView(context: Context) : View(context) {
+
+    /** 안내창 자리가 정해질 때마다 받는다. 조작 오버레이가 이 자리로 창을 옮긴다(#126). */
+    fun interface GuideBoxListener {
+        /**
+         * @param box **이 뷰의 로컬 좌표**(창 프레임 기준) 안내창 사각형. 그릴 안내가 없으면 null.
+         * @param lines 이미 접힌 줄들. 받는 쪽은 다시 접지 않는다.
+         */
+        fun onGuideBox(box: Rect?, lines: List<String>)
+    }
+
+    var guideBoxListener: GuideBoxListener? = null
 
     private val target = RectF()
     private var hasTarget = false
@@ -45,7 +59,6 @@ class HighlightOverlayView(context: Context) : View(context) {
     // 검증 기기(3x 밀도)에서 기존 raw px(12/24)와 dp 토큰(4dp/8dp)이 같은 픽셀값이라 시인성은 보존된다.
     private val highlightStroke = resources.getDimension(R.dimen.davi_overlay_highlight_stroke)
     private val highlightCorner = resources.getDimension(R.dimen.davi_radius_sm)
-    private val boxCorner = resources.getDimension(R.dimen.davi_radius_md)
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -53,23 +66,11 @@ class HighlightOverlayView(context: Context) : View(context) {
         color = ContextCompat.getColor(context, R.color.davi_highlight)
     }
 
-    // 안내창(GD 명세): 흰 배경 + 진한 글자 + 테두리 — 배경 불문 가독 전략(#111 확정 디자인).
-    private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.davi_overlay_on_box)
-        textSize = resources.getDimension(R.dimen.text_overlay_instruction)
-        // Canvas 직접 그리기라 테마 fontFamily가 닿지 않는다 — 서체를 손으로 물린다(C1).
-        typeface = ResourcesCompat.getFont(context, R.font.pretendard)
-    }
-    private val instructionBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.davi_overlay_box)
-    }
-    private val instructionBoxBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = resources.getDimension(R.dimen.davi_button_stroke)
-        color = ContextCompat.getColor(context, R.color.davi_border)
-    }
-    private val instructionPadding = resources.getDimension(R.dimen.overlay_instruction_padding)
-    private val instructionMargin = resources.getDimension(R.dimen.overlay_instruction_margin)
+    // 그리지는 않지만 줄바꿈을 재려면 같은 글자여야 한다 — 그리는 쪽과 한 곳에서 만든다.
+    private val instructionPaint = GuideBoxStyle.textPaint(context)
+    private val instructionPadding = GuideBoxStyle.padding(context)
+    private val instructionMargin = GuideBoxStyle.margin(context)
+    private val controlRow = GuideBoxStyle.controlRow(context)
 
     // ── 읽는 중 테두리(GD-1) ──────────────────────────────────────────────────
     private val readingInset = resources.getDimension(R.dimen.davi_overlay_reading_inset)
@@ -159,7 +160,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         hasTarget = false
         instruction = ""
         avoid = emptyList()
-        layout = null
+        applyLayout(null)
         invalidate()
     }
 
@@ -228,22 +229,6 @@ class HighlightOverlayView(context: Context) : View(context) {
                 strokePaint,
             )
         }
-        drawInstruction(canvas)
-    }
-
-    private fun drawInstruction(canvas: Canvas) {
-        val current = layout ?: return
-
-        val box = RectF(current.box.left, current.box.top, current.box.right, current.box.bottom)
-        canvas.drawRoundRect(box, boxCorner, boxCorner, instructionBoxPaint)
-        canvas.drawRoundRect(box, boxCorner, boxCorner, instructionBoxBorderPaint)
-
-        val metrics = instructionPaint.fontMetrics
-        var baseline = box.top + instructionPadding - metrics.top
-        current.lines.forEach { line ->
-            canvas.drawText(line, box.left + instructionPadding, baseline, instructionPaint)
-            baseline += metrics.bottom - metrics.top
-        }
     }
 
     private fun relayout() {
@@ -252,23 +237,51 @@ class HighlightOverlayView(context: Context) : View(context) {
         layoutOriginY = locationOnScreen[1]
 
         // 크기가 없으면 폭을 모르니 접을 수 없다. onSizeChanged가 다시 부른다.
-        layout = if (width == 0 || height == 0) {
-            null
-        } else {
-            val metrics = instructionPaint.fontMetrics
-            GuideBoxLayout.compute(
-                instruction = instruction,
-                canvas = drawableBounds(),
-                target = if (hasTarget) target.toLayoutBounds() else null,
-                margin = instructionMargin,
-                padding = instructionPadding,
-                lineHeight = metrics.bottom - metrics.top,
-                measure = { text, maxWidth ->
-                    instructionPaint.breakText(text, true, maxWidth, null)
-                },
-                avoid = avoid,
-            )
+        applyLayout(
+            if (width == 0 || height == 0) {
+                null
+            } else {
+                val metrics = instructionPaint.fontMetrics
+                GuideBoxLayout.compute(
+                    instruction = instruction,
+                    canvas = drawableBounds(),
+                    target = if (hasTarget) target.toLayoutBounds() else null,
+                    margin = instructionMargin,
+                    padding = instructionPadding,
+                    lineHeight = metrics.bottom - metrics.top,
+                    measure = { text, maxWidth ->
+                        instructionPaint.breakText(text, true, maxWidth, null)
+                    },
+                    avoid = avoid,
+                    controlHeight = controlRow,
+                )
+            },
+        )
+    }
+
+    /**
+     * 계산 결과를 반영하고 알린다. **[layout]에 대입하는 곳은 여기 하나뿐이다** — [clearTarget]은
+     * [relayout]을 거치지 않으므로, 통지를 계산 쪽에만 걸면 지울 때 안내창이 화면에 남는다.
+     */
+    private fun applyLayout(next: GuideBoxLayout.Layout?) {
+        layout = next
+        val listener = guideBoxListener ?: return
+        if (next == null) {
+            listener.onGuideBox(null, emptyList())
+            return
         }
+        // 화면 좌표 -> 이 뷰의 로컬 좌표. 조작 오버레이가 같은 flags를 쓰므로 프레임 원점이 같다.
+        // 폭·높이는 올림한다 — 내림하면 마지막 글자가 1px 차이로 잘릴 수 있다.
+        val box = next.box
+        listener.onGuideBox(
+            Rect(
+                floor(box.left).toInt() - layoutOriginX,
+                floor(box.top).toInt() - layoutOriginY,
+                ceil(box.right).toInt() - layoutOriginX,
+                ceil(box.bottom).toInt() - layoutOriginY,
+            ),
+            next.lines,
+        )
     }
 
     /** 선 두께를 물린 뒤 실제로 그릴 수 있는 화면 범위. 화면 좌표계다. */

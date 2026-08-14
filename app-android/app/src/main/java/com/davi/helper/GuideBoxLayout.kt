@@ -31,13 +31,20 @@ object GuideBoxLayout {
      */
     data class Avoid(val bounds: Bounds, val hard: Boolean)
 
-    /** 그릴 것이 확정된 안내창. [lines]는 이미 접힌 상태다. */
+    /**
+     * 그릴 것이 확정된 안내창. [lines]는 이미 접힌 상태다.
+     *
+     * [box]는 컨트롤 행까지 **포함한** 안내창 전체다 — 조작 오버레이의 창 크기가 되고, 회피 판정도
+     * 이 사각형으로 한다. 칩이 회피 대상을 덮는 일이 없어야 하므로 텍스트만으로 재면 안 된다(#126).
+     */
     data class Layout(val lines: List<String>, val box: Bounds)
 
     /**
      * @param canvas   그릴 수 있는 범위(테두리 두께를 물린 뒤의 화면 안쪽).
      * @param target   강조 대상. 없으면 null이고, 그때는 화면 아래에 붙인다. 언제나 절대 회피다.
      * @param avoid    대상 밖의 회피 영역.
+     * @param controlHeight 안내창 안에 비워 둘 컨트롤 행의 높이(칩이 앉는 자리, #126). 0이면 없다 —
+     *   기본값이 0이라 칩을 모르는 호출자와 기존 테스트는 산술이 그대로다.
      * @return 그릴 것이 없으면 null.
      */
     fun compute(
@@ -49,6 +56,7 @@ object GuideBoxLayout {
         lineHeight: Float,
         measure: Measure,
         avoid: List<Avoid> = emptyList(),
+        controlHeight: Float = 0f,
     ): Layout? {
         if (instruction.isEmpty()) return null
 
@@ -61,10 +69,12 @@ object GuideBoxLayout {
         // 1차: 절반 상한. 아무것도 안 덮으면 그대로 — 글줄을 최대한 살린다.
         // 상한이 없으면 상자가 화면보다 커져 자리 후보가 0개가 되고 회피 등급 전체가
         // 무효가 된다 — 2.0배 글자 + 4문장에서 키보드·대상까지 전부 덮는 실측(2026-08-12).
-        val primaryLines = (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2) / lineHeight)
-            .toInt().coerceAtLeast(1)
+        // 컨트롤 행도 상자의 일부라 절반 예산에서 먼저 뺀다. 안 빼면 칩 높이만큼 상한을 넘는다.
+        val primaryLines =
+            (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2 - controlHeight) / lineHeight)
+                .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, lineHeight, measure)
+            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight)
         if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
 
         // 2차: 절반 상자가 무언가를 덮으면 3줄로 줄여 한 번 재시도한다. hard뿐 아니라
@@ -79,7 +89,7 @@ object GuideBoxLayout {
         val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, lineHeight, measure)
+            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight)
         // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
         // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         val improves = compact.hardCoverage < primary.hardCoverage ||
@@ -108,10 +118,11 @@ object GuideBoxLayout {
         padding: Float,
         lineHeight: Float,
         measure: Measure,
+        controlHeight: Float,
     ): Attempt {
         // 잘림 표현은 W8에서 재론.
         val lines = truncate(wrapped, maxLines, textWidth, measure)
-        val height = lines.size * lineHeight + padding * 2
+        val height = lines.size * lineHeight + padding * 2 + controlHeight
 
         val top = topFor(height, left, right, canvas, target, avoid, margin)
         val box = Bounds(left, top, right, top + height)

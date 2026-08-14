@@ -21,6 +21,12 @@
     <dimen name="davi_overlay_reading_stroke">4dp</dimen>
     <dimen name="davi_overlay_reading_glow">12dp</dimen>
     <dimen name="davi_overlay_reading_radius">24dp</dimen>
+    <!--
+      안내창 안에 칩이 앉도록 비워 두는 컨트롤 행(#126). 칩 높이(56) + 칩 아래 여백(16).
+      칩과 안내문 사이 간격은 안내창 자체의 아래쪽 padding이 맡는다.
+      **칩의 자리는 아직 임시다** — Figma overlay/window가 확정되면 이 값과 배치를 함께 본다.
+    -->
+    <dimen name="davi_overlay_control_row">72dp</dimen>
 
     <!--
       디자인 토큰(크기). 원본은 Figma Foundations primitives — 이름은 code syntax와 1:1.

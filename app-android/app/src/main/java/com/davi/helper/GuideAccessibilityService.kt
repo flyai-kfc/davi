@@ -82,7 +82,14 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        overlay = OverlayController(this)
+        // 칩 클릭은 메인 스레드다(GuideSession의 스레드 계약 충족). 세션이 끝나면 위 리스너가
+        // 오버레이를 걷는데, 그 경로가 mainHandler.post라 클릭 디스패치 안에서 자기 창을 걷지 않는다.
+        // 로그를 남기는 이유: 사용자가 끝낸 세션은 그 외에 아무 흔적도 안 남아, 로그만 보면
+        // "안내가 그냥 멈췄다"와 구별이 안 된다.
+        overlay = OverlayController(this) {
+            Log.i(TAG, "session stopped by chip")
+            GuideSession.stop()
+        }
         e2ePublisher = GuideE2ePublisher(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,

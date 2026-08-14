@@ -66,8 +66,9 @@ data class ConversationRenderModel(
  * 마이크: active=누를 수 있는 상태(홈 idle, 질문 재생 중 barge-in) / deactive=누르지 못하는
  * 상태(듣는 중·응답 대기 — 둘의 시각 구분은 추후 웨이브폼 등으로).
  *
- * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다 — 새 화면에
- * 세션 중단 수단이 없던 공백의 임시 조치(#123). 오버레이 X 칩은 터치 계약 [미결].
+ * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다(#123).
+ * #126이 오버레이에 X 칩을 세워 앱에 오지 않고도 끝낼 수 있게 됐지만, 사용자가 실수로 앱을
+ * 다녀오는 경로가 남아 **중단 수단을 양쪽에 둔다**(2026-08-13 결정).
  */
 fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
     is ConversationUiState.Home -> ConversationRenderModel(
