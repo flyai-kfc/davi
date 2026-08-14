@@ -252,8 +252,13 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.STUCK -> {
-                Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                showStuckNotice()
+                // 확인 대기 중 화면이 안 바뀌는 것은 사용자가 답을 고르는 동안 당연하다.
+                // 알리지 않는 데 그치지 않고 건너뛰는 이유는, stuckContent가 같은 내용으로
+                // 다시 그리면서 우리 창을 만져 스스로를 깨우기 때문이다(ControlOverlay 참고).
+                if (!GuideSession.awaitingConfirm) {
+                    Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
+                    showStuckNotice()
+                }
                 scheduleSample(POLL_MS)
             }
 
@@ -541,8 +546,10 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 이게 없으면 화면이 그대로인 한 다음 요청이 영영 없다 — 무시가 곧 정지다.
                     // 이 백오프는 사실상 2초 고정이다 — 위 markSucceeded()가 failures를 매번
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
+                    // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
+                    // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
                     stability.markFailed()
-                    Log.i(TAG, "done unverified, retry backoff=${stability.backoffMs()}ms")
+                    Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }
 
                 null -> GuideTelemetry.responseDropped(logicalRequest, "session_changed")
