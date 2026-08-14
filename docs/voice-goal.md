@@ -1,7 +1,7 @@
 # 음성 목표 확정 — 작업 문서
 
 작성 2026-08-07. 어르신 발화를 **의도를 정확히 정의한 목표 문장 하나**로 바꾸는 기능의 작업 문서다.
-방향·범위는 `../SPEC.md`, 계약 결정은 `../server/CLAUDE.md`(C1~C14)에 있고 **이 문서가 그것들을 대체하지 않는다.**
+방향·범위는 `../SPEC.md`, 계약 결정은 `../server/CLAUDE.md`(C1~C15)에 있고 **이 문서가 그것들을 대체하지 않는다.**
 여기 있는 것이 확정되면 SPEC·CLAUDE로 올리고 이 문서에서는 링크만 남긴다.
 
 ## 상태 표기
@@ -82,7 +82,12 @@
     │                                        계약 위반 → 1회 교정
     │                       ◀──────────  SlotFillState{status, message, goal}
     │                       │
-    │                ⑦ applyResponse()
+    │                ⑦ ready면 /v1/intent/app-resolution
+    │                   서버 일반 후보 → 기기 LaunchableAppIndex 대조
+    │                   → server-origin plan + candidate_id/status 피드백
+    │                   후보 0=첫 응답에서 needs_clarification
+    │                   한 후보=ready / 복수·unknown=needs_clarification
+    │                   그 뒤 applyResponse()
     │                   ├─ needs_clarification ─────────────┐
     │                   ├─ ready ──────────────┐            │
     │                   └─ 10메시지(5왕복) 초과 → LimitReached → 텍스트 입력 폴백
@@ -94,10 +99,10 @@
     ├──────────────────────────────────────────┼──── stage=LISTENING → ②로 되돌아감
     │                                          │
     │                                   ⑩ showReadyGoal()
-    │ ◀──────────────────────────────────  goalInput에 goal 문장 채움
+    │ ◀──────────────────────────────────  최종 확인 화면에 goal 문장 표시
     │                                      message TTS로 읽기
     │
-    │ ⑪ "시작" 탭  ← 여기가 사실상 최종 확인
+    │ ⑪ 최종 확인의 ○ 탭
     ├──────────────▶ GuideSession.start(goal)   ← ★ 문장 하나만 넘어간다
     │                 (음성 대화는 여기서 끝)
     │

@@ -10,6 +10,14 @@
     <!-- 사용자가 누른 동안 목표를 음성으로 입력. 원시 오디오는 앱이 저장하거나 서버로 보내지 않는다. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- QUERY_ALL_PACKAGES 없이 현재 프로필에서 launcher로 실행 가능한 앱만 조회한다(#102). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/sym_def_app_icon"

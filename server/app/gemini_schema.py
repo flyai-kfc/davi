@@ -10,7 +10,7 @@
 - "해당 없음"은 빈 값이 아니라 **필드 생략**이다. 그래서 선택 필드는 `required`에 넣지 않는다.
 - 스키마가 거부되면 모든 호출이 실패한다. 호출부는 무스키마 재시도 폴백을 반드시 둘 것(llm.py).
 
-지원 범위는 **평평한 모델**(GuideAction)이다. 중첩 모델·리스트가 필요해지면 그때 넓힌다.
+GuideAction의 평평한 모델뿐 아니라 앱 후보 계약의 중첩 객체·목록도 같은 선언에서 만든다.
 지원하지 않는 타입은 조용히 넘기지 않고 예외를 던진다 — 잘못된 스키마가 배포되는 것보다 낫다.
 """
 
@@ -44,6 +44,14 @@ def _unwrap_optional(tp: typing.Any) -> typing.Any:
 
 def _field_schema(tp: typing.Any) -> dict:
     tp = _unwrap_optional(tp)
+
+    origin = typing.get_origin(tp)
+    if origin is list:
+        (item_type,) = typing.get_args(tp)
+        return {"type": "ARRAY", "items": _field_schema(item_type)}
+
+    if isinstance(tp, type) and issubclass(tp, BaseModel):
+        return build_response_schema(tp)
 
     if isinstance(tp, type) and issubclass(tp, enum.Enum):
         values = [str(m.value) for m in tp]

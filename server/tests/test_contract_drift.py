@@ -35,6 +35,7 @@ CONTRACT_KT = (
     / "helper"
     / "Contract.kt"
 )
+ANDROID_MANIFEST = CONTRACT_KT.parents[4] / "AndroidManifest.xml"
 
 
 def _kotlin_enum_values(source: str, enum_name: str) -> set[str]:
@@ -110,3 +111,25 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
 
     assert {"editable", "focused"} <= set(UiElement.model_fields)
     assert "ime_visible" in Screen.model_fields
+
+
+def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:
+    """#128의 후보·대조 상태가 Kotlin/Python 중 한쪽에만 생기지 않게 한다."""
+
+    from app.schemas import AppCandidateAvailability, AppResolutionStatus
+
+    assert _kotlin_enum_values(contract_source, "AppCandidateAvailability") == {
+        member.value for member in AppCandidateAvailability
+    }
+    assert _kotlin_enum_values(contract_source, "AppResolutionStatus") == {
+        member.value for member in AppResolutionStatus
+    }
+    assert "data class AppResolutionRequest" in contract_source
+    assert "data class AppCandidatePlan" in contract_source
+
+
+def test_launcher_visibility_is_narrow_and_query_all_packages_is_absent() -> None:
+    manifest = ANDROID_MANIFEST.read_text(encoding="utf-8")
+    assert "android.permission.QUERY_ALL_PACKAGES" not in manifest
+    assert '<action android:name="android.intent.action.MAIN"' in manifest
+    assert '<category android:name="android.intent.category.LAUNCHER"' in manifest

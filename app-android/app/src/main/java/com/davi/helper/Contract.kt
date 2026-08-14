@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
- * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C14)을 먼저 읽고 양쪽을 같이 고친다.
+ * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C15)을 먼저 읽고 양쪽을 같이 고친다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -200,4 +200,64 @@ data class SlotFillState(
 enum class IntentDialogueStatus {
     @SerialName("needs_clarification") NEEDS_CLARIFICATION,
     @SerialName("ready") READY,
+}
+
+/** 서버가 제안한 후보 하나. package/alias는 서버 원본이며 기기 index 값을 역으로 채우지 않는다. */
+@Serializable
+data class AppCandidate(
+    @SerialName("candidate_id") val candidateId: String,
+    @SerialName("canonical_name") val canonicalName: String,
+    @SerialName("package_names") val packageNames: List<String> = emptyList(),
+    @SerialName("label_aliases") val labelAliases: List<String> = emptyList(),
+    val confidence: Double,
+)
+
+@Serializable
+data class AppCandidatePlan(
+    val capability: String,
+    val candidates: List<AppCandidate> = emptyList(),
+)
+
+@Serializable
+enum class AppCandidateAvailability {
+    @SerialName("launchable") LAUNCHABLE,
+    @SerialName("not_found") NOT_FOUND,
+    @SerialName("ambiguous") AMBIGUOUS,
+    @SerialName("unknown") UNKNOWN,
+}
+
+@Serializable
+data class AppCandidateResult(
+    @SerialName("candidate_id") val candidateId: String,
+    val status: AppCandidateAvailability,
+)
+
+@Serializable
+data class AppResolutionFeedback(
+    val plan: AppCandidatePlan,
+    @SerialName("candidate_results") val candidateResults: List<AppCandidateResult>,
+)
+
+@Serializable
+data class AppResolutionRequest(
+    val goal: String,
+    val feedback: AppResolutionFeedback? = null,
+)
+
+@Serializable
+data class AppResolutionState(
+    val status: AppResolutionStatus,
+    val message: String,
+    val plan: AppCandidatePlan? = null,
+    @SerialName("selected_candidate_id") val selectedCandidateId: String? = null,
+    val goal: String? = null,
+)
+
+@Serializable
+enum class AppResolutionStatus {
+    @SerialName("candidates") CANDIDATES,
+    @SerialName("resolved") RESOLVED,
+    @SerialName("needs_user_choice") NEEDS_USER_CHOICE,
+    @SerialName("needs_app_name") NEEDS_APP_NAME,
+    @SerialName("unavailable_or_unknown") UNAVAILABLE_OR_UNKNOWN,
 }

@@ -96,8 +96,16 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 
 인식된 현재 발화와 이전에 끝난 user/assistant 쌍을 `/v1/intent/slot-fill`에 보낸다. 서버가
 `needs_clarification`이면 `message`를 화면에 표시하고 Android TTS로 읽은 뒤 자동으로 다음 발화를
-듣는다. `ready`이면 서버의 `goal`을 기존 입력칸에 넣고 끝낸다. **안내는 자동 시작하지 않으며**
-사용자가 내용을 보고 기존 `안내 시작`을 눌러야 한다.
+듣는다. `ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
+기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 한 후보만
+확정되면 최종 확인 화면으로 가고, 복수·0개·불확실은 기존 TTS 후속 질문 흐름으로 돌아간다.
+**안내는 자동 시작하지 않으며** 사용자가 최종 확인의 ○를 눌러야 한다.
+
+index는 `QUERY_ALL_PACKAGES`를 쓰지 않고 현재 접근 가능한 profile의 `MAIN`/`LAUNCHER` activity만
+조회한다. 잠긴 profile은 지금 안내할 수 없는 범위라 제외한다. 설치·삭제·변경 callback은 revision을
+올리고 기존 snapshot을 무효화만 하며, 다음 음성 대조 때 작업 스레드에서 전체를 다시 읽는다. 같은
+profile·package의 launcher activity가 여러 개여도 한 앱으로 판정한다. 전체 목록과 기기에서만 발견한
+package·label·component·profile은 서버·파일·상세 로그에 나가지 않는다.
 
 대화는 무작위 UUID별 최대 5왕복을 프로세스 메모리에만 두고 화면 이탈·재시작 때 폐기한다. 늦은
 응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고, 발화·질문·goal·
@@ -179,6 +187,9 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 | `.../SpeechRecognizerHelper.kt` | 온디바이스 우선 음성인식 결과 하나의 lifecycle 경계 |
 | `.../VoiceDialogueSession.kt` | 최대 5왕복의 이전 턴과 늦은 응답 generation 격리 |
 | `.../SlotFillApiClient.kt` | `/v1/intent/slot-fill` 계약·추적 header·오류 분류 |
+| `.../LaunchableAppIndex.kt` | launcher 앱의 메모리 index·정규화 대조·callback revision |
+| `.../AppResolutionApiClient.kt` | `/v1/intent/app-resolution` 계약·추적 header·오류 분류 |
+| `.../AppResolutionCoordinator.kt` | 후보 생성→로컬 대조→피드백과 generation/revision 격리 |
 | `.../TextToSpeechHelper.kt` | 서버 질문/완료 문장을 읽고 다음 청취 callback 연결 |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |

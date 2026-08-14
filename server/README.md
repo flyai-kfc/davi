@@ -27,6 +27,7 @@ uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 - 헬스체크: `GET http://127.0.0.1:8000/health`
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 - 음성 목표 정리: `POST /v1/intent/slot-fill` (고정 슬롯 없이 질문 또는 최종 goal 반환)
+- 목표 앱 대조: `POST /v1/intent/app-resolution` (일반 후보 생성 → 기기 ID/status 피드백 판정)
 
 ASGI에 도달한 응답에는 서버가 HTTP 전송마다 만든 32자리 비식별 `X-Request-ID`가 붙는다.
 Android는 `/v1/next-step`에 무작위 UUID `X-Davi-Logical-Request-ID`와 1부터 증가하는
@@ -80,6 +81,38 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 저장하지 않는다. `session_id`는 모델 입력에도 넣지 않는다. 키 없는 개발·CI에서는
 `StubIntentResolver`가 현재 발화를 그대로 ready goal로 돌려 계약만 검증하며 의미 품질을 주장하지 않는다.
 두 trace header와 development auth/rate limit, `ApiError`는 `/v1/next-step`과 같은 경계를 쓴다.
+
+### 목표 앱 후보와 기기 대조
+
+`slot-fill`이 ready goal을 만들면 앱이 `/v1/intent/app-resolution`에 goal만 보낸다. 서버는
+capability와 일반 후보를 최대 5개 반환하고 candidate ID는 서버가 순서대로 부여한다. 앱은
+`LauncherApps` index로 대조한 뒤 server-origin plan과 아래 상태만 되돌린다.
+
+```json
+{
+  "goal": "치킨을 주문하고 싶어",
+  "feedback": {
+    "plan": {
+      "capability": "food_delivery",
+      "candidates": [{
+        "candidate_id": "candidate-1",
+        "canonical_name": "일반 배달 앱",
+        "package_names": ["com.example.delivery"],
+        "label_aliases": ["배달 앱"],
+        "confidence": 0.9
+      }]
+    },
+    "candidate_results": [{"candidate_id": "candidate-1", "status": "launchable"}]
+  }
+}
+```
+
+서버 LLM은 내부 `decision_basis`를 먼저 생성하되 wire와 로그에는 내보내지 않는다. 후보가 0개면
+기기 피드백 왕복 없이 첫 응답에서 `needs_app_name`을 반환한다. 후보가 있으면 한 후보는 `resolved`,
+복수는 `needs_user_choice`, 접근 가능한 profile의 부분 조회 실패는 `unavailable_or_unknown`으로
+판정한다. 잠긴 profile은 지금 안내할 수 없는 기기 범위라 index 조회에서 제외한다. 서버는 plan을 요청에 다시 받으므로
+대화 UUID나 프로세스 캐시에 후보 상태를 저장하지 않는다. 기기에서만 발견한 package·label·component·
+profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`, phase, 최종 status만 운영 로그에 남는다.
 
 Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과
 운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
@@ -287,6 +320,8 @@ pytest
 | `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
 | `app/intent_prompt.py` | 이전 턴+현재 발화 → 고정 슬롯 없는 음성 목표 프롬프트. |
 | `app/intent_resolution.py` | 음성 목표 스텁/Gemini 경계, 구조화 질문·goal 검증. |
+| `app/app_resolution_prompt.py` | goal → 일반 앱 후보 최대 5개 프롬프트. |
+| `app/app_resolution.py` | 후보 Gemini 경계와 기기 ID/status의 무상태 최종 판정. |
 | `app/observability.py` | 비식별 요청 문맥·고정 이벤트·안전한 JSON Lines formatter. |
 | `app/logging.json` | Uvicorn access log를 끄고 서버 진단을 JSON Lines로 통합하는 설정. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
@@ -297,10 +332,11 @@ pytest
 **동작하는 구현** (테스트로 덮인 것 포함)
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
-- `app/schemas.py` — 다음 안내와 음성 목표 대화 계약. C1~C14를 계약 테스트가 고정한다.
+- `app/schemas.py` — 다음 안내·음성 목표·앱 후보 대조 계약. C1~C15를 계약 테스트가 고정한다.
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
-- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
+- `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill`,
+  `/v1/intent/app-resolution` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
 - 요청 관측(#81) — 모든 ASGI 응답의 request ID, Android Logical Request ID/attempt와 Gemini 호출
   단계를 비식별 JSON Lines로 연결한다. 401·422·429·502·500·404는 고정 오류 코드만 남기고,
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.

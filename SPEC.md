@@ -53,6 +53,9 @@
 - 앱(Kotlin)을 기기측 실행기로 재구성한다: 화면 트리 직렬화 + **1차 마스킹**, 오버레이 렌더링, 폴링/정체 감지, "다음 안내 하나" 실행.
 - 음성 목표 입력은 Android 음성인식으로 텍스트화하고, 불완전한 목표는 서버 LLM이 고정 슬롯 목록 없이
   필요한 질문 하나를 생성해 보완한다. 앱은 짧은 대화 이력과 TTS만 맡고 완성된 목표를 기존 시작 경로로 넘긴다.
+- 완성 목표에 필요한 앱은 서버 LLM이 **일반 후보 최대 5개만** 제안하고, Android가 기기 안의
+  launcher 실행 가능 index와 대조한다. 전체 설치 앱 목록과 기기에서만 발견한 package·label·profile은
+  서버로 보내지 않는다(#102·#128).
 - 평가 하니스를 회귀 테스트로 세운다. 키 없이 항상 도는 입력 회귀 + `main` 주 1회·수동
   LLM-judge 관측(§1-3, §8).
 - 도그푸딩 기기에서만 전체 화면 트리 로그를 보존해 실패 픽스처를 자동으로 쌓는다.
@@ -171,6 +174,7 @@
 │  └─ 오버레이 렌더링 (좌표 매핑, FLAG_LAYOUT_IN_SCREEN, IME 위 배치)             │
 │       표시 오버레이(하이라이트, 터치 통과) + 조작 오버레이(안내창·칩, 터치 받음)  │
 │  SpeechRecognizer + TTS  ── 음성 목표와 서버의 후속 질문을 짧은 대화로 연결       │
+│  LaunchableAppIndex  ── 현재 profile의 launcher 앱을 메모리에서만 대조             │
 │                         │  화면JSON(마스킹됨) + 목표 + 최근 안내 이력            │
 │                         │  또는 현재 음성 발화 + 이전 대화(최대 5왕복)           │
 │                         │  + 비식별 Logical Request ID / attempt (HTTP header)   │
@@ -180,6 +184,7 @@
 │  ├─ 프롬프트 구성 + 가드레일 정책  ── 단일 결정 지점으로 재설계 (§5-4)            │
 │  ├─ 모델 호출 (gemini-3.5-flash-lite)  ── 스키마 강제, 스키마 400 시 무스키마 폴백 │
 │  ├─ 음성 목표 정리  ── 추가 질문 필요/목표 준비 완료를 구조화 출력으로 판정       │
+│  ├─ 목표 앱 후보  ── 일반 후보 최대 5개 생성, 기기 판정 ID/status로 무상태 확정   │
 │  └─ 완료 검증 (expected_result / evidence 비교)  ── 조기 종료 방지               │
 │                         │  다음 안내 하나 {action, target, instruction}          │
 │                         ▼  (Gemini는 마스킹된 내용을 본다 — 온보딩에 명시)        │
@@ -228,6 +233,23 @@ goal을 버려 안전하게 정규화한다. `ready`의 goal 누락·공백이�
 schema 400 무스키마 폴백까지 포함한 공급자 호출은 요청당 총 2회를 넘지 않는다. JSON 손상·잘못된
 status·후보 없음·토큰 잘림과 두 번째 계약 위반은 `PARSE`로 실패하며 목표나 질문을 추측하지 않는다.
 교정 진단에는 고정 reason code만 남기고 발화·모델 응답·`decision_basis` 원문은 기록하지 않는다.
+
+**목표 앱 대조 계약(#102·#128):** 음성 목표가 `ready`가 되면 앱은
+`POST /v1/intent/app-resolution`을 호출한다. 첫 요청에는 goal만 있고, 서버 LLM은 capability와
+일반 후보를 최대 5개 반환한다. Android는 `QUERY_ALL_PACKAGES` 없이 `MAIN`/`LAUNCHER` query와
+`LauncherApps`로 현재 접근 가능한 profile의 실행 대상을 메모리 index로 유지한다. package exact
+match를 먼저 보고 정규화된 manifest label/alias를 보조로 쓴다. 잠긴 profile은 지금 안내로 열 수
+없는 범위라 조회 대상에서 제외하고, 접근 가능한 profile의 실제 조회 실패만 `unknown`으로 두어
+`not_found`로 축약하지 않는다. 앱 시작과 package callback에서는 index를 dirty로 표시만 하며,
+음성 작업 스레드가 대조 직전에 전체 조회한다.
+
+후보가 비면 서버는 첫 응답에서 바로 `needs_app_name`으로 끝낸다. 후보가 있으면 앱은 두 번째 요청에서
+서버가 제시한 plan을 그대로 되돌리고 후보별 `candidate_id`와
+`launchable`/`not_found`/`ambiguous`/`unknown`만 붙인다. 기기에서 발견한 package·label·component·
+profile과 전체 목록은 전송하지 않는다. plan을 echo하는 이유는 서버가 대화 UUID나 캐시로 상태를
+보존하지 않고도 후보를 판정하기 위해서다. 한 후보만 확정되면 서버가 공개 canonical name을 goal에
+결합하고, 복수·0개·불확실은 기존 음성 후속 질문 흐름으로 되돌린다. 후보 응답은 대화 generation,
+대조 결과는 index revision으로 대조해 세션 재시작과 설치·삭제 사이의 늦은 결과를 폐기한다.
 
 음성 원문은 연락처 이름처럼 의미 자체가 개인 데이터일 수 있어 화면 트리의 패턴 마스킹을 그대로
 적용하면 목표가 깨진다. 이번 내부 도그푸딩에서는 **인식된 텍스트와 이전 턴이 서버와 Gemini로

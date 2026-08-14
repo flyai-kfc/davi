@@ -13,6 +13,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .app_resolution import resolve_app_request
 from .config import settings
 from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
@@ -32,6 +33,8 @@ from .raw_store import raw_store_dir, store_raw_exchange
 from .reasoning import next_step
 from .schemas import (
     ApiError,
+    AppResolutionRequest,
+    AppResolutionState,
     ErrorKind,
     NextStepRequest,
     NextStepResponse,
@@ -44,8 +47,9 @@ request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
 _NEXT_STEP_PATH = "/v1/next-step"
 _SLOT_FILL_PATH = "/v1/intent/slot-fill"
+_APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
 _HEALTH_PATH = "/health"
-_TRACED_API_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH})
+_TRACED_API_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH})
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
@@ -58,6 +62,8 @@ def _request_route(path: str) -> str:
         return _NEXT_STEP_PATH
     if path == _SLOT_FILL_PATH:
         return _SLOT_FILL_PATH
+    if path == _APP_RESOLUTION_PATH:
+        return _APP_RESOLUTION_PATH
     if path == _HEALTH_PATH:
         return _HEALTH_PATH
     return "unmatched"
@@ -200,10 +206,10 @@ def _store_raw_if_dogfood(
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     request.state.error_kind = "VALIDATION"
     request.state.validation_error_count = len(exc.errors())
-    if request.url.path == _SLOT_FILL_PATH:
+    if request.url.path in {_SLOT_FILL_PATH, _APP_RESOLUTION_PATH}:
         error = ApiError(
             kind=ErrorKind.BAD_REQUEST,
-            message="slot-fill request validation failed",
+            message="intent request validation failed",
             request_id=request.state.request_id,
         )
         return JSONResponse(
@@ -278,6 +284,9 @@ async def observe_request(request: Request, call_next):
                 element_count=metadata.get("element_count"),
                 client_version=metadata.get("client_version"),
                 conversation_message_count=metadata.get("conversation_message_count"),
+                candidate_count=metadata.get("candidate_count"),
+                resolution_phase=metadata.get("resolution_phase"),
+                resolution_status=metadata.get("resolution_status"),
                 error_kind=error_kind,
                 retry_after_seconds=getattr(request.state, "retry_after_seconds", None),
                 validation_error_count=getattr(request.state, "validation_error_count", None),
@@ -341,3 +350,37 @@ def post_slot_fill(req: SlotFillRequest, request: Request) -> SlotFillState | JS
             content=api_error.model_dump(),
             headers=retry_after_header(error) or None,
         )
+
+
+@app.post("/v1/intent/app-resolution", response_model=AppResolutionState)
+def post_app_resolution(
+    req: AppResolutionRequest,
+    request: Request,
+) -> AppResolutionState | JSONResponse:
+    """목표 후보를 만들거나, 기기에서 돌려준 ID/status만으로 무상태 최종 판정한다."""
+
+    phase = "feedback" if req.feedback is not None else "candidates"
+    request.state.request_metadata = {
+        "resolution_phase": phase,
+        "candidate_count": len(req.feedback.plan.candidates) if req.feedback else None,
+    }
+    try:
+        state = resolve_app_request(req)
+    except LlmError as error:
+        api_error = api_error_for(error, request.state.request_id)
+        request.state.error_kind = error.kind.value
+        request.state.retry_after_seconds = error.retry_after_seconds
+        return JSONResponse(
+            status_code=http_status_for(error),
+            content=api_error.model_dump(),
+            headers=retry_after_header(error) or None,
+        )
+    request.state.request_metadata["candidate_count"] = (
+        len(state.plan.candidates)
+        if state.plan is not None
+        else len(req.feedback.plan.candidates)
+        if req.feedback is not None
+        else 0
+    )
+    request.state.request_metadata["resolution_status"] = state.status.value
+    return state
