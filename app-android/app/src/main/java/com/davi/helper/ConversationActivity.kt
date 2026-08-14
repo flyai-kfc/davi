@@ -348,10 +348,10 @@ class ConversationActivity : AppCompatActivity() {
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (
-                    !voiceSession.isPending(pending) ||
-                    (
-                        appOutcome.indexRevision != null &&
-                            launchableAppIndex.revision() != appOutcome.indexRevision
+                    shouldDropAppResolutionOutcome(
+                        pending = voiceSession.isPending(pending),
+                        currentIndexRevision = launchableAppIndex.revision(),
+                        outcomeIndexRevision = appOutcome.indexRevision,
                     )
                 ) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "app_index_changed")

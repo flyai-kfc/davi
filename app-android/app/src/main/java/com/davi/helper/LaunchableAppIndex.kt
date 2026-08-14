@@ -98,7 +98,8 @@ internal class LaunchableAppIndex(
                 if (!started) return snapshotCopyLocked()
                 if (snapshot.revision == expectedRevision) {
                     snapshot = snapshotFor(query, expectedRevision)
-                    dirty = false
+                    // 일시적 framework/profile 조회 실패는 다음 음성 턴에서 callback 없이도 재시도한다.
+                    dirty = !snapshot.complete
                     refreshed = snapshotCopyLocked()
                 }
             }
@@ -161,13 +162,19 @@ internal class AndroidLaunchableAppSource(context: Context) : LaunchableAppSourc
         val users = userManager ?: return LaunchableAppQuery.Unavailable
         var complete = true
         val records = mutableListOf<LaunchableAppRecord>()
-        users.userProfiles.forEach { profile ->
+        val visibleProfiles = runCatching { apps.profiles }
+            .getOrElse { return LaunchableAppQuery.Unavailable }
+        visibleProfiles.forEach { profile ->
             // 잠긴 보안 폴더·직장 profile은 지금 안내로 열 수 없으므로 조회 대상에서 제외한다.
-            // 안내 가능한 profile의 실제 조회 실패만 complete=false로 보존한다.
+            // LauncherApps가 호출자에게 노출하지 않은 profile은 visibleProfiles에 들어오지 않는다.
             if (!users.isUserUnlocked(profile)) {
                 return@forEach
             }
-            val activities = runCatching { apps.getActivityList(null, profile) }.getOrElse {
+            val activities = try {
+                apps.getActivityList(null, profile)
+            } catch (_: RuntimeException) {
+                // getProfiles()가 노출한 profile의 실패는 실제 부분 조회 실패다.
+                // 제외해 not_found로 오판하지 않고 다음 턴 재시도를 위해 불완전하게 남긴다.
                 complete = false
                 emptyList()
             }

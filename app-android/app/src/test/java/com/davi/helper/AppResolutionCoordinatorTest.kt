@@ -7,6 +7,34 @@ import org.junit.Test
 
 class AppResolutionCoordinatorTest {
     @Test
+    fun `index independent outcome ignores revision changes`() {
+        assertEquals(
+            false,
+            shouldDropAppResolutionOutcome(
+                pending = true,
+                currentIndexRevision = 2,
+                outcomeIndexRevision = null,
+            ),
+        )
+        assertEquals(
+            true,
+            shouldDropAppResolutionOutcome(
+                pending = false,
+                currentIndexRevision = 2,
+                outcomeIndexRevision = null,
+            ),
+        )
+        assertEquals(
+            true,
+            shouldDropAppResolutionOutcome(
+                pending = true,
+                currentIndexRevision = 2,
+                outcomeIndexRevision = 1,
+            ),
+        )
+    }
+
+    @Test
     fun `empty candidate result completes without feedback round trip`() {
         val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
         val requests = mutableListOf<AppResolutionRequest>()

@@ -93,7 +93,7 @@ class LaunchableAppIndexTest {
     }
 
     @Test
-    fun `query failure clears stale availability and becomes unknown`() {
+    fun `query failure becomes unknown and retries without a package callback`() {
         val source = FakeSource(
             LaunchableAppQuery.Available(
                 listOf(record("com.example.one", "하나", "Main")),
@@ -108,6 +108,16 @@ class LaunchableAppIndexTest {
         val snapshot = index.current()
         assertEquals(false, snapshot.complete)
         assertEquals(emptyList<LaunchableAppRecord>(), snapshot.records)
+
+        source.query = LaunchableAppQuery.Available(
+            listOf(record("com.example.recovered", "복구", "Main")),
+            complete = true,
+        )
+        val recovered = index.current()
+
+        assertTrue(recovered.complete)
+        assertEquals("com.example.recovered", recovered.records.single().packageName)
+        assertEquals(2, source.queryCount)
     }
 
     @Test

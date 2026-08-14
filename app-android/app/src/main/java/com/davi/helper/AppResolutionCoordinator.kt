@@ -1,5 +1,12 @@
 package com.davi.helper
 
+internal fun shouldDropAppResolutionOutcome(
+    pending: Boolean,
+    currentIndexRevision: Long,
+    outcomeIndexRevision: Long?,
+): Boolean = !pending ||
+    (outcomeIndexRevision != null && currentIndexRevision != outcomeIndexRevision)
+
 /** 서버 후보와 기기 index를 잇되, 세션 generation·index revision이 바뀐 결과는 적용하지 않는다. */
 internal class AppResolutionCoordinator(
     private val index: LaunchableAppIndex,
