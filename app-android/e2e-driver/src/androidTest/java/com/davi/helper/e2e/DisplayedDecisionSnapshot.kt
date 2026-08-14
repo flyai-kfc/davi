@@ -2,7 +2,7 @@ package com.davi.helper.e2e
 
 import org.json.JSONObject
 
-/** 앱이 실제 전송한 요청 snapshot에서 모델이 고른 요소의 label만 안전 검사에 사용한다. */
+/** 앱이 실제 전송한 요청 snapshot에서 모델이 고른 요소의 label만 이탈·하드 경계 판정에 사용한다. */
 internal fun DisplayedDecision.requestTargetLabel(): String? {
     val nodeId = action.targetNodeId ?: return null
     return runCatching {

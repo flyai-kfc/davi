@@ -77,6 +77,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
                         "editable": False,
                     },
                 },
+                {"event": "step_deviation", "step": 1, "code": "unknown_clock_screen"},
                 {"event": "step_outcome", "step": 1, "outcome": "executed", "failure_code": None},
                 {"event": "cleanup", "outcome": "success"},
             ]
@@ -102,6 +103,10 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
             self.assertIn("| instruction | 추가를 여세요 |", report)
             self.assertIn("| target_node_id | `n1` |", report)
             self.assertIn("| outcome | `executed` |", report)
+            self.assertIn(
+                "| deviation_codes | `&#91;&quot;unknown_clock_screen&quot;&#93;` |",
+                report,
+            )
             self.assertIn("로컬 민감 산출물", report)
 
 

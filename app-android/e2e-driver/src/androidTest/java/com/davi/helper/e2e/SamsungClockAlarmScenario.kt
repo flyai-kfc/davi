@@ -38,57 +38,28 @@ internal class SamsungClockAlarmScenario(
             "${state.target.minute.toString().padStart(2, '0')}분에 " +
             "이름이 ${SamsungClockRobot.TEST_LABEL}인 알람을 만들고 저장해 주세요."
 
-    override fun validateBeforeExecute(
+    override fun assessBeforeExecute(
         device: UiDevice,
         state: State,
         step: Int,
         decision: DisplayedDecision,
-    ) {
+    ): GuidedDecisionAssessment {
+        SamsungClockDecisionPolicy.settingsHardFailure(decision)?.let { return it }
         if (decision.screenPackage == state.launcherPackage) {
-            validateLauncherDecision(step, decision)
-            return
+            return SamsungClockDecisionPolicy.assessLauncher(decision)
         }
         if (decision.screenPackage != SamsungClockRobot.PACKAGE) {
-            throw GuidedScenarioFailure("unexpected_package", step)
+            return GuidedDecisionAssessment(deviationCodes = listOf("unexpected_package"))
         }
-
-        if (robot.hasSavedTestAlarm()) throw GuidedScenarioFailure("action_after_goal", step)
 
         val targetKind = robot.targetKind(decision.targetBounds)
-        when (robot.screenKind()) {
-            SamsungClockRobot.ScreenKind.ALARM_LIST -> {
-                if (decision.action.actionType != GuidedActionType.TAP ||
-                    targetKind != SamsungClockRobot.TargetKind.ADD
-                ) {
-                    // 기존 개인 알람을 Gemini가 선택해도 테스트가 대신 수정하지 않는다.
-                    throw GuidedScenarioFailure("unsafe_alarm_list_target", step)
-                }
-            }
-
-            SamsungClockRobot.ScreenKind.ALARM_EDITOR -> {
-                val timeTarget = targetKind in TIME_TARGETS
-                val safe = when (decision.action.actionType) {
-                    GuidedActionType.TAP -> timeTarget ||
-                        targetKind == SamsungClockRobot.TargetKind.NAME ||
-                        targetKind == SamsungClockRobot.TargetKind.SAVE
-                    GuidedActionType.SCROLL -> timeTarget
-                    GuidedActionType.TYPE -> targetKind in setOf(
-                        SamsungClockRobot.TargetKind.HOUR,
-                        SamsungClockRobot.TargetKind.MINUTE,
-                        SamsungClockRobot.TargetKind.NAME,
-                    )
-                    else -> false
-                }
-                if (!safe) throw GuidedScenarioFailure("unsafe_alarm_editor_target", step)
-                if (targetKind == SamsungClockRobot.TargetKind.SAVE && !robot.hasEnteredTestLabel()) {
-                    // 시도 플래그가 아니라 현재 편집창의 실제 값을 읽어 이름 없는 알람 저장을 차단한다.
-                    throw GuidedScenarioFailure("save_before_test_label", step)
-                }
-            }
-
-            SamsungClockRobot.ScreenKind.UNKNOWN ->
-                throw GuidedScenarioFailure("unknown_clock_screen", step)
-        }
+        return SamsungClockDecisionPolicy.assessClock(
+            screenKind = robot.screenKind(),
+            targetKind = targetKind,
+            actionType = decision.action.actionType,
+            hasSavedTestAlarm = robot.hasSavedTestAlarm(),
+            hasEnteredTestLabel = robot.hasEnteredTestLabel(),
+        )
     }
 
     override fun textFor(
@@ -98,8 +69,8 @@ internal class SamsungClockAlarmScenario(
     ): String? {
         if (decision.action.actionType != GuidedActionType.TYPE) return null
         if (decision.screenPackage == state.launcherPackage) {
-            if (isSearchLabel(decision.requestTargetLabel())) return CLOCK_SEARCH_TEXT
-            throw GuidedScenarioFailure("unsafe_launcher_type", step)
+            // 전용 기기에서는 검색창을 잘못 짚은 사실을 이탈로 남기고도 목표 앱 검색값을 실행한다.
+            return CLOCK_SEARCH_TEXT
         }
         return when (robot.targetKind(decision.targetBounds)) {
             SamsungClockRobot.TargetKind.NAME -> SamsungClockRobot.TEST_LABEL
@@ -117,15 +88,17 @@ internal class SamsungClockAlarmScenario(
         cleanupRobot.deleteAlarmNamed(SamsungClockRobot.TEST_LABEL)
     }
 
-    /**
-     * 런처에서는 앱서랍 열기·탐색과 삼성 시계 진입만 허용한다.
-     *
-     * 잘못 고른 개인 앱을 열면 다음 화면이 서버로 전송될 수 있으므로, 실행 뒤 package 검사만으로는
-     * 늦다. 앱이 보낸 같은 snapshot에서 target label을 찾아 탭 전에 제한한다.
-     */
-    private fun validateLauncherDecision(step: Int, decision: DisplayedDecision) {
+    private companion object {
+        const val CLOCK_SEARCH_TEXT = "시계"
+    }
+}
+
+/** 전용 기기 알람 여정의 이탈은 관찰하고, 설정 앱 진입만 이 시나리오의 하드 경계로 둔다. */
+internal object SamsungClockDecisionPolicy {
+    fun assessLauncher(decision: DisplayedDecision): GuidedDecisionAssessment {
+        settingsHardFailure(decision)?.let { return it }
         val label = decision.requestTargetLabel()
-        val safe = when (decision.action.actionType) {
+        val expected = when (decision.action.actionType) {
             GuidedActionType.OPEN_APP_DRAWER -> true
             GuidedActionType.SCROLL -> decision.action.direction != null &&
                 (decision.targetBounds == null || decision.targetBounds.size == 4)
@@ -134,31 +107,96 @@ internal class SamsungClockAlarmScenario(
             GuidedActionType.TYPE -> decision.targetEditable && isSearchLabel(label)
             else -> false
         }
-        if (!safe) throw GuidedScenarioFailure("unsafe_launcher_target", step)
+        return if (expected) GuidedDecisionAssessment() else {
+            GuidedDecisionAssessment(deviationCodes = listOf("unexpected_launcher_target"))
+        }
     }
 
+    fun assessClock(
+        screenKind: SamsungClockRobot.ScreenKind,
+        targetKind: SamsungClockRobot.TargetKind,
+        actionType: GuidedActionType,
+        hasSavedTestAlarm: Boolean,
+        hasEnteredTestLabel: Boolean,
+    ): GuidedDecisionAssessment {
+        val deviations = mutableListOf<String>()
+        if (hasSavedTestAlarm) deviations += "action_after_goal"
+        when (screenKind) {
+            SamsungClockRobot.ScreenKind.ALARM_LIST -> {
+                if (actionType != GuidedActionType.TAP || targetKind != SamsungClockRobot.TargetKind.ADD) {
+                    deviations += "unexpected_alarm_list_target"
+                }
+            }
+
+            SamsungClockRobot.ScreenKind.ALARM_EDITOR -> {
+                val timeTarget = targetKind in TIME_TARGETS
+                val expected = when (actionType) {
+                    GuidedActionType.TAP -> timeTarget ||
+                        targetKind == SamsungClockRobot.TargetKind.NAME ||
+                        targetKind == SamsungClockRobot.TargetKind.SAVE
+                    GuidedActionType.SCROLL -> timeTarget
+                    GuidedActionType.TYPE -> targetKind in setOf(
+                        SamsungClockRobot.TargetKind.HOUR,
+                        SamsungClockRobot.TargetKind.MINUTE,
+                        SamsungClockRobot.TargetKind.NAME,
+                    )
+                    else -> false
+                }
+                if (!expected) deviations += "unexpected_alarm_editor_target"
+                if (targetKind == SamsungClockRobot.TargetKind.SAVE && !hasEnteredTestLabel) {
+                    deviations += "save_before_test_label"
+                }
+            }
+
+            SamsungClockRobot.ScreenKind.UNKNOWN -> deviations += "unknown_clock_screen"
+        }
+        return GuidedDecisionAssessment(deviationCodes = deviations)
+    }
+
+    fun isSettingsPackage(packageName: String): Boolean =
+        packageName == ANDROID_SETTINGS_PACKAGE ||
+            packageName.startsWith("$ANDROID_SETTINGS_PACKAGE.") ||
+            packageName == SAMSUNG_SETTINGS_PACKAGE ||
+            packageName.startsWith("$SAMSUNG_SETTINGS_PACKAGE.")
+
+    /** 런처뿐 아니라 System UI 등 어느 표면에서도 설정 앱 진입 target은 실행 전에 닫는다. */
+    fun settingsHardFailure(decision: DisplayedDecision): GuidedDecisionAssessment? =
+        if (isSettingsPackage(decision.screenPackage) ||
+            (decision.action.actionType == GuidedActionType.TAP && isSettingsLabel(decision.requestTargetLabel()))
+        ) {
+            GuidedDecisionAssessment(hardFailureCode = "settings_app_blocked")
+        } else {
+            null
+        }
+
     private fun isClockLabel(label: String?): Boolean {
-        val normalized = label?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val normalized = normalize(label)
         return normalized.contains("시계") || normalized.contains("clock")
     }
 
     private fun isAppDrawerLabel(label: String?): Boolean {
-        val normalized = label?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val normalized = normalize(label)
         return normalized == "앱" || normalized.contains("앱스") ||
             normalized.contains("앱 서랍") || normalized.contains("apps")
     }
 
     private fun isSearchLabel(label: String?): Boolean {
-        val normalized = label?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val normalized = normalize(label)
         return normalized.contains("검색") || normalized.contains("search")
     }
 
-    private companion object {
-        const val CLOCK_SEARCH_TEXT = "시계"
-        val TIME_TARGETS = setOf(
-            SamsungClockRobot.TargetKind.PERIOD,
-            SamsungClockRobot.TargetKind.HOUR,
-            SamsungClockRobot.TargetKind.MINUTE,
-        )
+    private fun isSettingsLabel(label: String?): Boolean {
+        val normalized = normalize(label)
+        return normalized == "설정" || normalized == "settings"
     }
+
+    private fun normalize(label: String?): String = label?.trim()?.lowercase(Locale.ROOT).orEmpty()
+
+    private const val ANDROID_SETTINGS_PACKAGE = "com.android.settings"
+    private const val SAMSUNG_SETTINGS_PACKAGE = "com.samsung.android.settings"
+    private val TIME_TARGETS = setOf(
+        SamsungClockRobot.TargetKind.PERIOD,
+        SamsungClockRobot.TargetKind.HOUR,
+        SamsungClockRobot.TargetKind.MINUTE,
+    )
 }

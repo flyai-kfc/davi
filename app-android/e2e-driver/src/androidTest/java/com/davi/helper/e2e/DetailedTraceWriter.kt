@@ -43,6 +43,13 @@ internal class DetailedTraceWriter private constructor(private val file: File?) 
             .put("failure_code", (failure as? GuidedScenarioFailure)?.code ?: JSONObject.NULL),
     )
 
+    fun recordDeviation(step: Int, code: String) = append(
+        JSONObject()
+            .put("event", "step_deviation")
+            .put("step", step)
+            .put("code", code),
+    )
+
     fun recordDiscard(reason: String) = append(
         JSONObject()
             .put("event", "decision_discarded")

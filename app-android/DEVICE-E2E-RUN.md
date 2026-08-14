@@ -83,6 +83,7 @@ build/reports/device-e2e-private/
 | 판정 | 외부 앱 목표 상태와 검증된 완료까지 도달했는지 |
 | 실패 코드 | 원문 대신 저장하는 구조화 원인 |
 | 관측한 안내 단계 | driver가 실제로 받은 Gemini 결정 수 |
+| 비종료 이탈 | 예상 경로를 벗어났지만 남은 단계에서 계속 수행한 코드와 횟수 |
 | 시작된 서버 요청 | Davi가 서버에 시작한 논리 요청 수 |
 | 단계 trace | action, target bounds 존재 여부, 완료 검증 여부 |
 | 경유한 package | 안내가 런처와 외부 앱 사이에서 이동한 순서 |
@@ -93,10 +94,11 @@ build/reports/device-e2e-private/
 - 요청 시점의 package/page/scroll/IME 및 전달된 화면 요소 전체
 - 그 요청에 실제 포함된 `recent_instructions`와 구조화 `recent_actions`
 - 응답의 model/verified/screen signature와 전체 `GuideAction` 필드
-- 해석된 target bounds·role과 실행/실패 결과
+- 해석된 target bounds·role, 비종료 이탈과 실행/실패 결과
 
 `step_limit`은 Gemini 할당량 제한이 아니다. 시나리오가 정한 최대 안내 단계 안에 목표를 완료하지
 못했다는 품질 실패다. API rate/quota 문제는 서버 호출 실패나 HTTP 429 계열로 별도 나타난다.
+키보드·화면 분류 불확실이나 예상 target 이탈은 즉시 실패시키지 않고 이 상한까지 회복 여부를 본다.
 
 ## 기록하지 않는 정보
 

@@ -61,7 +61,14 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                         return
                     }
 
-                    scenario.validateBeforeExecute(device, prepared, step, decision)
+                    val assessment = scenario.assessBeforeExecute(device, prepared, step, decision)
+                    assessment.hardFailureCode?.let { code ->
+                        throw GuidedScenarioFailure(code, step)
+                    }
+                    assessment.deviationCodes.distinct().forEach { code ->
+                        Log.i(TRACE_TAG, "step=$step deviation=$code")
+                        detailedTrace.recordDeviation(step, code)
+                    }
                     // 현재 결정 검증 중 같은 화면에서 중복 방송된 값은 실제 조작 뒤 실행하지 않는다.
                     queue.discardPending(discard)
                     executor.execute(decision, scenario.textFor(prepared, step, decision), step)

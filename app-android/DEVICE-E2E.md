@@ -25,9 +25,10 @@ SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 �
    사용자의 전역 쓸기처럼 전체 화면에서 수행한다.
 7. package가 바뀌어도 같은 세션과 이력을 이어가며, 최종 알람 시간·이름과 검증된 `done`을 확인한다.
 
-따라서 Gemini가 잘못된 대상을 고르면 UIAutomator가 정답 selector로 보정하지 않는다. 런처에서는
-앱서랍·검색·스크롤과 삼성 시계 진입만 허용해 다른 개인 앱을 열기 전에 막는다. 삼성 시계에서는 기존
-개인 알람을 보호하기 위해 알람 추가, 시간 picker, 테스트 이름, 저장만 허용한다.
+따라서 Gemini가 잘못된 대상을 고르면 UIAutomator가 정답 selector로 보정하지 않는다. 이 실행은
+전용 테스트 기기를 전제로 하므로 예상과 다른 앱·화면·target, 키보드로 일부 노드가 가려진 상태는
+비종료 이탈로 기록하고 최대 단계 안에서 계속 수행한다. 설정 앱 진입과 메시지 전송·결제·게시·통화처럼
+기기 밖에 영향을 미치는 조작만 실행 전 하드 차단한다. 성공은 최종 알람 시간·이름을 독립 확인한다.
 
 이 full-journey는 최신 Davi 화면과 홈 전환부터 검증하지만 음성 인식의 비결정성을 섞지 않기 위해
 목표 문장은 debug 서명 채널로 주입한다. 음성 인식·후속 질문·사용자의 최종 확인 UI 품질은 별도
@@ -37,7 +38,7 @@ SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 �
 근거·기대 결과, 현재 화면에 존재하는 target과 bounds, 실제 화면 진행, 조기 완료 여부와 최종 목표
 달성으로 실행 품질을 검사한다. 문장의 의미 품질은 상세 분석 보고서와 별도 eval judge에서 본다.
 화면·안내 원문은 기본 테스트 결과나 logcat에 출력하지 않는다.
-실패 진단에는 단계, 구조화 action 종류, target bounds 존재 여부, 검증 여부만 남긴다.
+실패 진단에는 단계, 구조화 action 종류, target bounds 존재 여부, 검증 여부와 비종료 이탈 코드만 남긴다.
 
 ## 실행 전 준비
 
@@ -120,7 +121,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 새 시나리오는 다음 네 부분을 분리한다.
 
-- `GuidedScenario<State>`: 시작 모드, 목표, 최대 단계, package별 안전 검사, 입력값, 최종 검증, 정리 정책
+- `GuidedScenario<State>`: 시작 모드, 목표, 최대 단계, package별 이탈/하드 경계, 입력값, 최종 검증, 정리 정책
 - `GuidedScenarioRunner`: 결정 대기, 공통 품질 검사, 세션 수명, 항상 실행되는 정리
 - `GuidedActionExecutor`: Gemini target bounds를 실제 손동작으로 변환
 - 앱별 Robot: 안내 흐름이 아닌 준비·독립 검증·테스트 데이터 삭제용 selector
@@ -130,7 +131,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 1. 앱별 Robot으로 테스트 전용 데이터와 안전한 초기 상태를 만든다.
 2. 전체 여정은 `start = DAVI_TO_ANDROID_HOME`, 앱 내부 진단은 `PREPARED_SCREEN`을 선택한다.
 3. `GuidedScenario`에서 목표와 TYPE 입력값을 정의한다.
-4. `validateBeforeExecute`를 package별로 나눠 각 전환에서 허용할 최소 target을 정의한다.
+4. `assessBeforeExecute`를 package별로 나눠 회복 가능한 이탈과 설정 앱·외부 부작용 하드 경계를 정의한다.
 5. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
 6. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
 7. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.

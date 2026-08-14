@@ -15,8 +15,9 @@ enum class GuidedScenarioStart {
  * Davi에서 시작해 하나 이상의 외부 앱을 오갈 수 있는 안내 E2E 시나리오.
  *
  * 앱별 selector는 준비·최종 검증·정리에만 둔다. 본 흐름의 조작 대상은 항상 Gemini 결정의
- * `target_node_id -> bounds`를 사용한다. 앱별 구현은 잘못된 결정이 개인 데이터에 영향을 주지
- * 않도록 [validateBeforeExecute]에서 안전한 대상만 허용한다.
+ * `target_node_id -> bounds`를 사용한다. 전용 테스트 기기에서는 예상 경로 이탈을 관측하면서
+ * 계속 실행하고, 설정 앱이나 기기 밖 부작용처럼 복구 범위를 벗어난 결정만 [assessBeforeExecute]에서
+ * 하드 차단한다.
  */
 interface GuidedScenario<State> {
     val id: String
@@ -32,13 +33,13 @@ interface GuidedScenario<State> {
 
     fun goal(state: State): String
 
-    /** Gemini 결정을 실제로 실행하기 직전의 시나리오별 안전·의미 검사. */
-    fun validateBeforeExecute(
+    /** Gemini 결정을 실제로 실행하기 직전의 비종료 이탈과 하드 경계를 분류한다. */
+    fun assessBeforeExecute(
         device: UiDevice,
         state: State,
         step: Int,
         decision: DisplayedDecision,
-    )
+    ): GuidedDecisionAssessment
 
     /** TYPE 액션에서 사용자가 입력할 시나리오 값. 모델 문장을 파싱해 값을 지어내지 않는다. */
     fun textFor(
@@ -53,6 +54,12 @@ interface GuidedScenario<State> {
     /** 성공·실패와 무관하게 이 시나리오가 만든 데이터만 제거한다. */
     fun cleanup(device: UiDevice, state: State?)
 }
+
+/** 전용 테스트 기기에서 계속 관찰할 이탈과 실행하면 안 되는 경계를 분리한다. */
+data class GuidedDecisionAssessment(
+    val deviationCodes: List<String> = emptyList(),
+    val hardFailureCode: String? = null,
+)
 
 class GuidedScenarioFailure(
     val code: String,

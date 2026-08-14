@@ -24,7 +24,9 @@ internal class SamsungClockRobot(private val device: UiDevice) {
     enum class TargetKind { ADD, PERIOD, HOUR, MINUTE, NAME, SAVE, OTHER }
 
     fun screenKind(): ScreenKind = when {
-        device.hasObject(By.res(PACKAGE, ID_SAVE)) && device.hasObject(By.res(PACKAGE, ID_NAME)) ->
+        device.hasObject(By.res(PACKAGE, ID_SAVE)) &&
+            (device.hasObject(By.res(PACKAGE, ID_NAME)) ||
+                device.hasObject(By.pkg(PACKAGE).clazz(NUMBER_PICKER_CLASS))) ->
             ScreenKind.ALARM_EDITOR
         device.hasObject(By.res(PACKAGE, ID_ADD)) -> ScreenKind.ALARM_LIST
         else -> ScreenKind.UNKNOWN
@@ -75,18 +77,32 @@ internal class SamsungClockRobot(private val device: UiDevice) {
         var current: UiObject2? = node
         repeat(MAX_PICKER_ANCESTORS) {
             val candidate = current ?: return null
-            if (candidate.className == "android.widget.NumberPicker") {
+            if (candidate.className == NUMBER_PICKER_CLASS) {
                 val value = candidate.findObject(By.res(PACKAGE, ID_PICKER_INPUT))?.text.orEmpty()
                 return when {
                     value == TEXT_AM || value == TEXT_PM -> TargetKind.PERIOD
                     HOUR.containsMatchIn(value) -> TargetKind.HOUR
                     MINUTE.containsMatchIn(value) -> TargetKind.MINUTE
-                    else -> null
+                    else -> pickerPositionKind(candidate)
                 }
             }
             current = candidate.parent
         }
         return null
+    }
+
+    /** IME가 선택값 label을 비워도 왼쪽부터 오전/오후·시·분인 picker 위치로 입력 종류를 복원한다. */
+    private fun pickerPositionKind(picker: UiObject2): TargetKind? {
+        val visiblePickers = device.findObjects(By.pkg(PACKAGE).clazz(NUMBER_PICKER_CLASS))
+            .filter { it.visibleBounds.width() > 0 && it.visibleBounds.height() > 0 }
+            .sortedBy { it.visibleBounds.left }
+        if (visiblePickers.size != PICKER_COUNT) return null
+        return when (visiblePickers.indexOfFirst { it.visibleBounds == picker.visibleBounds }) {
+            0 -> TargetKind.PERIOD
+            1 -> TargetKind.HOUR
+            2 -> TargetKind.MINUTE
+            else -> null
+        }
     }
 
     fun openAlarmList() {
@@ -213,6 +229,8 @@ internal class SamsungClockRobot(private val device: UiDevice) {
     companion object {
         const val PACKAGE = "com.sec.android.app.clockpackage"
         const val TEST_LABEL = "DAVI_E2E_TEST"
+        private const val NUMBER_PICKER_CLASS = "android.widget.NumberPicker"
+        private const val PICKER_COUNT = 3
 
         private const val ID_TAB_TITLE = "title"
         private const val ID_ADD = "menu_alarm_add"
