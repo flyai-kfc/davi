@@ -121,7 +121,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 새 시나리오는 다음 네 부분을 분리한다.
 
-- `GuidedScenario<State>`: 시작 모드, 목표, 최대 단계, package별 이탈/하드 경계, 입력값, 최종 검증, 정리 정책
+- `GuidedScenario<State>`: 시작 모드, 목표, 최대 단계, 공통·시나리오 전용 하드 경계, package별 이탈, 입력값, 최종 검증, 정리 정책
 - `GuidedScenarioRunner`: 결정 대기, 공통 품질 검사, 세션 수명, 항상 실행되는 정리
 - `GuidedActionExecutor`: Gemini target bounds를 실제 손동작으로 변환
 - 앱별 Robot: 안내 흐름이 아닌 준비·독립 검증·테스트 데이터 삭제용 selector
@@ -131,7 +131,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 1. 앱별 Robot으로 테스트 전용 데이터와 안전한 초기 상태를 만든다.
 2. 전체 여정은 `start = DAVI_TO_ANDROID_HOME`, 앱 내부 진단은 `PREPARED_SCREEN`을 선택한다.
 3. `GuidedScenario`에서 목표와 TYPE 입력값을 정의한다.
-4. `assessBeforeExecute`를 package별로 나눠 회복 가능한 이탈과 설정 앱·외부 부작용 하드 경계를 정의한다.
+4. `hardBoundaries`에 외부 부작용을 추가하고 `assessBeforeExecute`를 package별로 나눠 회복 가능한 이탈을 정의한다.
 5. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
 6. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
 7. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.

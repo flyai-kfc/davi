@@ -28,12 +28,16 @@ interface GuidedScenario<State> {
     val decisionTimeoutMs: Long
         get() = 45_000L
 
+    /** 공통 설정 경계 다음으로 실제 손동작 전에 평가할 시나리오 전용 안전 경계. */
+    val hardBoundaries: List<GuidedHardBoundary>
+        get() = emptyList()
+
     /** 기존 테스트 부산물을 정리하고 목표를 만들기 위한 안전한 초기 상태를 수집한다. */
     fun prepare(device: UiDevice): State
 
     fun goal(state: State): String
 
-    /** Gemini 결정을 실제로 실행하기 직전의 비종료 이탈과 하드 경계를 분류한다. */
+    /** Gemini 결정을 실제로 실행하기 직전의 비종료 이탈을 분류한다. */
     fun assessBeforeExecute(
         device: UiDevice,
         state: State,
@@ -58,7 +62,6 @@ interface GuidedScenario<State> {
 /** 전용 테스트 기기에서 계속 관찰할 이탈과 실행하면 안 되는 경계를 분리한다. */
 data class GuidedDecisionAssessment(
     val deviationCodes: List<String> = emptyList(),
-    val hardFailureCode: String? = null,
 )
 
 class GuidedScenarioFailure(

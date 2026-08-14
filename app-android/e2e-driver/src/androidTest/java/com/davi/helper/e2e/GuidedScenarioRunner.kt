@@ -61,10 +61,12 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                         return
                     }
 
-                    val assessment = scenario.assessBeforeExecute(device, prepared, step, decision)
-                    assessment.hardFailureCode?.let { code ->
+                    val hardBoundaries =
+                        listOf(GuidedHardBoundaries.settingsApp) + scenario.hardBoundaries
+                    GuidedHardBoundaries.firstFailure(hardBoundaries, decision)?.let { code ->
                         throw GuidedScenarioFailure(code, step)
                     }
+                    val assessment = scenario.assessBeforeExecute(device, prepared, step, decision)
                     assessment.deviationCodes.distinct().forEach { code ->
                         Log.i(TRACE_TAG, "step=$step deviation=$code")
                         detailedTrace.recordDeviation(step, code)
