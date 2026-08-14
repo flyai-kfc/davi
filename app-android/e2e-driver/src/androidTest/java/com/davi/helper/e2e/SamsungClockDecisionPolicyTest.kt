@@ -61,19 +61,6 @@ class SamsungClockDecisionPolicyTest {
         assertNull(assessment.hardFailureCode)
     }
 
-    @Test
-    fun prematureDoneIsObservedUntilGoalAndVerificationAgree() {
-        assertEquals(
-            listOf("done_before_goal", "done_unverified"),
-            GuidedCompletionPolicy.deviations(goalSatisfied = false, verified = false),
-        )
-        assertEquals(
-            listOf("done_before_goal"),
-            GuidedCompletionPolicy.deviations(goalSatisfied = false, verified = true),
-        )
-        assertEquals(emptyList<String>(), GuidedCompletionPolicy.deviations(true, true))
-    }
-
     private fun decision(
         label: String,
         screenPackage: String = "com.sec.android.app.launcher",

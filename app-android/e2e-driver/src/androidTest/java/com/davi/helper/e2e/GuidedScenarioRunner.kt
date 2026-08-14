@@ -50,32 +50,24 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                             "target=${decision.targetBounds?.size == 4} verified=${decision.verified}",
                     )
 
+                    if (decision.action.actionType == GuidedActionType.DONE) {
+                        if (!scenario.isGoalSatisfied(device, prepared)) {
+                            throw GuidedScenarioFailure("done_before_goal", step)
+                        }
+                        if (!decision.verified) {
+                            throw GuidedScenarioFailure("done_unverified", step)
+                        }
+                        detailedTrace.recordStepOutcome(step, "done_verified")
+                        return
+                    }
+
                     val assessment = scenario.assessBeforeExecute(device, prepared, step, decision)
                     assessment.hardFailureCode?.let { code ->
                         throw GuidedScenarioFailure(code, step)
                     }
                     assessment.deviationCodes.distinct().forEach { code ->
-                        recordDeviation(step, code, detailedTrace)
-                    }
-
-                    if (decision.action.actionType == GuidedActionType.DONE) {
-                        val completionDeviations = GuidedCompletionPolicy.deviations(
-                            goalSatisfied = scenario.isGoalSatisfied(device, prepared),
-                            verified = decision.verified,
-                        )
-                        if (completionDeviations.isEmpty()) {
-                            detailedTrace.recordStepOutcome(step, "done_verified")
-                            return
-                        }
-                        completionDeviations.forEach { code -> recordDeviation(step, code, detailedTrace) }
-                        detailedTrace.recordStepOutcome(step, "done_rejected")
-                        queue.discardPending(discard)
-                        // verified done은 제품 세션을 끝낸다. 전용 테스트 채널로 같은 목표를 현재 화면에서
-                        // 다시 시작해, 남은 단계가 실제 목표 상태로 회복할 기회를 준다.
-                        GuideControl.resume(context, scenario.goal(prepared))
-                        activeGeneration = null
-                        previousSignature = null
-                        continue
+                        Log.i(TRACE_TAG, "step=$step deviation=$code")
+                        detailedTrace.recordDeviation(step, code)
                     }
                     // 현재 결정 검증 중 같은 화면에서 중복 방송된 값은 실제 조작 뒤 실행하지 않는다.
                     queue.discardPending(discard)
@@ -108,11 +100,6 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                 detailedTrace.recordCleanup("success")
             }
         }
-    }
-
-    private fun recordDeviation(step: Int, code: String, detailedTrace: DetailedTraceWriter) {
-        Log.i(TRACE_TAG, "step=$step deviation=$code")
-        detailedTrace.recordDeviation(step, code)
     }
 
     private companion object {
@@ -182,20 +169,6 @@ private object GuideControl {
                     "${GuideE2eContract.DAVI_PACKAGE}.GuideE2eControlReceiver",
                 ),
             ),
-            GuideE2eContract.PERMISSION,
-        )
-    }
-
-    fun resume(context: Context, goal: String) {
-        context.sendBroadcast(
-            Intent(GuideE2eContract.ACTION_START)
-                .setComponent(
-                    ComponentName(
-                        GuideE2eContract.DAVI_PACKAGE,
-                        "${GuideE2eContract.DAVI_PACKAGE}.GuideE2eControlReceiver",
-                    ),
-                )
-                .putExtra(GuideE2eContract.EXTRA_GOAL, goal),
             GuideE2eContract.PERMISSION,
         )
     }

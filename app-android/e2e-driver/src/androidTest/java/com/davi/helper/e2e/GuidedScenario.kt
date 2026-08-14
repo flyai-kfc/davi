@@ -61,14 +61,6 @@ data class GuidedDecisionAssessment(
     val hardFailureCode: String? = null,
 )
 
-/** 모델의 완료 선언도 최종 상태·검증이 부족하면 남은 단계에서 다시 안내받는다. */
-internal object GuidedCompletionPolicy {
-    fun deviations(goalSatisfied: Boolean, verified: Boolean): List<String> = buildList {
-        if (!goalSatisfied) add("done_before_goal")
-        if (!verified) add("done_unverified")
-    }
-}
-
 class GuidedScenarioFailure(
     val code: String,
     val step: Int? = null,

@@ -46,8 +46,6 @@ Robot selector로 다음 정답 대상을 찾아 Gemini 선택을 바꾸거나 �
 | `cleanup` | `state=null`인 준비 실패까지 고려해 테스트 데이터만 삭제 |
 
 `maxSteps`는 성공에 필요한 합리적 상한으로 둔다. 상한을 크게 올려 모델 반복을 성공처럼 숨기지 않는다.
-목표 미달·미검증 `done`은 남은 단계가 있으면 비종료 이탈로 기록하고 현재 화면에서 같은 목표 세션을
-다시 시작한다. 실제 목표 상태와 `verified=true`가 함께 확인된 `done`만 성공으로 종료한다.
 
 여러 앱을 오가는 시나리오는 `assessBeforeExecute`를 `decision.screenPackage`별로 분기한다. 예상과 다른
 앱·화면·target은 `deviationCodes`로 반환해 최대 단계 안에서 회복 가능성을 계속 측정한다. 설정 앱
