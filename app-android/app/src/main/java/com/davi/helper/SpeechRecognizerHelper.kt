@@ -23,6 +23,14 @@ class SpeechRecognizerHelper(
         fun onPartialResult(text: String)
         fun onFinalResult(text: String)
         fun onError(error: Int)
+
+        /**
+         * 마이크 입력 세기(dB). 파도·글로우가 목소리에 반응하는 데만 쓴다(#132).
+         *
+         * **원시 오디오가 아니라 세기 하나뿐이다** — 내용이 남지 않으므로 이 클래스의
+         * "저장·로그하지 않는다" 경계를 넘지 않는다. 그래도 로그로 흘리지는 않는다.
+         */
+        fun onRmsChanged(rmsdB: Float) = Unit
     }
 
     private val appContext = context.applicationContext
@@ -127,7 +135,7 @@ class SpeechRecognizerHelper(
         }
         override fun onReadyForSpeech(params: Bundle?) = Unit
         override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = Unit
+        override fun onRmsChanged(rmsdB: Float) = listener.onRmsChanged(rmsdB)
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
         override fun onEvent(eventType: Int, params: Bundle?) = Unit

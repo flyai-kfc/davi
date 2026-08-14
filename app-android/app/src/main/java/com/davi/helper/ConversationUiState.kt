@@ -57,6 +57,19 @@ data class ConversationRenderModel(
     val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
     val closeVisible: Boolean = false,
+    /**
+     * 하단 파도(#132). **사용자가 말하는 동안에만** true — 다비가 말할 때는 다른 모양으로
+     * 바꾸는 게 아니라 아예 그리지 않는다. 이 있음/없음이 발화 주체 구분 그 자체다
+     * (시안 메인 2·4에는 없고 3·5에는 있다).
+     */
+    val waveVisible: Boolean = false,
+    /** 마이크 글로우. 듣는 중(음량 반응)과 홈 유도(고정 숨쉬기) 두 자리에서 쓴다. */
+    val glowVisible: Boolean = false,
+    /**
+     * 글로우가 음량에 반응하는가. 듣는 중에는 true, 홈 유도에서는 들을 마이크가 없어 false.
+     * [glowVisible]이 false면 의미가 없다.
+     */
+    val glowReactsToVoice: Boolean = false,
 )
 
 /**
@@ -69,6 +82,11 @@ data class ConversationRenderModel(
  * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다(#123).
  * #126이 오버레이에 X 칩을 세워 앱에 오지 않고도 끝낼 수 있게 됐지만, 사용자가 실수로 앱을
  * 다녀오는 경로가 남아 **중단 수단을 양쪽에 둔다**(2026-08-13 결정).
+ *
+ * 음성 모션(#132)의 판단도 여기 있다. **잠긴 마이크 뒤에서 유도 글로우를 돌리지 않는다** —
+ * 누를 수 없는 버튼이 "누르세요" 하고 빛나면 거짓 유도이고, 어르신은 눌리지 않는 버튼을
+ * 반복해서 누르게 된다. 그래서 홈 글로우는 [ConversationRenderModel.micEnabled]와 같은
+ * 조건을 탄다.
  */
 fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
     is ConversationUiState.Home -> ConversationRenderModel(
@@ -77,6 +95,9 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         micVisible = true,
         micEnabled = !guideActive,
         stopGuideVisible = guideActive,
+        // 홈 유도(임시) — 누를 수 있을 때만. 시안에 홈 전용 모션이 아직 없다(#132).
+        glowVisible = !guideActive,
+        glowReactsToVoice = false,
     )
     is ConversationUiState.Listening -> ConversationRenderModel(
         logoVisible = true,
@@ -86,7 +107,12 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceText = state.partial,
         micVisible = true,
         closeVisible = true,
+        waveVisible = true,
+        glowVisible = true,
+        glowReactsToVoice = true,
     )
+    // 다비가 말하는 중 — 파도·글로우를 **의도적으로 켜지 않는다**(#132). 사용자 차례와 구분되는
+    // 신호가 그 부재이므로, 여기에 다른 모션을 넣으면 구분이 사라진다.
     is ConversationUiState.Speaking -> ConversationRenderModel(
         logoVisible = true,
         questionText = state.question,
