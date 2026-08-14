@@ -113,6 +113,15 @@ class ConversationActivity : AppCompatActivity() {
         override fun onError(error: Int) {
             runOnUiThread { handleSpeechError(error) }
         }
+
+        override fun onRmsChanged(rmsdB: Float) {
+            // 프레임마다 오는 값이라 setState를 거치지 않고 뷰에 곧장 넘긴다 — 상태가 바뀐 게
+            // 아니므로 render()를 다시 돌릴 이유가 없다. 값 정리·수렴은 뷰 쪽에서 한다(#132).
+            runOnUiThread {
+                binding.voiceWave.onRmsChanged(rmsdB)
+                binding.glowMic.onRmsChanged(rmsdB)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -245,6 +254,19 @@ class ConversationActivity : AppCompatActivity() {
         binding.btnStopGuide.isVisible(model.stopGuideVisible)
         binding.confirmPair.root.isVisible(model.confirmVisible)
         binding.btnClose.isVisible(model.closeVisible)
+
+        // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
+        // 직전 발화의 크기로 튀어나온다. 프레임 루프는 뷰가 가시성 변화에서 알아서 멈춘다.
+        renderVoiceMotion(model)
+    }
+
+    private fun renderVoiceMotion(model: ConversationRenderModel) {
+        if (!model.waveVisible) binding.voiceWave.resetLevel()
+        binding.voiceWave.isVisible(model.waveVisible)
+
+        binding.glowMic.reactsToVoice = model.glowReactsToVoice
+        if (!model.glowVisible || !model.glowReactsToVoice) binding.glowMic.resetLevel()
+        binding.glowMic.isVisible(model.glowVisible)
     }
 
     private fun onMicTapped() {

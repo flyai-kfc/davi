@@ -77,4 +77,29 @@
     <dimen name="davi_question_card_max_height_confirm">400dp</dimen>
     <!-- 바닥 고정 컨트롤(마이크·확인쌍)이 차지하는 높이. 위 열은 이만큼을 비워 둔다. -->
     <dimen name="davi_conversation_control_reserve">178dp</dimen>
+
+    <!--
+      음성 모션 크기 (#132). 시안(메인 v2, 승인 대기)의 300×620 프레임 기준을 dp로 옮긴 값이다.
+      시안 폭 300은 검증 기기 폭과 다르므로 **비율이 아니라 눈에 보이는 크기**로 잡았다.
+    -->
+    <!-- 하단 파도 띠의 높이. 시안 152 / 620 ≈ 화면 아래 1/4. -->
+    <dimen name="davi_wave_height">152dp</dimen>
+    <!-- 파도 마루-골 진폭(최대 음량 기준). 띠 높이 안에서 세 겹이 겹칠 여유를 남긴다. -->
+    <dimen name="davi_wave_amplitude">22dp</dimen>
+    <!-- 마이크 글로우 지름. 시안 168 대 마이크 76 ≈ 2.2배 — 마이크 130dp에 맞춰 키웠다. -->
+    <dimen name="davi_glow_mic_size">286dp</dimen>
+    <!--
+      글로우를 마이크 **중심**에 맞추기 위한 음수 여백.
+
+      글로우는 마이크를 감싼 FrameLayout이 아니라 루트의 형제로 둔다 — 그 FrameLayout은
+      wrap_content라 글로우(286dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
+      직접 위치를 잡는다.
+
+      계산: 마이크 중심은 바닥에서 24dp(davi_spacing_xl) + 130dp/2 = 89dp.
+      글로우 중심을 거기 맞추려면 바닥 여백 = 89dp - 286dp/2 = -54dp.
+
+      **davi_mic_button_size·davi_spacing_xl·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
+      확정 디자인에서 컨트롤 크기를 다시 잡을 때 함께 재계산한다.
+    -->
+    <dimen name="davi_glow_mic_margin_bottom">-54dp</dimen>
 </resources>

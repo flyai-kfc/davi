@@ -142,4 +142,47 @@ class ConversationUiStateTest {
             stateForOutcome(VoiceDialogueSession.Outcome.InvalidResponse),
         )
     }
+
+    // --- 음성 모션 (#132) --------------------------------------------------------
+
+    @Test
+    fun `파도는 사용자가 말할 때만 보인다`() {
+        // 이 있음·없음 자체가 발화 주체 구분이다(시안 메인 2·4에는 없고 3·5에는 있다).
+        assertTrue(renderModelOf(ConversationUiState.Listening()).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Home()).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Failed).waveVisible)
+    }
+
+    @Test
+    fun `듣는 중 글로우는 음량에 반응한다`() {
+        val model = renderModelOf(ConversationUiState.Listening())
+        assertTrue(model.glowVisible)
+        assertTrue(model.glowReactsToVoice)
+    }
+
+    @Test
+    fun `홈 유도 글로우는 음량에 반응하지 않는다`() {
+        // 홈에는 들을 마이크가 없다 — 고정 주기로만 숨 쉰다.
+        val model = renderModelOf(ConversationUiState.Home())
+        assertTrue(model.glowVisible)
+        assertFalse(model.glowReactsToVoice)
+    }
+
+    @Test
+    fun `안내 세션 중 홈은 유도 글로우를 끈다`() {
+        // 잠긴 마이크가 "누르세요" 하고 빛나면 거짓 유도다 — micEnabled와 같은 조건을 탄다.
+        val model = renderModelOf(ConversationUiState.Home(), guideActive = true)
+        assertFalse(model.micEnabled)
+        assertFalse(model.glowVisible)
+    }
+
+    @Test
+    fun `다비가 말하는 중에는 파도도 글로우도 없다`() {
+        val model = renderModelOf(ConversationUiState.Speaking("질문", generation = 1L))
+        assertFalse(model.waveVisible)
+        assertFalse(model.glowVisible)
+    }
 }

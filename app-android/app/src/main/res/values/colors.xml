@@ -27,4 +27,21 @@
 
     <!-- 눌림 상태 레이어(E2): 검정 12%. Material state layer 관례 — ripple 색으로 쓴다. -->
     <color name="davi_state_layer_pressed">#1F000000</color>
+
+    <!--
+      음성 모션 색 (#132) — **임시 토큰이다.**
+
+      값은 Figma SSoT SCREENS "메인 v2"의 `v2/wave/bottom`·`v2/glow/mic`(**승인 대기**)에서
+      뽑았다. 시안은 분홍 그라데이션 배경 위에 얹히는데 **저장소 배경은 아직 흰색**
+      (`davi_bg`)이라, 흰 배경 위에서는 시안보다 파도가 도드라져 보인다.
+      v2 배경이 들어오면 **여기 값만** 갈아끼운다 — 뷰 코드는 건드리지 않는다.
+
+      위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다. 확정 시 Foundations 변수로 승격하고
+      이 블록을 지운다.
+    -->
+    <color name="davi_wave_back">#FFD6D9</color>
+    <color name="davi_wave_mid">#FCB1B7</color>
+    <color name="davi_wave_front">#F799A4</color>
+    <!-- 글로우는 마이크 뒤에 깔리므로 반투명이다. 불투명이면 배경을 도려낸 것처럼 보인다. -->
+    <color name="davi_glow_mic">#B8F2657E</color>
 </resources>
