@@ -22,22 +22,11 @@ def _headers() -> dict[str, str]:
     }
 
 
-def test_keyless_candidate_request_and_feedback_share_one_endpoint():
+def test_keyless_empty_candidates_need_app_name_without_feedback_request():
     initial = client.post(PATH, json={"goal": "카메라를 열고 싶어"}, headers=_headers())
     assert initial.status_code == 200
-    assert initial.json()["status"] == "candidates"
-    assert initial.json()["plan"]["candidates"] == []
-
-    feedback = client.post(
-        PATH,
-        json={
-            "goal": "카메라를 열고 싶어",
-            "feedback": {"plan": initial.json()["plan"], "candidate_results": []},
-        },
-        headers=_headers(),
-    )
-    assert feedback.status_code == 200
-    assert feedback.json()["status"] == "needs_app_name"
+    assert initial.json()["status"] == "needs_app_name"
+    assert initial.json().get("plan") is None
 
 
 def test_invalid_feedback_returns_safe_bad_request():

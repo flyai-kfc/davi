@@ -376,7 +376,11 @@ def post_app_resolution(
             headers=retry_after_header(error) or None,
         )
     request.state.request_metadata["candidate_count"] = (
-        len(state.plan.candidates) if state.plan is not None else len(req.feedback.plan.candidates)
+        len(state.plan.candidates)
+        if state.plan is not None
+        else len(req.feedback.plan.candidates)
+        if req.feedback is not None
+        else 0
     )
     request.state.request_metadata["resolution_status"] = state.status.value
     return state

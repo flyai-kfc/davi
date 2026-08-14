@@ -5,10 +5,9 @@ import org.junit.Test
 
 class LaunchableAppIndexTest {
     @Test
-    fun `normalizes badge folder suffix compatibility and whitespace`() {
-        assertEquals("메시지", normalizeLaunchableLabel("  메시지, 알림 12개  "))
-        assertEquals("samsung store", normalizeLaunchableLabel("Ｓａｍｓｕｎｇ   Store, 폴더"))
-        assertEquals("앱", normalizeLaunchableLabel("앱, 알림 2개, 폴더"))
+    fun `normalizes manifest label compatibility and whitespace`() {
+        assertEquals("메시지", normalizeLaunchableLabel("  메시지  "))
+        assertEquals("samsung store", normalizeLaunchableLabel("Ｓａｍｓｕｎｇ   Store"))
     }
 
     @Test
@@ -26,10 +25,22 @@ class LaunchableAppIndexTest {
     }
 
     @Test
-    fun `normalized label alias matches badge suffix`() {
+    fun `normalized manifest label alias matches`() {
         val result = AppCandidateMatcher.match(
             plan(candidate(aliases = listOf("메시지"))),
-            completeSnapshot(record("com.example.message", "메시지, 알림 3개", "Main")),
+            completeSnapshot(record("com.example.message", "메시지", "Main")),
+        )
+        assertEquals(AppCandidateAvailability.LAUNCHABLE, result.single().status)
+    }
+
+    @Test
+    fun `multiple launcher activities in one package are launchable`() {
+        val result = AppCandidateMatcher.match(
+            plan(candidate(packages = listOf("com.example.message"))),
+            completeSnapshot(
+                record("com.example.message", "메시지", "Main"),
+                record("com.example.message", "메시지", "Alias"),
+            ),
         )
         assertEquals(AppCandidateAvailability.LAUNCHABLE, result.single().status)
     }
@@ -65,15 +76,18 @@ class LaunchableAppIndexTest {
         )
         val index = LaunchableAppIndex(source) {}
         index.start()
+        assertEquals(0, source.queryCount)
         val first = index.current()
 
         source.query = LaunchableAppQuery.Available(emptyList(), complete = true)
         source.notifyChanged()
+        assertEquals(1, source.queryCount)
         val second = index.current()
 
         assertEquals(1, first.records.size)
         assertEquals(emptyList<LaunchableAppRecord>(), second.records)
         assertEquals(first.revision + 1, second.revision)
+        assertEquals(2, source.queryCount)
     }
 
     @Test
@@ -110,7 +124,11 @@ class LaunchableAppIndexTest {
 
     private class FakeSource(var query: LaunchableAppQuery) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null
-        override fun query(): LaunchableAppQuery = query
+        var queryCount = 0
+        override fun query(): LaunchableAppQuery {
+            queryCount++
+            return query
+        }
         override fun register(onChanged: () -> Unit) {
             callback = onChanged
         }

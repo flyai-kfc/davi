@@ -26,7 +26,9 @@ internal class AppResolutionCoordinator(
         if (initial !is AppResolutionResult.Success) return Outcome.Failure(initial)
         val plan = initial.state.plan
         if (initial.state.status != AppResolutionStatus.CANDIDATES || plan == null) {
-            return Outcome.Failure(invalidState())
+            return initial.state.toDialogueState()?.let {
+                Outcome.Completed(it, index.revision())
+            } ?: Outcome.Failure(invalidState())
         }
 
         repeat(MAX_INDEX_ATTEMPTS) {

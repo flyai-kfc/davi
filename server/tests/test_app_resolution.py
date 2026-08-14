@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -62,15 +63,89 @@ def _request_with(*statuses: AppCandidateAvailability) -> AppResolutionRequest:
     return AppResolutionRequest(goal="치킨을 주문하고 싶어", feedback=_feedback(*statuses))
 
 
-def test_stub_is_keyless_and_does_not_claim_installation():
+def test_stub_is_keyless_and_asks_for_app_name_without_feedback_round_trip():
     state = resolve_app_request(
         AppResolutionRequest(goal="치킨을 주문하고 싶어"),
         StubAppCandidateResolver(),
     )
 
-    assert state.status is AppResolutionStatus.CANDIDATES
-    assert state.plan is not None
-    assert state.plan.candidates == []
+    assert state.status is AppResolutionStatus.NEEDS_APP_NAME
+    assert state.plan is None
+    assert "설치" not in state.message
+
+
+def test_invalid_package_hint_is_dropped_without_rejecting_valid_candidate():
+    response = {
+        "decision_basis": "카메라 후보 판단",
+        "capability": "camera",
+        "candidates": [
+            {
+                "canonical_name": "카메라",
+                "package_names": ["invalid-package", "com.example.camera"],
+                "label_aliases": ["카메라"],
+                "confidence": 0.9,
+            }
+        ],
+    }
+    resolver = GeminiAppCandidateResolver(
+        "test-key",
+        "gemini-test",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _: httpx.Response(
+                    200,
+                    json={
+                        "candidates": [
+                            {
+                                "finishReason": "STOP",
+                                "content": {"parts": [{"text": json.dumps(response)}]},
+                            }
+                        ]
+                    },
+                )
+            )
+        ),
+    )
+
+    plan = resolver.candidates("사진 찍기")
+
+    assert plan.candidates[0].package_names == ["com.example.camera"]
+
+
+def test_provider_status_class_is_logged_without_model_output(caplog):
+    private_output = "private-model-output-canary"
+    payload = {
+        "decision_basis": private_output,
+        "capability": "camera",
+        "candidates": [],
+    }
+    resolver = GeminiAppCandidateResolver(
+        "test-key",
+        "gemini-test",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _: httpx.Response(
+                    200,
+                    json={
+                        "candidates": [
+                            {
+                                "finishReason": "STOP",
+                                "content": {"parts": [{"text": json.dumps(payload)}]},
+                            }
+                        ]
+                    },
+                )
+            )
+        ),
+    )
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.davi.llm"):
+        resolver.candidates("사진 찍기")
+
+    events = [json.loads(record.getMessage()) for record in caplog.records]
+    finished = next(event for event in events if event["event"] == "gemini_attempt_finished")
+    assert finished["provider_status_class"] == "2xx"
+    assert private_output not in json.dumps(events, ensure_ascii=False)
 
 
 def test_single_launchable_candidate_is_resolved_without_device_package_echo():

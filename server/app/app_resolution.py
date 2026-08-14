@@ -69,12 +69,14 @@ class _ProposedAppCandidate(BaseModel):
     @classmethod
     def validate_packages(cls, values: list[str]) -> list[str]:
         normalized = [value.strip() for value in values]
-        if any(
-            len(value) > MAX_APP_NAME_LENGTH or _PACKAGE_NAME.fullmatch(value) is None
+        # package는 모델의 보조 힌트다. 잘못된 값 하나 때문에 유효한 후보와 label 별칭까지
+        # 버리지 않고, Android package 문법을 만족하는 값만 기기 대조 계약으로 보낸다.
+        valid = [
+            value
             for value in normalized
-        ):
-            raise ValueError("invalid package name")
-        return list(dict.fromkeys(normalized))
+            if len(value) <= MAX_APP_NAME_LENGTH and _PACKAGE_NAME.fullmatch(value) is not None
+        ]
+        return list(dict.fromkeys(valid))
 
     @field_validator("label_aliases")
     @classmethod
@@ -227,9 +229,24 @@ class GeminiAppCandidateResolver(AppCandidateResolver):
             raise LlmError(ErrorKind.NETWORK, "Gemini API 네트워크 오류") from error
         if response.is_error:
             kind = _provider_error_kind(response.status_code)
-            self._log_finished(started_at, attempt, schema_mode, trigger, "error", kind)
+            self._log_finished(
+                started_at,
+                attempt,
+                schema_mode,
+                trigger,
+                "error",
+                kind,
+                provider_status_class=f"{response.status_code // 100}xx",
+            )
             raise _GeminiHttpError(response.status_code, _retry_after_seconds(response.headers))
-        self._log_finished(started_at, attempt, schema_mode, trigger, "success")
+        self._log_finished(
+            started_at,
+            attempt,
+            schema_mode,
+            trigger,
+            "success",
+            provider_status_class=f"{response.status_code // 100}xx",
+        )
         return _response_text(response)
 
     def _parse(self, response_text: str) -> AppCandidatePlan:
@@ -255,6 +272,7 @@ class GeminiAppCandidateResolver(AppCandidateResolver):
         trigger: str,
         outcome: str,
         error_kind: ErrorKind | None = None,
+        provider_status_class: str | None = None,
     ) -> None:
         log_event(
             llm_logger,
@@ -266,6 +284,7 @@ class GeminiAppCandidateResolver(AppCandidateResolver):
             schema_mode=schema_mode,
             trigger=trigger,
             outcome=outcome,
+            provider_status_class=provider_status_class,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
             error_kind=error_kind.value if error_kind else None,
         )
@@ -295,6 +314,11 @@ def resolve_app_request(
 ) -> AppResolutionState:
     if request.feedback is None:
         plan = (resolver or get_app_candidate_resolver()).candidates(request.goal)
+        if not plan.candidates:
+            return AppResolutionState(
+                status=AppResolutionStatus.NEEDS_APP_NAME,
+                message="사용할 앱 이름을 말씀해 주세요.",
+            )
         return AppResolutionState(
             status=AppResolutionStatus.CANDIDATES,
             message="앱 후보를 확인했어요.",

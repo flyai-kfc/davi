@@ -51,8 +51,12 @@ def _round_trip(statuses: list[AppCandidateAvailability]):
 
 
 def test_fake_llm_missing_candidates_needs_app_name_without_install_claim():
-    result = _round_trip([])
+    result = resolve_app_request(
+        AppResolutionRequest(goal="치킨을 주문하고 싶어"),
+        FakeCandidateResolver([]),
+    )
     assert result.status is AppResolutionStatus.NEEDS_APP_NAME
+    assert result.plan is None
     assert "설치" not in result.message
 
 

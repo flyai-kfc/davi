@@ -85,7 +85,8 @@
     │                ⑦ ready면 /v1/intent/app-resolution
     │                   서버 일반 후보 → 기기 LaunchableAppIndex 대조
     │                   → server-origin plan + candidate_id/status 피드백
-    │                   한 후보=ready / 복수·0·unknown=needs_clarification
+    │                   후보 0=첫 응답에서 needs_clarification
+    │                   한 후보=ready / 복수·unknown=needs_clarification
     │                   그 뒤 applyResponse()
     │                   ├─ needs_clarification ─────────────┐
     │                   ├─ ready ──────────────┐            │

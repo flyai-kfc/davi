@@ -93,8 +93,10 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 **안내는 자동 시작하지 않으며** 사용자가 최종 확인의 ○를 눌러야 한다.
 
 index는 `QUERY_ALL_PACKAGES`를 쓰지 않고 현재 접근 가능한 profile의 `MAIN`/`LAUNCHER` activity만
-조회한다. 설치·삭제·변경 callback 때 전체를 다시 읽어 revision을 올린다. 전체 목록과 기기에서만
-발견한 package·label·component·profile은 서버·파일·상세 로그에 나가지 않는다.
+조회한다. 잠긴 profile은 지금 안내할 수 없는 범위라 제외한다. 설치·삭제·변경 callback은 revision을
+올리고 기존 snapshot을 무효화만 하며, 다음 음성 대조 때 작업 스레드에서 전체를 다시 읽는다. 같은
+profile·package의 launcher activity가 여러 개여도 한 앱으로 판정한다. 전체 목록과 기기에서만 발견한
+package·label·component·profile은 서버·파일·상세 로그에 나가지 않는다.
 
 대화는 무작위 UUID별 최대 5왕복을 프로세스 메모리에만 두고 화면 이탈·재시작 때 폐기한다. 늦은
 응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고, 발화·질문·goal·

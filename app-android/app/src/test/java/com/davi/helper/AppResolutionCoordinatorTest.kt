@@ -6,6 +6,26 @@ import org.junit.Test
 
 class AppResolutionCoordinatorTest {
     @Test
+    fun `empty candidate result completes without feedback round trip`() {
+        val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
+        val requests = mutableListOf<AppResolutionRequest>()
+        val gateway = AppResolutionGateway { request ->
+            requests += request
+            AppResolutionResult.Success(
+                AppResolutionState(AppResolutionStatus.NEEDS_APP_NAME, "앱 이름을 말씀해 주세요"),
+                trace(),
+            )
+        }
+
+        val outcome = AppResolutionCoordinator(index, gateway).resolve("목표", 1) { true }
+
+        assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
+        outcome as AppResolutionCoordinator.Outcome.Completed
+        assertEquals(IntentDialogueStatus.NEEDS_CLARIFICATION, outcome.state.status)
+        assertEquals(1, requests.size)
+    }
+
+    @Test
     fun `one local match returns ready goal without sending local app data`() {
         val source = FakeSource(
             listOf(record("com.example.delivery", "로컬 전용 label")),

@@ -107,9 +107,10 @@ capability와 일반 후보를 최대 5개 반환하고 candidate ID는 서버�
 }
 ```
 
-서버 LLM은 내부 `decision_basis`를 먼저 생성하되 wire와 로그에는 내보내지 않는다. 서버는 한 후보면
-`resolved`, 복수면 `needs_user_choice`, 0개면 `needs_app_name`, 잠긴 profile·
-부분 조회 실패가 있으면 `unavailable_or_unknown`을 반환한다. 서버는 plan을 요청에 다시 받으므로
+서버 LLM은 내부 `decision_basis`를 먼저 생성하되 wire와 로그에는 내보내지 않는다. 후보가 0개면
+기기 피드백 왕복 없이 첫 응답에서 `needs_app_name`을 반환한다. 후보가 있으면 한 후보는 `resolved`,
+복수는 `needs_user_choice`, 접근 가능한 profile의 부분 조회 실패는 `unavailable_or_unknown`으로
+판정한다. 잠긴 profile은 지금 안내할 수 없는 기기 범위라 index 조회에서 제외한다. 서버는 plan을 요청에 다시 받으므로
 대화 UUID나 프로세스 캐시에 후보 상태를 저장하지 않는다. 기기에서만 발견한 package·label·component·
 profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`, phase, 최종 status만 운영 로그에 남는다.
 

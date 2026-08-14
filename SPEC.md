@@ -237,10 +237,13 @@ status·후보 없음·토큰 잘림과 두 번째 계약 위반은 `PARSE`로 �
 `POST /v1/intent/app-resolution`을 호출한다. 첫 요청에는 goal만 있고, 서버 LLM은 capability와
 일반 후보를 최대 5개 반환한다. Android는 `QUERY_ALL_PACKAGES` 없이 `MAIN`/`LAUNCHER` query와
 `LauncherApps`로 현재 접근 가능한 profile의 실행 대상을 메모리 index로 유지한다. package exact
-match를 먼저 보고 정규화된 label/alias를 보조로 쓴다. 잠긴 profile·부분 조회 실패는 `unknown`이며
-`not_found`로 축약하지 않는다.
+match를 먼저 보고 정규화된 manifest label/alias를 보조로 쓴다. 잠긴 profile은 지금 안내로 열 수
+없는 범위라 조회 대상에서 제외하고, 접근 가능한 profile의 실제 조회 실패만 `unknown`으로 두어
+`not_found`로 축약하지 않는다. 앱 시작과 package callback에서는 index를 dirty로 표시만 하며,
+음성 작업 스레드가 대조 직전에 전체 조회한다.
 
-앱은 두 번째 요청에서 서버가 제시한 plan을 그대로 되돌리고 후보별 `candidate_id`와
+후보가 비면 서버는 첫 응답에서 바로 `needs_app_name`으로 끝낸다. 후보가 있으면 앱은 두 번째 요청에서
+서버가 제시한 plan을 그대로 되돌리고 후보별 `candidate_id`와
 `launchable`/`not_found`/`ambiguous`/`unknown`만 붙인다. 기기에서 발견한 package·label·component·
 profile과 전체 목록은 전송하지 않는다. plan을 echo하는 이유는 서버가 대화 UUID나 캐시로 상태를
 보존하지 않고도 후보를 판정하기 위해서다. 한 후보만 확정되면 서버가 공개 canonical name을 goal에
