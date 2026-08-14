@@ -39,7 +39,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 
 ## UI 컨벤션 (확정 2026-07-24)
 **화면(Activity/Fragment)은 XML 레이아웃 + ViewBinding. 오버레이는 커스텀 View + Canvas. Compose는 쓰지 않는다.**
-- 이유: 시니어 요구(큰 글씨·고대비·TalkBack)가 XML 리소스에서 거의 공짜다 — `sp`가 시스템 글꼴을 따라가고 `values-night` 등으로 분기된다. 오버레이는 `WindowManager.addView` 런타임 생성 + `onDraw` 애니메이션이라 애초에 커스텀 View만 가능하고, HANDOFF §4의 검증 자산도 전부 커스텀 View다. Compose는 오버레이 윈도우에 ViewTree owner를 손으로 붙여야 하는 함정이 있어 이 사이클엔 이득 < 비용.
+- 이유: 시니어 요구(큰 글씨·고대비)가 XML 리소스에서 거의 공짜다 — `sp`가 시스템 글꼴을 따라가고 `values-night` 등으로 분기된다. 오버레이는 `WindowManager.addView` 런타임 생성 + `onDraw` 애니메이션이라 애초에 커스텀 View만 가능하고, HANDOFF §4의 검증 자산도 전부 커스텀 View다. Compose는 오버레이 윈도우에 ViewTree owner를 손으로 붙여야 하는 함정이 있어 이 사이클엔 이득 < 비용.
 - **코드에서 px/밀도를 계산하지 않는다.** 글자 크기·여백·터치 대상은 `res/values/dimens.xml`에서 가져온다.
 - 글자가 커지면 잘리므로 **폼형 화면**(입력·버튼이 세로로 쌓이는 화면)은 루트를 스크롤 가능하게
   둔다. 대화 화면처럼 고정 배치인 화면은 예외다(#123) — 요소 수를 적게 유지해 여백으로 흡수한다.
