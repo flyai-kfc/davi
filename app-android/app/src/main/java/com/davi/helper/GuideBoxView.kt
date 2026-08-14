@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -49,11 +50,39 @@ class GuideBoxView @JvmOverloads constructor(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    /** 이미 접힌 줄들. [GuideBoxLayout]이 정한 그대로 그린다 — 여기서 다시 접지 않는다. */
+    /**
+     * 이미 접힌 줄들. [GuideBoxLayout]이 정한 그대로 그린다 — 여기서 다시 접지 않는다.
+     *
+     * **문구가 실제로 바뀔 때만 떠오른다**(#147). 서비스는 폴링마다 상태를 다시 보내고 화면이
+     * 안 바뀌면 같은 안내가 계속 도착하므로, 호출마다 등장을 다시 틀면 안내창이 끝없이 깜빡인다
+     * (`setReading`을 멱등하게 짠 것과 같은 이유). 위의 조기 반환이 그 가드를 겸한다.
+     */
     fun setLines(next: List<String>) {
         if (lines == next) return
+        val hadContent = lines.isNotEmpty()
         lines = next
         invalidate()
+        // 이미 문구가 있던 상태에서 내용만 바뀌는 것은 "새로 나타남"이 아니다 — 그때 투명도를
+        // 되돌리면 읽던 사람 눈앞에서 안내창이 한 번 사라졌다 온다.
+        if (!hadContent && next.isNotEmpty()) fadeIn()
+    }
+
+    /**
+     * 안내창이 떠오르며 나타난다. **투명도만 바꾼다 — 자리·크기는 건드리지 않는다**(#147).
+     *
+     * 창 자체가 안내창 크기로 잡혀 있어([ControlOverlay]) 뷰를 움직이면 창 밖으로 잘리고,
+     * 창을 움직이면 그 영역의 터치도 함께 움직여 X 칩을 겨냥하다 빗맞힌다. 무엇보다 창을
+     * 건드릴 때마다 `TYPE_WINDOWS_CHANGED`가 떠서 서비스의 샘플 예약에 걸리므로
+     * ([ControlOverlay]의 `appliedX` 주석), 프레임마다 창을 옮기면 안내 루프 자체를 흔든다.
+     */
+    private fun fadeIn() {
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            alpha = 1f
+            return
+        }
+        animate().cancel()
+        alpha = 0f
+        animate().alpha(1f).setDuration(FADE_IN_MS).start()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -77,5 +106,11 @@ class GuideBoxView @JvmOverloads constructor(
             canvas.drawText(line, padding, baseline, textPaint)
             baseline += metrics.bottom - metrics.top
         }
+    }
+
+    private companion object {
+        // ReadingBorder의 조정 지점 규약을 따른다 — dp가 아니라 시간이라 dimens.xml로 빼지 않는다.
+        // 짧게 잡는다. 안내는 "부드럽게"보다 "빨리 읽히게"가 먼저다.
+        const val FADE_IN_MS = 180L
     }
 }

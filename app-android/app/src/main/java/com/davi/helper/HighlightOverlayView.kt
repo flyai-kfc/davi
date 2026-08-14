@@ -66,6 +66,17 @@ class HighlightOverlayView(context: Context) : View(context) {
         color = ContextCompat.getColor(context, R.color.davi_highlight)
     }
 
+    /**
+     * 강조 사각형의 바깥 글로우(#147). 안쪽 선([strokePaint])은 불투명을 유지하고 이것만
+     * 숨 쉰다 — 강조를 투명도로 흔들면 읽는 중 테두리와의 층 구분이 무너진다([HighlightMotion]).
+     * 프레임마다 새로 만들지 않는다.
+     */
+    private val highlightGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = ContextCompat.getColor(context, R.color.davi_highlight)
+    }
+    private val highlightGlowSpread = resources.getDimension(R.dimen.davi_overlay_highlight_glow)
+
     // 그리지는 않지만 줄바꿈을 재려면 같은 글자여야 한다 — 그리는 쪽과 한 곳에서 만든다.
     private val instructionPaint = GuideBoxStyle.textPaint(context)
     private val instructionPadding = GuideBoxStyle.padding(context)
@@ -96,7 +107,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     private val readingOnset = Runnable {
         readingVisible = true
-        startBreathing()
+        syncBreathing()
         invalidate()
     }
 
@@ -124,17 +135,31 @@ class HighlightOverlayView(context: Context) : View(context) {
             postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
         } else {
             removeCallbacks(readingOnset)
-            breathing.cancel()
             readingVisible = false
+            syncBreathing()
             invalidate()
         }
     }
 
     /**
+     * 브리딩 애니메이터를 켜고 끈다. **읽는 중 테두리와 강조 사각형이 이 하나를 공유한다**(#147).
+     *
+     * 구동부를 하나로 두는 이유는 둘이 동시에 뜰 수 있어서다 — 각자 애니메이터를 가지면 같은
+     * 뷰가 한 프레임에 두 번 무효화되고, 주기가 어긋나면 두 테두리가 따로 논다. 공유하면 위상이
+     * 자동으로 맞는다.
+     *
+     * 둘 다 없으면 멈춘다. 오버레이는 세션 내내 다른 앱 위에 떠 있으므로, 그릴 것이 없는데
+     * 도는 것은 그대로 배터리다.
+     *
      * 애니메이터가 시스템 설정(개발자 옵션·절전)으로 꺼진 기기에서는 [ValueAnimator]가 즉시
      * 끝나 표시가 사라진다. 그때는 브리딩 없이 가장 진한 한 장을 그린다.
      */
-    private fun startBreathing() {
+    private fun syncBreathing() {
+        val needed = readingVisible || hasTarget
+        if (!needed) {
+            breathing.cancel()
+            return
+        }
         if (!ValueAnimator.areAnimatorsEnabled()) {
             readingPhase = ReadingBorder.STATIC_PHASE
             return
@@ -152,6 +177,8 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (bounds != null) target.set(bounds)
         this.instruction = instruction.trim()
         this.avoid = avoid
+        // 강조가 생기거나 사라지면 브리딩이 필요한지도 함께 바뀐다(#147).
+        syncBreathing()
         relayout()
         invalidate()
     }
@@ -160,6 +187,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         hasTarget = false
         instruction = ""
         avoid = emptyList()
+        syncBreathing()
         applyLayout(null)
         invalidate()
     }
@@ -218,12 +246,48 @@ class HighlightOverlayView(context: Context) : View(context) {
             // 테두리가 대상 가장자리를 덮지 않도록 선 두께의 절반만큼 바깥으로 물린다.
             // 단 화면 밖으로 나가면 그만큼 잘리므로, 그릴 수 있는 범위 안으로 당긴다
             // (실측: 네비게이션바 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다).
-            val half = highlightStroke / 2f
+            //
+            // **글로우가 가장 두꺼워졌을 때를 기준으로 물린다**(#147). 매 프레임 두께에 맞춰
+            // 물리면 숨 쉬는 동안 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다 —
+            // 자리는 고정하고 두께·투명도만 변해야 "숨 쉰다"로 읽힌다.
+            val frame = HighlightMotion.frame(readingPhase, highlightStroke, highlightGlowSpread)
+            // **안쪽 선의 자리는 후광과 무관하게 잡는다.** 물림 계산에 번짐 거리를 섞었더니
+            // 화면 가장자리에 붙은 대상(런처 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려
+            // 찌그러져 보였다(실기기 실측, #147). 선은 대상에 붙어야 하고, 후광은 화면 밖으로
+            // 나가면 캔버스가 알아서 자른다 — 그게 자연스럽다.
+            val half = frame.coreStroke / 2f
+            val left = (target.left - half).coerceAtLeast(bounds.left)
+            val top = (target.top - half).coerceAtLeast(bounds.top)
+            val right = (target.right + half).coerceAtMost(bounds.right)
+            val bottom = (target.bottom + half).coerceAtMost(bounds.bottom)
+
+            // 후광은 겹을 쌓아 번지게 한다 — 굵은 선 하나로는 이중 테두리로 보인다(실기기 실측).
+            // 바깥으로 갈수록 빠르게 옅어져 마이크 뒤 글로우와 같은 인상을 준다(#147).
+            if (frame.glowPeakAlpha > 0) {
+                highlightGlowPaint.strokeWidth =
+                    HighlightMotion.ringStrokeFor(frame.glowSpread, highlightStroke)
+                for (ring in 0 until HighlightMotion.GLOW_RING_COUNT) {
+                    val alpha = HighlightMotion.ringAlphaAt(ring, frame.glowPeakAlpha)
+                    if (alpha <= 0) continue
+                    val offset = HighlightMotion.ringOffsetAt(ring, frame.glowSpread)
+                    highlightGlowPaint.alpha = alpha
+                    canvas.drawRoundRect(
+                        left - offset,
+                        top - offset,
+                        right + offset,
+                        bottom + offset,
+                        highlightCorner + offset,
+                        highlightCorner + offset,
+                        highlightGlowPaint,
+                    )
+                }
+            }
+            strokePaint.strokeWidth = frame.coreStroke
             canvas.drawRoundRect(
-                (target.left - half).coerceAtLeast(bounds.left),
-                (target.top - half).coerceAtLeast(bounds.top),
-                (target.right + half).coerceAtMost(bounds.right),
-                (target.bottom + half).coerceAtMost(bounds.bottom),
+                left,
+                top,
+                right,
+                bottom,
                 highlightCorner,
                 highlightCorner,
                 strokePaint,
