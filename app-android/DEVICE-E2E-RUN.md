@@ -24,19 +24,6 @@ cd app-android
 시나리오를 생략하면 `device-e2e-scenarios.json`의 `default_scenario`가 실행된다. 두 실행기는 같은
 registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않는다.
 
-카메라·메시지 pre-send 시나리오는 코드에 수신자를 넣지 않는다. 개인 연락처·기존 대화가 없는 전용
-테스트 수신자를 실행 프로세스 환경에만 설정한다. 실행기는 원문을 콘솔이나 보고서에 출력하지 않는다.
-
-```bash
-export DAVI_E2E_SMS_RECIPIENT='<전용 테스트 수신자>'
-./scripts/run-device-e2e.sh --scenario camera-message-presend-full-journey
-```
-
-```powershell
-$env:DAVI_E2E_SMS_RECIPIENT = '<전용 테스트 수신자>'
-.\scripts\run-device-e2e.ps1 -Scenario camera-message-presend-full-journey
-```
-
 상세 분석 보고서는 기본으로 함께 생성된다. 화면·모델 문장이 포함된 로컬 상세 파일이 필요 없는
 실행에서는 다음처럼 끈다.
 
@@ -66,11 +53,6 @@ $env:DAVI_E2E_SMS_RECIPIENT = '<전용 테스트 수신자>'
 실행기가 새로 만든 `adb reverse`만 종료 시 제거한다. 이미 있던 reverse는 그대로 둔다.
 따라서 테스트 중에는 별도 helper APK가 필요하지만 사용자가 실행하거나 계속 설치해 둘 두 번째 앱은
 아니다. 다음 실행 때 실행기가 다시 설치한다.
-
-pre-send 시나리오는 실제 메시지를 보내지 않는다. Gemini가 전송 버튼을 선택하면 driver가 탭 전에
-실패시키며, 종료 시 활성 작성 화면을 닫고 테스트 중 새로 생성된 소수의 MediaStore image ID만
-삭제한다. 새 이미지가 안전 상한을 넘으면 개인 데이터 오삭제를 피하기 위해 삭제하지 않고 정리
-실패로 보고한다.
 
 ## 보고서 위치
 

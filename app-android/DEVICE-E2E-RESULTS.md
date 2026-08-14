@@ -109,38 +109,3 @@ app-android/build/reports/device-e2e-private/samsung-clock-create-alarm-full-jou
 
 두 경로 모두 `build/` 아래이고 상세 경로는 루트 `.gitignore`에도 명시되어 자동 커밋되지 않는다.
 특히 `device-e2e-private` 보고서는 PR·이슈·채팅에 첨부하지 않는다.
-
-## 카메라·메시지 pre-send 시나리오 상태
-
-`camera-message-presend-full-journey` 구현은 다음 안전 경계를 포함한다.
-
-- 기본 SMS 앱과 image capture 카메라 package를 런타임에 식별
-- 기존 대화 대신 새 메시지 작성만 허용
-- 전용 테스트 수신자·첨부·카메라·촬영·사진 사용 target만 허용
-- 전송 버튼은 `presend_send_blocked`로 실행 전 차단
-- 완료는 촬영 실행, 메시지 작성 화면 복귀, 수신자 표시, 전송 버튼 활성 상태를 함께 확인
-- 종료 시 활성 작성 화면을 닫고 실행 기준선 뒤 생성된 소수의 MediaStore image ID만 삭제
-
-2026-08-14 API 키 없는 Android test APK 컴파일과 registry·보고서 테스트는 통과했다. SM-S921N의
-첫 실제 Gemini 실행은 Davi → Samsung launcher → Samsung Messages까지 3개 결정을 수행했고, 새 작성
-메뉴의 `1:1 대화`를 아직 분류하지 못해 `unsafe_message_target`에서 조작 전에 중단됐다. 이 target은
-기존 대화나 개인 연락처가 아닌 새 1:1 작성 진입점임을 확인해 안전 종류에 추가했다. 작성 화면 정리는
-성공했고 실제 전송과 사진 생성은 없었다.
-
-후속 실행에서는 삼성 메시지의 2단계 새 작성 메뉴와 `AutoCompleteTextView` 수신자 입력을 실측에 맞게
-분류했다. 최종 재실행은 Davi → launcher → Samsung Messages에서 다음 6개 Gemini 결정을 실제로
-수행했다.
-
-1. 메시지 앱 진입
-2. 새 메시지 메뉴 열기
-3. `1:1 대화` 선택
-4. 실행 환경에서만 받은 테스트 수신자 입력
-5. 해당 수신자 확정
-6. `카메라 열기` 선택
-
-인라인 카메라가 열린 직후 Davi 로그에 접근성 `root_state=unavailable`이 관측돼 새 화면 snapshot을
-만들지 못했고, 7번째 결정은 `decision_timeout`으로 종료됐다. 서버의 일시적 Gemini network timeout은
-재시도 뒤 성공했지만 접근성 루트 부재와는 별개였다. 테스트 정리는 성공했고 실행 뒤 SMS/MMS 행은
-0건, 테스트 helper APK는 제거됐으며 Davi 접근성 서비스도 복구됐다. 따라서 **현재 구현은 이 관통
-경로를 재현·안전 차단·보고하지만, 사진 촬영·첨부 완료가 성공한다고 주장하지 않는다.** 삼성 메시지
-인라인 카메라에서 접근성 루트를 얻지 못하는 제품 제약은 별도 후속 분석이 필요하다.

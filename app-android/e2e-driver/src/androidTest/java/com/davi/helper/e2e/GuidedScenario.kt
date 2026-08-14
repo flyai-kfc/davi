@@ -47,14 +47,6 @@ interface GuidedScenario<State> {
         decision: DisplayedDecision,
     ): String? = null
 
-    /** 실제 사용자 동작 주입이 성공한 뒤 시나리오 상태를 갱신한다. */
-    fun afterExecute(
-        device: UiDevice,
-        state: State,
-        step: Int,
-        decision: DisplayedDecision,
-    ) = Unit
-
     /** 완료 선언을 믿기 전에 다른 앱의 실제 UI에서 목표 상태를 독립 확인한다. */
     fun isGoalSatisfied(device: UiDevice, state: State): Boolean
 

@@ -5,10 +5,6 @@
 SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 찾고 테스트 전용 알람을 만든 뒤,
 성공·실패와 무관하게 자동 삭제한다(#124).
 
-`camera-message-presend-full-journey`는 기본 메시지 앱에서 새 작성 화면을 열고 전용 테스트 수신자를
-지정한 뒤 카메라로 사진을 촬영·첨부하는 별도 관통 시나리오다. 실제 전송 버튼은 어떤 Gemini
-결정에서도 실행 전에 차단한다. 작성 화면을 닫고 실행 중 새로 생긴 MediaStore image ID만 삭제한다.
-
 처음 사용하는 개발자는 다음 순서로 읽는다.
 
 1. [`DEVICE-E2E-SETUP.md`](DEVICE-E2E-SETUP.md) — OS별 환경과 실기기 권한
@@ -32,12 +28,6 @@ SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 �
 따라서 Gemini가 잘못된 대상을 고르면 UIAutomator가 정답 selector로 보정하지 않는다. 런처에서는
 앱서랍·검색·스크롤과 삼성 시계 진입만 허용해 다른 개인 앱을 열기 전에 막는다. 삼성 시계에서는 기존
 개인 알람을 보호하기 위해 알람 추가, 시간 picker, 테스트 이름, 저장만 허용한다.
-
-카메라·메시지 시나리오는 Android가 정한 기본 SMS package와 image capture package를 런타임에
-식별한다. 메시지 목록에서는 새 작성만, 작성 화면에서는 수신자·첨부·카메라만, 촬영 화면에서는
-셔터·사진 사용만 허용한다. 메시지 본문 TYPE과 기존 대화 선택은 거부하며 전송 target은 별도
-`presend_send_blocked`로 실패시킨다. 수신자 원문은 환경변수→instrumentation 메모리로만 전달되고
-기본·상세 보고서와 logcat에 기록하지 않는다.
 
 이 full-journey는 최신 Davi 화면과 홈 전환부터 검증하지만 음성 인식의 비결정성을 섞지 않기 위해
 목표 문장은 debug 서명 채널로 주입한다. 음성 인식·후속 질문·사용자의 최종 확인 UI 품질은 별도
@@ -71,14 +61,6 @@ DAVI_USE_STUB_LLM=false .venv/bin/python -m uvicorn app.main:app \
 ```bash
 cd app-android
 ./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey
-```
-
-카메라·메시지 pre-send는 개인 연락처와 기존 대화가 없는 전용 테스트 수신자를 로컬 환경변수로
-설정한다. 실제 번호를 저장소나 shell 예시에 쓰지 않는다.
-
-```bash
-export DAVI_E2E_SMS_RECIPIENT='<전용 테스트 수신자>'
-./scripts/run-device-e2e.sh --scenario camera-message-presend-full-journey
 ```
 
 스크립트는 `/health`의 `stub_llm=false`를 먼저 확인하고, `adb reverse tcp:8000 tcp:8000`,
@@ -149,10 +131,9 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 2. 전체 여정은 `start = DAVI_TO_ANDROID_HOME`, 앱 내부 진단은 `PREPARED_SCREEN`을 선택한다.
 3. `GuidedScenario`에서 목표와 TYPE 입력값을 정의한다.
 4. `validateBeforeExecute`를 package별로 나눠 각 전환에서 허용할 최소 target을 정의한다.
-5. 실제 조작 성공 뒤 상태가 필요하면 `afterExecute`에서만 갱신한다.
-6. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
-7. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
-8. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.
+5. `isGoalSatisfied`는 모델의 `done`과 독립된 외부 앱 UI로 판정한다.
+6. `cleanup`은 테스트가 만든 고유 데이터만 선택하고, 준비 단계에서도 이전 실패 부산물을 지운다.
+7. `@LargeTest` 클래스에서 `GuidedScenarioRunner`로 시나리오를 실행한다.
 
 시나리오·실패 메시지·logcat에는 원본 화면 트리, 개인 label, 목표 원문, 모델 원문 응답, API 키를
 저장하거나 출력하지 않는다. 상세 보고서도 원본 트리가 아니라 앱이 실제로 전송한 1차 마스킹

@@ -5,6 +5,7 @@ internal object GuideInstructionQuality {
     fun validate(decision: DisplayedDecision, step: Int) {
         val action = decision.action
         val instruction = action.instruction.trim()
+        // 서버 wire 계약이 아니라, 비정상적으로 짧거나 긴 안내를 드러내는 dev-only E2E 관측 상한이다.
         if (instruction.length !in 4..240) {
             throw GuidedScenarioFailure("instruction_length", step)
         }

@@ -127,7 +127,7 @@ class DeviceE2eReportTest(unittest.TestCase):
         scenarios = registry["scenarios"]
         ids = [scenario["id"] for scenario in scenarios]
 
-        self.assertEqual(registry["schema_version"], 2)
+        self.assertEqual(registry["schema_version"], 1)
         self.assertEqual(
             registry["default_scenario"],
             "samsung-clock-create-alarm-full-journey",
@@ -140,7 +140,6 @@ class DeviceE2eReportTest(unittest.TestCase):
             self.assertTrue(scenario["requirements"].strip())
             self.assertNotRegex(scenario["description"], re.compile(r"[\r\n]"))
             self.assertNotRegex(scenario["requirements"], re.compile(r"[\r\n]"))
-            self.assertIsInstance(scenario["requires_sms_recipient"], bool)
             self.assertRegex(
                 scenario["test_class"],
                 re.compile(r"^com\.davi\.helper\.e2e\.[A-Za-z][A-Za-z0-9]*Test$"),
@@ -148,12 +147,6 @@ class DeviceE2eReportTest(unittest.TestCase):
             class_name = scenario["test_class"].rsplit(".", 1)[-1]
             source = app_dir / "e2e-driver/src/androidTest/java/com/davi/helper/e2e" / f"{class_name}.kt"
             self.assertTrue(source.is_file(), source)
-
-        pre_send = next(
-            scenario for scenario in scenarios
-            if scenario["id"] == "camera-message-presend-full-journey"
-        )
-        self.assertTrue(pre_send["requires_sms_recipient"])
 
 
 if __name__ == "__main__":
