@@ -93,31 +93,41 @@ class LaunchableAppIndexTest {
     }
 
     @Test
-    fun `query failure becomes unknown and retries without a package callback`() {
-        val source = FakeSource(
-            LaunchableAppQuery.Available(
-                listOf(record("com.example.one", "하나", "Main")),
-                complete = true,
-            )
-        )
-        val index = LaunchableAppIndex(source) {}
-        index.start()
-        source.query = LaunchableAppQuery.Unavailable
-        source.notifyChanged()
-
-        val snapshot = index.current()
-        assertEquals(false, snapshot.complete)
-        assertEquals(emptyList<LaunchableAppRecord>(), snapshot.records)
-
-        source.query = LaunchableAppQuery.Available(
+    fun `transient query failure retries and recovers in the same turn and revision`() {
+        val recoveredQuery = LaunchableAppQuery.Available(
             listOf(record("com.example.recovered", "복구", "Main")),
             complete = true,
         )
+        val source = FakeSource(LaunchableAppQuery.Unavailable).apply {
+            queuedQueries += LaunchableAppQuery.Unavailable
+            queuedQueries += recoveredQuery
+        }
+        val refreshed = mutableListOf<LaunchableAppSnapshot>()
+        val index = LaunchableAppIndex(source, refreshed::add)
+        index.start()
         val recovered = index.current()
 
         assertTrue(recovered.complete)
         assertEquals("com.example.recovered", recovered.records.single().packageName)
         assertEquals(2, source.queryCount)
+        assertEquals(listOf(false, true), refreshed.map { it.complete })
+        assertEquals(refreshed.first().revision, refreshed.last().revision)
+        assertEquals(refreshed.last().revision, recovered.revision)
+    }
+
+    @Test
+    fun `persistent incomplete query is bounded per turn and remains dirty for the next turn`() {
+        val source = FakeSource(LaunchableAppQuery.Unavailable)
+        val index = LaunchableAppIndex(source) {}
+        index.start()
+
+        val first = index.current()
+        val second = index.current()
+
+        assertFalse(first.complete)
+        assertFalse(second.complete)
+        assertEquals(first.revision, second.revision)
+        assertEquals(4, source.queryCount)
     }
 
     @Test
@@ -157,6 +167,7 @@ class LaunchableAppIndexTest {
 
     private class FakeSource(var query: LaunchableAppQuery) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null
+        val queuedQueries = mutableListOf<LaunchableAppQuery>()
         var queryCount = 0
         var invalidationsDuringQuery = 0
         override fun query(): LaunchableAppQuery {
@@ -165,7 +176,7 @@ class LaunchableAppIndexTest {
                 invalidationsDuringQuery--
                 callback?.invoke()
             }
-            return query
+            return if (queuedQueries.isEmpty()) query else queuedQueries.removeAt(0)
         }
         override fun register(onChanged: () -> Unit) {
             callback = onChanged
