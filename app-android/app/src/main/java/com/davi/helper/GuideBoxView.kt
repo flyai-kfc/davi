@@ -42,6 +42,11 @@ class GuideBoxView @JvmOverloads constructor(
     init {
         // 안내창 영역의 터치를 여기서 끝낸다. 위 주석 참조 — 빼면 조용히 깨진다.
         isClickable = true
+        // **clickable인데 접근성에서는 뺀다** — 모순처럼 보이지만 둘은 다른 축이다.
+        // 이 뷰에는 라벨도 실제 click 동작도 없어서, 트리에 남으면 TalkBack이 "라벨 없는 버튼"으로
+        // 읽고 사용자가 아무 일도 일어나지 않는 영역에 포커스한다. 터치 처리에는 영향이 없다.
+        // 누를 수 있는 것은 형제인 칩뿐이고, 칩은 라벨이 있어 그대로 노출된다(PR #133 리뷰).
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
     /** 이미 접힌 줄들. [GuideBoxLayout]이 정한 그대로 그린다 — 여기서 다시 접지 않는다. */
