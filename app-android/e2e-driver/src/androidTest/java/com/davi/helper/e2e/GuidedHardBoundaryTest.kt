@@ -2,6 +2,7 @@ package com.davi.helper.e2e
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GuidedHardBoundaryTest {
@@ -63,6 +64,24 @@ class GuidedHardBoundaryTest {
         )
 
         assertEquals("first_blocked", GuidedHardBoundaries.firstFailure(boundaries, decision("설정")))
+    }
+
+    @Test
+    fun blockedTapTargetsRejectsBlankEntriesInEitherSet() {
+        assertThrows(IllegalArgumentException::class.java) {
+            GuidedHardBoundaries.blockedTapTargets(
+                failureCode = "send_blocked",
+                packages = setOf("com.example.messages", " "),
+                labels = setOf("전송"),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            GuidedHardBoundaries.blockedTapTargets(
+                failureCode = "send_blocked",
+                packages = setOf("com.example.messages"),
+                labels = setOf("전송", " "),
+            )
+        }
     }
 
     private fun decision(

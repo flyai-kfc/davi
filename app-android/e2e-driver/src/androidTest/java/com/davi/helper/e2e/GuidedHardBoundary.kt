@@ -34,10 +34,10 @@ internal object GuidedHardBoundaries {
         require(SAFE_FAILURE_CODE.matches(failureCode)) { "unsafe failure code" }
         require(packages.isNotEmpty()) { "blocked packages must not be empty" }
         require(labels.isNotEmpty()) { "blocked labels must not be empty" }
-        val normalizedPackages = packages.map(String::trim).filter(String::isNotEmpty).toSet()
-        val normalizedLabels = labels.map(::normalize).filter(String::isNotEmpty).toSet()
-        require(normalizedPackages.size == packages.size) { "blocked packages must be non-blank" }
-        require(normalizedLabels.isNotEmpty()) { "blocked labels must be non-blank" }
+        require(packages.all(String::isNotBlank)) { "blocked packages must be non-blank" }
+        require(labels.all(String::isNotBlank)) { "blocked labels must be non-blank" }
+        val normalizedPackages = packages.map(String::trim).toSet()
+        val normalizedLabels = labels.map(::normalize).toSet()
 
         return GuidedHardBoundary { decision ->
             if (decision.action.actionType == GuidedActionType.TAP &&
