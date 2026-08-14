@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import android.animation.ValueAnimator
+import android.view.animation.DecelerateInterpolator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -82,7 +83,13 @@ class GuideBoxView @JvmOverloads constructor(
         }
         animate().cancel()
         alpha = 0f
-        animate().alpha(1f).setDuration(FADE_IN_MS).start()
+        // 감속 곡선 — 앞에서 빠르게 올라가 글자가 먼저 읽히고, 끝에서 부드럽게 잦아든다.
+        // 선형이면 같은 시간이라도 "그냥 켜졌다"에 가깝게 느껴진다.
+        animate()
+            .alpha(1f)
+            .setDuration(FADE_IN_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -110,7 +117,10 @@ class GuideBoxView @JvmOverloads constructor(
 
     private companion object {
         // ReadingBorder의 조정 지점 규약을 따른다 — dp가 아니라 시간이라 dimens.xml로 빼지 않는다.
-        // 짧게 잡는다. 안내는 "부드럽게"보다 "빨리 읽히게"가 먼저다.
-        const val FADE_IN_MS = 180L
+        //
+        // **180ms는 실기기에서 아예 인지되지 않았다**(#147, 작성자 확인). "빨리 읽히게"를
+        // 우선해 짧게 잡았는데, 느껴지지 않으면 애초에 등장을 부드럽게 한 목적이 사라진다.
+        // 감속 곡선과 함께 쓰므로 앞부분에서 이미 대부분 올라와 읽기는 늦어지지 않는다.
+        const val FADE_IN_MS = 420L
     }
 }
