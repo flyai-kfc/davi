@@ -125,6 +125,9 @@ build/reports/device-e2e-private/
 - API 키와 접근 토큰
 - 기기 serial과 개인 데이터
 
+도그푸딩 빌드의 연결 로그에 가명 식별자가 있더라도 호스트 실행기가 `dogfoodDeviceId`와
+`device_id` 값을 `[redacted]`로 바꾼 뒤 콘솔·임시 safe log에 기록한다.
+
 기기 모델·Android 버전·모델명·Git commit은 재현에 필요한 비식별 실행 메타데이터로 기록한다.
 
 상세 보고서는 원본 Accessibility 트리나 API 키·기기 serial을 넣지 않지만, 위 항목 중 앱이 전송한

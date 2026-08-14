@@ -256,7 +256,10 @@ try {
         $ErrorActionPreference = $previous
     }
 
-    $safeLogs = Invoke-AdbCapture @('logcat', '-d', '-s', 'GuideSvc:I', 'DaviE2e:I', '*:S') '비식별 검증 로그 조회'
+    $safeLogs = @(
+        Invoke-AdbCapture @('logcat', '-d', '-s', 'GuideSvc:I', 'DaviE2e:I', '*:S') '비식별 검증 로그 조회' |
+            ForEach-Object { $_ -replace '(dogfoodDeviceId|device_id)=\S+', '$1=[redacted]' }
+    )
     [System.IO.File]::WriteAllLines($safeLogResult, [string[]]$safeLogs, $utf8NoBom)
     Write-Host ''
     Write-Host '비식별 실기기 검증 로그:' -ForegroundColor Cyan

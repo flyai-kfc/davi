@@ -158,9 +158,9 @@ fi
 cd "$APP_DIR"
 # 설치가 접근성 서비스 프로세스를 중단할 때 crashed 상태가 남지 않도록 Davi 항목만 먼저 끈다.
 # 다른 접근성 서비스와 전역 접근성 설정은 유지하고, 설치 실패 시에도 EXIT trap이 Davi를 복구한다.
-ENABLED_SERVICES="$("${ADB_DEVICE[@]}" shell settings get secure enabled_accessibility_services)"
+ENABLED_SERVICES="$("${ADB_DEVICE[@]}" shell settings get secure enabled_accessibility_services | tr -d '\r')"
 if [[ "$ENABLED_SERVICES" == "null" ]]; then ENABLED_SERVICES=""; fi
-ACCESSIBILITY_ENABLED="$("${ADB_DEVICE[@]}" shell settings get secure accessibility_enabled)"
+ACCESSIBILITY_ENABLED="$("${ADB_DEVICE[@]}" shell settings get secure accessibility_enabled | tr -d '\r')"
 if [[ ":$ENABLED_SERVICES:" != *":$SERVICE:"* || "$ACCESSIBILITY_ENABLED" != "1" ]]; then
     printf '실행 전에 기기 설정에서 Davi 접근성 서비스를 직접 켜세요.\n' >&2
     exit 2
@@ -200,7 +200,7 @@ if [[ "$CONNECTED" != true ]]; then
     exit 2
 fi
 
-ENABLED_SERVICES="$("${ADB_DEVICE[@]}" shell settings get secure enabled_accessibility_services)"
+ENABLED_SERVICES="$("${ADB_DEVICE[@]}" shell settings get secure enabled_accessibility_services | tr -d '\r')"
 if [[ "$ENABLED_SERVICES" != *"$SERVICE"* ]]; then
     printf 'Davi 접근성 서비스를 다시 바인딩하지 못했습니다. 설정에서 직접 켜세요.\n' >&2
     exit 2
@@ -234,7 +234,8 @@ set -e
 
 print_safe_logs() {
     printf '\n비식별 실기기 검증 로그:\n'
-    "${ADB_DEVICE[@]}" logcat -d -s GuideSvc:I DaviE2e:I '*:S' > "$SAFE_LOG_RESULT"
+    "${ADB_DEVICE[@]}" logcat -d -s GuideSvc:I DaviE2e:I '*:S' |
+        sed -E 's/(dogfoodDeviceId|device_id)=[^[:space:]]+/\1=[redacted]/g' > "$SAFE_LOG_RESULT"
     sed -n '/GuideSvc\|DaviE2e/p' "$SAFE_LOG_RESULT"
 }
 
