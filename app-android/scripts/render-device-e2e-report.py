@@ -20,6 +20,16 @@ FAILURE_DESCRIPTIONS = {
     "unsafe_launcher_type": "런처 검색창이 아닌 곳에 시나리오 입력값을 넣는 동작을 차단했습니다.",
     "davi_conversation_not_ready": "Davi 최신 대화 화면이 준비되지 않아 전체 여정을 시작하지 못했습니다.",
     "android_home_not_visible": "Davi에서 안내를 시작한 뒤 Android 홈 화면 전환을 확인하지 못했습니다.",
+    "sms_recipient_missing": "pre-send 시나리오에 사용할 전용 테스트 수신자가 설정되지 않았습니다.",
+    "sms_recipient_invalid": "테스트 수신자 형식이 허용 범위를 벗어났습니다. 원문은 보고서에 기록하지 않았습니다.",
+    "message_app_not_resolved": "기기의 기본 메시지 앱 package를 식별하지 못했습니다.",
+    "unsafe_message_target": "메시지 앱에서 새 작성·수신자·첨부·카메라 외의 대상을 조작 전에 차단했습니다.",
+    "unsafe_message_type": "런처 검색창이나 새 메시지 수신자 입력칸 이외의 텍스트 입력을 차단했습니다.",
+    "unsafe_camera_target": "카메라 화면에서 촬영 또는 촬영 사진 사용 이외의 대상을 조작 전에 차단했습니다.",
+    "presend_send_blocked": "pre-send 시나리오에서 실제 전송 버튼 조작을 실행 전에 차단했습니다.",
+    "media_store_query_failed": "테스트 사진 정리를 위한 MediaStore ID 기준선을 읽지 못했습니다.",
+    "cleanup_media_scope_ambiguous": "테스트 중 생성된 이미지 범위가 안전 상한을 넘어 자동 삭제하지 않았습니다.",
+    "cleanup_photo_delete_failed": "테스트 중 생성한 사진 ID의 자동 삭제를 확인하지 못했습니다.",
 }
 FAILURE_PATTERN = re.compile(r"guided scenario failed code=([a-z0-9_-]+)")
 TIME_PATTERN = re.compile(r"^Time:\s*([0-9.]+)", re.MULTILINE)

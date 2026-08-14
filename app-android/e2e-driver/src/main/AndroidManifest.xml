@@ -3,6 +3,17 @@
     <!-- Davi debug 빌드가 선언하는 signature 권한. 같은 debug key로 서명된 드라이버만 제어한다. -->
     <uses-permission android:name="com.davi.helper.permission.CONTROL_E2E" />
 
+    <!-- 테스트 전용 런타임 package 식별. 제품 앱의 package visibility 계약은 바꾸지 않는다. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:label="Davi E2E Driver"

@@ -1,18 +1,27 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "default_scenario": "samsung-clock-create-alarm-full-journey",
   "scenarios": [
     {
       "id": "samsung-clock-create-alarm-full-journey",
       "test_class": "com.davi.helper.e2e.SamsungClockFullJourneyGeminiTest",
       "description": "Davi 최신 화면에서 홈으로 나가 실제 Gemini 안내로 삼성 시계를 찾고 테스트 알람을 만든 뒤 삭제한다.",
-      "requirements": "Samsung Clock 12.4.10.10 및 Samsung launcher 한국어 UI로 검증"
+      "requirements": "Samsung Clock 12.4.10.10 및 Samsung launcher 한국어 UI로 검증",
+      "requires_sms_recipient": false
     },
     {
       "id": "samsung-clock-create-alarm-focused",
       "test_class": "com.davi.helper.e2e.SamsungClockAlarmGeminiTest",
       "description": "진단용으로 삼성 시계 알람 목록부터 실제 Gemini 안내를 따라 테스트 알람을 만들고 삭제한다.",
-      "requirements": "Samsung Clock 12.4.10.10의 한국어 UI로 검증됨"
+      "requirements": "Samsung Clock 12.4.10.10의 한국어 UI로 검증됨",
+      "requires_sms_recipient": false
+    },
+    {
+      "id": "camera-message-presend-full-journey",
+      "test_class": "com.davi.helper.e2e.CameraMessagePreSendGeminiTest",
+      "description": "Davi에서 홈과 기본 메시지·카메라 앱을 거쳐 새 사진을 첨부하고 실제 전송 직전에서 멈춘 뒤 작성 화면을 정리한다.",
+      "requirements": "개인 연락처가 없는 테스트 기기, 카메라 권한, 기존 대화가 없는 전용 테스트 수신자 필요",
+      "requires_sms_recipient": true
     }
   ]
 }

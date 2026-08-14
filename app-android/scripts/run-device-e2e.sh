@@ -66,6 +66,12 @@ if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8"
 fi
 TEST_CLASS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(next(x for x in d["scenarios"] if x["id"] == sys.argv[2])["test_class"])' "$SCENARIO_REGISTRY" "$SCENARIO")"
 SCENARIO_DESCRIPTION="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(next(x for x in d["scenarios"] if x["id"] == sys.argv[2])["description"])' "$SCENARIO_REGISTRY" "$SCENARIO")"
+REQUIRES_SMS_RECIPIENT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(str(next(x for x in d["scenarios"] if x["id"] == sys.argv[2]).get("requires_sms_recipient", False)).lower())' "$SCENARIO_REGISTRY" "$SCENARIO")"
+SMS_RECIPIENT="${DAVI_E2E_SMS_RECIPIENT:-}"
+if [[ "$REQUIRES_SMS_RECIPIENT" == true && -z "$SMS_RECIPIENT" ]]; then
+    printf '이 시나리오는 기존 대화가 없는 전용 테스트 수신자가 필요합니다. DAVI_E2E_SMS_RECIPIENT를 설정하세요.\n' >&2
+    exit 2
+fi
 
 if [[ ! -x "$ADB" ]]; then
     printf 'Android SDK의 adb를 찾을 수 없습니다. ANDROID_HOME을 확인하세요.\n' >&2
@@ -212,6 +218,10 @@ fi
 
 set +e
 INSTRUMENTATION_ARGS=(-w -r -e davi.liveGemini true -e class "$TEST_CLASS")
+if [[ "$REQUIRES_SMS_RECIPIENT" == true ]]; then
+    # 원문은 echo하지 않고 instrumentation에만 전달한다. 상세 보고서에도 기록하지 않는다.
+    INSTRUMENTATION_ARGS+=(-e davi.smsRecipient "$SMS_RECIPIENT")
+fi
 if [[ "$DETAILED_REPORT" == false ]]; then
     INSTRUMENTATION_ARGS+=(-e davi.detailedReport false)
 fi

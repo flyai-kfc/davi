@@ -41,6 +41,7 @@ Robot selector로 다음 정답 대상을 찾아 Gemini 선택을 바꾸거나 �
 | `goal` | 실제 사용자가 요청할 목표. 테스트 전용 데이터만 포함 |
 | `validateBeforeExecute` | 현재 package·화면·action·target의 안전성 확인 |
 | `textFor` | TYPE에 사용할 고정 테스트 값 제공. 모델 문장을 파싱하지 않음 |
+| `afterExecute` | UIAutomator 동작 성공 뒤에만 촬영·작성 시작 같은 시나리오 상태 갱신 |
 | `isGoalSatisfied` | 외부 앱 실제 UI로 목표를 독립 확인 |
 | `cleanup` | `state=null`인 준비 실패까지 고려해 테스트 데이터만 삭제 |
 
@@ -85,16 +86,22 @@ class ExampleGeminiTest {
   "id": "example-flow",
   "test_class": "com.davi.helper.e2e.ExampleGeminiTest",
   "description": "테스트가 검증하는 사용자 흐름을 한 문장으로 설명한다.",
-  "requirements": "검증한 기기·앱 버전·언어 조건"
+  "requirements": "검증한 기기·앱 버전·언어 조건",
+  "requires_sms_recipient": false
 }
 ```
 
 `id`는 소문자, 숫자, 하이픈만 사용하고 중복시키지 않는다. 한 test class에는 한 시나리오만 둔다.
 그래야 실행별 보고서의 단계와 정리 결과가 섞이지 않는다.
+SMS 수신자가 필요한 시나리오만 `requires_sms_recipient`를 `true`로 두고
+`DAVI_E2E_SMS_RECIPIENT`에서 읽는다. 번호·연락처 이름을 registry, 테스트 코드, 문서 예시 또는
+보고서에 직접 쓰지 않는다.
 
 ## 5. 개인정보와 실패 출력
 
 - 고정 테스트 이름만 사용하고 개인 label을 assertion에 넣지 않는다.
+- 메시지 시나리오는 개인 연락처가 없는 테스트 기기와 기존 대화가 없는 전용 수신자를 사용한다.
+- 전송·결제 같은 외부 효과 target은 안전 검사 최우선으로 두고 pre-send에서는 무조건 실행 전에 막는다.
 - 원본 화면 트리, 안내 문장, 목표 원문, 모델 원문을 logcat이나 실패 메시지에 출력하지 않는다.
 - 실패는 `GuidedScenarioFailure("safe_code", step)`처럼 구조화 코드로 남긴다.
 - API 키는 서버에만 두며 Android fixture·manifest·BuildConfig에 넣지 않는다.
@@ -131,6 +138,7 @@ python -m unittest discover -s scripts/tests -p 'test_*.py'
 - [ ] 개인 데이터 대상은 실행 전에 차단한다.
 - [ ] full-journey가 Davi → 홈 → 모든 경유 package를 같은 세션에서 검증한다.
 - [ ] 완료를 외부 앱 상태로 독립 검증한다.
+- [ ] 외부 효과가 있는 마지막 action은 시나리오 모드와 무관하게 코드 경계에서 차단·허용이 명확하다.
 - [ ] 성공·실패·준비 실패 모두 테스트 데이터를 정리한다.
 - [ ] logcat·실패 메시지·기본 보고서에 화면·안내·개인 원문이 없다.
 - [ ] 상세 보고서는 Git 제외 경로에만 생성되고 원본 Accessibility 트리·키·serial이 없다.

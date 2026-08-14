@@ -92,6 +92,11 @@ $selected = $scenarios | Where-Object { $_.id -eq $Scenario } | Select-Object -F
 if (-not $selected) {
     throw "등록되지 않은 시나리오 '$Scenario'입니다. -ListScenarios로 목록을 확인하세요."
 }
+$requiresSmsRecipient = $selected.requires_sms_recipient -eq $true
+$smsRecipient = $env:DAVI_E2E_SMS_RECIPIENT
+if ($requiresSmsRecipient -and [string]::IsNullOrWhiteSpace($smsRecipient)) {
+    throw '이 시나리오는 기존 대화가 없는 전용 테스트 수신자가 필요합니다. DAVI_E2E_SMS_RECIPIENT를 설정하세요.'
+}
 if ($Scenario -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw '시나리오 ID는 소문자·숫자·하이픈만 사용할 수 있습니다.'
 }
@@ -226,6 +231,10 @@ try {
         'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'davi.liveGemini', 'true'
     )
+    if ($requiresSmsRecipient) {
+        # 원문은 출력하지 않고 instrumentation에만 전달하며 보고서에는 기록하지 않는다.
+        $instrumentationArgs += @('-e', 'davi.smsRecipient', $smsRecipient)
+    }
     if (-not $detailedReport) {
         $instrumentationArgs += @('-e', 'davi.detailedReport', 'false')
     }

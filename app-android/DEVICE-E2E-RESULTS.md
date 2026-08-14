@@ -109,3 +109,18 @@ app-android/build/reports/device-e2e-private/samsung-clock-create-alarm-full-jou
 
 두 경로 모두 `build/` 아래이고 상세 경로는 루트 `.gitignore`에도 명시되어 자동 커밋되지 않는다.
 특히 `device-e2e-private` 보고서는 PR·이슈·채팅에 첨부하지 않는다.
+
+## 카메라·메시지 pre-send 시나리오 상태
+
+`camera-message-presend-full-journey` 구현은 다음 안전 경계를 포함한다.
+
+- 기본 SMS 앱과 image capture 카메라 package를 런타임에 식별
+- 기존 대화 대신 새 메시지 작성만 허용
+- 전용 테스트 수신자·첨부·카메라·촬영·사진 사용 target만 허용
+- 전송 버튼은 `presend_send_blocked`로 실행 전 차단
+- 완료는 촬영 실행, 메시지 작성 화면 복귀, 수신자 표시, 전송 버튼 활성 상태를 함께 확인
+- 종료 시 활성 작성 화면을 닫고 실행 기준선 뒤 생성된 소수의 MediaStore image ID만 삭제
+
+2026-08-14 현재 API 키 없는 Android test APK 컴파일과 registry·보고서 테스트는 통과했다. 해당 시점에
+ADB 기기가 연결되지 않아 실제 Gemini/실기기 결과는 아직 기록하지 않는다. 실기기 검증 전에는 특정
+메시지·카메라 버전에서 성공한다고 주장하지 않는다.

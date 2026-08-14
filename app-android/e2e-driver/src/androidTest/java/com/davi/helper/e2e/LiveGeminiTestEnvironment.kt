@@ -32,6 +32,19 @@ internal object LiveGeminiTestEnvironment {
         // 실제 서버 모드·overlay app-op은 host 실행 스크립트가 모델 호출 전에 확인한다.
     }
 
+    /** 원문을 로그·보고서에 싣지 않고 pre-send 시나리오의 전용 수신자를 읽는다. */
+    fun requireSmsRecipient(): String {
+        val value = InstrumentationRegistry.getArguments().getString(ARG_SMS_RECIPIENT)?.trim()
+            ?: throw GuidedScenarioFailure("sms_recipient_missing")
+        val digits = value.filter(Char::isDigit)
+        if (digits.length !in MIN_RECIPIENT_DIGITS..MAX_RECIPIENT_DIGITS ||
+            value.any { !it.isDigit() && it !in RECIPIENT_SEPARATORS }
+        ) {
+            throw GuidedScenarioFailure("sms_recipient_invalid")
+        }
+        return value
+    }
+
     private fun waitForAccessibilityBinding(automation: UiAutomation) {
         repeat(BIND_ATTEMPTS) {
             val state = ParcelFileDescriptor.AutoCloseInputStream(
@@ -54,8 +67,12 @@ internal object LiveGeminiTestEnvironment {
     }
 
     private const val ARG_LIVE_GEMINI = "davi.liveGemini"
+    private const val ARG_SMS_RECIPIENT = "davi.smsRecipient"
     private const val DAVI_SERVICE = "com.davi.helper/.GuideAccessibilityService"
     private const val BIND_ATTEMPTS = 30
     private const val BIND_POLL_MS = 500L
     private const val BIND_SETTLE_MS = 1_000L
+    private const val MIN_RECIPIENT_DIGITS = 3
+    private const val MAX_RECIPIENT_DIGITS = 15
+    private val RECIPIENT_SEPARATORS = setOf('+', '-', ' ', '(', ')')
 }
