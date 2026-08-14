@@ -70,6 +70,11 @@ data class ConversationRenderModel(
      * [glowVisible]이 false면 의미가 없다.
      */
     val glowReactsToVoice: Boolean = false,
+    /**
+     * 응답 대기 점 3개(#142). 서버가 느릴 때 화면이 멈춘 것으로 보이지 않게 한다.
+     * **"잠시만요" 문구를 대체하지 않는다** — 시안(메인 6)은 문구 아래에 점을 둔다.
+     */
+    val loadingDotsVisible: Boolean = false,
 )
 
 /**
@@ -128,6 +133,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceText = state.utterance,
         micVisible = true,
         closeVisible = true,
+        loadingDotsVisible = true,
     )
     is ConversationUiState.Confirm -> ConversationRenderModel(
         logoVisible = true,
