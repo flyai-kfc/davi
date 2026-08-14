@@ -10,6 +10,7 @@ internal class SamsungClockAlarmScenario(
     data class State(
         val target: SamsungClockRobot.PickerTime,
         val launcherPackage: String,
+        val unlabeledSavedAlarmTimes: MutableList<SamsungClockRobot.PickerTime> = mutableListOf(),
     )
 
     override val id: String = when (start) {
@@ -53,12 +54,20 @@ internal class SamsungClockAlarmScenario(
         }
 
         val targetKind = robot.targetKind(decision.targetBounds)
+        val hasEnteredTestLabel = robot.hasEnteredTestLabel()
+        if (decision.action.actionType == GuidedActionType.TAP &&
+            targetKind == SamsungClockRobot.TargetKind.SAVE &&
+            !hasEnteredTestLabel
+        ) {
+            // 이탈을 실행한 뒤에도 테스트 기기를 원상 복구할 수 있도록, 실제 저장 직전 값을 남긴다.
+            state.unlabeledSavedAlarmTimes += robot.readEditorPickerTime()
+        }
         return SamsungClockDecisionPolicy.assessClock(
             screenKind = robot.screenKind(),
             targetKind = targetKind,
             actionType = decision.action.actionType,
             hasSavedTestAlarm = robot.hasSavedTestAlarm(),
-            hasEnteredTestLabel = robot.hasEnteredTestLabel(),
+            hasEnteredTestLabel = hasEnteredTestLabel,
         )
     }
 
@@ -85,6 +94,7 @@ internal class SamsungClockAlarmScenario(
 
     override fun cleanup(device: UiDevice, state: State?) {
         val cleanupRobot = if (::robot.isInitialized) robot else SamsungClockRobot(device)
+        state?.unlabeledSavedAlarmTimes?.forEach(cleanupRobot::deleteOneAlarmAt)
         cleanupRobot.deleteAlarmNamed(SamsungClockRobot.TEST_LABEL)
     }
 

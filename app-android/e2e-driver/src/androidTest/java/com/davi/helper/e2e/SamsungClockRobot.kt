@@ -147,6 +147,19 @@ internal class SamsungClockRobot(private val device: UiDevice) {
             throw GuidedScenarioFailure("alarm_editor_missing")
         }
 
+        val time = readEditorPickerTime()
+
+        device.findObject(By.res(PACKAGE, ID_CANCEL))?.click()
+            ?: throw GuidedScenarioFailure("alarm_cancel_missing")
+        device.wait(Until.hasObject(By.res(PACKAGE, ID_ADD)), WINDOW_TIMEOUT_MS)
+        return time
+    }
+
+    /** 모델이 저장을 누르기 직전 편집창의 실제 선택 시각을 정리 대상으로 기록한다. */
+    fun readEditorPickerTime(): PickerTime {
+        if (screenKind() != ScreenKind.ALARM_EDITOR) {
+            throw GuidedScenarioFailure("alarm_editor_missing")
+        }
         val pickerTexts = device.findObjects(By.res(PACKAGE, ID_PICKER_INPUT)).mapNotNull { it.text }
         val period = pickerTexts.firstOrNull { it == TEXT_AM || it == TEXT_PM }
             ?: throw GuidedScenarioFailure("alarm_period_missing")
@@ -154,10 +167,6 @@ internal class SamsungClockRobot(private val device: UiDevice) {
             ?: throw GuidedScenarioFailure("alarm_hour_missing")
         val minute = pickerTexts.firstNotNullOfOrNull { MINUTE.find(it)?.groupValues?.get(1)?.toIntOrNull() }
             ?: throw GuidedScenarioFailure("alarm_minute_missing")
-
-        device.findObject(By.res(PACKAGE, ID_CANCEL))?.click()
-            ?: throw GuidedScenarioFailure("alarm_cancel_missing")
-        device.wait(Until.hasObject(By.res(PACKAGE, ID_ADD)), WINDOW_TIMEOUT_MS)
         return PickerTime(period, hour, minute)
     }
 
@@ -182,6 +191,48 @@ internal class SamsungClockRobot(private val device: UiDevice) {
         if (!device.wait(Until.gone(By.text(label)), WINDOW_TIMEOUT_MS)) {
             throw GuidedScenarioFailure("cleanup_delete_failed")
         }
+    }
+
+    /** 테스트 이름 없이 조기 저장된 알람 한 개를 저장 직전 시각으로 찾아 정리한다. */
+    fun deleteOneAlarmAt(time: PickerTime) {
+        openAlarmList()
+        val card = findAlarmCard(time) ?: return
+        card.longClick()
+        val delete = device.wait(Until.findObject(By.res(PACKAGE, ID_DELETE)), WINDOW_TIMEOUT_MS)
+            ?: throw GuidedScenarioFailure("cleanup_delete_missing")
+        delete.click()
+        if (!device.wait(Until.gone(By.res(PACKAGE, ID_DELETE)), WINDOW_TIMEOUT_MS)) {
+            throw GuidedScenarioFailure("cleanup_delete_failed")
+        }
+    }
+
+    private fun findAlarmCard(time: PickerTime): UiObject2? {
+        fun visibleMatch(): UiObject2? = device.findObjects(By.res(PACKAGE, ID_CARD)).firstOrNull { card ->
+            val shownTime = card.findObject(By.res(PACKAGE, ID_ITEM_TIME))?.text
+            val shownPeriod = card.findObject(By.res(PACKAGE, ID_ITEM_PERIOD))?.text
+            shownPeriod == time.period && shownTime != null &&
+                normalizeTime(shownTime) == "${time.hour}:${time.minute}"
+        }
+
+        visibleMatch()?.let { return it }
+        val list = device.findObject(By.res(PACKAGE, ID_LIST)) ?: return null
+        val initialBounds = list.visibleBounds
+        repeat(MAX_LIST_SWIPES) {
+            device.swipe(
+                initialBounds.centerX(),
+                initialBounds.top + 40,
+                initialBounds.centerX(),
+                initialBounds.bottom - 40,
+                20,
+            )
+        }
+        repeat(MAX_LIST_SWIPES) {
+            visibleMatch()?.let { return it }
+            val bounds = list.visibleBounds
+            device.swipe(bounds.centerX(), bounds.bottom - 40, bounds.centerX(), bounds.top + 40, 20)
+            device.waitForIdle(500)
+        }
+        return visibleMatch()
     }
 
     private fun findAlarmLabel(label: String): UiObject2? {

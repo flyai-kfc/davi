@@ -14,11 +14,6 @@ FAILURE_DESCRIPTIONS = {
     "done_before_goal": "실제 외부 앱 상태가 목표를 충족하기 전에 완료가 선언됐습니다.",
     "done_unverified": "완료 응답의 화면 근거가 검증되지 않았습니다.",
     "settings_app_blocked": "테스트 환경을 바꿀 수 있는 설정 앱 진입을 실행 전에 차단했습니다.",
-    "unsafe_alarm_editor_target": "알람 편집 화면에서 허용하지 않은 대상을 조작 전에 차단했습니다.",
-    "save_before_test_label": "정리 가능한 테스트 이름이 실제 입력되지 않아 저장을 차단했습니다.",
-    "action_after_goal": "이미 저장된 테스트 알람이 있는 상태에서 추가 조작을 차단했습니다.",
-    "unsafe_launcher_target": "런처에서 허용한 탐색 요소나 목표 앱이 아닌 대상을 실행 전에 차단했습니다.",
-    "unsafe_launcher_type": "런처 검색창이 아닌 곳에 시나리오 입력값을 넣는 동작을 차단했습니다.",
     "davi_conversation_not_ready": "Davi 최신 대화 화면이 준비되지 않아 전체 여정을 시작하지 못했습니다.",
     "android_home_not_visible": "Davi에서 안내를 시작한 뒤 Android 홈 화면 전환을 확인하지 못했습니다.",
 }
