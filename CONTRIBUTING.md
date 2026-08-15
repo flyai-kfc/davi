@@ -77,7 +77,8 @@ CI와 같은 것을 돌린다.
 cd server && ruff check . && ruff format --check . && pytest
 ```
 
-앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화가 끝난다.
+앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화·오버레이 권한 확인이
+끝난다(`-Status`는 아무것도 바꾸지 않고 상태만 본다).
 Android Studio는 디버거·Layout Inspector가 필요할 때만 쓴다. Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
 개발 PC에 따라 Gradle CLI가 `Unable to establish loopback connection`으로 실패할 수 있다(HANDOFF §3-15).
 원인은 AF_UNIX 소켓 임시 폴더이고 `app-android/scripts/dev-install.ps1`이 이를 흡수한다 —
