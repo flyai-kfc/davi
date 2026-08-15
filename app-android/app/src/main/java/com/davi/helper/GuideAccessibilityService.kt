@@ -338,7 +338,14 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        overlay?.showGuide(rect, content.text, avoidRegions(content.actionType), content.confirm)
+        overlay?.showGuide(
+            rect,
+            content.text,
+            avoidRegions(content.actionType),
+            content.actionType,
+            content.direction,
+            content.confirm,
+        )
     }
 
     /**
@@ -665,7 +672,7 @@ class GuideAccessibilityService : AccessibilityService() {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
-        draw(display.show(requestSignature, bounds, action.instruction, action.actionType))
+        draw(display.show(requestSignature, bounds, action.instruction, action.actionType, action.direction))
         e2ePublisher?.displayed(
             generation = session.generation,
             requestSignature = requestSignature,

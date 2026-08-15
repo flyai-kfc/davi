@@ -32,6 +32,9 @@ class GuideDisplayState {
      * [actionType]은 안내창이 무엇을 피해야 하는지를 가른다 — 타이핑 안내면 키보드가 곧
      * 조작 대상이라 절대 가리면 안 된다(#38 5번). 우리가 만든 안내(정체·상한)는 null이다.
      *
+     * [direction]은 방향 제스처 시연에 쓴다(#152). **손가락이 움직이는 방향 그대로다** —
+     * 서버가 이미 "무엇이 보이게 되는가"를 "손가락이 어디로"로 바꿔서 준다.
+     *
      * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      */
@@ -39,6 +42,7 @@ class GuideDisplayState {
         val bounds: List<Int>?,
         val text: String,
         val actionType: ActionType? = null,
+        val direction: SwipeDirection? = null,
         val confirm: ConfirmKind? = null,
     )
 
@@ -67,8 +71,9 @@ class GuideDisplayState {
         bounds: List<Int>?,
         text: String,
         actionType: ActionType? = null,
+        direction: SwipeDirection? = null,
     ): Content {
-        val content = Content(bounds, text, actionType)
+        val content = Content(bounds, text, actionType, direction)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = true
@@ -228,7 +233,7 @@ class GuideDisplayState {
         val current = guide ?: return null
         visible = true
         return if (stuckSuffixAllowed) {
-            Content(current.bounds, "${current.text}\n$suffix", current.actionType)
+            Content(current.bounds, "${current.text}\n$suffix", current.actionType, current.direction)
         } else {
             current
         }

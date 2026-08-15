@@ -77,6 +77,8 @@ class OverlayController(
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+        actionType: ActionType? = null,
+        direction: SwipeDirection? = null,
         confirm: GuideDisplayState.ConfirmKind? = null,
     ) {
         if (!canDraw()) {
@@ -87,7 +89,7 @@ class OverlayController(
         confirmKind = confirm
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid)
+        target.setGuide(bounds, instruction, avoid, actionType, direction)
     }
 
     fun clear() {
