@@ -163,6 +163,23 @@ enum class ApiErrorKind {
     @SerialName("BAD_REQUEST") BAD_REQUEST,
 }
 
+/**
+ * 카카오 로그인 요청(기준: `server/app/kakao_auth.py`).
+ * 카카오 access token은 이 body로만 나가고 로그·화면 어디에도 남기지 않는다.
+ */
+@Serializable
+data class KakaoLoginRequest(
+    @SerialName("kakao_access_token") val kakaoAccessToken: String,
+    @SerialName("client_version") val clientVersion: String? = null,
+)
+
+/** 서버가 발급한 무상태 세션 토큰. 이후 보호 요청의 `Authorization: Bearer` 값이 된다. */
+@Serializable
+data class SessionTokenResponse(
+    @SerialName("session_token") val sessionToken: String,
+    @SerialName("expires_in_seconds") val expiresInSeconds: Int,
+)
+
 /** 음성 목표 대화의 이전 한 줄. 현재 발화는 [SlotFillRequest.utterance]에만 둔다(C13). */
 @Serializable
 data class ConversationTurn(

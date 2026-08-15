@@ -16,9 +16,12 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- 카카오톡 앱으로 로그인 가능 여부 판정(isKakaoTalkLoginAvailable, API 30+ 가시성). -->
+        <package android:name="com.kakao.talk" />
     </queries>
 
     <application
+        android:name=".DaviApplication"
         android:allowBackup="false"
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="@string/app_name"
@@ -26,9 +29,9 @@
         android:theme="@style/Theme.Davi"
         android:usesCleartextTraffic="false">
 
-        <!-- 릴리스 진입점: 온보딩 → 대화 화면(#123). 대화 화면은 외부 인텐트를 받지 않는다. -->
+        <!-- 릴리스 진입점: 로그인(스킵 가능) → 온보딩 → 대화 화면. ON-1, docs/SCREENS.md. -->
         <activity
-            android:name=".OnboardingActivity"
+            android:name=".LoginActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
@@ -36,6 +39,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          카카오 계정(웹) 로그인의 리다이렉트 수신. scheme은 빌드가 채운다 —
+          네이티브 앱 키가 없으면 죽은 scheme(kakao.unconfigured)이라 필터가 열리지 않는다.
+        -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="oauth"
+                    android:scheme="${kakaoOauthScheme}" />
+            </intent-filter>
+        </activity>
+
+        <!-- 온보딩(권한 안내, #123). 진입은 LoginActivity를 거친다. -->
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!--
           세로 고정: 고정 배치라 가로에서는 질문·발화 카드가 화면 밖으로 밀린다(실기기 실측).

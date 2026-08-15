@@ -122,6 +122,15 @@ if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
     throw GradleException("DAVI_DEBUG_ACCESS_TOKEN은 32자 이상이어야 합니다.")
 }
 
+// 카카오 네이티브 앱 키(로그인). APK에서 추출 가능한 공개 전제 식별자라 비밀 키 규칙과는
+// 다르지만, 팀 카카오 앱이 확정되기 전엔 개발자별 테스트 앱 키를 쓸 수 있게 debug만
+// local.properties에서 읽는다. release 실키는 배포 이슈에서 확정한다(SERVER_URL과 같은 결).
+// 키가 비면 SDK init을 건너뛰고 로그인 버튼을 숨긴다 — 빌드·실행은 깨지지 않는다.
+val kakaoNativeAppKey = debugSetting("DAVI_KAKAO_NATIVE_APP_KEY")
+if (kakaoNativeAppKey.isNotEmpty() && !kakaoNativeAppKey.all { it.isLetterOrDigit() }) {
+    throw GradleException("DAVI_KAKAO_NATIVE_APP_KEY는 영숫자여야 합니다.")
+}
+
 // 도그푸딩 옵트인(#41 리뷰). true인 debug 빌드만 기기 해시를 계산·로그·전송한다.
 // 켜는 곳: 공기계(SM-S921N)용 빌드를 만드는 머신의 local.properties. 기본은 꺼짐 —
 // 서버 화이트리스트는 저장만 거를 뿐 전송 자체는 여기서만 막을 수 있다.
@@ -156,6 +165,9 @@ android {
         buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
         buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
         buildConfigField("boolean", "DOGFOOD_OPT_IN", "false")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"\"")
+        // 키가 없으면 죽은 scheme — "kakao" 접두 인텐트 필터가 실수로 열리는 것을 막는다.
+        manifestPlaceholders["kakaoOauthScheme"] = "kakao.unconfigured"
     }
 
     buildTypes {
@@ -163,6 +175,14 @@ android {
             buildConfigField("String", "SERVER_URL", debugServerUrl.asBuildConfigString())
             buildConfigField("String", "DEV_ACCESS_TOKEN", debugAccessToken.asBuildConfigString())
             buildConfigField("boolean", "DOGFOOD_OPT_IN", dogfoodOptIn.toString())
+            buildConfigField(
+                "String",
+                "KAKAO_NATIVE_APP_KEY",
+                kakaoNativeAppKey.asBuildConfigString(),
+            )
+            if (kakaoNativeAppKey.isNotEmpty()) {
+                manifestPlaceholders["kakaoOauthScheme"] = "kakao$kakaoNativeAppKey"
+            }
         }
         release {
             isMinifyEnabled = false
@@ -203,12 +223,15 @@ val verifyReleaseConfiguration by tasks.registering {
     description = "release 빌드에 debug 전용 설정이 존재하지 않는지 확인"
     inputs.property("debugServerConfigured", debugServerProperty.isNotEmpty())
     inputs.property("debugAccessTokenConfigured", debugAccessToken.isNotEmpty())
+    inputs.property("kakaoNativeAppKeyConfigured", kakaoNativeAppKey.isNotEmpty())
     doLast {
         val debugServerConfigured = inputs.properties["debugServerConfigured"] as Boolean
         val debugAccessTokenConfigured = inputs.properties["debugAccessTokenConfigured"] as Boolean
-        if (debugServerConfigured || debugAccessTokenConfigured) {
+        val kakaoKeyConfigured = inputs.properties["kakaoNativeAppKeyConfigured"] as Boolean
+        if (debugServerConfigured || debugAccessTokenConfigured || kakaoKeyConfigured) {
             throw GradleException(
-                "release 빌드 전에 DAVI_DEBUG_SERVER_URL과 DAVI_DEBUG_ACCESS_TOKEN을 제거하세요.",
+                "release 빌드 전에 DAVI_DEBUG_SERVER_URL·DAVI_DEBUG_ACCESS_TOKEN·" +
+                    "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요.",
             )
         }
     }
@@ -231,6 +254,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kakao.user)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }
