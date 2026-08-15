@@ -54,6 +54,8 @@
     <dimen name="davi_radius_sm">8dp</dimen>
     <dimen name="davi_radius_md">12dp</dimen>
     <dimen name="davi_radius_lg">16dp</dimen>
+    <!-- v2 카드 반경(#155). D3를 3단 → 4단으로 넓힌 근거는 DESIGN-CONVENTIONS.md D3. -->
+    <dimen name="davi_radius_xl">28dp</dimen>
     <dimen name="davi_size_touch_target">56dp</dimen>
 
     <!-- 컴포넌트 고정 크기 (Figma Components 실측) -->
