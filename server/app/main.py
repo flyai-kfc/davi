@@ -18,6 +18,12 @@ from .config import settings
 from .dev_access import SlidingWindowRateLimiter, token_matches
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .intent_resolution import resolve_intent
+from .kakao_auth import (
+    AuthError,
+    KakaoLoginRequest,
+    SessionTokenResponse,
+    login_with_kakao,
+)
 from .llm import get_llm_client
 from .observability import (
     ATTEMPT_HEADER,
@@ -48,8 +54,11 @@ request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 _NEXT_STEP_PATH = "/v1/next-step"
 _SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
+_AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
-_TRACED_API_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH})
+_TRACED_API_PATHS = frozenset(
+    {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
+)
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
@@ -64,6 +73,8 @@ def _request_route(path: str) -> str:
         return _SLOT_FILL_PATH
     if path == _APP_RESOLUTION_PATH:
         return _APP_RESOLUTION_PATH
+    if path == _AUTH_KAKAO_PATH:
+        return _AUTH_KAKAO_PATH
     if path == _HEALTH_PATH:
         return _HEALTH_PATH
     return "unmatched"
@@ -206,10 +217,10 @@ def _store_raw_if_dogfood(
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     request.state.error_kind = "VALIDATION"
     request.state.validation_error_count = len(exc.errors())
-    if request.url.path in {_SLOT_FILL_PATH, _APP_RESOLUTION_PATH}:
+    if request.url.path in {_SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}:
         error = ApiError(
             kind=ErrorKind.BAD_REQUEST,
-            message="intent request validation failed",
+            message="request validation failed",
             request_id=request.state.request_id,
         )
         return JSONResponse(
@@ -330,6 +341,25 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         )
     _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
     return response
+
+
+@app.post("/v1/auth/kakao", response_model=SessionTokenResponse)
+def post_kakao_login(
+    req: KakaoLoginRequest,
+    request: Request,
+) -> SessionTokenResponse | JSONResponse:
+    """앱이 받아 온 카카오 access token을 검증하고 우리 세션 토큰을 발급한다.
+
+    토큰 원문은 로그에 남기지 않는다(kakao_auth.py). 사용자 문구는 앱이 kind로 만든다(C8).
+    """
+
+    request.state.request_metadata = {"client_version": req.client_version}
+    try:
+        return login_with_kakao(req)
+    except AuthError as e:
+        error = ApiError(kind=e.kind, message=e.message, request_id=request.state.request_id)
+        request.state.error_kind = e.kind.value
+        return JSONResponse(status_code=e.http_status, content=error.model_dump())
 
 
 @app.post("/v1/intent/slot-fill", response_model=SlotFillState)

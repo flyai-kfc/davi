@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
 
+    # 카카오 로그인(kakao_auth.py). 앱 ID는 검증용 숫자 ID이며 REST API 키가 아니다.
+    # 둘 다 채워야 로그인 endpoint가 동작한다. 비어 있으면 SERVER 오류로 닫힌다.
+    davi_kakao_app_id: int = 0
+    davi_auth_jwt_secret: SecretStr = SecretStr("")
+    # 세션 토큰 수명(초). 기본 30일 — 시니어 사용자가 자주 재로그인하지 않게 길게 둔다.
+    davi_auth_session_ttl_seconds: int = 60 * 60 * 24 * 30
+
     @field_validator("gemini_api_key", mode="after")
     @classmethod
     def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
@@ -73,6 +80,13 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
         if not self.davi_dogfood_raw_dir.strip():
             raise ValueError("DAVI_DOGFOOD_RAW_DIR은 비어 있을 수 없습니다")
+        auth_secret = self.davi_auth_jwt_secret.get_secret_value().strip()
+        if auth_secret and len(auth_secret) < 32:
+            raise ValueError("DAVI_AUTH_JWT_SECRET은 32자 이상이어야 합니다")
+        if self.davi_kakao_app_id < 0:
+            raise ValueError("DAVI_KAKAO_APP_ID는 음수일 수 없습니다")
+        if self.davi_auth_session_ttl_seconds <= 0:
+            raise ValueError("DAVI_AUTH_SESSION_TTL_SECONDS는 양수여야 합니다")
         return self
 
     @property
