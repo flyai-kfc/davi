@@ -28,10 +28,7 @@
       **offset을 뭉개면 안 된다** — 부드러운 그라디언트가 아니라 딱 반으로 갈리는 형태다.
     -->
     <path
-        android:pathData="M30,19 A8,8 0 0 1 46,19 L46,35 A8,8 0 0 1 30,35 Z"
-        android:strokeColor="@color/davi_highlight"
-        android:strokeWidth="4"
-        android:strokeLineJoin="miter">
+        android:pathData="M30,19 A8,8 0 0 1 46,19 L46,35 A8,8 0 0 1 30,35 Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
@@ -44,6 +41,17 @@
             </gradient>
         </aapt:attr>
     </path>
+
+    <!--
+      **테두리를 채움과 같은 path에 두면 안 그려진다.** 한 path에 aapt:attr 그라디언트
+      채움과 stroke를 함께 주면 stroke가 누락된다(실기기 실측 — 캡슐만 빨강 선이 빠졌다).
+      그래서 같은 좌표를 두 path로 나눠 채움과 선을 따로 그린다.
+    -->
+    <path
+        android:pathData="M30,19 A8,8 0 0 1 46,19 L46,35 A8,8 0 0 1 30,35 Z"
+        android:strokeColor="@color/davi_highlight"
+        android:strokeWidth="4"
+        android:strokeLineJoin="miter" />
 
     <!-- 2·3. 그릴 두 줄 — 여기만 굵기 3 -->
     <path
