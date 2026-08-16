@@ -101,23 +101,30 @@ jobs:
         shell: pwsh
         run: ./scripts/run-device-e2e.ps1 -ListScenarios
 
-      # Windows PowerShell 5.1은 BOM 없는 UTF-8 .ps1의 한글 주석을 CP949로 읽어,
+      # .ps1은 BOM이 필수다. Windows PowerShell 5.1은 BOM이 없으면 한글 주석을 CP949로 읽어,
       # 구문이 멀쩡한데도 엉뚱한 줄에서 "Unexpected token '}'" 류로 죽는다.
-      # 이 잡은 pwsh(7)로 돌아 그 문제를 못 잡으므로 바이트로 직접 확인한다.
-      # (app-android 경로 필터로 도는 잡이라, 다른 폴더의 .ps1만 바뀐 PR에서는 돌지 않는다.)
-      - name: PowerShell 스크립트 UTF-8 BOM 검사
+      # .sh는 정반대로 BOM이 있으면 안 된다. `#!/usr/bin/env bash` 셔뱅이 깨져 실행되지 않는다.
+      # 이 잡은 pwsh(7)로 돌아 두 문제 모두 재현하지 못하므로 바이트로 직접 확인한다.
+      # (app-android 경로 필터로 도는 잡이라, 다른 폴더의 스크립트만 바뀐 PR에서는 돌지 않는다.)
+      - name: 셸 스크립트 인코딩 검사 (.ps1 BOM 필수 / .sh BOM 금지)
         shell: pwsh
         run: |
-          $scripts = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter *.ps1)
-          $bad = @($scripts | Where-Object {
-            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
-            $bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF
-          })
-          if ($bad) {
-            $bad | ForEach-Object { "BOM 없음: $($_.FullName)" }
-            throw 'BOM 없는 .ps1이 있다. UTF-8 BOM으로 저장할 것.'
+          function Test-Bom([string]$Path) {
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            return ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
           }
-          "검사한 .ps1 $($scripts.Count)개 — 전부 UTF-8 BOM"
+          $ps1 = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter *.ps1)
+          $sh = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter *.sh)
+          $bad = @()
+          $bad += @($ps1 | Where-Object { -not (Test-Bom $_.FullName) } |
+            ForEach-Object { "BOM 없음 (.ps1은 필수): $($_.FullName)" })
+          $bad += @($sh | Where-Object { Test-Bom $_.FullName } |
+            ForEach-Object { "BOM 있음 (.sh는 금지 — 셔뱅이 깨진다): $($_.FullName)" })
+          if ($bad) {
+            $bad
+            throw '셸 스크립트 인코딩 규칙 위반.'
+          }
+          ".ps1 $($ps1.Count)개(BOM 필수) / .sh $($sh.Count)개(BOM 금지) — 통과"
 
       - name: debug 평문 허용 host 제한
         env:
