@@ -71,6 +71,14 @@
     -->
     <dimen name="davi_mic_button_size">91dp</dimen>
     <!--
+      마이크 바닥 여백. davi_spacing_xl(24dp)을 쓰다가 전용 토큰으로 뺐다 —
+      **이 값이 아래 둘의 입력**이라 간격 토큰과 함께 움직이면 안 된다.
+      실기기에서 마이크가 조금 낮아 보여 8dp 올렸다(2026-08-16).
+        davi_conversation_control_reserve = 이 값 + 91/2
+        davi_glow_mic_margin_bottom       = 이 값 + 91/2 - 201/2
+    -->
+    <dimen name="davi_mic_margin_bottom">32dp</dimen>
+    <!--
       테두리 굵기는 크기에 비례해 줄이지 않는다 — 선은 시인성 문제라 얇아지면 안 보인다.
       마이크 모양 자체(시안은 분홍 캡슐 + 빨강 선 아이콘)를 바꿀 때 함께 본다.
     -->
@@ -103,7 +111,7 @@
     <dimen name="davi_question_card_max_height_confirm">400dp</dimen>
     <!--
       카드 열의 바닥 여백. **카드 하단이 마이크 중심에 오도록** 비운다(시안 규칙).
-      24(바닥 여백) + 91/2 = 69.5 -> 70dp.
+      32(davi_mic_margin_bottom) + 91/2 = 77.5 -> 78dp.
 
       결과가 배지와 대칭이다 — 배지가 위 카드에 절반(36/72) 걸치듯 마이크가 아래 카드에
       절반(45.5/91) 걸친다.
@@ -112,7 +120,7 @@
       내려오지 않고 빈 공간만 는다 — 카드 두 장이 남는 공간을 weight로 나눠 가져야
       이 값이 뜻을 갖는다(#170). 실기기에서 겹침이 안 생겨 찾았다.
     -->
-    <dimen name="davi_conversation_control_reserve">70dp</dimen>
+    <dimen name="davi_conversation_control_reserve">78dp</dimen>
 
     <!--
       음성 모션 크기 (#132). 시안(메인 v2, 승인 대기)의 300×620 프레임 기준을 dp로 옮긴 값이다.
@@ -134,12 +142,12 @@
       wrap_content라 글로우(286dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
       직접 위치를 잡는다.
 
-      계산: 마이크 중심은 바닥에서 24dp(davi_spacing_xl) + 91dp/2 = 69.5dp.
-      글로우 중심을 거기 맞추려면 바닥 여백 = 69.5dp - 201dp/2 = -31dp.
+      계산: 마이크 중심은 바닥에서 32dp(davi_mic_margin_bottom) + 91dp/2 = 77.5dp.
+      글로우 중심을 거기 맞추려면 바닥 여백 = 77.5dp - 201dp/2 = -23dp.
 
-      **davi_mic_button_size·davi_spacing_xl·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
+      **davi_mic_button_size·davi_mic_margin_bottom·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
     -->
-    <dimen name="davi_glow_mic_margin_bottom">-31dp</dimen>
+    <dimen name="davi_glow_mic_margin_bottom">-23dp</dimen>
 
     <!--
       응답 대기 점 3개 (#142). 시안 실측은 지름 16 / 11, 중심 간격 28(300 폭 프레임 기준)이다.
