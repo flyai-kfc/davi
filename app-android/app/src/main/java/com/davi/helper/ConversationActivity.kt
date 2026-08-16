@@ -272,6 +272,18 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
+        // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
+        // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
+        binding.cardQuestionContainer.setBackgroundResource(
+            if (model.cardGlowVisible) R.drawable.bg_davi_card_speaking else R.drawable.bg_davi_card,
+        )
+        binding.cardUtteranceContainer.setBackgroundResource(
+            if (model.utteranceSpeaking) {
+                R.drawable.bg_davi_card_utterance_speaking
+            } else {
+                R.drawable.bg_davi_card_utterance
+            },
+        )
         binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)

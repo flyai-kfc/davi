@@ -123,7 +123,19 @@
     <color name="davi_card_glass_bottom">#C7FFFFFF</color>
     <color name="davi_card_tint_davi">#47F4F4F6</color>
     <color name="davi_card_tint_senior">#94F7C6D5</color>
-    <!-- 대기 상태 그림자 — 시안 검정 8%(다비) / 7%(시니어). -->
+    <!--
+      카드 그림자. 시안이 발화/대기와 다비/시니어로 네 벌을 따로 잡았다.
+        다비   대기 검정 8% y3 blur10 · 발화 검정 10% y4 blur12 (+ 분홍 글로우)
+        시니어 대기 검정 7% y3 blur10 · 발화 검정 12% y5 blur14
+      **시니어에는 분홍 글로우가 없다** — 발화해도 검정 그림자만 진해진다. 대칭으로 넣지 않는다.
+    -->
     <color name="davi_card_shadow_idle">#14000000</color>
     <color name="davi_card_shadow_idle_senior">#12000000</color>
+    <color name="davi_card_shadow_speaking">#1A000000</color>
+    <color name="davi_card_shadow_speaking_senior">#1F000000</color>
+    <!--
+      카드 윗변의 유리 하이라이트(시안 INNER_SHADOW 흰색 95% y2 blur2).
+      **발화 중에만 있다.** 이게 빠지면 글라스 느낌이 안 산다.
+    -->
+    <color name="davi_card_inner_highlight">#F2FFFFFF</color>
 </resources>
