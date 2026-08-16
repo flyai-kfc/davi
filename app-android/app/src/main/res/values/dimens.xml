@@ -138,10 +138,15 @@
     <!-- 파도 마루-골 진폭(최대 음량 기준). 띠 높이 안에서 세 겹이 겹칠 여유를 남긴다. -->
     <dimen name="davi_wave_amplitude">22dp</dimen>
     <!--
-      마이크 글로우 지름(#163). **시안 비 168:76 = 2.21배를 유지한다** — 91 × 2.21 ≈ 201.
-      이 비를 지키는 한 MicGlowView.MIC_EDGE_FRACTION(0.45)은 다시 계산할 필요가 없다.
+      마이크 글로우 지름. **시안 비 132:76 = 1.74배**를 유지한다 — 91 x 1.74 ≈ 158.
+
+      앞서 201dp(2.21배)로 잡았던 건 `v2/glow/mic`(168x168)을 근거로 삼았기 때문인데,
+      **그 컴포넌트는 어느 화면에도 배치돼 있지 않은 죽은 것**이었다. 화면에 실제로
+      그려지는 건 마이크 컴포넌트 안의 132다(2026-08-16 디자인 담당 확인).
+
+      MicGlowView.MIC_EDGE_FRACTION이 이 비에서 나온다 — 함께 바뀐다.
     -->
-    <dimen name="davi_glow_mic_size">201dp</dimen>
+    <dimen name="davi_glow_mic_size">158dp</dimen>
     <!--
       글로우를 마이크 **중심**에 맞추기 위한 음수 여백.
 
@@ -150,11 +155,11 @@
       직접 위치를 잡는다.
 
       계산: 마이크 중심은 바닥에서 32dp(davi_mic_margin_bottom) + 91dp/2 = 77.5dp.
-      글로우 중심을 거기 맞추려면 바닥 여백 = 77.5dp - 201dp/2 = -23dp.
+      글로우 중심을 거기 맞추려면 바닥 여백 = 77.5dp - 158dp/2 = -1.5dp -> -2dp.
 
       **davi_mic_button_size·davi_mic_margin_bottom·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
     -->
-    <dimen name="davi_glow_mic_margin_bottom">-23dp</dimen>
+    <dimen name="davi_glow_mic_margin_bottom">-2dp</dimen>
 
     <!--
       응답 대기 점 3개 (#142). 시안 실측은 지름 16 / 11, 중심 간격 28(300 폭 프레임 기준)이다.
