@@ -106,7 +106,10 @@ object GuideSession {
     /**
      * 사용자가 "아직요"로 완료를 부정한 화면의 서명. 그 화면에서 다시 오는 done은 확인 화면을
      * 띄우지 않는다 — 안 그러면 같은 화면이 done을 계속 주는 동안 확인 화면이 무한 반복된다.
-     * 다른 화면의 done이 오면(= 사용자가 진행했다) 지운다.
+     *
+     * **유효기간이 있다.** 다른 화면의 done이 오거나 **안내가 실제로 나가면**(= 사용자가
+     * 진행했다) 지운다. 후자가 없으면 완료 신호가 드문 실제 세션에서 이력이 끝까지 남는다
+     * ([recordInstruction], PR #153 리뷰 P2).
      */
     private var rejectedSignature: String? = null
 
@@ -208,6 +211,12 @@ object GuideSession {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
         unverifiedDones = 0
+        // 같은 근거로 부정 이력의 유효기간도 여기서 끝난다. ×아직요는 "지금 이 순간 아직 안
+        // 됐다"는 답인데, 이력을 done으로만 지우면 완료 신호가 드문 실제 세션에서 세션이 끝날
+        // 때까지 남는다 — 사용자가 여러 단계를 거쳐 그 화면에서 실제로 목표를 달성해도 성공
+        // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
+        // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
+        rejectedSignature = null
         val trimmed = instruction.trim()
         if (trimmed.isEmpty()) return
         instructions.addLast(trimmed)

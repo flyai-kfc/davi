@@ -462,6 +462,28 @@ class GuideSessionTest {
     }
 
     /**
+     * 부정 이력의 유효기간 — 안내가 한 번 나가면 끝난다(PR #153 리뷰 P2).
+     *
+     * 없으면 이렇게 된다: 화면 A에서 ×아직요 → 안내를 따라 다른 화면에서 작업을 끝내고 A로
+     * 복귀 → 그 화면의 요청이 나가 완료 신호 도착 → **A가 아직 부정 이력에 있어** 성공 확인
+     * 대신 "확인하지 못했어요". 실제로 달성했는데 성공 표시를 못 받는다.
+     */
+    @Test
+    fun `안내가 나가면 부정 이력이 풀린다`() {
+        GuideSession.start("알람 끄기")
+        val generation = currentGeneration()
+        GuideSession.onDone(generation, true, SIGNATURE)
+        GuideSession.confirmRejected()
+
+        GuideSession.recordInstruction(generation, "알람을 눌러 보세요.")
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(generation, true, SIGNATURE),
+        )
+    }
+
+    /**
      * ×아직요 뒤 같은 화면이 done을 **반복해서** 줘도 확인 화면이 다시 발행되지 않는다.
      *
      * 1회만 보던 커버리지에 구멍이 있었다(PR #153 리뷰) — 서명이 선택 필드이던 동안에는 이
