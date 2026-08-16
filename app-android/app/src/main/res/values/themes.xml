@@ -48,6 +48,30 @@
         <item name="android:textSize">@dimen/davi_type_body</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
+    <!--
+      **다비가 말하는 자리 전용 서체(C1 개정, #174).** 나머지는 Pretendard 그대로다 —
+      사용자 발화와 오버레이 안내문은 읽는 글이라 본문용 서체가 맞고, 다비의 말만
+      캐릭터 목소리로 구분한다.
+
+      한글 음절 11,172자를 모두 담고 있음을 확인했다(fontTools cmap 검사). 다비 말은 서버가
+      만드는 문장이라 드문 글자가 나오는데, 커버리지가 100%라 두부가 뜨지 않는다.
+      APK에 3.8MB를 더한다.
+
+      **두 네임스페이스에 다 준다.** 테마(Theme.Davi)가 android:fontFamily와 fontFamily를
+      둘 다 지정하는데 AppCompat TextView는 **app 네임스페이스를 먼저 본다** — android: 쪽만
+      주면 테마의 Pretendard가 이겨 서체가 안 바뀐다. 기존 램프 스타일들이 android: 하나만
+      주고도 멀쩡해 보였던 건 테마도 같은 Pretendard라 결과가 같았기 때문이고, 다른 서체를
+      넣는 순간 드러났다(실기기 실측).
+    -->
+    <style name="TextAppearance.Davi.Title.Davi" parent="TextAppearance.Davi.Title">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+    </style>
+    <style name="TextAppearance.Davi.Subtitle.Davi" parent="TextAppearance.Davi.Subtitle">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+    </style>
+
     <style name="TextAppearance.Davi.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_caption</item>

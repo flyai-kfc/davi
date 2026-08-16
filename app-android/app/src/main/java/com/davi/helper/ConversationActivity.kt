@@ -17,6 +17,7 @@ import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -175,6 +176,19 @@ class ConversationActivity : AppCompatActivity() {
         // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
         binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
 
+        // **다비가 말하는 자리의 서체를 코드에서 건다**(#174).
+        //
+        // XML의 android:fontFamily·fontFamily가 이 두 뷰에서는 먹지 않는다. 리소스 자체는
+        // 멀쩡하다 — ResourcesCompat.getFont가 Typeface를 정상으로 돌려주고, APK 안에도
+        // 들어 있으며, 스타일·뷰 양쪽에 두 네임스페이스로 다 줘 봤다. 그런데도 화면에는
+        // Pretendard가 그려졌다(글자 폭으로 확인: 28sp에서 353px = Pretendard 361px 쪽,
+        // Cafe24라면 399px). 테마의 텍스트 어피어런스가 뷰 속성보다 늦게 적용되는 것으로
+        // 보이나 확증하지 못했다 — **XML 경로를 찾으면 이 코드를 지운다**(#174에 남김).
+        ResourcesCompat.getFont(this, R.font.cafe24_ssurround)?.let { davi ->
+            binding.homeTitle.typeface = davi
+            binding.cardQuestion.typeface = davi
+        }
+
         render(uiState)
     }
 
@@ -270,7 +284,12 @@ class ConversationActivity : AppCompatActivity() {
             lastQuestionKey = questionKey
             binding.cardQuestion.scrollTo(0, 0)
         }
+        binding.cardUtteranceContainer.isVisible(model.utteranceVisible)
         binding.cardUtterance.isVisible(model.utteranceVisible)
+        binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
+        // 듣는 중에는 마이크를 누를 수 없다(이미 듣고 있다). 표면 흰 원은 시안대로 두고
+        // **아이콘만** 흐리게 해 구분한다 — 배경색을 바꾸면 시안의 흰 원이 깨진다.
+        binding.btnMic.imageAlpha = if (model.micEnabled) MIC_ICON_ALPHA_ON else MIC_ICON_ALPHA_OFF
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
@@ -633,6 +652,10 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private companion object {
+        /** 마이크 아이콘 불투명도. 누를 수 없을 때 흐리게 해 상태를 알린다. */
+        const val MIC_ICON_ALPHA_ON = 255
+        const val MIC_ICON_ALPHA_OFF = 90
+
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
     }
 }

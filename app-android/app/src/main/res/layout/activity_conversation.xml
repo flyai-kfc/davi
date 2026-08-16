@@ -105,7 +105,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/voice_home_title"
-            android:textAppearance="@style/TextAppearance.Davi.Title"
+            android:textAppearance="@style/TextAppearance.Davi.Title.Davi"
+            android:fontFamily="@font/cafe24_ssurround"
             android:gravity="center" />
 
         <TextView
@@ -184,7 +185,8 @@
                 android:lineSpacingMultiplier="1.3"
                 android:scrollbars="vertical"
                 android:accessibilityLiveRegion="polite"
-                android:textAppearance="@style/TextAppearance.Davi.Subtitle" />
+                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:fontFamily="@font/cafe24_ssurround" />
 
             <com.davi.helper.LoadingDotsView
                 android:id="@+id/loading_dots"
@@ -195,23 +197,46 @@
         </LinearLayout>
         </FrameLayout>
 
-        <TextView
-            android:id="@+id/card_utterance"
+        <!--
+          시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
+          "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을
+          위해 같은 구조를 쓴 것과 짝이다.
+        -->
+        <LinearLayout
+            android:id="@+id/card_utterance_container"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="196"
             android:layout_marginTop="@dimen/davi_card_gap"
             android:minHeight="@dimen/davi_card_min_height_senior"
+            android:orientation="vertical"
+            android:gravity="center"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
             android:paddingRight="@dimen/davi_card_padding_horizontal"
             android:paddingTop="@dimen/davi_card_padding_top_senior"
             android:paddingBottom="@dimen/davi_card_padding_bottom_senior"
-            android:gravity="center"
-            android:lineSpacingMultiplier="1.3"
-            android:maxLines="3"
-            android:ellipsize="end"
-            android:background="@drawable/bg_davi_card_utterance"
-            android:textAppearance="@style/TextAppearance.Davi.BodyLg" />
+            android:background="@drawable/bg_davi_card_utterance">
+
+            <TextView
+                android:id="@+id/utterance_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/davi_spacing_sm"
+                android:text="@string/voice_listening_label"
+                android:textAppearance="@style/TextAppearance.Davi.Body"
+                android:textColor="@color/davi_text_secondary" />
+
+            <TextView
+                android:id="@+id/card_utterance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:textStyle="bold"
+                android:textAppearance="@style/TextAppearance.Davi.BodyLg" />
+        </LinearLayout>
 
         <Space
             android:id="@+id/space_home_mid"
