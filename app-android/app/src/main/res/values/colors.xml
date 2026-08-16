@@ -48,9 +48,16 @@
     -->
     <!--
       배경 핑크 메시(#161). 바탕은 davi_bg_mesh이고 그 위에 블롭 6개를 얹는다.
+
+      **위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다.** 값의 출처가 Foundations의 변수가
+      아니라 `v2/bg/pink` 레이어의 채움이라 대응하는 변수 이름이 없다 — 머리말의 "이름은 각
+      변수의 code syntax와 1:1"은 여기에 적용되지 않는다.
+      **승격 조건**: Foundations에 `color/bg/blob-N`·`color/bg/veil-*`가 생기면 그 이름으로
+      맞추고 이 단서를 지운다.
+
       **중심·반지름은 뷰 크기 대비 비율이라 dimens.xml에 못 넣는다** — 시안 프레임이
       300×620이라 그 숫자를 dp로 쓰면 좁은 화면에서 블롭이 밖으로 나간다.
-      비율과 불투명도는 MeshBackgroundView의 상수에 있고 출처는 Figma v2/bg/pink다.
+      비율과 불투명도는 MeshBackgroundView의 상수에 있다.
     -->
     <color name="davi_bg_blob_1">#F6B2C9</color>
     <color name="davi_bg_blob_2">#FCCADC</color>
