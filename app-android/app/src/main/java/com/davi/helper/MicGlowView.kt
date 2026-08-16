@@ -132,8 +132,12 @@ class MicGlowView @JvmOverloads constructor(
         const val MIC_EDGE_ALPHA = 0.24f
 
         /**
-         * 마이크 버튼이 글로우를 덮는 지점(글로우 반지름에 대한 비율).
-         * 마이크 130dp / 글로우 286dp → 65 / 143 ≈ 0.45. 두 dimen이 바뀌면 이 값도 바뀐다.
+         * 마이크 버튼이 글로우를 덮는 지점(글로우 반지름에 대한 비율) =
+         * `davi_mic_button_size` / `davi_glow_mic_size`.
+         *
+         * **시안이 글로우를 마이크의 2.21배(168 대 76)로 잡으므로 그 비를 유지하는 한 0.45다** —
+         * 마이크가 커지거나 작아져도 글로우가 함께 스케일되면 이 값은 안 바뀐다.
+         * 비를 깨뜨릴 때만 다시 계산한다.
          */
         const val MIC_EDGE_FRACTION = 0.45f
 
