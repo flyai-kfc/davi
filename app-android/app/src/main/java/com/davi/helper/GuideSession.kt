@@ -173,25 +173,29 @@ object GuideSession {
     }
 
     /**
-     * 확인 대기를 **원자적으로** 내려 소비한다. 확인을 띄웠던 화면의 서명을 돌려주고, 대기가
-     * 아니었으면 null이다.
+     * 확인 대기를 **원자적으로** 내린다. 대기가 아니었으면 false — 그때 호출자는 아무것도 하지 않는다.
+     *
+     * **서명은 돌려주지 않는다.** 대기 여부와 서명을 한 반환값에 겹치면 "대기가 아니었다"와
+     * "대기였는데 서명이 없다"가 구별되지 않는다. 지금은 서명이 required라 후자가 없지만, 계약이
+     * 다시 열리면 ○을 눌러도 세션이 안 끝나는 실패로 나타나고 원인을 여기서 찾기 어렵다
+     * (PR #153 리뷰 nit). 서명이 필요한 호출자는 [pendingConfirmSignature]를 같은 잠금 안에서 읽는다.
      *
      * 두 응답 경로가 이걸 공유하는 이유는 "확인 상태를 만지는 자리는 전부 잠근다"를 코드로
-     * 보이기 위해서다(PR #153 리뷰). 실제로는 확인 콜백도 샘플 루프도 메인 스레드지만,
-     * [awaitingConfirm]에 붙은 `@Volatile`이 "읽는 쪽 스레드가 다르다"로 읽히므로 검사와
-     * 해제가 따로 놀면 그 자리만 규칙 밖으로 보인다.
+     * 보이기 위해서다. 실제로는 확인 콜백도 샘플 루프도 메인 스레드지만, [awaitingConfirm]에 붙은
+     * `@Volatile`이 "읽는 쪽 스레드가 다르다"로 읽히므로 검사와 해제가 따로 놀면 그 자리만
+     * 규칙 밖으로 보인다.
      */
     @Synchronized
-    private fun consumeConfirm(): String? {
-        if (!awaitingConfirm) return null
+    private fun consumeConfirm(): Boolean {
+        if (!awaitingConfirm) return false
         awaitingConfirm = false
-        return pendingConfirmSignature.also { pendingConfirmSignature = null }
+        return true
     }
 
     /** 사용자가 "됐어요"를 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다. */
     fun confirmAccepted() {
-        if (consumeConfirm() == null) return
-        // stop() -> update()가 나머지 세션 상태를 비운다. 리스너를 부르므로 잠금 밖에서.
+        if (!consumeConfirm()) return
+        // stop() -> update()가 남은 확인 상태까지 비운다. 리스너를 부르므로 잠금 밖에서.
         stop()
     }
 
@@ -200,13 +204,16 @@ object GuideSession {
      *
      * 그 화면을 부정 이력에 남겨 확인 화면이 곧바로 다시 뜨지 않게 하고, 미검증 카운터는
      * 0으로 돌린다 — 재질의 예산을 이 시점부터 새로 준다.
+     *
+     * 함수 전체에 잠금을 건다. JVM 모니터는 재진입이라 [consumeConfirm]을 그대로 부를 수 있고,
+     * 그래야 대기 해제부터 이력 기록까지가 **한 구간으로** 원자적이다(PR #153 리뷰 nit).
      */
+    @Synchronized
     fun confirmRejected() {
-        val rejected = consumeConfirm() ?: return
-        synchronized(this) {
-            rejectedSignature = rejected
-            unverifiedDones = 0
-        }
+        if (!consumeConfirm()) return
+        rejectedSignature = pendingConfirmSignature
+        pendingConfirmSignature = null
+        unverifiedDones = 0
     }
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
