@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   실제 Gemini와 UIAutomator로 등록된 실기기 안내 시나리오를 실행하고 Markdown 보고서를 만든다.
 
