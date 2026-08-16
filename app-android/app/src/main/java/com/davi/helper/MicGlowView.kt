@@ -8,6 +8,7 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.util.AttributeSet
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.sin
@@ -32,6 +33,11 @@ class MicGlowView @JvmOverloads constructor(
     /** 음량에 반응할지. 홈 유도에서는 들을 마이크가 없으므로 false. */
     var reactsToVoice: Boolean = true
 
+    /**
+     * 시안의 방사 그라디언트는 **48% → 24% → 0%**다(#161에서 v2 확정값으로 승격).
+     * `colors.xml`이 hex만 두므로 불투명도는 여기서 준다 — 리소스에 ARGB를 박으면
+     * Figma 시맨틱과 1:1이 깨진다.
+     */
     private val glowColor = ContextCompat.getColor(context, R.color.davi_glow_mic)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -77,15 +83,21 @@ class MicGlowView @JvmOverloads constructor(
         if (radius <= 0f) return
         // 셰이더는 크기가 바뀔 때만 만든다.
         //
-        // **중심에서 바로 옅어지게 하면 안 된다.** 글로우 안쪽 절반은 마이크 버튼(불투명)이
-        // 덮으므로, 중심부터 감쇠시키면 실제로 보이는 바깥 테두리는 이미 다 사라진 뒤다
-        // (실기기 실측: 흰 배경 255 대비 픽셀차가 4밖에 안 남아 유도로 읽히지 않았다).
-        // 그래서 마이크에 가려지는 구간까지는 색을 유지하고, 거기서부터 바깥으로 감쇠시킨다.
+        // 시안 48 → 24 → 0%를 중심 · 마이크 가장자리 · 바깥 테두리에 건다.
+        //
+        // **중간 스톱을 마이크 가장자리에 두는 게 핵심이다.** 글로우 안쪽 절반은 마이크
+        // 버튼(불투명)이 덮으므로, 스톱을 균등하게 나누면 실제로 보이는 바깥 구간에는
+        // 이미 다 사라진 값만 남는다(실기기 실측: 흰 배경 255 대비 픽셀차가 4밖에 안 남아
+        // 유도로 읽히지 않았다). 가려지는 지점에서 24%가 되게 해야 바깥이 살아난다.
         paint.shader = RadialGradient(
             w / 2f,
             h / 2f,
             radius,
-            intArrayOf(glowColor, glowColor, Color.TRANSPARENT),
+            intArrayOf(
+                withAlpha(glowColor, CENTER_ALPHA),
+                withAlpha(glowColor, MIC_EDGE_ALPHA),
+                Color.TRANSPARENT,
+            ),
             floatArrayOf(0f, MIC_EDGE_FRACTION, 1f),
             Shader.TileMode.CLAMP,
         )
@@ -107,9 +119,17 @@ class MicGlowView @JvmOverloads constructor(
         canvas.restore()
     }
 
+    private fun withAlpha(color: Int, alpha: Float): Int =
+        ColorUtils.setAlphaComponent(color, (alpha * MAX_ALPHA).toInt().coerceIn(0, MAX_ALPHA))
+
     private companion object {
         const val MILLIS_PER_SECOND = 1000f
         val TWO_PI = (2.0 * PI).toFloat()
+        const val MAX_ALPHA = 255
+
+        /** 시안 방사 그라디언트의 불투명도 — 중심 48%, 마이크 가장자리 24%, 바깥 0%. */
+        const val CENTER_ALPHA = 0.48f
+        const val MIC_EDGE_ALPHA = 0.24f
 
         /**
          * 마이크 버튼이 글로우를 덮는 지점(글로우 반지름에 대한 비율).

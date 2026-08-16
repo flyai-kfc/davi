@@ -135,7 +135,8 @@ class ConversationActivity : AppCompatActivity() {
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
 
         // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+        // 배경(MeshBackgroundView)은 이 층 밖에 있어 인셋을 받지 않는다 — 화면 끝까지 깔린다.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.conversationInsets) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left

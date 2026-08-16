@@ -43,8 +43,25 @@
       그라디언트 4곳은 변수에 바인딩하지 않았다 — 물리면 스톱의 투명도가 변수 색으로
       덮여 파도가 불투명 덩어리가 된다.
 
-      아직 쓰는 화면이 없다. 화면 구현 이슈가 소비처를 만든다.
+      소비처는 화면 구현 이슈가 만든다 — 배경·파도·마이크 글로우는 #161이 받았고,
+      카드 틴트·안내창은 아직 쓰는 화면이 없다.
     -->
+    <!--
+      배경 핑크 메시(#161). 바탕은 davi_bg_mesh이고 그 위에 블롭 6개를 얹는다.
+      **중심·반지름은 뷰 크기 대비 비율이라 dimens.xml에 못 넣는다** — 시안 프레임이
+      300×620이라 그 숫자를 dp로 쓰면 좁은 화면에서 블롭이 밖으로 나간다.
+      비율과 불투명도는 MeshBackgroundView의 상수에 있고 출처는 Figma v2/bg/pink다.
+    -->
+    <color name="davi_bg_blob_1">#F6B2C9</color>
+    <color name="davi_bg_blob_2">#FCCADC</color>
+    <color name="davi_bg_blob_3">#FDD8CA</color>
+    <color name="davi_bg_blob_4">#F9BFD4</color>
+    <color name="davi_bg_blob_5">#FEE8EF</color>
+    <color name="davi_bg_blob_6">#FEF5F2</color>
+    <!-- 블롭 위에 얹는 하단 세로 그라디언트. 0.19H 투명 → 0.52H 58% → 1.0H 94%. -->
+    <color name="davi_bg_veil_mid">#FDF2F5</color>
+    <color name="davi_bg_veil_end">#FCEDF1</color>
+
     <!--
       davi_bg_mesh는 두 곳에 쓰인다 — 앱 배경 바탕(100%)과 **안내창 그라디언트의 위쪽**(90%).
       그 그라디언트의 아래쪽이 바로 다음 줄 davi_overlay_window_bottom(80%)이다. 짝이다.
@@ -74,31 +91,15 @@
     <color name="davi_button_affirm">#1B5E20</color>
 
     <!--
-      음성 모션 색 (#132) — **임시 토큰이다.**
+      음성 모션 색 — 파도 3겹과 마이크 글로우(#161). #132가 심은 임시 토큰을 v2 확정값으로
+      승격하면서 이름도 Figma 시맨틱과 1:1로 맞췄다(color/wave/layer-N, color/glow/mic).
 
-      값은 Figma SSoT SCREENS "메인 v2"의 `v2/wave/bottom`·`v2/glow/mic`(**승인 대기**)에서
-      뽑았다. 시안은 분홍 그라데이션 배경 위에 얹히는데 **저장소 배경은 아직 흰색**
-      (`davi_bg`)이라, 흰 배경 위에서는 시안보다 파도가 도드라져 보인다.
-      v2 배경이 들어오면 **여기 값만** 갈아끼운다 — 뷰 코드는 건드리지 않는다.
-
-      위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다. 확정 시 Foundations 변수로 승격하고
-      이 블록을 지운다.
-
-      **이관 계획(#155에서 보류).** v2 확정값은 아래와 같은데, 값만 갈아끼울 수 없다 —
-      셋 다 불투명도가 붙어야 하고 지금 뷰는 색 리소스의 알파를 그대로 쓴다.
-
-        davi_wave_back  → color/wave/layer-1 #FF7A88 (26%)
-        davi_wave_mid   → color/wave/layer-2 #EE5568 (20%)
-        davi_wave_front → color/wave/layer-3 #E03A55 (16%)
-        davi_glow_mic   → color/glow/mic     #FF3B52 (방사 48→24→0%)
-
-      새 이름을 미리 추가하면 같은 색에 이름이 둘 남으므로(옛 것은 VoiceWaveView·MicGlowView가
-      쓰고 새 것은 아무도 안 씀) 넣지 않았다. **화면 구현 이슈에서 이름 변경 + 값 확정 +
-      뷰의 알파 적용을 한 번에** 하고 이 블록을 지운다.
+      **hex만 둔다.** 불투명도는 VoiceWaveView·MicGlowView가 준다 —
+      겹 26/20/16%, 페이드 0→22→42%, 글로우 방사 48→24→0%.
+      리소스에 ARGB를 박으면 Figma 시맨틱과 1:1이 깨지고, 알파를 바꿀 때 색까지 다시 적게 된다.
     -->
-    <color name="davi_wave_back">#FFD6D9</color>
-    <color name="davi_wave_mid">#FCB1B7</color>
-    <color name="davi_wave_front">#F799A4</color>
-    <!-- 글로우는 마이크 뒤에 깔리므로 반투명이다. 불투명이면 배경을 도려낸 것처럼 보인다. -->
-    <color name="davi_glow_mic">#B8F2657E</color>
+    <color name="davi_wave_layer_1">#FF7A88</color>
+    <color name="davi_wave_layer_2">#EE5568</color>
+    <color name="davi_wave_layer_3">#E03A55</color>
+    <color name="davi_glow_mic">#FF3B52</color>
 </resources>
