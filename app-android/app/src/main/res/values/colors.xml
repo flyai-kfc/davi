@@ -29,6 +29,11 @@
       만들고 이 한 줄만 바꾼다. 강조 사각형과 색이 같지만 투명도로 층이 갈린다(ReadingBorder).
     -->
     <color name="davi_overlay_reading">@color/davi_highlight</color>
+    <!--
+      overlay/frame-border tone=success (GD-3, #139). 같은 자리·같은 두께에 색만 바꿔 "읽는 중"과
+      "다 된 것 같아요"를 가른다. 위와 같은 이유로 raw 값 대신 상태 색을 별칭으로 문다.
+    -->
+    <color name="davi_overlay_confirm">@color/davi_success</color>
 
     <!-- 눌림 상태 레이어(E2): 검정 12%. Material state layer 관례 — ripple 색으로 쓴다. -->
     <color name="davi_state_layer_pressed">#1F000000</color>
