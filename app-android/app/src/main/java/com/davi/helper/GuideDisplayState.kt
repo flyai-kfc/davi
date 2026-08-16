@@ -73,8 +73,8 @@ class GuideDisplayState {
      * STUCK 접미사를 붙이지 않는 이유는 상한 안내와 같다. 화면이 안 바뀌는 것은 사용자가
      * 답을 고르는 동안 당연하고, "한 번 더 해 보세요"는 지금 시킬 행동이 아니다.
      *
-     * 재표시 대상에 그대로 들어간다. 확인 대기 중 사용자가 우리 앱을 열면 root=null 청소가
-     * 확인 화면을 지우는데, 세션은 대기 상태로 남아 이 경로가 없으면 답할 자리가 사라진다.
+     * **화면이 바뀌어도 살아남는다** — 재표시에서 서명 폐기 대상이 아니다([redisplay]).
+     * 사용자가 어디로 가든 답할 자리가 따라가고, ○/×를 눌러야 사라진다.
      */
     fun showConfirm(signature: String, text: String): Content {
         val content = Content(bounds = null, text = text, confirm = true)
@@ -104,6 +104,13 @@ class GuideDisplayState {
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      *
+     * **확인 화면(GD-3)은 그 폐기에서 빠진다.** 폐기 규칙이 막으려는 것은 *조작* 안내가 엉뚱한
+     * 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가 null) 문구도
+     * 화면과 무관하다("다 됐어요? 해결되셨나요?"). 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
+     * 홈을 누른 것만으로 답할 자리가 사라지고, 대기 중에는 요청도 안 나가 세션이 갇힌다
+     * (2026-08-16 SM-S921N 실측: 셰이드 왕복 한 번에 확인이 버려지고 셰이드 화면에 대고 요청이
+     * 2회 나갔다 — PR #153 리뷰 P1). **답하기 전에는 사라지지 않는 것이 이 화면의 계약이다.**
+     *
      * [screenStable]이 false(추적기 판정 WAIT)면 **아무것도 하지 않는다** — 전환 중 덜 그려진
      * 과도기 트리(#32 실측)의 서명은 화면의 정체가 아니라서, 그걸 근거로 폐기하면 안정된
      * 원래 화면이 돌아왔을 때 되살릴 안내가 이미 없다(4차 리뷰 P1).
@@ -112,7 +119,7 @@ class GuideDisplayState {
         if (!screenStable) return null
         val current = guide ?: return null
         if (visible) return null
-        if (guideSignature != currentSignature) {
+        if (!current.confirm && guideSignature != currentSignature) {
             reset()
             return null
         }

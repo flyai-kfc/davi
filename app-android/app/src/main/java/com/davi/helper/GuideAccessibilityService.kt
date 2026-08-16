@@ -213,19 +213,6 @@ class GuideAccessibilityService : AccessibilityService() {
         lastDecision = decision
         updateReading()
 
-        // 확인을 띄운 앱을 사용자가 떠났다면 답 대신 진행한 것이다 — 대기를 풀어 아래 SEND가
-        // 다시 나가게 한다. 이게 없으면 세션이 갇힌다: 확인 화면은 같은 화면에서만 되살아나는데
-        // 대기 중에는 요청도 안 나가, 다른 화면으로 가는 순간 **화면에 아무것도 없고 물어보지도
-        // 않는 상태**가 된다. 안정 판정 뒤에만 본다 — 과도기 트리(#32)로 풀면 확인 화면을 잃는다.
-        if (decision != ScreenStabilityTracker.Decision.WAIT &&
-            GuideSession.confirmScreenLeft(result.screen.packageName)
-        ) {
-            Log.i(TAG, "confirm screen left, resuming")
-            overlay?.clear()
-            display.reset()
-            updateReading()
-        }
-
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
@@ -531,14 +518,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 response = response,
                 target = null,
             )
-            when (
-                GuideSession.onDone(
-                    session.generation,
-                    response.verified,
-                    response.screenSignature,
-                    screen.packageName,
-                )
-            ) {
+            when (GuideSession.onDone(session.generation, response.verified, response.screenSignature)) {
                 // 검증된 완료도 여기서 끝내지 않는다(#139) — 성공 오탐을 사용자에게 한 번 묻는다.
                 GuideSession.DoneOutcome.CONFIRM_CONFIDENT -> {
                     Log.i(TAG, "done verified, asking user")

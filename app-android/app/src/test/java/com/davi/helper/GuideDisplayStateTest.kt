@@ -142,6 +142,37 @@ class GuideDisplayStateTest {
         )
     }
 
+    /**
+     * **확인 화면은 다른 화면에서도 되살아난다.** 조작 안내와 갈리는 지점이다 — 가리킬 대상이
+     * 없고 문구도 화면과 무관해서, 화면에 묶으면 알림창을 잠깐 내린 것만으로 답할 자리가
+     * 사라진다(2026-08-16 실기기 실측, PR #153 리뷰 P1).
+     */
+    @Test
+    fun `확인 화면은 다른 화면에서도 재표시된다`() {
+        state.showConfirm(sigA, confirmText)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, confirmText, confirm = true),
+            state.redisplay(sigB, true),
+        )
+    }
+
+    /** 폐기되지 않았으므로 원래 화면으로 돌아와도 그대로 남아 있다. */
+    @Test
+    fun `확인 화면은 다른 화면을 거쳐도 폐기되지 않는다`() {
+        state.showConfirm(sigA, confirmText)
+        state.onCleared()
+
+        state.redisplay(sigB, true)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, confirmText, confirm = true),
+            state.redisplay(sigA, true),
+        )
+    }
+
     /** ×아직요 뒤의 새 안내는 확인쌍을 물려받지 않는다. */
     @Test
     fun `확인 뒤 새 안내는 일반 안내로 돌아온다`() {

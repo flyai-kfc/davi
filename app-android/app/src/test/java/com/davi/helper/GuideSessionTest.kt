@@ -24,8 +24,6 @@ class GuideSessionTest {
     /** 서버가 label 없이 만들어 준 화면 서명. 값 자체에는 의미가 없고 같은지 다른지만 본다. */
     private val SIGNATURE = "screen-a"
     private val OTHER_SIGNATURE = "screen-b"
-    private val PACKAGE = "com.example.alpha"
-    private val OTHER_PACKAGE = "com.example.beta"
 
     private fun currentGeneration(): Long = GuideSession.active()!!.generation
 
@@ -446,67 +444,21 @@ class GuideSessionTest {
         )
     }
 
-    // --- 확인 화면을 떠났을 때 -----------------------------------------------------
-    //
-    // 대기 중에는 요청이 나가지 않으므로, 떠난 것을 못 알아채면 세션이 갇힌다 —
-    // 화면에 아무것도 없고 물어보지도 않는 상태가 된다.
-
-    @Test
-    fun `확인을 띄운 앱을 떠나면 대기가 풀린다`() {
-        GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), true, SIGNATURE, PACKAGE)
-
-        assertTrue(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
-
-        assertFalse(GuideSession.awaitingConfirm)
-        assertTrue(GuideSession.isActive)
-    }
-
     /**
-     * 서명으로 보면 확인 화면이 자기 때문에 즉시 해제된다 — 안내창이 화면 아래를 덮으면서
-     * 가려진 요소가 트리에서 빠져 서명이 달라진다(2026-08-14 실기기 실측).
+     * 화면이 바뀌어도 대기는 그대로다. 답하기 전에 풀리면 답할 자리가 사라지고, 대기 중에는
+     * 요청도 안 나가 세션이 갇힌다(PR #153 리뷰 P1). 표시 쪽 계약은
+     * `GuideDisplayStateTest`가 고정한다.
      */
     @Test
-    fun `같은 앱 안에서 화면이 바뀌어도 대기를 풀지 않는다`() {
-        GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), true, SIGNATURE, PACKAGE)
-
-        assertFalse(GuideSession.confirmScreenLeft(PACKAGE))
-
-        assertTrue(GuideSession.awaitingConfirm)
-    }
-
-    /** ×와 달리 부정 이력을 남기지 않는다 — 앱을 떠난 것은 그 완료가 틀렸다는 근거가 아니다. */
-    @Test
-    fun `앱을 떠난 것은 부정으로 세지 않는다`() {
+    fun `화면이 바뀌어도 확인 대기는 유지된다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
-        GuideSession.confirmScreenLeft(OTHER_PACKAGE)
+        GuideSession.onDone(generation, true, SIGNATURE)
 
-        assertEquals(
-            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(generation, true, SIGNATURE, PACKAGE),
-        )
-    }
-
-    @Test
-    fun `확인 대기가 아니면 아무 일도 없다`() {
-        GuideSession.start("카메라 열기")
-
-        assertFalse(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
-    }
-
-    /** package를 못 받으면 떠났는지 판정할 수 없다. 섣불리 풀면 답할 자리가 사라진다. */
-    @Test
-    fun `package가 없으면 대기를 유지한다`() {
-        GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), true, SIGNATURE, screenPackage = null)
-
-        assertFalse(GuideSession.confirmScreenLeft(OTHER_PACKAGE))
-        assertFalse(GuideSession.confirmScreenLeft(null))
+        GuideSession.recordInstruction(generation, "다른 화면의 안내")
 
         assertTrue(GuideSession.awaitingConfirm)
+        assertTrue(GuideSession.isActive)
     }
 
     /**
@@ -520,11 +472,11 @@ class GuideSessionTest {
     fun `부정 뒤 같은 화면의 done이 반복돼도 확인은 재발행되지 않는다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
+        GuideSession.onDone(generation, true, SIGNATURE)
         GuideSession.confirmRejected()
 
         val outcomes = (1..GuideSession.MAX_UNVERIFIED_DONE).map {
-            GuideSession.onDone(generation, true, SIGNATURE, PACKAGE)
+            GuideSession.onDone(generation, true, SIGNATURE)
         }
 
         assertEquals(
