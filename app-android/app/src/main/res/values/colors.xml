@@ -10,7 +10,12 @@
     <color name="davi_button_kakao">#FEE500</color>
     <color name="davi_surface_secondary">#FFE1E1</color>
     <color name="davi_text_primary">#1A1A1A</color>
-    <color name="davi_text_secondary">#595959</color>
+    <!--
+      A1(AAA 7:1) 준수 보정(#155). #595959는 흰 배경에서 정확히 7.00:1로 여유가 0이었고,
+      v2 시니어 카드 틴트(#F7C6D5) 위 4.67:1 · v2 배경(#FDF6F8) 위 6.58:1로 하한을 벗어난다.
+      #383838은 각각 11.73 / 7.81 / 11.01:1이다. Figma color/text/secondary는 grey/700로 옮겨져 있다.
+    -->
+    <color name="davi_text_secondary">#383838</color>
     <color name="davi_bg">#FFFFFF</color>
     <color name="davi_surface">#F4F4F6</color>
     <color name="davi_border">#D9D9D9</color>
@@ -29,6 +34,46 @@
     <color name="davi_state_layer_pressed">#1F000000</color>
 
     <!--
+      v2 "핑크 글라스 + 빨강 파도" 시맨틱(#155). 위 토큰들과 같은 규칙이다 —
+      값의 원본은 Figma Foundations이고 이름은 각 변수의 Android code syntax와 1:1이다.
+
+      **여기에는 hex만 둔다.** 파도·글로우·안내창은 시안에서 불투명도가 따로 붙는데
+      (파도 겹 26/20/16%, 페이드 0→22→42%, 안내창 90/80%, 마이크 글로우 48→24→0%),
+      그 값은 쓰는 화면에서 ARGB나 View.alpha로 준다. Figma도 같은 이유로 알파가 있는
+      그라디언트 4곳은 변수에 바인딩하지 않았다 — 물리면 스톱의 투명도가 변수 색으로
+      덮여 파도가 불투명 덩어리가 된다.
+
+      아직 쓰는 화면이 없다. 화면 구현 이슈가 소비처를 만든다.
+    -->
+    <!--
+      davi_bg_mesh는 두 곳에 쓰인다 — 앱 배경 바탕(100%)과 **안내창 그라디언트의 위쪽**(90%).
+      그 그라디언트의 아래쪽이 바로 다음 줄 davi_overlay_window_bottom(80%)이다. 짝이다.
+
+      **davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)가 v2에서 이 그라디언트로 바뀔 자리다.**
+      지금 바꾸면 오버레이 안내창이 즉시 달라지므로 화면 구현 이슈로 넘긴다.
+    -->
+    <color name="davi_bg_mesh">#FDF6F8</color>
+    <color name="davi_overlay_window_bottom">#FADCE6</color>
+    <color name="davi_wave_fade_start">#FFB3B3</color>
+    <color name="davi_wave_fade_mid">#FF9A9A</color>
+    <color name="davi_wave_fade_end">#FF5C70</color>
+    <color name="davi_glow_card">#E0708F</color>
+    <color name="davi_mic_capsule_bottom">#FFC2CB</color>
+    <!--
+      긍정 버튼(○됐어요) 채움 배경. 흰 글자 7.87:1.
+
+      대응하는 부정/확정 쪽은 새로 만들지 않고 **기존 davi_button_primary(#A50014, 8.05:1)**를
+      쓴다. 더 밝은 빨강 #B50016(7.06:1)을 검토했으나 폐기했다 — #A50014와 빨강 채널만 16 차이
+      (6%)라 육안 구분이 안 되는데 AAA 여유가 1.05에서 0.06으로 줄어든다. 검증 기기의
+      screencap이 Display P3로 나오는 것이 확인된 이상(#C62828 -> #B63831) 0.06은 색공간 변환
+      한 번에 사라진다.
+
+      포인트 색 #F2001C는 흰 글자가 4.38:1로 AA도 미달이라 버튼 배경에 쓸 수 없고(B2),
+      davi_danger·davi_success도 같은 이유로 금지다.
+    -->
+    <color name="davi_button_affirm">#1B5E20</color>
+
+    <!--
       음성 모션 색 (#132) — **임시 토큰이다.**
 
       값은 Figma SSoT SCREENS "메인 v2"의 `v2/wave/bottom`·`v2/glow/mic`(**승인 대기**)에서
@@ -38,6 +83,18 @@
 
       위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다. 확정 시 Foundations 변수로 승격하고
       이 블록을 지운다.
+
+      **이관 계획(#155에서 보류).** v2 확정값은 아래와 같은데, 값만 갈아끼울 수 없다 —
+      셋 다 불투명도가 붙어야 하고 지금 뷰는 색 리소스의 알파를 그대로 쓴다.
+
+        davi_wave_back  → color/wave/layer-1 #FF7A88 (26%)
+        davi_wave_mid   → color/wave/layer-2 #EE5568 (20%)
+        davi_wave_front → color/wave/layer-3 #E03A55 (16%)
+        davi_glow_mic   → color/glow/mic     #FF3B52 (방사 48→24→0%)
+
+      새 이름을 미리 추가하면 같은 색에 이름이 둘 남으므로(옛 것은 VoiceWaveView·MicGlowView가
+      쓰고 새 것은 아무도 안 씀) 넣지 않았다. **화면 구현 이슈에서 이름 변경 + 값 확정 +
+      뷰의 알파 적용을 한 번에** 하고 이 블록을 지운다.
     -->
     <color name="davi_wave_back">#FFD6D9</color>
     <color name="davi_wave_mid">#FCB1B7</color>
