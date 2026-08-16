@@ -109,4 +109,21 @@
     <color name="davi_wave_layer_2">#EE5568</color>
     <color name="davi_wave_layer_3">#E03A55</color>
     <color name="davi_glow_mic">#FF3B52</color>
+    <!--
+      v2 카드 글라스(#170). 흰 그라디언트 위에 틴트를 얹는 구조라 **여기는 ARGB다** —
+      위 토큰들과 달리 불투명도가 색의 일부다. 시안이 카드마다 다른 불투명도를 쓰고
+      뷰가 아니라 drawable이 그리므로 코드에서 알파를 줄 자리가 없다.
+
+      흰 바탕 86 → 82 → 78% (시안 "글라스"), 틴트는 다비 #F4F4F6 28% / 시니어 #F7C6D5 58%.
+      그림자는 elevation이 아니라 layer-list로 카드 뒤에 그린다 — 반투명이라 시스템
+      그림자가 카드를 통과해 비친다.
+    -->
+    <color name="davi_card_glass_top">#DBFFFFFF</color>
+    <color name="davi_card_glass_mid">#D1FFFFFF</color>
+    <color name="davi_card_glass_bottom">#C7FFFFFF</color>
+    <color name="davi_card_tint_davi">#47F4F4F6</color>
+    <color name="davi_card_tint_senior">#94F7C6D5</color>
+    <!-- 대기 상태 그림자 — 시안 검정 8%(다비) / 7%(시니어). -->
+    <color name="davi_card_shadow_idle">#14000000</color>
+    <color name="davi_card_shadow_idle_senior">#12000000</color>
 </resources>

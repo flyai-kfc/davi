@@ -254,6 +254,7 @@ class ConversationActivity : AppCompatActivity() {
         val questionVisible = model.questionRes != null || model.questionText != null
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
+        binding.glowCard.isVisible(model.cardGlowVisible)
         binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)

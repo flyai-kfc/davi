@@ -1,7 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 발화 카드(핑크): 사용자 발화·부분 인식 결과가 실시간으로 차는 자리. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="@color/davi_surface_secondary" />
-    <corners android:radius="@dimen/davi_radius_md" />
-</shape>
+<!--
+  시니어 발화 카드 — 반투명 글라스(#170). 구조와 elevation 금지 근거는 bg_davi_card와 같다.
+  틴트만 시니어 색(58%)으로 다르고 그림자는 검정 7%로 조금 더 옅다.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:top="@dimen/davi_card_shadow_offset_y"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_shadow_idle_senior" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <item android:bottom="@dimen/davi_card_shadow_offset_y">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/davi_card_glass_top"
+                android:centerColor="@color/davi_card_glass_mid"
+                android:endColor="@color/davi_card_glass_bottom"
+                android:type="linear" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <item android:bottom="@dimen/davi_card_shadow_offset_y">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_tint_senior" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+</layer-list>
