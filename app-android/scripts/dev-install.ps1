@@ -173,10 +173,41 @@ function Invoke-AdbChecked {
 }
 
 # --- 대상 패키지 ---------------------------------------------------------------
+# 기기에 실제로 설치된 접근성 서비스에서 패키지를 찾는다.
+# pm list packages로도 되지만 #58 전환기에 com.davi.helper와 com.davi.helper.debug가 함께 깔려
+# 있으면 어느 쪽이 우리 서비스를 가졌는지 가릴 수 없다. 서비스를 가진 패키지를 직접 찾는다.
+function Get-InstalledServicePackages {
+    if (-not $targetSerial) { return @() }
+    try {
+        $state = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '설치된 접근성 서비스 조회') -join "`n"
+    }
+    catch { return @() }
+
+    # dumpsys는 컴포넌트를 축약형(com.davi.helper/.GuideAccessibilityService)으로도 찍는다.
+    # 축약형 pkg/.Cls 는 pkg.Cls 를 뜻하므로 풀어서 비교해야 한다. 단순 클래스명만 맞춰 보면
+    # 이전 PoC(com.davipoc.mvp/.GuideAccessibilityService)까지 후보로 걸린다(실측).
+    $found = [ordered]@{}
+    foreach ($m in [regex]::Matches($state, '([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)/([A-Za-z0-9_.]+)')) {
+        $pkg = $m.Groups[1].Value
+        $class = $m.Groups[2].Value
+        $qualified = if ($class.StartsWith('.')) { "$pkg$class" } else { $class }
+        if ($qualified -eq $serviceClass) { $found[$pkg] = $true }
+    }
+    return @($found.Keys)
+}
+
 # 서비스 문자열을 박아 두면 #58의 applicationIdSuffix(".debug")가 들어올 때 조용히 깨진다.
-# AGP가 debug 빌드마다 갱신하는 산출물 메타데이터에서 applicationId를 읽는다.
+# 빌드를 건너뛰는 경로(-A11yOnly·-Status)에서는 산출물이 없거나 낡을 수 있으므로 기기를 먼저 본다.
 function Resolve-PackageName {
     if ($PackageName) { return $PackageName }
+
+    $installed = @(Get-InstalledServicePackages)
+    if ($installed.Count -eq 1) { return $installed[0] }
+    if ($installed.Count -gt 1) {
+        Write-Warning "다비 접근성 서비스를 가진 패키지가 여럿이다($($installed -join ', ')). -PackageName으로 지정할 것."
+    }
+
+    # AGP가 debug 빌드마다 갱신하는 산출물 메타데이터.
     $metadata = Join-Path $appDir 'app\build\outputs\apk\debug\output-metadata.json'
     if (Test-Path $metadata) {
         try {
@@ -207,6 +238,39 @@ function Get-EnabledServices {
 function Get-AccessibilityGlobal {
     $raw = (Invoke-AdbCapture @('shell', 'settings', 'get', 'secure', 'accessibility_enabled') '접근성 전역 상태 조회') -join ''
     return "$raw".Trim()
+}
+
+# 토글 사이클이 중간에 죽었을 때 진입 시점 상태로 되돌린다.
+# accessibility_enabled는 전역이라 0으로 남으면 다비뿐 아니라 TalkBack 등 기기의 접근성 전체가
+# 꺼진 채 방치된다. 사용자에겐 원인을 짐작할 단서가 없다.
+# 여기서는 절대 throw하지 않는다 — 복구 실패가 원래 예외를 덮으면 진단이 더 어려워진다.
+function Restore-AccessibilityState {
+    param([string[]]$Original)
+
+    $ok = $true
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        if ($Original.Count -gt 0) {
+            $cmdArgs = $adbDevice + @('shell', 'settings', 'put', 'secure', 'enabled_accessibility_services', ($Original -join ':'))
+        }
+        else {
+            $cmdArgs = $adbDevice + @('shell', 'settings', 'delete', 'secure', 'enabled_accessibility_services')
+        }
+        & $adb @cmdArgs | Out-Null
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+        $cmdArgs = $adbDevice + @('shell', 'settings', 'put', 'secure', 'accessibility_enabled', '1')
+        & $adb @cmdArgs | Out-Null
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+    }
+    catch { $ok = $false }
+    finally { $ErrorActionPreference = $previous }
+
+    # 전역 스위치는 진입 시점 값이 아니라 항상 켬으로 둔다. 이 스크립트를 부른 의도가
+    # "접근성을 켜라"이고, 꺼진 채 남는 것이 막으려는 상태 그 자체다.
+    if ($ok) { Write-Warning '접근성 복구가 중단됐다. 목록을 진입 시점으로 되돌리고 전역 스위치를 켰다.' }
+    else { Write-Warning '접근성 복구가 중단됐고 되돌리기도 실패했다. 기기 설정에서 접근성을 직접 확인할 것.' }
 }
 
 # 목록에 값이 있어도 실제로 바인딩되지 않는 경우가 있다. 그 둘을 구분해야 한다.
@@ -341,15 +405,25 @@ if (-not $SkipAccessibility) {
 
         # settings put 만으로는 목록에 값이 들어가도 바인딩이 살아나지 않는 경우가 있다.
         # 전역 스위치를 껐다 켜는 사이클로 서비스를 다시 붙인다.
-        Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'accessibility_enabled', '0') '접근성 전역 끄기'
-        if ($without.Count -gt 0) {
-            Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'enabled_accessibility_services', ($without -join ':')) '접근성 목록 비우기'
+        #
+        # 전역을 내린 뒤 중간에 죽으면 기기의 접근성 전체가 꺼진 채 남는다(adb 호출은 exit≠0에
+        # throw한다). run-device-e2e.sh의 restore_davi_accessibility/cleanup과 같은 보호를 건다.
+        $restoreNeeded = $true
+        try {
+            Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'accessibility_enabled', '0') '접근성 전역 끄기'
+            if ($without.Count -gt 0) {
+                Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'enabled_accessibility_services', ($without -join ':')) '접근성 목록 비우기'
+            }
+            else {
+                Invoke-AdbChecked @('shell', 'settings', 'delete', 'secure', 'enabled_accessibility_services') '접근성 목록 비우기'
+            }
+            Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'enabled_accessibility_services', $next) '접근성 목록 설정'
+            Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'accessibility_enabled', '1') '접근성 전역 켜기'
+            $restoreNeeded = $false
         }
-        else {
-            Invoke-AdbChecked @('shell', 'settings', 'delete', 'secure', 'enabled_accessibility_services') '접근성 목록 비우기'
+        finally {
+            if ($restoreNeeded) { Restore-AccessibilityState -Original $current }
         }
-        Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'enabled_accessibility_services', $next) '접근성 목록 설정'
-        Invoke-AdbChecked @('shell', 'settings', 'put', 'secure', 'accessibility_enabled', '1') '접근성 전역 켜기'
 
         # 되읽어 확인한다. put 이 조용히 무시되는 경우(제조사 정책 등)를 잡기 위해서다.
         Start-Sleep -Milliseconds 800
