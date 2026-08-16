@@ -252,6 +252,9 @@ class ConversationActivity : AppCompatActivity() {
         binding.logo.isVisible(model.logoVisible)
         // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
         val questionVisible = model.questionRes != null || model.questionText != null
+        // **래퍼를 토글한다.** 래퍼가 세로 weight를 갖고 있어(카드 두 장이 남는 공간을
+        // 나눠 가진다) 안쪽만 숨기면 빈 래퍼가 계속 자리를 먹어 홈 화면 문구가 밀려 올라간다.
+        binding.cardQuestionWrap.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)

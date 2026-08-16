@@ -139,10 +139,21 @@
           다비 카드와 그 뒤 글로우. 글로우가 카드보다 사방 blur만큼 넓어야 번질 자리가 생겨
           FrameLayout으로 싸고 음수 마진으로 넓힌다. 글로우는 첫 자식이라 카드 아래에 깔린다.
         -->
+        <!--
+          **카드 두 장이 남는 세로 공간을 나눠 갖는다**(시안 176:196).
+
+          고정 높이로 쌓으면 화면 높이에 따라 위나 아래가 빈다 — 시안은 배지가 X 바로 아래에
+          붙으면서 **동시에** 시니어 카드가 마이크에 닿는데, 프레임 620과 실기기 높이가 달라
+          한쪽에 앵커하면 반대쪽이 벌어진다(실기기에서 양쪽 다 겪었다).
+
+          글자 배율이 커져도 **스크롤하지 않고 박스가 유동적으로 화면을 채운다**는 결정
+          (2026-08-16)의 구현이기도 하다. minHeight가 바닥을 잡아 줄어들 한계를 준다.
+        -->
         <FrameLayout
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="176"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative">
 
             <com.davi.helper.CardGlowView
@@ -187,7 +198,8 @@
         <TextView
             android:id="@+id/card_utterance"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="196"
             android:layout_marginTop="@dimen/davi_card_gap"
             android:minHeight="@dimen/davi_card_min_height_senior"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
@@ -229,9 +241,7 @@
             android:layout_gravity="center"
             android:background="@drawable/bg_davi_mic_button"
             android:src="@drawable/ic_davi_mic"
-            android:tint="@color/davi_mic_icon"
             android:scaleType="fitCenter"
-            android:padding="@dimen/davi_mic_button_padding"
             android:elevation="@dimen/davi_mic_button_elevation"
             android:contentDescription="@string/voice_home_mic_desc" />
     </FrameLayout>

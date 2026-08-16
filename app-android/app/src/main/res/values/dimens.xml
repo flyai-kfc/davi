@@ -181,7 +181,12 @@
       글로우가 뷰 밖으로 번질 자리가 필요해 카드보다 사방 blur만큼 넓게 잡는다.
     -->
     <dimen name="davi_glow_card_offset_y">18dp</dimen>
-    <dimen name="davi_glow_card_blur">36dp</dimen>
+    <!--
+      **Figma blur 36이 아니라 30이다.** Figma는 sigma = r/2 (36 -> 18)이고 Skia는
+      sigma = r x 0.57735 + 0.5다. 36을 그대로 넣으면 sigma 21.3으로 시안보다 18% 넓게
+      번진다. 30을 넣어야 sigma 17.8로 시안의 18에 맞는다.
+    -->
+    <dimen name="davi_glow_card_blur">30dp</dimen>
     <!-- 글로우 뷰가 카드 밖으로 나가는 거리(음수 마진). blur와 같다. -->
-    <dimen name="davi_glow_card_bleed">-36dp</dimen>
+    <dimen name="davi_glow_card_bleed">-30dp</dimen>
 </resources>
