@@ -45,6 +45,13 @@
 
       아직 쓰는 화면이 없다. 화면 구현 이슈가 소비처를 만든다.
     -->
+    <!--
+      davi_bg_mesh는 두 곳에 쓰인다 — 앱 배경 바탕(100%)과 **안내창 그라디언트의 위쪽**(90%).
+      그 그라디언트의 아래쪽이 바로 다음 줄 davi_overlay_window_bottom(80%)이다. 짝이다.
+
+      **davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)가 v2에서 이 그라디언트로 바뀔 자리다.**
+      지금 바꾸면 오버레이 안내창이 즉시 달라지므로 화면 구현 이슈로 넘긴다.
+    -->
     <color name="davi_bg_mesh">#FDF6F8</color>
     <color name="davi_overlay_window_bottom">#FADCE6</color>
     <color name="davi_wave_fade_start">#FFB3B3</color>
@@ -53,11 +60,17 @@
     <color name="davi_glow_card">#E0708F</color>
     <color name="davi_mic_capsule_bottom">#FFC2CB</color>
     <!--
-      흰 글자를 얹는 채움 배경 전용. 포인트 색 #F2001C는 흰 글자가 4.38:1로 AA도 미달이라
-      버튼 배경에 쓸 수 없고(B2), davi_danger·davi_success도 같은 이유로 금지다.
-      #B50016은 7.05:1로 AAA 하한, #1B5E20은 7.87:1이다.
+      긍정 버튼(○됐어요) 채움 배경. 흰 글자 7.87:1.
+
+      대응하는 부정/확정 쪽은 새로 만들지 않고 **기존 davi_button_primary(#A50014, 8.05:1)**를
+      쓴다. 더 밝은 빨강 #B50016(7.06:1)을 검토했으나 폐기했다 — #A50014와 빨강 채널만 16 차이
+      (6%)라 육안 구분이 안 되는데 AAA 여유가 1.05에서 0.06으로 줄어든다. 검증 기기의
+      screencap이 Display P3로 나오는 것이 확인된 이상(#C62828 -> #B63831) 0.06은 색공간 변환
+      한 번에 사라진다.
+
+      포인트 색 #F2001C는 흰 글자가 4.38:1로 AA도 미달이라 버튼 배경에 쓸 수 없고(B2),
+      davi_danger·davi_success도 같은 이유로 금지다.
     -->
-    <color name="davi_button_primary_vivid">#B50016</color>
     <color name="davi_button_affirm">#1B5E20</color>
 
     <!--
