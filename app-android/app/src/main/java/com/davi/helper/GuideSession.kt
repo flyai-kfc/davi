@@ -172,10 +172,26 @@ object GuideSession {
         pendingConfirmSignature = screenSignature
     }
 
+    /**
+     * 확인 대기를 **원자적으로** 내려 소비한다. 확인을 띄웠던 화면의 서명을 돌려주고, 대기가
+     * 아니었으면 null이다.
+     *
+     * 두 응답 경로가 이걸 공유하는 이유는 "확인 상태를 만지는 자리는 전부 잠근다"를 코드로
+     * 보이기 위해서다(PR #153 리뷰). 실제로는 확인 콜백도 샘플 루프도 메인 스레드지만,
+     * [awaitingConfirm]에 붙은 `@Volatile`이 "읽는 쪽 스레드가 다르다"로 읽히므로 검사와
+     * 해제가 따로 놀면 그 자리만 규칙 밖으로 보인다.
+     */
+    @Synchronized
+    private fun consumeConfirm(): String? {
+        if (!awaitingConfirm) return null
+        awaitingConfirm = false
+        return pendingConfirmSignature.also { pendingConfirmSignature = null }
+    }
+
     /** 사용자가 "됐어요"를 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다. */
     fun confirmAccepted() {
-        if (!awaitingConfirm) return
-        // stop() -> update()가 확인 상태까지 함께 비운다. 리스너를 부르므로 잠금 밖에서.
+        if (consumeConfirm() == null) return
+        // stop() -> update()가 나머지 세션 상태를 비운다. 리스너를 부르므로 잠금 밖에서.
         stop()
     }
 
@@ -185,13 +201,12 @@ object GuideSession {
      * 그 화면을 부정 이력에 남겨 확인 화면이 곧바로 다시 뜨지 않게 하고, 미검증 카운터는
      * 0으로 돌린다 — 재질의 예산을 이 시점부터 새로 준다.
      */
-    @Synchronized
     fun confirmRejected() {
-        if (!awaitingConfirm) return
-        awaitingConfirm = false
-        rejectedSignature = pendingConfirmSignature
-        pendingConfirmSignature = null
-        unverifiedDones = 0
+        val rejected = consumeConfirm() ?: return
+        synchronized(this) {
+            rejectedSignature = rejected
+            unverifiedDones = 0
+        }
     }
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
