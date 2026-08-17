@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -134,8 +135,20 @@ class ConversationActivity : AppCompatActivity() {
         launchableAppIndex.start()
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
 
+        // 3버튼 내비게이션에서 시스템이 내비 바에 스크림을 깔아 배경을 가린다(PR #162 리뷰 실측:
+        // y=2178부터 54dp가 흰 띠). 배경이 화면 끝까지 깔리려면 그 대비 강제를 꺼야 한다.
+        //
+        // API 29+에만 있는 설정이지만 "API 분기가 필요한 기법"을 채택하는 것은 아니다 —
+        // 26~28에는 이 강제 자체가 없어 그냥 동작한다. 즉 신버전에서 생긴 문제를 신버전에서
+        // 끄는 것이고, 구버전 경로가 열등해지지 않는다(SpeechRecognizerHelper의 온디바이스
+        // 분기와 같은 성격).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+
         // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+        // 배경(MeshBackgroundView)은 이 층 밖에 있어 인셋을 받지 않는다 — 화면 끝까지 깔린다.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.conversationInsets) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left

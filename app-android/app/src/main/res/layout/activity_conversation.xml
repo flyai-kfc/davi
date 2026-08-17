@@ -16,8 +16,28 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/conversation_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/davi_bg">
+    android:layout_height="match_parent">
+
+    <!--
+      v2 배경 핑크 메시(#161). 첫 자식이라 z축 맨 뒤다 — 시안 순서가
+      배경 -> 파도 -> 글로우 -> 마이크이고, 아래 두 뷰의 주석에 그 근거가 이어진다.
+      정적이라 하드웨어 레이어로 캐시되며 위 뷰들이 매 프레임 그려도 다시 그려지지 않는다.
+    -->
+    <com.davi.helper.MeshBackgroundView
+        android:id="@+id/mesh_background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no" />
+
+    <!--
+      시스템 바 인셋을 받는 층(#78 패턴). **배경은 이 층 밖에 있다** — 루트에 인셋을 주면
+      배경까지 밀려 상태표시줄·내비게이션 자리가 흰색으로 남는다(시안은 거기까지 분홍이다).
+      나머지 내용은 여기 안에서 인셋만큼 물러난다.
+    -->
+    <FrameLayout
+        android:id="@+id/conversation_insets"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
     <!--
       음성 모션 (#132). 배경 바로 위, 나머지 내용 아래에 둔다 — 첫 자식이라 z축 맨 뒤다.
@@ -202,4 +222,5 @@
         android:src="@drawable/ic_davi_x"
         android:scaleType="fitCenter"
         android:contentDescription="@string/conversation_close_desc" />
+    </FrameLayout>
 </FrameLayout>
