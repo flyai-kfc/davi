@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 
 /**
  * 다비가 말하는 동안 카드 뒤에 깔리는 분홍 글로우(#170).
@@ -43,6 +44,10 @@ class CardGlowView @JvmOverloads constructor(
     private val radius = resources.getDimension(R.dimen.davi_radius_xl)
     private val offsetY = resources.getDimension(R.dimen.davi_glow_card_offset_y)
     private val blur = resources.getDimension(R.dimen.davi_glow_card_blur)
+
+    /** 보강 겹의 불투명도. 근거는 `davi_glow_card_boost_alpha` 주석에 있다. */
+    private val boostColor = resources.getInteger(R.integer.davi_glow_card_boost_alpha)
+        .let { if (it <= 0) null else ColorUtils.setAlphaComponent(glowColor, it) }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -94,7 +99,14 @@ class CardGlowView @JvmOverloads constructor(
         if (bounds.width() <= 0f || bounds.height() <= 0f) return
         // 1) 도형 + 그림자를 그리고 2) 도형만 도려낸다. 투명한 도형은 그림자를 못 만들어
         // 한 번에 끝낼 수 없다.
+        paint.setShadowLayer(blur, 0f, offsetY, glowColor)
         canvas.drawRoundRect(bounds, radius, radius, paint)
+        // 같은 자리에 한 겹 더 — 가장자리 농도를 올린다. 도형 채움이 겹쳐 그려지지만
+        // 아래에서 통째로 도려내므로 상관없다.
+        boostColor?.let {
+            paint.setShadowLayer(blur, 0f, offsetY, it)
+            canvas.drawRoundRect(bounds, radius, radius, paint)
+        }
         canvas.drawRoundRect(bounds, radius, radius, cutoutPaint)
     }
 }
