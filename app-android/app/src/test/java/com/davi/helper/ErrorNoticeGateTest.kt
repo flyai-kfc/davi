@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import java.io.IOException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,46 +8,92 @@ import org.junit.Test
 /**
  * 오류 표시 게이트(#29).
  *
- * 이 클래스가 따로 있는 이유가 아래 두 테스트다 — 백오프 카운터를 빌려 쓰면 ×아직이에요·done
- * 불신에서도 값이 올라가 **첫** 실패에서 문구가 뜨고(PR #189 리뷰), 반대로 "서버에 닿았으면
- * 성공"으로 읽으면 500·429가 계속 도는 동안 문구가 **영영 안 뜬다**(#189 2차 리뷰).
+ * 게이트가 **결과를 통째로 받는** 이유가 아래 `서버가 오류를 돌려준 것도 실패로 센다`다 —
+ * 호출자가 성공/실패를 골라 넘기면 `ApiFailure`를 "닿았으니 성공"으로 배선하는 실수가 들어오고,
+ * 그러면 500·429가 계속 도는 동안 문구가 **영영 안 뜬다**(PR #189 2차 리뷰).
+ * 백오프 카운터와 독립이어야 하는 이유는 `백오프 카운터가 올라가도…`가 지킨다(1차 리뷰).
  */
 class ErrorNoticeGateTest {
 
     private val gate = ErrorNoticeGate()
 
+    private val trace = ServerResponseTrace(requestId = null, logicalRequestId = null, attempt = null)
+
+    private fun apiFailure(kind: ApiErrorKind = ApiErrorKind.SERVER) = NextStepResult.ApiFailure(
+        statusCode = 500,
+        error = ApiError(kind = kind, message = "디버그용 상세"),
+        trace = trace,
+    )
+
+    private fun networkFailure() = NextStepResult.NetworkFailure(IOException("끊김"))
+
+    private fun success() = NextStepResult.Success(
+        NextStepResponse(
+            action = GuideAction(
+                expectedResult = "시계 앱이 열려 있다",
+                evidence = "시계",
+                actionType = ActionType.TAP,
+                targetNodeId = "n1",
+                instruction = "시계를 눌러 주세요",
+            ),
+            model = "stub",
+            screenSignature = "sig",
+        ),
+        trace,
+    )
+
     @Test
     fun `첫 실패는 알리지 않고 두 번째부터 알린다`() {
-        assertFalse(gate.onRequestFailed())
-        assertTrue(gate.onRequestFailed())
+        assertFalse(gate.record(networkFailure()))
+        assertTrue(gate.record(networkFailure()))
     }
 
     /** 상한 뒤로도 계속 true다 — 오류는 걷힐 때까지 화면에 있어야 한다(재그리기 억제는 표시 쪽 몫). */
     @Test
     fun `상한을 넘어도 계속 알린다`() {
-        repeat(2) { gate.onRequestFailed() }
+        repeat(2) { gate.record(networkFailure()) }
 
-        assertTrue(gate.onRequestFailed())
-        assertTrue(gate.onRequestFailed())
+        assertTrue(gate.record(networkFailure()))
+        assertTrue(gate.record(networkFailure()))
     }
 
     @Test
     fun `성공하면 다시 처음부터 센다`() {
-        repeat(3) { gate.onRequestFailed() }
+        repeat(3) { gate.record(networkFailure()) }
 
-        gate.onRequestSucceeded()
+        assertFalse(gate.record(success()))
 
-        assertFalse(gate.onRequestFailed())
-        assertTrue(gate.onRequestFailed())
+        assertFalse(gate.record(networkFailure()))
+        assertTrue(gate.record(networkFailure()))
+    }
+
+    /**
+     * **막으려는 실수를 실제로 잡는 테스트.** `ApiFailure`·`HttpFailure`·`ParseFailure`는 서버에
+     * 닿았지만 안내를 못 그렸다 — 이것들을 성공으로 세면 서버가 계속 오류를 돌리는 동안 카운터가
+     * 매번 0으로 돌아가 `guide_error_server`·`guide_error_busy`가 영원히 안 뜬다.
+     */
+    @Test
+    fun `서버가 오류를 돌려준 것도 실패로 센다`() {
+        assertFalse(gate.record(apiFailure(ApiErrorKind.SERVER)))
+        assertTrue(gate.record(apiFailure(ApiErrorKind.QUOTA)))
+        assertTrue(gate.record(NextStepResult.HttpFailure(statusCode = 503, trace = trace)))
+        assertTrue(gate.record(NextStepResult.ParseFailure(IllegalStateException("계약 불일치"))))
+    }
+
+    /** 원인이 섞여도 "연속 실패"는 이어진다 — 사용자에겐 전부 "안내를 못 받았다"로 같다. */
+    @Test
+    fun `원인이 달라도 연속으로 센다`() {
+        assertFalse(gate.record(networkFailure()))
+        assertTrue(gate.record(apiFailure()))
     }
 
     @Test
     fun `세션이 바뀌면 이전 세션의 실패를 끌고 가지 않는다`() {
-        gate.onRequestFailed()
+        gate.record(networkFailure())
 
         gate.reset()
 
-        assertFalse(gate.onRequestFailed())
+        assertFalse(gate.record(networkFailure()))
     }
 
     /**
@@ -60,20 +107,6 @@ class ErrorNoticeGateTest {
         tracker.markFailed() // onConfirmReject 경로 — 요청은 아직 한 번도 실패하지 않았다
         tracker.markFailed() // done 불신 RETRY 경로
 
-        assertFalse(gate.onRequestFailed()) // 요청 실패 1회째 — 아직 알리지 않는다
-    }
-
-    /**
-     * **서버에 닿은 실패도 실패로 센다.** `ApiFailure`(4xx/5xx)·`HttpFailure`·`ParseFailure`에서
-     * [ErrorNoticeGate.onRequestSucceeded]를 부르면 서버가 500·429를 계속 돌리는 동안 카운터가
-     * 매번 0으로 돌아가 `guide_error_server`·`guide_error_busy`가 영원히 안 뜬다 —
-     * 그 두 버킷이 존재하는 이유가 바로 그 상황이다(PR #189 2차 리뷰).
-     */
-    @Test
-    fun `서버가 오류를 돌려준 것도 실패로 세어 문구가 뜬다`() {
-        // 5xx가 연달아 온 상황 — 닿기는 닿았다
-        assertFalse(gate.onRequestFailed())
-        assertTrue(gate.onRequestFailed())
-        assertTrue(gate.onRequestFailed())
+        assertFalse(gate.record(networkFailure())) // 요청 실패 1회째 — 아직 알리지 않는다
     }
 }

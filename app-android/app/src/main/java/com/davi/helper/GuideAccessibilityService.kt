@@ -399,9 +399,9 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "history=${session.recentInstructions.size}",
                         )
                         mainHandler.post {
-                            // **Success 분기에서만** 끊는다. ApiFailure·HttpFailure도 서버에는
-                            // 닿지만 안내를 못 그렸으므로 실패로 센다(ErrorNoticeGate KDoc).
-                            errorNotice.onRequestSucceeded()
+                            // 게이트는 결과를 통째로 받아 스스로 판정한다 — 분기에서 성공/실패를
+                            // 골라 넘기지 않는 이유는 [ErrorNoticeGate.record] KDoc에 있다.
+                            errorNotice.record(result)
                             logicalRequests.markHttpResponse(logicalRequest, 200)
                             applyAction(request, signature, result.response, session, logicalRequest)
                         }
@@ -417,7 +417,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = result.error.kind.name,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen(signature, session.generation, GuideErrorCopy.messageRes(result))
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.HttpFailure -> {
@@ -429,7 +429,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             statusCode = result.statusCode,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen(signature, session.generation, GuideErrorCopy.messageRes(result))
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.NetworkFailure -> {
@@ -440,7 +440,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = "NETWORK",
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen(signature, session.generation, GuideErrorCopy.messageRes(result))
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.ParseFailure -> {
@@ -455,7 +455,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             serverRequestId = result.trace?.requestId,
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen(signature, session.generation, GuideErrorCopy.messageRes(result))
+                        retryThisScreen(signature, session.generation, result)
                     }
                 }
             } finally {
@@ -481,8 +481,8 @@ class GuideAccessibilityService : AccessibilityService() {
      * 요청이 실패한 화면은 "안 보낸 것"으로 되돌려 다음 샘플이 다시 시도하게 한다.
      * 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬지만, 이제 화면이 그대로면 이벤트도 오지 않는다.
      *
-     * 그리고 **두 번째 연속 실패부터** 오류를 사용자에게 알린다(#29). [messageRes]가
-     * null이면(성공) 아무것도 알리지 않는다.
+     * 그리고 **두 번째 연속 실패부터** 오류를 사용자에게 알린다(#29). 실패 분기에서만 불리지만
+     * [result]를 그대로 넘겨 게이트가 판정하게 한다 — [ErrorNoticeGate.record] 참고.
      *
      * 첫 실패를 조용히 넘기는 이유는 백오프가 2초라서다 — 순간적인 끊김에도 안내가 2초간 오류
      * 문구로 덮였다 돌아오면, 그 깜빡임이 어르신에게는 안내보다 먼저 눈에 들어온다.
@@ -496,15 +496,16 @@ class GuideAccessibilityService : AccessibilityService() {
      * 어차피 나간다. 그때 성공하면 안내가, 또 실패하면 오류가 새 서명으로 다시 뜬다
      * (PR #189 리뷰 관찰).
      */
-    private fun retryThisScreen(signature: String, generation: Long, messageRes: Int?) {
+    private fun retryThisScreen(signature: String, generation: Long, result: NextStepResult) {
         mainHandler.post {
             stability.markFailed()
-            val notify = errorNotice.onRequestFailed()
+            val notify = errorNotice.record(result)
             Log.i(
                 TAG,
                 "retry backoff=${stability.backoffMs()}ms " +
                     "failed_requests=${errorNotice.failureCount()}",
             )
+            val messageRes = GuideErrorCopy.messageRes(result)
             if (messageRes == null || !notify) return@post
             // 늦게 온 실패가 새 세션의 화면을 덮지 않게 한다(applyAction과 같은 세대 가드).
             if (!GuideSession.isCurrent(generation)) return@post
