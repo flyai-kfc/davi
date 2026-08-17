@@ -41,11 +41,13 @@
         </activity>
 
         <!--
-          카카오 계정(웹) 로그인의 리다이렉트 수신. scheme은 빌드가 채운다 —
-          네이티브 앱 키가 없으면 죽은 scheme(kakao.unconfigured)이라 필터가 열리지 않는다.
+          카카오 계정(웹) 로그인의 리다이렉트 수신. scheme은 빌드가 채운다.
+          커스텀 scheme은 어떤 값이든 매칭되므로(#168 리뷰 P1), 키 없는 빌드는
+          enabled=false로 activity 자체를 꺼서 외부 인텐트 진입점을 남기지 않는다.
         -->
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:enabled="${kakaoLoginEnabled}"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

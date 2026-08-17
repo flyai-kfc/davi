@@ -87,6 +87,8 @@ class LoginActivity : AppCompatActivity() {
         if (client.isKakaoTalkLoginAvailable(this)) {
             client.loginWithKakaoTalk(this) { token, error ->
                 when {
+                    // 사용자가 스킵으로 이미 떠났으면 늦은 SDK 결과는 버린다.
+                    isFinishing || isDestroyed -> {}
                     error is ClientError && error.reason == ClientErrorCause.Cancelled ->
                         setInProgress(false)
                     error != null -> client.loginWithKakaoAccount(this, callback = accountCallback)
@@ -101,6 +103,7 @@ class LoginActivity : AppCompatActivity() {
 
     private val accountCallback: (OAuthToken?, Throwable?) -> Unit = { token, error ->
         when {
+            isFinishing || isDestroyed -> {}
             error is ClientError && error.reason == ClientErrorCause.Cancelled ->
                 setInProgress(false)
             error != null -> {
@@ -113,6 +116,7 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun exchangeWithServer(token: OAuthToken) {
+        if (isFinishing || isDestroyed) return
         binding.loginStatus.setText(R.string.login_in_progress)
         binding.loginStatus.isVisible = true
         val request = KakaoLoginRequest(
@@ -166,15 +170,16 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setInProgress(inProgress: Boolean) {
+        // 스킵은 절대 잠그지 않는다(#168 리뷰 P2) — "로그인 없이 시작"은 서버·카카오가
+        // 느리거나 죽어도 항상 열려 있어야 한다. 스킵하면 진행 중 요청의 늦은 결과는
+        // isFinishing 가드가 버린다.
         binding.btnKakaoLogin.isEnabled = !inProgress
-        binding.btnLoginSkip.isEnabled = !inProgress
         binding.loginStatus.isVisible = inProgress
         if (inProgress) binding.loginStatus.setText(R.string.login_in_progress)
     }
 
     private fun showError(messageRes: Int) {
         binding.btnKakaoLogin.isEnabled = true
-        binding.btnLoginSkip.isEnabled = true
         binding.loginStatus.setText(messageRes)
         binding.loginStatus.isVisible = true
     }

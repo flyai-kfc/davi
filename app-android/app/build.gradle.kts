@@ -166,8 +166,11 @@ android {
         buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
         buildConfigField("boolean", "DOGFOOD_OPT_IN", "false")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"\"")
-        // 키가 없으면 죽은 scheme — "kakao" 접두 인텐트 필터가 실수로 열리는 것을 막는다.
+        // 커스텀 scheme은 값이 무엇이든 Android가 정상 매칭한다(#168 리뷰 P1 — "죽은 scheme"은
+        // 없다). 그래서 키 없는 빌드는 scheme을 바꾸는 게 아니라 handler activity 자체를
+        // kakaoLoginEnabled placeholder로 끈다. SDK도 init되지 않으므로 남는 진입점이 없다.
         manifestPlaceholders["kakaoOauthScheme"] = "kakao.unconfigured"
+        manifestPlaceholders["kakaoLoginEnabled"] = "false"
     }
 
     buildTypes {
@@ -182,6 +185,7 @@ android {
             )
             if (kakaoNativeAppKey.isNotEmpty()) {
                 manifestPlaceholders["kakaoOauthScheme"] = "kakao$kakaoNativeAppKey"
+                manifestPlaceholders["kakaoLoginEnabled"] = "true"
             }
         }
         release {
