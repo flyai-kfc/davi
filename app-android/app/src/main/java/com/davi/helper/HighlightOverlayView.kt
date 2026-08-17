@@ -32,7 +32,13 @@ class HighlightOverlayView(context: Context) : View(context) {
     /** 안내창 자리가 정해질 때마다 받는다. 조작 오버레이가 이 자리로 창을 옮긴다(#126). */
     fun interface GuideBoxListener {
         /**
-         * @param box **이 뷰의 로컬 좌표**(창 프레임 기준) 안내창 사각형. 그릴 안내가 없으면 null.
+         * @param box **화면 좌표**의 안내창 사각형. 그릴 안내가 없으면 null.
+         *
+         * 로컬 좌표가 아니라 화면 좌표인 이유는 실측이다(#139). 두 창의 flags를 맞춰도 **부모
+         * 프레임까지 같아지지는 않는다** — `dumpsys window`에서 MATCH_PARENT인 표시 창은 부모가
+         * `[0,103]`(상태표시줄 인셋 반영)인데 크기가 지정된 조작 창은 `[0,0]`이었다. 로컬 좌표를
+         * 넘기면 조작 창이 그 차이만큼(103px) 위로 밀린다.
+         *
          * @param lines 이미 접힌 줄들. 받는 쪽은 다시 접지 않는다.
          */
         fun onGuideBox(box: Rect?, lines: List<String>)
@@ -92,18 +98,22 @@ class HighlightOverlayView(context: Context) : View(context) {
     // 프레임마다 새로 만들지 않는다 — 애니메이션이 도는 동안 매초 60번 할당된다.
     private val readingGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = ContextCompat.getColor(context, R.color.davi_overlay_reading)
     }
     private val readingCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = ContextCompat.getColor(context, R.color.davi_overlay_reading)
     }
     private val readingRect = RectF()
+
+    private val readingColor = ContextCompat.getColor(context, R.color.davi_overlay_reading)
+    private val confirmColor = ContextCompat.getColor(context, R.color.davi_overlay_confirm)
 
     /** 서비스가 요청한 상태. 실제 표시는 onset 지연 뒤라 [readingVisible]과 다를 수 있다. */
     private var reading = false
     private var readingVisible = false
     private var readingPhase = ReadingBorder.STATIC_PHASE
+
+    /** 완료 확인 대기(GD-3). 읽는 중과 **동시에 켜지지 않는다** — [ReadingBorder.isReading] 참고. */
+    private var confirmFrame = false
 
     private val readingOnset = Runnable {
         readingVisible = true
@@ -139,6 +149,20 @@ class HighlightOverlayView(context: Context) : View(context) {
             syncBreathing()
             invalidate()
         }
+    }
+
+    /**
+     * 완료 확인 테두리(GD-3)를 켜고 끈다. 읽는 중 테두리와 **같은 자리·같은 두께**이고 색만
+     * 다르다 — 서버 판단이 아니라 사용자 답을 기다리는 중임을 화면 전체로 알린다.
+     *
+     * **브리딩하지 않는다.** 숨 쉬는 것은 "지금 처리 중"의 표현이고 확인은 멈춰 선 상태다.
+     * 그래서 [syncBreathing]의 조건에도 넣지 않는다 — 확인 중에 강조도 읽는 중도 없으면
+     * 애니메이터는 멈춰 있는 것이 맞다. 지연(onset)도 없다: 답할 자리라 곧바로 보여야 한다.
+     */
+    fun setConfirmFrame(on: Boolean) {
+        if (on == confirmFrame) return
+        confirmFrame = on
+        invalidate()
     }
 
     /**
@@ -193,18 +217,27 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 화면 가장자리 테두리. 굵고 옅은 글로우 위에 안쪽 선을 얹어 숨 쉬듯 밝기가 오간다.
-     * 어느 것도 대상 영역을 가리키지 않는다 — "지금 읽고 있다"는 배경 표시다.
+     * 화면 가장자리 테두리. 굵고 옅은 글로우 위에 안쪽 선을 얹는다. 어느 것도 대상 영역을
+     * 가리키지 않는다 — 화면 전체에 깔리는 상태 표시다.
+     *
+     * 두 tone이 이 한 자리를 나눠 쓴다 — 읽는 중(숨 쉬듯 밝기가 오간다)과 완료 확인(정지).
+     * 둘은 동시에 켜지지 않으므로 확인 쪽을 먼저 본다.
      */
     private fun drawReadingBorder(canvas: Canvas) {
-        if (!readingVisible || width == 0 || height == 0) return
-        val frame = ReadingBorder.frame(readingPhase, readingStroke, readingGlow)
+        if (!confirmFrame && !readingVisible) return
+        if (width == 0 || height == 0) return
+        val phase = if (confirmFrame) ReadingBorder.STATIC_PHASE else readingPhase
+        val color = if (confirmFrame) confirmColor else readingColor
+        val frame = ReadingBorder.frame(phase, readingStroke, readingGlow)
         // 글로우가 두꺼워져도 화면 밖으로 새지 않게 가장 두꺼운 절반만큼 안으로 물린다.
         val margin = readingInset + (readingStroke + readingGlow) / 2f
         readingRect.set(margin, margin, width - margin, height - margin)
+        // 색을 먼저 넣는다 — setColor가 alpha까지 덮으므로 순서가 뒤집히면 투명도가 사라진다.
+        readingGlowPaint.color = color
         readingGlowPaint.strokeWidth = frame.glowStroke
         readingGlowPaint.alpha = frame.glowAlpha
         canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingGlowPaint)
+        readingCorePaint.color = color
         readingCorePaint.strokeWidth = frame.coreStroke
         readingCorePaint.alpha = frame.coreAlpha
         canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingCorePaint)
@@ -334,15 +367,16 @@ class HighlightOverlayView(context: Context) : View(context) {
             listener.onGuideBox(null, emptyList())
             return
         }
-        // 화면 좌표 -> 이 뷰의 로컬 좌표. 조작 오버레이가 같은 flags를 쓰므로 프레임 원점이 같다.
-        // 폭·높이는 올림한다 — 내림하면 마지막 글자가 1px 차이로 잘릴 수 있다.
+        // 화면 좌표 그대로 넘긴다 — 창 원점 보정은 이 뷰의 캔버스에만 필요하다(onDraw의 translate).
+        // 두 창의 부모 프레임이 다르다는 실측이 있어 로컬 좌표로 바꾸면 조작 창이 밀린다
+        // ([GuideBoxListener] 참고). 폭·높이는 올림한다 — 내림하면 마지막 글자가 1px 차이로 잘린다.
         val box = next.box
         listener.onGuideBox(
             Rect(
-                floor(box.left).toInt() - layoutOriginX,
-                floor(box.top).toInt() - layoutOriginY,
-                ceil(box.right).toInt() - layoutOriginX,
-                ceil(box.bottom).toInt() - layoutOriginY,
+                floor(box.left).toInt(),
+                floor(box.top).toInt(),
+                ceil(box.right).toInt(),
+                ceil(box.bottom).toInt(),
             ),
             next.lines,
         )

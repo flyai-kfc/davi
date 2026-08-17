@@ -25,14 +25,18 @@ object ReadingBorder {
      *
      * 백오프 재시도 대기는 켜지 않는다. 서버 실패 상태를 사용자에게 알리는 것은 #29 소관이고,
      * "읽는 중"으로 보이면 오해를 준다.
+     *
+     * [awaitingConfirm]이면 끈다(#139). 완료 확인 중에는 화면을 보고 있어도 서버에 묻지 않고,
+     * 같은 자리를 성공 tone 테두리가 쓴다 — 둘이 겹치면 색만 깜빡인다.
      */
     fun isReading(
         sessionActive: Boolean,
         screenReadable: Boolean,
         decision: ScreenStabilityTracker.Decision?,
         requestInFlight: Boolean,
+        awaitingConfirm: Boolean = false,
     ): Boolean {
-        if (!sessionActive || !screenReadable) return false
+        if (!sessionActive || !screenReadable || awaitingConfirm) return false
         if (requestInFlight) return true
         return when (decision) {
             null -> true
