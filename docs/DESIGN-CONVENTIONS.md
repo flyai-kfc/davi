@@ -17,7 +17,7 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | B1 | 색 토큰 구조 | 2층 (프리미티브 + 시맨틱) |
 | B2 | 포인트 색 | **#F2001C** — 오버레이 강조·포인트 전용. **주 버튼 배경은 어두운 변형**(#A50014급, 흰 글자 7:1 이상)을 시맨틱으로 분리. 세컨더리 #FFE1E1은 **배경(서피스) 전용** — 글자·단독 식별 요소 금지 |
 | B3 | 다크모드 | 라이트 단일 모드. **다크 모드는 미리 만들지 않는다**(빈 모드 = 라이트 복제본이 "대응됨"으로 오인). 착수 시점에 모드 추가 |
-| C1 | 서체 | **Pretendard 번들** — Figma와 실기기 일치가 근거. 배율 추종은 서체 무관하게 sp가 담당. Figma 파일의 일상 운영은 아래 "서체 운영" 참고 |
+| C1 | 서체 (2026-08-17 개정) | **역할별 2서체** — 다비가 입으로 하는 말만 **Cafe24 Ssurround**, 나머지 전부 **Pretendard**. 오버레이 안내창은 다비가 말해도 Pretendard다. 자세한 범위와 단서는 아래 "서체 — 역할별 둘" 참고. 배율 추종은 서체 무관하게 sp가 담당 |
 | C2 | 타입 램프 | 5단 28 / 24 / 20 / 17 / 14sp |
 | C3 | 본문 하한 | 17sp (캡션 14sp는 부가 정보 전용) |
 | C4 | 배율 보장 | 시스템 글꼴 배율 2.0x까지 |
@@ -68,7 +68,55 @@ Figma SSoT: https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 - **디자인이 확정된 화면의 동작·상태·데이터 계약은 `SCREENS.md`(화면명세)가 맡는다.**
   구현 이슈는 화면명세를 참조한다 — Figma가 "어떻게 생겼나", 화면명세가 "어떻게 동작하나".
 
-## 서체 운영 — Figma는 평소 Noto, 산출 직전만 Pretendard (2026-08-06 확정)
+## 서체 — 역할별 둘 (2026-08-17 확정, C1 개정)
+
+**서체가 화자를 나눈다.** 다비가 입으로 하는 말만 Cafe24이고 나머지는 전부 Pretendard다.
+"누가 말하는가"를 글자 모양으로 알리는 것이라 **UI 요소가 아니라 발화 주체를 따라간다.**
+
+| 역할 | 서체 | 어디 |
+|---|---|---|
+| **다비 발화** | **Cafe24 Ssurround** | 홈 제목 · 다비 카드의 질문 · "잠시만요" · 실패 문구 · 최종 확인 문장 · "안내가 진행 중입니다" · 메인 7 버튼 라벨 |
+| 사용자 발화 | Pretendard | 시니어 카드의 받아쓰기 |
+| **오버레이 안내창** | Pretendard | **다비가 말해도 예외다** — 아래 참고 |
+| UI 전반 | Pretendard | 버튼·칩·설정·온보딩 |
+
+**최종 확인 문장이 Cafe24인 이유** — "카카오톡으로 손자에게 사진을 보내는 게 맞나요?"는
+다비가 묻는 완결된 문장이고 사용자 목표는 그 안에 인용된 것뿐이다. 한 문장을 두 서체로
+쪼갤 수 없다.
+
+**오버레이 안내창만 예외인 이유** — 임의의 앱 위에 뜨고 사용자가 그 순간 화면에서 눈을
+떼지 않은 채 읽어야 한다. Cafe24는 표정이 있는 서체라 정체성에는 좋지만 그 조건에서는
+불리하다. **여기서만 가독성이 정체성을 이긴다.**
+
+**Cafe24 Ssurround는 Bold만 있다.** Regular이 필요한 자리는 Pretendard로 간다.
+**17sp 이하로는 쓰지 않는다** — 획이 굵고 둥글어 작은 크기에서 ㅁ/ㅇ, ㅂ/ㅍ 구분이 무너진다.
+
+### 구현 함정 — `android:fontFamily` 하나로는 안 걸린다
+
+`Theme.Davi`가 `android:fontFamily`와 `fontFamily`를 **둘 다** Pretendard로 지정한다.
+뷰에 `android:` 쪽만 주면 테마의 `fontFamily`(app 네임스페이스)가 이겨 서체가 안 바뀐다 —
+AppCompat TextView가 app 네임스페이스를 먼저 보기 때문이다. **뷰에 `app:fontFamily`를
+함께 주고 레이아웃에 `xmlns:app`을 선언해야 한다**(2026-08-17 실기기 실측: 홈 제목 폭이
+365px에서 400px로 바뀌는 것으로 확인).
+
+램프 스타일들이 `android:` 하나만 주고도 멀쩡해 보였던 건 테마도 같은 Pretendard여서
+결과가 같았기 때문이고, 다른 서체를 넣는 순간 드러났다.
+
+## 서체 운영 — Figma도 실서체로 유지한다 (2026-08-17 개정)
+
+**"평소 Noto, 산출 직전만 Pretendard"(2026-08-06)를 폐기한다.** Figma도 실서체
+(Cafe24 · Pretendard)로 유지한다 — 실기기와 시안이 어긋나는 비용이 에이전트 편집 편의보다
+크다는 판단이다.
+
+**대가: 에이전트가 Figma에서 서체를 지정할 수 없다.** 두 서체가 에이전트 환경에 설치되지
+않아 `loadFontAsync`가 실패한다. **서체 작업은 사람이 한다.**
+
+Figma 변수도 나뉘었다 — `font/family/base`(Pretendard) · `font/family/davi`(Cafe24).
+
+<details>
+<summary>폐기된 운영 방식 (2026-08-06 ~ 2026-08-17)</summary>
+
+### 폐기 — Figma는 평소 Noto, 산출 직전만 Pretendard (2026-08-06 확정)
 
 전 텍스트 스타일의 fontFamily는 `primitives > font/family` 변수 하나에 바인딩되어
 있어, 이 변수 값 수정 한 번으로 파일 전체 서체가 바뀐다. 단 Figma는 이 변수의 값
@@ -86,11 +134,17 @@ Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 �
 - 구현(Android)은 이 운영과 무관하게 C1대로 Pretendard 번들.
 - 팀 전원 Pretendard 로컬 설치를 전제로 한다(미설치자에겐 missing font로 보임).
 
+</details>
+
 ## 반영 상태
 
 - Figma Foundations: 이 결정대로 변수·스타일 생성 (2026-08-05, 에이전트)
 - 코드 리소스(`colors.xml`·`dimens.xml`·타입 램프·버튼 스타일·Pretendard 번들): **반영**
   (2026-08-11, #100). 이름은 Figma 변수의 Android code syntax와 1:1이며 값의 원본은 Figma다
+- C1 역할별 2서체: **반영**(2026-08-17, #181). Cafe24 Ssurround v2.0 번들(1.6MB, 한글
+  11,172자 100%), 고지 전문은 `app-android/licenses/cafe24-ssurround-LICENSE.txt`.
+  지금 실제로 Cafe24로 그려지는 뷰는 `home_title`·`card_question` 둘이고, 나머지 자리는
+  그 화면이 생길 때 같은 규칙으로 따라온다
 - 테마 **Light 고정**으로 B3 충돌 해소 — `Theme.Davi`가 `Theme.Material3.Light`를 상속하고
   M3 색을 토큰에 매핑한다. 다크 대응은 토큰에 다크 값을 설계하는 시점에 착수
 - `HighlightOverlayView`의 하드코딩 색 3건·raw px 2건은 토큰으로 교체됨. 오버레이 전용
