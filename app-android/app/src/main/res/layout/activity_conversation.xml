@@ -186,6 +186,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="176"
+            android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
 
@@ -210,8 +211,7 @@
         <LinearLayout
             android:id="@+id/card_question_container"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="@dimen/davi_card_min_height_davi"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center_horizontal"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
