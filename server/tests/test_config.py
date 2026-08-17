@@ -140,6 +140,34 @@ def test_rate_limit_settings_must_be_positive():
         _settings(davi_dev_rate_limit_requests=0)
     with pytest.raises(ValidationError, match="DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS"):
         _settings(davi_dev_rate_limit_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_REQUESTS"):
+        _settings(davi_auth_rate_limit_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS"):
+        _settings(davi_auth_rate_limit_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_PER_SOURCE_REQUESTS"):
+        _settings(davi_auth_rate_limit_per_source_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS"):
+        _settings(davi_auth_rate_limit_per_source_window_seconds=0)
+
+
+def test_auth_source_window_must_not_exceed_global_window():
+    """출처 창 > 전역 창이면 활성 키 수가 전역 상한을 넘는다(#167 4차 리뷰 P2)."""
+
+    with pytest.raises(ValidationError, match="이하여야 합니다"):
+        _settings(
+            davi_auth_rate_limit_window_seconds=60,
+            davi_auth_rate_limit_per_source_window_seconds=3600,
+        )
+
+    # 같은 값(기본)과 더 짧은 출처 창은 유효하다.
+    _settings(
+        davi_auth_rate_limit_window_seconds=60,
+        davi_auth_rate_limit_per_source_window_seconds=60,
+    )
+    _settings(
+        davi_auth_rate_limit_window_seconds=60,
+        davi_auth_rate_limit_per_source_window_seconds=30,
+    )
 
 
 def test_validation_error_hides_secret_values():

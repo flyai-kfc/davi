@@ -28,11 +28,13 @@ uvicorn app.main:app --reload --no-access-log --log-config app/logging.json
 - 다음 안내: `POST /v1/next-step` (요청/응답 스키마는 `app/schemas.py`)
 - 음성 목표 정리: `POST /v1/intent/slot-fill` (고정 슬롯 없이 질문 또는 최종 goal 반환)
 - 목표 앱 대조: `POST /v1/intent/app-resolution` (일반 후보 생성 → 기기 ID/status 피드백 판정)
+- 카카오 로그인: `POST /v1/auth/kakao` (카카오 access token → 세션 JWT. 아래 "카카오 로그인 세션" 절)
 
 ASGI에 도달한 응답에는 서버가 HTTP 전송마다 만든 32자리 비식별 `X-Request-ID`가 붙는다.
-Android는 `/v1/next-step`에 무작위 UUID `X-Davi-Logical-Request-ID`와 1부터 증가하는
-`X-Davi-Attempt`를 함께 보낸다. 서버는 둘 다 없으면 이전 APK로 보고 허용하고, 정확히 한 쌍의
-유효한 값만 echo한다. 한쪽 누락·중복·형식 오류는 `400 BAD_REQUEST`이며 검증 전 값은 반사하지 않는다.
+Android는 `/v1/next-step`과 `/v1/auth/kakao` 요청에 무작위 UUID `X-Davi-Logical-Request-ID`와
+1부터 증가하는 `X-Davi-Attempt`를 함께 보내며, 서버는 네 API 경로(`/v1/next-step`,
+`/v1/intent/*`, `/v1/auth/kakao`) 모두에서 이 쌍을 검증한다. 서버는 둘 다 없으면 이전 APK로
+보고 허용하고, 정확히 한 쌍의 유효한 값만 echo한다. 한쪽 누락·중복·형식 오류는 `400 BAD_REQUEST`이며 검증 전 값은 반사하지 않는다.
 JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
 
 같은 화면·세션의 network/timeout 및 retryable 429/502 재전송만 Logical Request ID를 유지한다.
@@ -118,6 +120,31 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
 제거한다. ready goal 누락·공백 또는 텍스트 상한 위반은 이전 모델 원문 없이 고정 진단만 덧붙여 한 번
 교정한다. schema 400 폴백을 포함해 공급자 호출은 요청당 최대 2회이며, 그 뒤에는 `PARSE`로 실패한다.
+
+## 카카오 로그인 세션 (#165)
+
+앱이 카카오 SDK로 받은 access token을 `POST /v1/auth/kakao`로 보내면, 서버가 카카오 토큰
+정보 API로 유효성과 발급처(`DAVI_KAKAO_APP_ID` 대조)를 검증한 뒤 무상태 세션 JWT(HS256)를
+발급한다. 사용자 DB는 없다 — 이후 요청은 서명 검증만으로 사용자를 식별하며,
+`DAVI_AUTH_JWT_SECRET`을 바꾸면 발급된 세션이 전부 무효화된다. 수명은
+`DAVI_AUTH_SESSION_TTL_SECONDS`(기본 30일)다.
+
+- `DAVI_KAKAO_APP_ID`·`DAVI_AUTH_JWT_SECRET`이 비어 있으면 endpoint는 `SERVER`(503)로 닫힌다.
+  변수 목록과 형식은 `.env.example`의 카카오 절 참고.
+- 세션 토큰이 담긴 성공 응답은 `Cache-Control: no-store`로 캐시를 금지한다.
+- 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
+  출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
+  정상 사용자를 지키고, 전역 상한(`DAVI_AUTH_RATE_LIMIT_*`)이 카카오 API 소모 총량을 지킨다.
+  두 판정은 한 리미터 안에서 원자적으로 내려지고 **허용된 요청만 기록**하므로, 거부된
+  요청은 출처 키를 남기지 않고 활성 출처 키 수는 전역 상한으로 묶인다. 이 상한 보장을
+  위해 출처 창은 전역 창 이하여야 하며, 위반 조합은 기동 시 설정 검증이 거부한다.
+  초과하면 429와 `Retry-After`를 돌려준다. 출처 구분은 peer IP 단위이므로 주소를 대량
+  순환하는 분산 폭주로부터의 가용성 방어는 애플리케이션 밖 신뢰 ingress의 몫이다.
+- development 게이트의 **토큰 검사는 로그인에도 그대로** 적용되지만, 팀 추론 쿼터(Gemini)를
+  보호하는 dev 요청 제한은 로그인이 **소모하지 않는다** — 로그인 제한은 전용 리미터 몫이다. `X-Forwarded-For`는 애플리케이션에서 파싱하지
+  않는다 — 프록시 뒤 배포는 uvicorn `--proxy-headers`와 `--forwarded-allow-ips`로 신뢰
+  프록시가 재작성한 client 주소를 쓴다.
+- 카카오 access token 원문·세션 토큰·서명 비밀은 로그에 남기지 않는다(테스트로 고정).
 
 ## 실행 프로필
 
@@ -313,6 +340,7 @@ pytest
 |---|---|
 | `app/main.py` | FastAPI 라우터(얇게). 에러 분류만. |
 | `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
+| `app/kakao_auth.py` | 카카오 access token 검증과 세션 JWT 발급·검증. 토큰 원문 비로그. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
 | `app/reasoning.py` | 계획→실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
@@ -336,7 +364,11 @@ pytest
 - `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
   `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill`,
-  `/v1/intent/app-resolution` 라우팅과 `LlmError` → HTTP 상태·응답·재시도 헤더 매핑.
+  `/v1/intent/app-resolution`, `/v1/auth/kakao` 라우팅과 `LlmError` → HTTP 상태·응답·재시도
+  헤더 매핑.
+- `app/kakao_auth.py` — 카카오 access token 검증(발급처 `app_id` 대조)과 무상태 세션 JWT
+  발급·검증(#165). 만료·변조·미설정 fail-closed, 출처별+전역 로그인 리미터, 성공 응답
+  `Cache-Control: no-store`와 비밀값 비로그를 테스트가 고정한다.
 - 요청 관측(#81) — 모든 ASGI 응답의 request ID, Android Logical Request ID/attempt와 Gemini 호출
   단계를 비식별 JSON Lines로 연결한다. 401·422·429·502·500·404는 고정 오류 코드만 남기고,
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
