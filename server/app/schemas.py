@@ -160,15 +160,28 @@ class GuideAction(BaseModel):
         description="현재 화면 요소의 label 하나를 그대로 포함하고, 그것이 왜 근거인지 이어 쓴 문장"
     )
     action_type: ActionType = Field(description="다음에 할 동작")
+    # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
+    # 않아서**다 — 필드 description만 responseSchema를 탄다(HANDOFF §10). 그래서 "동작 기준"이
+    # 모델에게 도달하지 않았다(#109). `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
     direction: SwipeDirection | None = Field(
         default=None,
-        description="scroll일 때 손가락을 움직일 방향. 그 외에는 생략한다.",
+        description=(
+            "scroll일 때 손가락을 움직일 방향. 화면 내용이 움직일 방향이 아니다. "
+            "예: 목록에서 아래쪽 내용을 보려면 손가락을 위로 쓸어올리므로 up. 그 외에는 생략한다."
+        ),
     )
     target_node_id: str | None = Field(
         default=None,
         description="동작 대상 요소의 node_id. 대상이 없는 동작이면 생략한다.",
     )
-    instruction: str = Field(description="시니어에게 보여줄 한국어 안내 한 줄")
+    # 방향 표현이 `direction`과 어긋나면 앱이 화면에 그리는 방향과 읽히는 문장이 반대가 된다
+    # (#159 실측). 그래서 문구 규칙도 필드 설명에 함께 둔다.
+    instruction: str = Field(
+        description=(
+            "시니어에게 보여줄 한국어 안내 한 줄. scroll이면 방향 표현을 direction과 같은 "
+            "손가락 기준으로 쓴다."
+        )
+    )
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:
