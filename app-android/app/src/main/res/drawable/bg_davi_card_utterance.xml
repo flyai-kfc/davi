@@ -29,6 +29,9 @@
     <item android:bottom="@dimen/davi_card_shadow_offset_y">
         <shape android:shape="rectangle">
             <solid android:color="@color/davi_card_tint_senior" />
+            <stroke
+                android:width="@dimen/davi_card_border_width"
+                android:color="@color/davi_card_border" />
             <corners android:radius="@dimen/davi_radius_xl" />
         </shape>
     </item>
