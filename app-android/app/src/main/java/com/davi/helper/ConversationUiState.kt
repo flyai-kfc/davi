@@ -1,5 +1,10 @@
 package com.davi.helper
 
+enum class ConfirmKind {
+    GOAL,
+    APP_AVAILABILITY_WARNING,
+}
+
 /**
  * 대화 화면(ConversationActivity)의 UI 상태와 렌더 모델.
  *
@@ -27,13 +32,13 @@ sealed interface ConversationUiState {
     data class Requesting(val utterance: String) : ConversationUiState
 
     /**
-     * MA-4 확인. [promptRes]가 있으면 goal 대신 가능성 경고를 보여 주되, 다음 화면에서
-     * 확인할 원래 goal은 그대로 보존한다. 경고 ○=goal 최종 확인, 최종 확인 ○=안내 시작,
-     * 어느 화면에서든 ×=홈 복귀.
+     * MA-4 확인. [kind]가 [ConfirmKind.APP_AVAILABILITY_WARNING]이면 goal 대신 가능성 경고를
+     * 보여 주되, 다음 화면에서 확인할 원래 goal은 그대로 보존한다. 경고 ○=goal 최종 확인,
+     * 최종 확인 ○=안내 시작, 어느 화면에서든 ×=홈 복귀.
      */
     data class Confirm(
         val goal: String,
-        val promptRes: Int? = null,
+        val kind: ConfirmKind = ConfirmKind.GOAL,
     ) : ConversationUiState
 
     /** 이해 실패. 5초 뒤 홈 복귀 타이머는 Activity가 담당한다. */
@@ -167,18 +172,22 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         closeVisible = true,
         loadingDotsVisible = true,
     )
-    is ConversationUiState.Confirm -> ConversationRenderModel(
-        logoVisible = true,
-        questionRes = state.promptRes,
-        questionText = state.goal.takeIf { state.promptRes == null },
-        questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
-        confirmVisible = true,
-        confirmAcceptDescRes = if (state.promptRes == R.string.conversation_app_availability_warning) {
-            R.string.conversation_confirm_continue_desc
-        } else {
-            R.string.conversation_confirm_accept_desc
-        },
-    )
+    is ConversationUiState.Confirm -> when (state.kind) {
+        ConfirmKind.GOAL -> ConversationRenderModel(
+            logoVisible = true,
+            questionText = state.goal,
+            questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
+            confirmVisible = true,
+            confirmAcceptDescRes = R.string.conversation_confirm_accept_desc,
+        )
+        ConfirmKind.APP_AVAILABILITY_WARNING -> ConversationRenderModel(
+            logoVisible = true,
+            questionRes = R.string.conversation_app_availability_warning,
+            questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
+            confirmVisible = true,
+            confirmAcceptDescRes = R.string.conversation_confirm_continue_desc,
+        )
+    }
     ConversationUiState.Failed -> ConversationRenderModel(
         logoVisible = true,
         questionRes = R.string.conversation_failed,
@@ -207,12 +216,13 @@ const val CONFIRM_TIMEOUT_MS = 120_000L
  */
 fun followUpConfirmationAfterAccept(
     state: ConversationUiState.Confirm,
-): ConversationUiState.Confirm? =
-    if (state.promptRes == R.string.conversation_app_availability_warning) {
-        ConversationUiState.Confirm(goal = state.goal)
-    } else {
-        null
-    }
+): ConversationUiState.Confirm? = when (state.kind) {
+    ConfirmKind.GOAL -> null
+    ConfirmKind.APP_AVAILABILITY_WARNING -> ConversationUiState.Confirm(
+        goal = state.goal,
+        kind = ConfirmKind.GOAL,
+    )
+}
 
 /**
  * 서버 응답 Outcome → 다음 UI 상태. Ask의 TTS 재생·Ready의 message TTS는 Activity가

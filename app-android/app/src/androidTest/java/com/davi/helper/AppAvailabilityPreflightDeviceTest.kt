@@ -57,7 +57,7 @@ class AppAvailabilityPreflightDeviceTest {
     fun warningContinueShowsGoalBeforeStartingOriginalGoal() {
         val originalGoal = "사진을 찍어 손자에게 보내기"
         val current = launchConversation()
-        showConfirm(current, originalGoal, R.string.conversation_app_availability_warning)
+        showConfirm(current, originalGoal, ConfirmKind.APP_AVAILABILITY_WARNING)
 
         assertEquals(
             current.getString(R.string.conversation_app_availability_warning),
@@ -91,7 +91,7 @@ class AppAvailabilityPreflightDeviceTest {
     @Test
     fun warningCancelClearsGoalAndReturnsHome() {
         val current = launchConversation()
-        showConfirm(current, "설치되지 않은 앱으로 문서 열기", R.string.conversation_app_availability_warning)
+        showConfirm(current, "설치되지 않은 앱으로 문서 열기", ConfirmKind.APP_AVAILABILITY_WARNING)
 
         instrumentation.runOnMainSync {
             current.findViewById<View>(R.id.btn_confirm_reject).performClick()
@@ -105,7 +105,7 @@ class AppAvailabilityPreflightDeviceTest {
     @Test
     fun goalConfirmationAfterWarningCanStillBeCancelled() {
         val current = launchConversation()
-        showConfirm(current, "설치되지 않은 앱으로 문서 열기", R.string.conversation_app_availability_warning)
+        showConfirm(current, "설치되지 않은 앱으로 문서 열기", ConfirmKind.APP_AVAILABILITY_WARNING)
 
         instrumentation.runOnMainSync {
             current.findViewById<View>(R.id.btn_confirm_accept).performClick()
@@ -129,7 +129,7 @@ class AppAvailabilityPreflightDeviceTest {
     private fun showConfirm(
         current: ConversationActivity,
         goal: String,
-        promptRes: Int,
+        kind: ConfirmKind,
     ) {
         instrumentation.runOnMainSync {
             val method = ConversationActivity::class.java.getDeclaredMethod(
@@ -137,7 +137,7 @@ class AppAvailabilityPreflightDeviceTest {
                 ConversationUiState::class.java,
             )
             method.isAccessible = true
-            method.invoke(current, ConversationUiState.Confirm(goal, promptRes))
+            method.invoke(current, ConversationUiState.Confirm(goal, kind))
         }
         instrumentation.waitForIdleSync()
     }

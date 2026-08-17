@@ -1,17 +1,11 @@
 package com.davi.helper
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppResolutionCoordinatorTest {
-    @Test
-    fun `advisory outcome only follows dialogue generation`() {
-        assertFalse(shouldDropAppResolutionOutcome(pending = true))
-        assertTrue(shouldDropAppResolutionOutcome(pending = false))
-    }
-
     @Test
     fun `empty candidate result completes without feedback round trip`() {
         val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
@@ -30,6 +24,30 @@ class AppResolutionCoordinatorTest {
         outcome as AppResolutionCoordinator.Outcome.Completed
         assertEquals(AppAvailabilityPreflight.UNCONFIRMED, outcome.availability)
         assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `candidate request failures remain advisory and complete as unconfirmed`() {
+        val failures = listOf(
+            AppResolutionResult.ApiFailure(
+                500,
+                ApiError(ApiErrorKind.SERVER, "후보 서버 오류"),
+                trace(),
+            ),
+            AppResolutionResult.HttpFailure(503, trace()),
+            AppResolutionResult.NetworkFailure(IOException("offline")),
+            AppResolutionResult.ParseFailure(IllegalStateException("invalid response"), trace()),
+        )
+        val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
+
+        failures.forEach { failure ->
+            val outcome = AppResolutionCoordinator(index) { failure }
+                .resolve("이미 완성된 목표", 1) { true }
+
+            assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
+            outcome as AppResolutionCoordinator.Outcome.Completed
+            assertEquals(AppAvailabilityPreflight.UNCONFIRMED, outcome.availability)
+        }
     }
 
     @Test

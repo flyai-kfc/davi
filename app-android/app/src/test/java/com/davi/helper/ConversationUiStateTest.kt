@@ -116,7 +116,7 @@ class ConversationUiStateTest {
     fun `앱 실행 가능성 미확인은 원래 goal을 보존하고 경고와 확인쌍을 보인다`() {
         val state = ConversationUiState.Confirm(
             goal = "손자에게 사진 보내기",
-            promptRes = R.string.conversation_app_availability_warning,
+            kind = ConfirmKind.APP_AVAILABILITY_WARNING,
         )
         val model = renderModelOf(state)
 
@@ -131,7 +131,7 @@ class ConversationUiStateTest {
     fun `앱 가능성 경고 계속은 원래 goal 최종 확인을 필수로 거친다`() {
         val warning = ConversationUiState.Confirm(
             goal = "손자에게 사진 보내기",
-            promptRes = R.string.conversation_app_availability_warning,
+            kind = ConfirmKind.APP_AVAILABILITY_WARNING,
         )
 
         val goalConfirmation = requireNotNull(followUpConfirmationAfterAccept(warning))

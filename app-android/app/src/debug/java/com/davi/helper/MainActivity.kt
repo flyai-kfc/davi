@@ -246,11 +246,7 @@ class MainActivity : AppCompatActivity() {
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
             is AppResolutionCoordinator.Outcome.Completed -> {
-                if (
-                    shouldDropAppResolutionOutcome(
-                        pending = voiceSession.isPending(pending),
-                    )
-                ) {
+                if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
                     if (voiceSession.fail(pending)) {
                         setVoiceStatus(R.string.voice_server_error)
@@ -265,11 +261,6 @@ class MainActivity : AppCompatActivity() {
                     appOutcome.availability,
                 )
             }
-            is AppResolutionCoordinator.Outcome.Failure -> handleSlotFillResult(
-                pending,
-                logicalRequest,
-                appOutcome.result.toSlotFillFailure(),
-            )
         }
     }
 
@@ -347,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         val message = warningRes?.let(::getString) ?: outcome.message
         binding.goalInput.setText(outcome.goal)
         binding.voiceStatus.text = message
-        GuideTelemetry.voiceState("goal_ready")
+        GuideTelemetry.voiceState(if (warningRes == null) "goal_ready" else "app_availability_warning")
         refreshUi()
         speak(
             message,

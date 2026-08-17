@@ -379,7 +379,7 @@ class ConversationActivity : AppCompatActivity() {
         followUpConfirmationAfterAccept(state)?.let { goalConfirmation ->
             cancelVoiceDialogue()
             setState(goalConfirmation)
-            GuideTelemetry.voiceState("goal_confirmation_after_app_warning")
+            GuideTelemetry.voiceState("goal_ready_after_app_warning")
             speak(getString(R.string.voice_goal_ready), onFinished = {})
             return
         }
@@ -448,11 +448,7 @@ class ConversationActivity : AppCompatActivity() {
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
             is AppResolutionCoordinator.Outcome.Completed -> {
-                if (
-                    shouldDropAppResolutionOutcome(
-                        pending = voiceSession.isPending(pending),
-                    )
-                ) {
+                if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
                     if (voiceSession.fail(pending)) {
                         setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
@@ -466,12 +462,6 @@ class ConversationActivity : AppCompatActivity() {
                     appOutcome.availability,
                 )
             }
-            is AppResolutionCoordinator.Outcome.Failure ->
-                handleSlotFillResult(
-                    pending,
-                    logicalRequest,
-                    appOutcome.result.toSlotFillFailure(),
-                )
         }
     }
 
@@ -546,15 +536,17 @@ class ConversationActivity : AppCompatActivity() {
         outcome: VoiceDialogueSession.Outcome.Ready,
         appAvailability: AppAvailabilityPreflight?,
     ) {
-        val warningRes = if (appAvailability == AppAvailabilityPreflight.UNCONFIRMED) {
-            R.string.conversation_app_availability_warning
+        val warning = appAvailability == AppAvailabilityPreflight.UNCONFIRMED
+        val goalConfirmation = stateForOutcome(outcome) as ConversationUiState.Confirm
+        val confirmation = if (warning) {
+            goalConfirmation.copy(kind = ConfirmKind.APP_AVAILABILITY_WARNING)
         } else {
-            null
+            goalConfirmation
         }
-        setState(ConversationUiState.Confirm(outcome.goal, promptRes = warningRes))
-        GuideTelemetry.voiceState("goal_ready")
+        setState(confirmation)
+        GuideTelemetry.voiceState(if (warning) "app_availability_warning" else "goal_ready")
         speak(
-            warningRes?.let(::getString) ?: outcome.message,
+            if (warning) getString(R.string.conversation_app_availability_warning) else outcome.message,
             // 세션 정리만 — 화면은 ○/× 입력을 기다린다. goal은 UiState가 들고 있다.
             onFinished = { voiceSession.finish(outcome.generation) },
         )

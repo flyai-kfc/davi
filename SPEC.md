@@ -284,11 +284,12 @@ match를 먼저 보고 정규화된 manifest label/alias를 보조로 쓴다. �
 `/v1/intent/app-resolution`의 plan+기기 `candidate_id/status` 피드백 계약은 호환을 위해 유지하지만,
 Android의 안내 시작 경로는 첫 응답의 plan과 기기 대조까지만 **실행 가능성 사전 점검**으로 사용한다.
 `launchable` 후보가 하나 이상이면 후보 수와 다른 status에 관계없이 확인됨으로, 하나도 없으면 후보
-없음·`not_found`·`ambiguous`·`unknown`·불안정한 index를 모두 미확인으로 다룬다. 미확인은 미설치로
-단정하지 않고 “이 과정에 필요한 앱이 설치되어 있지 않을 수 있어요. 그래도 안내를 시작할까요?”라고
-묻는다. 계속하면 앱 canonical name을 덧붙이지 않은 원래 goal의 최종 확인 화면으로 이동하고, 그
-화면에서 다시 계속해야 안내를 시작한다. 경고나 최종 확인에서 취소하면 goal과 요청 추적 상태를
-폐기해 홈으로 돌아간다.
+없음·`not_found`·`ambiguous`·`unknown`·불안정한 index를 모두 미확인으로 다룬다. 후보 요청 자체의
+API·HTTP·network·parse 실패도 이미 완성된 goal을 폐기하지 않고 미확인으로 낮춘다. 미확인은 미설치로
+단정하지 않고 “이 과정에 필요한 앱이 설치되어 있지 않을 수 있어요. 그래도 계속할까요?”라고 묻는다.
+계속하면 앱 canonical name을 덧붙이지 않은 원래 goal의 최종 확인 화면으로 이동하고, 그 화면에서
+다시 계속해야 안내를 시작한다. 경고나 최종 확인에서 취소하면 goal과 요청 추적 상태를 폐기해 홈으로
+돌아간다.
 
 기기에서 발견한 package·label·component·profile과 전체 목록은 전송하지 않는다. 앱 하나를 확정하지
 않으므로 사용자가 경고에 답하는 동안 index revision이 바뀌어도 재검증하지 않으며, 안내 시작 뒤

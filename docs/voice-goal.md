@@ -89,7 +89,8 @@
     │
     │                ready면 ⑦ /v1/intent/app-resolution
     │                   서버 일반 후보 → 기기 LaunchableAppIndex 대조
-    │                   launchable ≥ 1 = 확인됨 / 그 외·불안정 = 미확인
+    │                   launchable ≥ 1 = 확인됨
+    │                   그 외·불안정·후보 요청 실패 = 미확인(goal 보존)
     │                   앱을 고르거나 canonical name을 goal에 덧붙이지 않음
     │                   그 뒤 원래 ready 응답을 applyResponse()
     │                                          │
