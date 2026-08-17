@@ -25,17 +25,9 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="@color/davi_card_glass_top"
-                android:centerColor="@color/davi_card_glass_mid"
-                android:endColor="@color/davi_card_glass_bottom"
+                android:startColor="@color/davi_card_senior_top"
+                android:endColor="@color/davi_card_senior_bottom"
                 android:type="linear" />
-            <corners android:radius="@dimen/davi_radius_xl" />
-        </shape>
-    </item>
-
-    <item android:bottom="@dimen/davi_card_shadow_offset_y_speaking">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/davi_card_tint_senior" />
             <stroke
                 android:width="@dimen/davi_card_border_width"
                 android:color="@color/davi_card_border" />
