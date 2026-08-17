@@ -250,7 +250,7 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        binding.spaceHomeTop.isVisible(model.homeVisible)
+        binding.spaceFlexTop.isVisible(model.homeVisible)
         binding.spaceHomeMid.isVisible(model.homeVisible)
         binding.homeTitle.isVisible(model.homeVisible)
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
