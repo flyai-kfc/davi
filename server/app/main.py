@@ -15,7 +15,12 @@ from fastapi.responses import JSONResponse
 
 from .app_resolution import resolve_app_request
 from .config import settings
-from .dev_access import SlidingWindowRateLimiter, token_matches
+from .dev_access import (
+    KeyedSlidingWindowRateLimiter,
+    RateLimitDecision,
+    SlidingWindowRateLimiter,
+    token_matches,
+)
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .intent_resolution import resolve_intent
 from .kakao_auth import (
@@ -63,9 +68,13 @@ _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
 # 로그인 전용 리미터(#167 리뷰 P1). dev 리미터는 development에서만 돌지만, 로그인은 인증 전
-# 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 전역으로 제한한다. 별도 창을 쓰는
+# 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 제한한다. 별도 창을 쓰는
 # 이유: dev 창을 공유하면 로그인 폭주가 팀의 추론 쿼터까지 잠근다.
+# 두 겹으로 나뉜다(#167 재리뷰 P1): 출처별 제한이 한 출처의 폭주로부터 정상 사용자를 지키고,
+# 전역 상한이 카카오 API 소모 총량을 지킨다. 전역 창 하나만 있으면 임의 요청자가 버킷을
+# 계속 소모해 모든 로그인을 429로 막을 수 있다.
 auth_rate_limiter = SlidingWindowRateLimiter()
+auth_source_rate_limiter = KeyedSlidingWindowRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -347,6 +356,27 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
     return response
 
 
+def _auth_rate_limit_response(
+    request: Request,
+    decision: RateLimitDecision,
+    error_kind: str,
+) -> JSONResponse:
+    retry_after = decision.retry_after_seconds or 1
+    request.state.error_kind = error_kind
+    request.state.retry_after_seconds = retry_after
+    error = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="kakao login request limit exceeded",
+        retry_after_seconds=retry_after,
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=error.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 @app.post("/v1/auth/kakao", response_model=SessionTokenResponse)
 def post_kakao_login(
     req: KakaoLoginRequest,
@@ -358,25 +388,23 @@ def post_kakao_login(
     """
 
     request.state.request_metadata = {"client_version": req.client_version}
-    decision = auth_rate_limiter.check(
+    # 출처는 직접 연결 peer IP만 쓴다. X-Forwarded-For는 클라이언트가 임의로 채울 수 있어
+    # 여기서 파싱하지 않는다 — 프록시 뒤 배포에서는 uvicorn --proxy-headers와
+    # --forwarded-allow-ips로 신뢰 프록시가 request.client를 재작성한 값이 그대로 들어온다.
+    source = request.client.host if request.client else "unknown"
+    source_decision = auth_source_rate_limiter.check(
+        source,
+        settings.davi_auth_rate_limit_per_source_requests,
+        settings.davi_auth_rate_limit_per_source_window_seconds,
+    )
+    if not source_decision.allowed:
+        return _auth_rate_limit_response(request, source_decision, "AUTH_RATE_LIMIT_SOURCE")
+    global_decision = auth_rate_limiter.check(
         settings.davi_auth_rate_limit_requests,
         settings.davi_auth_rate_limit_window_seconds,
     )
-    if not decision.allowed:
-        retry_after = decision.retry_after_seconds or 1
-        request.state.error_kind = "AUTH_RATE_LIMIT"
-        request.state.retry_after_seconds = retry_after
-        error = ApiError(
-            kind=ErrorKind.QUOTA,
-            message="kakao login request limit exceeded",
-            retry_after_seconds=retry_after,
-            request_id=request.state.request_id,
-        )
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content=error.model_dump(),
-            headers={"Retry-After": str(retry_after)},
-        )
+    if not global_decision.allowed:
+        return _auth_rate_limit_response(request, global_decision, "AUTH_RATE_LIMIT")
     try:
         return login_with_kakao(req)
     except AuthError as e:

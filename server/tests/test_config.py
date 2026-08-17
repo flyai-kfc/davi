@@ -140,6 +140,14 @@ def test_rate_limit_settings_must_be_positive():
         _settings(davi_dev_rate_limit_requests=0)
     with pytest.raises(ValidationError, match="DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS"):
         _settings(davi_dev_rate_limit_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_REQUESTS"):
+        _settings(davi_auth_rate_limit_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS"):
+        _settings(davi_auth_rate_limit_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_PER_SOURCE_REQUESTS"):
+        _settings(davi_auth_rate_limit_per_source_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS"):
+        _settings(davi_auth_rate_limit_per_source_window_seconds=0)
 
 
 def test_validation_error_hides_secret_values():

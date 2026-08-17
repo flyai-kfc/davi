@@ -239,6 +239,67 @@ def test_login_rate_limit_applies_in_every_profile(
     assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
 
 
+def test_login_rate_limit_is_per_source(monkeypatch, set_runtime_profile):
+    """한 출처의 소진이 다른 출처의 로그인을 막지 않는다(#167 재리뷰 P1).
+
+    dev 게이트는 loopback 밖 클라이언트를 막으므로 production 프로필로 검증한다.
+    """
+
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+    )
+    monkeypatch.setattr(settings, "davi_auth_jwt_secret", SecretStr(_SECRET))
+    monkeypatch.setattr(settings, "davi_kakao_app_id", _APP_ID)
+    monkeypatch.setattr(settings, "davi_auth_rate_limit_per_source_requests", 1)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+    attacker = TestClient(app, client=("203.0.113.9", 40000))
+    normal_user = TestClient(app, client=("198.51.100.7", 40001))
+
+    ok = attacker.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    limited = attacker.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    other_source_ok = normal_user.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+
+    assert ok.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["kind"] == "QUOTA"
+    assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
+    assert other_source_ok.status_code == 200
+
+
+def test_login_global_cap_still_limits_across_sources(monkeypatch, set_runtime_profile):
+    """출처별 창과 별개로 전역 상한이 카카오 API 소모 총량을 지킨다."""
+
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+    )
+    monkeypatch.setattr(settings, "davi_auth_jwt_secret", SecretStr(_SECRET))
+    monkeypatch.setattr(settings, "davi_kakao_app_id", _APP_ID)
+    monkeypatch.setattr(settings, "davi_auth_rate_limit_requests", 2)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+    sources = [TestClient(app, client=(f"203.0.113.{i}", 40000 + i)) for i in range(3)]
+
+    first = sources[0].post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    second = sources[1].post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    limited = sources[2].post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["kind"] == "QUOTA"
+
+
 def test_login_rate_limit_does_not_share_the_dev_window(configured_auth, monkeypatch):
     """로그인 폭주가 팀 추론 쿼터(dev 리미터)를 잠그지 않는다 — 창이 분리돼 있다."""
 
