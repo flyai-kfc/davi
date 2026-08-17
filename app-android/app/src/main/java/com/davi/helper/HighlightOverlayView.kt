@@ -269,6 +269,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         // 스크림(GD-4)도 테두리와 같은 이유로 translate 앞이다 — 뷰가 차지한 범위를 덮는다.
+        // 그 범위가 곧 화면 전체는 아니다: 이 창은 상태표시줄 아래에서 시작해서(`[0,103]` 실측)
+        // 상태표시줄은 안 덮인다. 시안은 전면이라 그 차이는 #178에서 본다.
         // **터치는 막지 않는다.** 이 창이 FLAG_NOT_TOUCHABLE이고, 뒤집으면 "대신 조작하지
         // 않는다"(SPEC §2)와 부딪친다. 막을 이유도 없다 — 이 화면은 ○/× 말고는 사라지지
         // 않으므로 아래 앱을 만져도 답할 자리가 남는다.

@@ -231,8 +231,14 @@ object GuideBoxLayout {
         (canvas.bottom - margin - height).coerceAtLeast(canvas.top)
 
     /**
-     * 화면 세로 중앙(GD-4). 상자가 화면보다 크면 [bottomAnchored]와 같은 이유로 위쪽을 살린다 —
+     * 세로 중앙(GD-4). 상자가 화면보다 크면 [bottomAnchored]와 같은 이유로 위쪽을 살린다 —
      * 아래로 넘치면 확인쌍이 화면 밖으로 나가 답할 수 없다.
+     *
+     * **기준은 [canvas], 즉 화면이 아니라 그릴 수 있는 범위다.** 표시 오버레이 창이 상태표시줄
+     * 아래(`[0,103]`)에서 시작해서, 실제로는 화면 중심보다 그 절반만큼 아래에 앉는다
+     * (2026-08-17 SM-S921N `dumpsys window` 실측: 조작 창 `[74,895-1006,1548]`, 중심 1221.5 =
+     * 표시 창 범위의 중심. 화면 중심은 1170). 육안으로 중앙이라 그대로 둔다 — 화면 기준으로
+     * 맞추려면 이 순수 계산이 창 범위 밖의 화면 크기까지 알아야 하고, 그 가정은 #169 소관이다.
      */
     private fun centeredTop(height: Float, canvas: Bounds): Float =
         (canvas.top + (canvas.bottom - canvas.top - height) / 2f).coerceAtLeast(canvas.top)
