@@ -262,6 +262,16 @@
       번진다. 30을 넣어야 sigma 17.8로 시안의 18에 맞는다.
     -->
     <dimen name="davi_glow_card_blur">30dp</dimen>
-    <!-- 글로우 뷰가 카드 밖으로 나가는 거리(음수 마진). blur와 같다. -->
+    <!-- 글로우 뷰가 카드 밖으로 나가는 거리(음수 마진). 좌·우·위는 blur와 같다. -->
     <dimen name="davi_glow_card_bleed">-30dp</dimen>
+    <!--
+      **아래만 blur + offsetY(30 + 18 = 48)다.** CardGlowView가 도형을 뷰에서 blur만큼
+      들이고 그림자를 offsetY만큼 내리므로, 아래 여유가 blur뿐이면 **도형 자체가 카드보다
+      18dp 짧아진다** — 시안이 뜻한 "카드 실루엣이 아래로 18 이동한 그림자"가 아니라
+      짧아진 실루엣의 그림자가 된다(PR #171 리뷰 지적).
+
+      48dp를 확보하면 도형 하단이 카드 하단과 일치하고, 그 위에서 그림자만 18dp 내려간다.
+      blur나 offsetY가 바뀌면 이 값도 함께 바뀐다.
+    -->
+    <dimen name="davi_glow_card_bleed_bottom">-48dp</dimen>
 </resources>

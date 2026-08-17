@@ -13,6 +13,7 @@ import android.speech.SpeechRecognizer
 import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -255,6 +256,17 @@ class ConversationActivity : AppCompatActivity() {
         // **래퍼를 토글한다.** 래퍼가 세로 weight를 갖고 있어(카드 두 장이 남는 공간을
         // 나눠 가진다) 안쪽만 숨기면 빈 래퍼가 계속 자리를 먹어 홈 화면 문구가 밀려 올라간다.
         binding.cardQuestionWrap.isVisible(questionVisible || model.loadingDotsVisible)
+        // **카드가 혼자 남으면 weight를 끈다**(PR #171 리뷰 지적).
+        //
+        // 최종 확인·실패에서는 발화 카드와 홈 여백 둘이 모두 숨어, 질문 카드 하나가 남는
+        // 세로 공간을 전부 받아 내용과 무관하게 수백 dp까지 커진다. weight는 **두 카드가
+        // 함께 보일 때 둘의 비(176:196)를 뜻하는 값**이지 혼자일 때 쓰라는 값이 아니다.
+        //
+        // 끄면 wrap_content + minHeight가 살아 카드가 내용 높이(하한 176dp)로 선다.
+        // 시안 메인 7·8의 카드 높이 200은 그 화면들을 다시 짤 때 함께 본다.
+        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+            weight = if (model.utteranceVisible) CARD_WEIGHT_DAVI else 0f
+        }
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
@@ -634,5 +646,11 @@ class ConversationActivity : AppCompatActivity() {
 
     private companion object {
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
+
+        /**
+         * 두 카드가 함께 보일 때 질문 카드가 갖는 weight. 레이아웃의 값과 같아야 한다 —
+         * 카드가 혼자 남는 상태에서 0으로 껐다가 되돌릴 때 쓴다.
+         */
+        const val CARD_WEIGHT_DAVI = 176f
     }
 }
