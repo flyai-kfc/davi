@@ -315,6 +315,59 @@ def test_login_global_cap_still_limits_across_sources(monkeypatch, set_runtime_p
     assert limited.json()["kind"] == "QUOTA"
 
 
+def test_login_flood_does_not_consume_dev_window_in_lan_mode(monkeypatch, set_runtime_profile):
+    """LAN+토큰 development에서도 로그인 폭주가 팀 추론 쿼터(dev 창)를 소모하지 않는다.
+
+    dev 게이트의 토큰 검사는 로그인에도 적용되지만, dev 창은 Gemini 쿼터 보호용이라
+    카카오만 부르는 로그인이 소모하면 안 된다. loopback·무토큰 경로만 테스트하면
+    dev 리미터가 아예 돌지 않아 이 계약을 검증하지 못한다.
+    """
+
+    dev_token = "d" * 32
+    set_runtime_profile(
+        davi_env="development",
+        davi_dev_access_token=dev_token,
+        davi_bind_host="0.0.0.0",
+        davi_dev_rate_limit_requests=2,
+    )
+    monkeypatch.setattr(settings, "davi_auth_jwt_secret", SecretStr(_SECRET))
+    monkeypatch.setattr(settings, "davi_kakao_app_id", _APP_ID)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+    lan_client = TestClient(app, client=("192.168.0.10", 40000))
+    headers = {"X-Davi-Dev-Token": dev_token}
+
+    # dev 창(2회)보다 많은 로그인을 보낸다. 성공 3회는 출처별 기본(10회) 안이다.
+    for _ in range(3):
+        login = lan_client.post(
+            "/v1/auth/kakao", json={"kakao_access_token": "token"}, headers=headers
+        )
+        assert login.status_code == 200
+
+    # 로그인이 dev 창을 소모하지 않았으므로 추론 요청 2회가 그대로 허용된다.
+    for _ in range(2):
+        next_step = lan_client.post(
+            "/v1/next-step",
+            json={
+                "goal": "카카오톡 열기",
+                "client_version": "0.1.0",
+                "screen": {
+                    "package_name": "com.sec.android.app.launcher",
+                    "elements": [{"node_id": "n1", "label": "카카오톡", "clickable": True}],
+                },
+            },
+            headers=headers,
+        )
+        assert next_step.status_code == 200
+
+    # 토큰 검사 자체는 로그인에도 그대로다 — 무토큰 LAN 로그인은 401이다.
+    no_token = lan_client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    assert no_token.status_code == 401
+
+
 def test_login_rate_limit_does_not_share_the_dev_window(configured_auth, monkeypatch):
     """로그인 폭주가 팀 추론 쿼터(dev 리미터)를 잠그지 않는다 — 창이 분리돼 있다."""
 

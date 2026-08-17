@@ -158,6 +158,12 @@ def _development_access_error(request: Request) -> JSONResponse | None:
     if not token_matches(expected, supplied):
         return _development_auth_error(request)
 
+    if request.url.path == _AUTH_KAKAO_PATH:
+        # 로그인은 전용 리미터가 모든 프로필에서 따로 제한한다. dev 창은 팀 추론 쿼터
+        # (Gemini) 보호용이라, 카카오만 부르는 로그인 폭주가 이 창을 소모해 팀의 추론을
+        # 잠그면 안 된다 — 토큰 검사까지만 적용하고 dev 창은 건너뛴다.
+        return None
+
     decision = dev_rate_limiter.check(
         settings.davi_dev_rate_limit_requests,
         settings.davi_dev_rate_limit_window_seconds,
