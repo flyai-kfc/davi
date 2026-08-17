@@ -41,6 +41,11 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   읽는 중 표시는 꺼진다. **검증된 완료도 앱이 스스로 끝내지 않는다** — 종료는 ○ 응답뿐이다.
   방향 스와이프 애니메이션은 아직 없다(HANDOFF §4의 `SwipeGuideView`).
   오버레이가 안 그려지는 화면(설정 앱)의 헤드업 폴백도 아직 없다.
+- **로그인 진입(ON-1, #166)** — 카카오 SDK로 받은 access token을 서버 `/v1/auth/kakao`와
+  교환하고 세션 토큰을 `AuthStore`(SharedPreferences)에 보관한다. **스킵이 항상 열려 있고
+  어떤 실패도 앱 사용을 막지 않는다.** `GuideSession`의 비영속 규칙은 안내 세션 이야기라
+  별개 계층이다. 네이티브 앱 키는 debug만 `local.properties`에서 주입하고, 키 없는 빌드는
+  SDK init·카카오 버튼·OAuth handler를 함께 끈다. 카카오 토큰·세션 토큰은 logcat 금지.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
 
 ## UI 컨벤션 (확정 2026-07-24)
