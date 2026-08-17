@@ -112,8 +112,15 @@ class HighlightOverlayView(context: Context) : View(context) {
     private var readingVisible = false
     private var readingPhase = ReadingBorder.STATIC_PHASE
 
-    /** 완료 확인 대기(GD-3). 읽는 중과 **동시에 켜지지 않는다** — [ReadingBorder.isReading] 참고. */
-    private var confirmFrame = false
+    /**
+     * 확인 대기 중이면 그 종류. 읽는 중과 **동시에 켜지지 않는다** — [ReadingBorder.isReading] 참고.
+     *
+     * 종류마다 크롬이 다르고 **배타적이다**(v2 시안) — 완료 확인(GD-3)은 성공 tone 테두리,
+     * 종료 확인(GD-4)은 전면 스크림이다. 한 화면에 둘을 겹치지 않는다.
+     */
+    private var confirmKind: GuideDisplayState.ConfirmKind? = null
+
+    private val confirmFrame get() = confirmKind == GuideDisplayState.ConfirmKind.DONE
 
     private val readingOnset = Runnable {
         readingVisible = true
@@ -152,16 +159,19 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 완료 확인 테두리(GD-3)를 켜고 끈다. 읽는 중 테두리와 **같은 자리·같은 두께**이고 색만
-     * 다르다 — 서버 판단이 아니라 사용자 답을 기다리는 중임을 화면 전체로 알린다.
+     * 확인 화면의 크롬을 켜고 끈다(없으면 null).
+     *
+     * 완료 확인(GD-3)은 화면 가장자리 테두리다 — 읽는 중 테두리와 **같은 자리·같은 두께**이고
+     * 색만 다르다. 서버 판단이 아니라 사용자 답을 기다리는 중임을 화면 전체로 알린다.
+     * 종료 확인(GD-4)은 전면 스크림이다 — 테두리는 켜지 않는다.
      *
      * **브리딩하지 않는다.** 숨 쉬는 것은 "지금 처리 중"의 표현이고 확인은 멈춰 선 상태다.
      * 그래서 [syncBreathing]의 조건에도 넣지 않는다 — 확인 중에 강조도 읽는 중도 없으면
      * 애니메이터는 멈춰 있는 것이 맞다. 지연(onset)도 없다: 답할 자리라 곧바로 보여야 한다.
      */
-    fun setConfirmFrame(on: Boolean) {
-        if (on == confirmFrame) return
-        confirmFrame = on
+    fun setConfirmChrome(kind: GuideDisplayState.ConfirmKind?) {
+        if (kind == confirmKind) return
+        confirmKind = kind
         invalidate()
     }
 

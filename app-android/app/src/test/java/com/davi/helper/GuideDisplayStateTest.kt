@@ -191,7 +191,7 @@ class GuideDisplayStateTest {
         state.onCleared()
 
         assertEquals(
-            GuideDisplayState.Content(null, confirmText, confirm = true),
+            GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
             state.redisplay(sigA, true),
         )
     }
@@ -202,7 +202,7 @@ class GuideDisplayStateTest {
         state.showConfirm(sigA, confirmText)
 
         assertEquals(
-            GuideDisplayState.Content(null, confirmText, confirm = true),
+            GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
             state.stuckContent(stuck),
         )
     }
@@ -218,7 +218,7 @@ class GuideDisplayStateTest {
         state.onCleared()
 
         assertEquals(
-            GuideDisplayState.Content(null, confirmText, confirm = true),
+            GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
             state.redisplay(sigB, true),
         )
     }
@@ -233,7 +233,7 @@ class GuideDisplayStateTest {
         state.onCleared()
 
         assertEquals(
-            GuideDisplayState.Content(null, confirmText, confirm = true),
+            GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
             state.redisplay(sigA, true),
         )
     }

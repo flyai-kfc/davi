@@ -97,19 +97,19 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay = OverlayController(
             this,
             object : OverlayController.Callbacks {
-                override fun onStop() {
+                override fun onStopRequested() {
                     Log.i(TAG, "session stopped by chip")
                     GuideSession.stop()
                 }
 
-                override fun onConfirmAccept() {
+                override fun onConfirmAccept(kind: GuideDisplayState.ConfirmKind) {
                     // 앱을 앞으로 가져오지 않는다 — 방금 끝낸 작업 화면에 그대로 남는 것이
                     // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정).
                     Log.i(TAG, "confirm accepted, session done")
                     GuideSession.confirmAccepted()
                 }
 
-                override fun onConfirmReject() {
+                override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
                     Log.i(TAG, "confirm rejected, continuing")
                     GuideSession.confirmRejected()
                     // 확인 화면을 **버린다**(onCleared가 아니라 reset). 기억만 해 두면 다음 샘플의

@@ -87,6 +87,12 @@
     <string name="guide_service_off">안내 기능이 꺼져서 안내를 멈췄어요.</string>
     <string name="guide_permission_lost">권한이 꺼져 있어요.\n다시 켜 주세요.</string>
 
+    <!--
+      종료 확인(GD-4, #193). 확인쌍 아이콘은 완료 확인과 같지만 뜻이 달라 라벨을 따로 둔다 —
+      한 벌로 쓰면 TalkBack이 종료 확인에서 "네, 다 됐어요"를 읽는다.
+    -->
+    <string name="overlay_quit_accept_desc">네, 그만 볼래요</string>
+    <string name="overlay_quit_reject_desc">아니요, 계속 볼래요</string>
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 

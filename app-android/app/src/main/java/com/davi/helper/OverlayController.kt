@@ -38,14 +38,17 @@ class OverlayController(
      * 어느 것이 어느 칩인지 서비스 쪽에서 읽히지 않는다.
      */
     interface Callbacks {
-        /** '그만 볼래요'. 안내를 여기서 끝낸다. */
-        fun onStop()
+        /**
+         * '그만 볼래요'. **여기서 끝내지 않는다** — 종료 확인(GD-4)을 띄워 되묻는다(#193).
+         * 세션을 끝내는 것은 그 화면의 ○ 응답뿐이다.
+         */
+        fun onStopRequested()
 
-        /** 완료 확인의 ○. 사용자가 "다 됐다"고 답했다(GD-3). */
-        fun onConfirmAccept()
+        /** 확인의 ○. 완료 확인이면 "다 됐다", 종료 확인이면 "그만 보겠다" — 둘 다 세션을 끝낸다. */
+        fun onConfirmAccept(kind: GuideDisplayState.ConfirmKind)
 
-        /** 완료 확인의 ×. 아직 안 됐으니 같은 세션으로 안내를 잇는다. */
-        fun onConfirmReject()
+        /** 확인의 ×. 완료 확인이면 "아직", 종료 확인이면 "계속" — 둘 다 같은 세션으로 잇는다. */
+        fun onConfirmReject(kind: GuideDisplayState.ConfirmKind)
     }
 
     private val windowManager =
@@ -54,8 +57,8 @@ class OverlayController(
     private var view: HighlightOverlayView? = null
     private val control = ControlOverlay(context, windowManager, callbacks)
 
-    /** 지금 그리는 것이 완료 확인인가. 자리 계산 콜백이 조작 오버레이에 그대로 넘긴다. */
-    private var confirmMode = false
+    /** 지금 그리는 확인 화면의 종류(없으면 null). 자리 계산 콜백이 조작 오버레이에 그대로 넘긴다. */
+    private var confirmKind: GuideDisplayState.ConfirmKind? = null
 
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
@@ -66,29 +69,30 @@ class OverlayController(
      * [avoid]는 안내창이 가리지 말아야 할 영역이다(키보드·다이얼로그). 강조 대상은 여기 넣지
      * 않는다 — 뷰가 이미 절대 회피로 다룬다.
      *
-     * [confirm]이면 완료 확인(GD-3)이다 — 컨트롤 행이 확인쌍이 되고 화면 가장자리에 성공 tone
-     * 테두리가 함께 켜진다. 읽는 중 테두리와 달리 **안내창과 한 몸이라** [clear]가 같이 지운다.
+     * [confirm]이 있으면 확인 화면이다 — 컨트롤 행이 확인쌍이 되고 종류에 맞는 크롬이 함께
+     * 켜진다(완료 확인은 성공 tone 테두리, 종료 확인은 전면 스크림). 읽는 중 테두리와 달리
+     * **안내창과 한 몸이라** [clear]가 같이 지운다.
      */
     fun showGuide(
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
-        confirm: Boolean = false,
+        confirm: GuideDisplayState.ConfirmKind? = null,
     ) {
         if (!canDraw()) {
             Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
             return
         }
-        // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 모드를 먼저 세운다.
-        confirmMode = confirm
+        // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
+        confirmKind = confirm
         val target = view ?: createView() ?: return
-        target.setConfirmFrame(confirm)
+        target.setConfirmChrome(confirm)
         target.setGuide(bounds, instruction, avoid)
     }
 
     fun clear() {
-        confirmMode = false
-        view?.setConfirmFrame(false)
+        confirmKind = null
+        view?.setConfirmChrome(null)
         view?.clearTarget()
     }
 
@@ -131,7 +135,7 @@ class OverlayController(
         val created = HighlightOverlayView(context)
         // addView 전에 물린다 — 창 크기가 처음 잡힐 때(onSizeChanged) 도는 첫 계산도 놓치지 않는다.
         created.guideBoxListener = HighlightOverlayView.GuideBoxListener { rect, lines ->
-            if (rect == null) control.hide() else control.show(rect, lines, confirmMode)
+            if (rect == null) control.hide() else control.show(rect, lines, confirmKind)
         }
         return runCatching {
             windowManager.addView(created, OverlayWindowParams.create(touchable = false))

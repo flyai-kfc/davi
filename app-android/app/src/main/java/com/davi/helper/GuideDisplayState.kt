@@ -12,19 +12,34 @@ package com.davi.helper
 class GuideDisplayState {
 
     /**
+     * 확인 화면의 종류. 둘은 **같은 상태 기계**이고 계기·문구·크롬만 다르다 — ○가 세션을
+     * 끝내고 ×가 세션을 잇는 뼈대가 같아서 한 축으로 가른다(#193).
+     *
+     * **동시에 뜨지 않는다.** [DONE] 표시 중에는 컨트롤 행이 확인쌍이라 중지 칩이 없고,
+     * 따라서 [QUIT]로 들어갈 입구가 닫힌다. 확인 상태를 겹쳐 쌓을 필요가 없는 근거다.
+     */
+    enum class ConfirmKind {
+        /** 완료 확인(GD-3). 서버 `done`이 띄운다. 성공 tone 테두리 + 하단 고정. */
+        DONE,
+
+        /** 종료 확인(GD-4). 중지 칩이 띄운다. 전면 스크림 + 화면 세로 중앙. */
+        QUIT,
+    }
+
+    /**
      * 오버레이에 그릴 내용. [bounds]는 `[left, top, right, bottom]`, 강조가 없으면 null.
      *
      * [actionType]은 안내창이 무엇을 피해야 하는지를 가른다 — 타이핑 안내면 키보드가 곧
      * 조작 대상이라 절대 가리면 안 된다(#38 5번). 우리가 만든 안내(정체·상한)는 null이다.
      *
-     * [confirm]이면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다(GD-3). 무엇을 그릴지의 판정이라
+     * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      */
     data class Content(
         val bounds: List<Int>?,
         val text: String,
         val actionType: ActionType? = null,
-        val confirm: Boolean = false,
+        val confirm: ConfirmKind? = null,
     )
 
     private var guide: Content? = null
@@ -99,7 +114,7 @@ class GuideDisplayState {
      * 사용자가 어디로 가든 답할 자리가 따라가고, ○/×를 눌러야 사라진다.
      */
     fun showConfirm(signature: String, text: String): Content {
-        val content = Content(bounds = null, text = text, confirm = true)
+        val content = Content(bounds = null, text = text, confirm = ConfirmKind.DONE)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
@@ -126,7 +141,7 @@ class GuideDisplayState {
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      *
-     * **확인 화면(GD-3)은 그 폐기에서 빠진다.** 폐기 규칙이 막으려는 것은 *조작* 안내가 엉뚱한
+     * **확인 화면은 그 폐기에서 빠진다**(GD-3·GD-4 둘 다). 폐기 규칙이 막으려는 것은 *조작* 안내가 엉뚱한
      * 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가 null) 문구도
      * 화면과 무관하다("다 됐어요? 해결되셨나요?"). 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
      * 홈을 누른 것만으로 답할 자리가 사라지고, 대기 중에는 요청도 안 나가 세션이 갇힌다
@@ -141,7 +156,7 @@ class GuideDisplayState {
         if (!screenStable) return null
         val current = guide ?: return null
         if (visible) return null
-        if (!current.confirm && guideSignature != currentSignature) {
+        if (current.confirm == null && guideSignature != currentSignature) {
             reset()
             return null
         }
