@@ -56,6 +56,11 @@ class GuideDisplayState {
     /** 오버레이에 실제로 떠 있는가. root=null 청소가 지우면 내용은 남기고 이것만 내린다. */
     private var visible = false
 
+    /** [showQuitConfirm]이 밀어 둔 직전 안내. ×를 누르면 여기서 되돌아온다. */
+    private var stashed: Stash? = null
+
+    private data class Stash(val guide: Content?, val stuckSuffixAllowed: Boolean)
+
     /** [signature] 화면에 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
     fun show(
         signature: String,
@@ -159,11 +164,6 @@ class GuideDisplayState {
         return restored.guide
     }
 
-    /** [showQuitConfirm]이 밀어 둔 직전 안내. */
-    private data class Stash(val guide: Content?, val stuckSuffixAllowed: Boolean)
-
-    private var stashed: Stash? = null
-
     /** 오버레이가 지워졌다(우리 앱이 앞에 오는 등 root=null 청소). 내용은 기억해 둔다. */
     fun onCleared() {
         visible = false
@@ -186,9 +186,9 @@ class GuideDisplayState {
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      *
-     * **확인 화면은 그 폐기에서 빠진다**(GD-3·GD-4 둘 다). 폐기 규칙이 막으려는 것은 *조작* 안내가 엉뚱한
-     * 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가 null) 문구도
-     * 화면과 무관하다("다 됐어요? 해결되셨나요?"). 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
+     * **확인 화면은 그 폐기에서 빠진다**(GD-3·GD-4 둘 다). 폐기 규칙이 막으려는 것은 *조작*
+     * 안내가 엉뚱한 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가
+     * null) 문구도 화면과 무관하다. 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
      * 홈을 누른 것만으로 답할 자리가 사라지고, 대기 중에는 요청도 안 나가 세션이 갇힌다
      * (2026-08-16 SM-S921N 실측: 셰이드 왕복 한 번에 확인이 버려지고 셰이드 화면에 대고 요청이
      * 2회 나갔다 — PR #153 리뷰 P1). **답하기 전에는 사라지지 않는 것이 이 화면의 계약이다.**
