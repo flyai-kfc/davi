@@ -150,22 +150,42 @@
           한쪽에 앵커하면 반대쪽이 벌어진다(실기기에서 양쪽 다 겪었다).
 
           글자 배율이 커져도 **스크롤하지 않고 박스가 유동적으로 화면을 채운다**는 결정
-          (2026-08-16)의 구현이기도 하다. minHeight가 바닥을 잡아 줄어들 한계를 준다.
+          (2026-08-16)의 구현이기도 하다.
+
+          **래퍼는 반드시 0dp+weight여야 한다.** wrap_content로 두면 안의 glow_card가
+          match_parent + 음수 마진이라 **자기가 래퍼를 부풀린다.** 실제로 그렇게 뒀더니
+          발화 상태에서 글로우가 켜지는 순간 다비 카드가 y540~1660까지 자라 시니어 카드를
+          y1700~1820으로 밀어냈고, 동시에 글로우 링이 카드에서 멀어져 보이지 않았다
+          (2026-08-17 실기기 실측). 0dp+weight는 자식에 EXACTLY 스펙을 주므로 글로우가
+          래퍼 크기에 관여하지 못한다.
+
+          **대신 자식의 minHeight는 이 구조에서 하한 구실을 못 한다**(PR #171 리뷰 지적).
+          위 이유로 wrap_content 쪽을 택할 수 없어 하한 보완은 별도로 본다. minHeight가 바닥을 잡아 줄어들 한계를 준다.
         -->
         <FrameLayout
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
             android:layout_weight="176"
-            android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
 
+            <!--
+              **네 방향 마진을 따로 준다.** android:layout_margin 축약형에 음수 dimen을 주면
+              적용되지 않아 글로우 뷰가 카드와 같은 크기가 됐고, 그러면 CardGlowView가
+              뷰에서 blur만큼 안쪽에 그리는 도형이 카드 안에 들어가 번짐이 흰 카드 밑에
+              깔려 보이지 않는다(2026-08-17 실기기 실측: 도형이 카드 x80~1010보다 안쪽인
+              x170~925에 그려졌다). 소프트웨어 레이어는 뷰 밖으로 못 그리므로
+              clipChildren을 열어도 소용이 없다 — 뷰 자체가 커져야 한다.
+            -->
             <com.davi.helper.CardGlowView
                 android:id="@+id/glow_card"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_margin="@dimen/davi_glow_card_bleed"
+                android:layout_marginLeft="@dimen/davi_glow_card_bleed"
+                android:layout_marginTop="@dimen/davi_glow_card_bleed"
+                android:layout_marginRight="@dimen/davi_glow_card_bleed"
+                android:layout_marginBottom="@dimen/davi_glow_card_bleed"
                 android:importantForAccessibility="no" />
 
         <LinearLayout
@@ -202,7 +222,7 @@
         <TextView
             android:id="@+id/card_utterance"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
             android:layout_weight="196"
             android:layout_marginTop="@dimen/davi_card_gap"
             android:minHeight="@dimen/davi_card_min_height_senior"
