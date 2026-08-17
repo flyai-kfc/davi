@@ -90,8 +90,9 @@
       마이크 바닥 여백. davi_spacing_xl(24dp)을 쓰다가 전용 토큰으로 뺐다 —
       **이 값이 아래 둘의 입력**이라 간격 토큰과 함께 움직이면 안 된다.
       실기기에서 마이크가 조금 낮아 보여 8dp 올렸다(2026-08-16).
-        davi_conversation_control_reserve = 이 값 + 91/2
-        davi_glow_mic_margin_bottom       = 이 값 + 91/2 - 201/2
+        davi_conversation_control_reserve = 이 값 + 91 - 38   = 85dp
+        davi_glow_mic_margin_bottom       = 이 값 + 91/2 - 158/2 = -2dp
+      (38은 마이크가 시니어 카드를 파고드는 깊이 = 91 x 0.42. 각 항의 근거는 해당 토큰 주석에.)
     -->
     <dimen name="davi_mic_margin_bottom">32dp</dimen>
     <!--
@@ -167,7 +168,7 @@
       글로우를 마이크 **중심**에 맞추기 위한 음수 여백.
 
       글로우는 마이크를 감싼 FrameLayout이 아니라 루트의 형제로 둔다 — 그 FrameLayout은
-      wrap_content라 글로우(286dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
+      wrap_content라 글로우(158dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
       직접 위치를 잡는다.
 
       계산: 마이크 중심은 바닥에서 32dp(davi_mic_margin_bottom) + 91dp/2 = 77.5dp.
