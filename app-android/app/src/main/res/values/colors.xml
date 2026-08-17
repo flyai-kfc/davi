@@ -65,18 +65,32 @@
     <color name="davi_bg_blob_4">#F9BFD4</color>
     <color name="davi_bg_blob_5">#FEE8EF</color>
     <color name="davi_bg_blob_6">#FEF5F2</color>
-    <!-- 블롭 위에 얹는 하단 세로 그라디언트. 0.19H 투명 → 0.52H 58% → 1.0H 94%. -->
-    <color name="davi_bg_veil_mid">#FDF2F5</color>
-    <color name="davi_bg_veil_end">#FCEDF1</color>
+    <!--
+      블롭 위에 얹는 하단 세로 그라디언트. 0.19H 투명 → 0.52H 58% → 1.0H 94%.
+
+      **실기기에서 조정한 값이라 Figma `v2/bg/pink`와 어긋나 있다**(2026-08-17).
+      원래 #FDF2F5 / #FCEDF1이었고 각각 (-2,-9,-6)만큼 내렸다 — davi_bg_mesh를 진하게 해도
+      하단은 이 베일이 94%로 덮어 -1밖에 안 움직였기 때문이다(실측).
+      베일까지 바탕색과 같은 양(-4,-18,-12)을 내리는 안도 찍어 봤으나 위아래 차가 6으로
+      원래(10)보다 납작해져 폐기했다. 이 값은 위아래 차 14로 그라데이션이 오히려 살아난다.
+      **Figma 반영 필요** — 디자인 담당이 레이어 채움을 이 값으로 맞춘 뒤 이 단서를 지운다.
+    -->
+    <color name="davi_bg_veil_mid">#FBE9EF</color>
+    <color name="davi_bg_veil_end">#FAE4EB</color>
 
     <!--
-      davi_bg_mesh는 두 곳에 쓰인다 — 앱 배경 바탕(100%)과 **안내창 그라디언트의 위쪽**(90%).
-      그 그라디언트의 아래쪽이 바로 다음 줄 davi_overlay_window_bottom(80%)이다. 짝이다.
+      앱 배경의 바탕색. 이 위에 블롭 6개와 베일이 얹힌다(MeshBackgroundView).
 
-      **davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)가 v2에서 이 그라디언트로 바뀔 자리다.**
-      지금 바꾸면 오버레이 안내창이 즉시 달라지므로 화면 구현 이슈로 넘긴다.
+      **실기기에서 조정한 값이라 Figma와 어긋나 있다**(2026-08-17). 원래 #FDF6F8이었고
+      "살짝 더 진하게"라는 결정으로 내렸다. 블롭이 얇은 화면 상단에서만 크게 드러나
+      상단이 -13, 중앙이 -4, 하단이 -1 움직인다. **Figma 반영 필요.**
+
+      **더 이상 안내창 그라디언트의 위쪽을 겸하지 않는다.** Figma가 둘을 나눴고
+      안드로이드 쪽 overlay/window/top은 건드리지 말라는 지시가 있다(2026-08-16 디자인 담당).
+      대응 토큰은 아직 안 만들었다 — 안내창을 v2로 바꾸는 화면 구현 이슈가 함께 받는다.
+      지금 안내창은 davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)를 그대로 쓴다.
     -->
-    <color name="davi_bg_mesh">#FDF6F8</color>
+    <color name="davi_bg_mesh">#F9E4EC</color>
     <color name="davi_overlay_window_bottom">#FADCE6</color>
     <color name="davi_wave_fade_start">#FFB3B3</color>
     <color name="davi_wave_fade_mid">#FF9A9A</color>
