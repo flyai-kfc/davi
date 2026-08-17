@@ -17,10 +17,30 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 ./scripts/dev-install.ps1
 ```
 
-빌드 → 기기 설치 → **접근성 서비스 재활성화**까지 한 번에 한다. 재설치하면 접근성 권한이 꺼지는
-문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에 들어갈 필요가 없다.
+빌드 → 기기 설치 → **접근성 서비스 재활성화** → **오버레이 권한 확인**까지 한 번에 한다.
+재설치하면 접근성 권한이 꺼지는 문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에
+들어갈 필요가 없다.
 
 이후 로그: `adb logcat -s GuideSvc`
+
+### 지금 상태만 보고 싶다면
+
+아무것도 바꾸지 않고 기기·설치 패키지·접근성·오버레이 상태를 한 줄씩 출력한다.
+
+```powershell
+./scripts/dev-install.ps1 -Status
+```
+
+```
+기기      : SM-S921N [R3CX...] 
+패키지    : com.davi.helper 0.1.0 설치됨
+접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
+오버레이  : 설정된 적 없음(미허용) — 설정에서 "다른 앱 위에 표시"를 켤 것
+```
+
+**목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
+있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
+둘을 구분해서 보여준다.
 
 ### Android Studio로 빌드했다면 권한만 되살린다
 
@@ -28,16 +48,35 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 그때는 빌드 없이 권한만 복구하면 된다(2초).
 
 ```powershell
-./scripts/dev-install.ps1 -SkipBuild
+./scripts/dev-install.ps1 -A11yOnly
 ```
 
 옵션 정리
 
 | 옵션 | 뜻 |
 |---|---|
-| `-SkipBuild` | 빌드·설치 없이 접근성 권한만 복구 |
+| `-Status` | 아무것도 바꾸지 않고 상태만 출력. 다른 옵션은 무시 |
+| `-A11yOnly` (= `-SkipBuild`) | 빌드·설치 없이 권한만 복구 |
 | `-ClearLog` | 끝나고 logcat 버퍼 비우기 |
-| `-SkipAccessibility` | 권한을 건드리지 않음 |
+| `-SkipAccessibility` | 접근성 권한을 건드리지 않음 |
+| `-SkipOverlayCheck` | 오버레이 권한을 확인하지 않음 |
+| `-Serial <serial>` | 기기가 여러 대일 때 대상 지정 (`ANDROID_SERIAL`도 됨) |
+| `-PackageName <pkg>` | debug 패키지명을 직접 지정 |
+
+기기가 **없거나 여러 대**면 설치하지 않고 멈춘다. 여러 대일 때는 `-Serial`로 대상을 지정한다.
+
+패키지명은 `app/build/outputs/apk/debug/output-metadata.json`의 `applicationId`에서 읽는다.
+debug 앱 ID에 접미어가 붙어도 올바른 접근성 서비스를 켜기 위해서다. 산출물이 없으면
+`com.davi.helper`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
+
+### 오버레이 권한
+
+접근성과 별개로 **"다른 앱 위에 표시"** 가 없으면 안내가 그려지지 않는다. 스크립트가 설치 후
+상태를 확인하고, 꺼져 있으면 해당 설정 화면을 띄운다. 자동으로 허용하지는 않는다 —
+`appops set`은 제조사 정책에 막히는 경우가 있어 사람이 화면에서 켜는 편이 확실하다.
+
+One UI 8.5(SM-S921N 실측)는 `package:` 딥링크를 무시하고 **앱별 화면이 아니라 전체 앱 목록**을
+연다. 목록에서 "다비 도우미"를 찾아 토글을 켜면 된다.
 
 ### `HANDOFF.md` §3-15 "CLI 빌드 불가"는 해결됐다
 
