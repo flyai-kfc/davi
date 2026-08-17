@@ -57,12 +57,12 @@
     <path
         android:pathData="M32,16 L44,16"
         android:strokeColor="@color/davi_highlight"
-        android:strokeWidth="3"
+        android:strokeWidth="2"
         android:strokeLineCap="round" />
     <path
         android:pathData="M32,24 L44,24"
         android:strokeColor="@color/davi_highlight"
-        android:strokeWidth="3"
+        android:strokeWidth="2"
         android:strokeLineCap="round" />
 
     <!-- 4. 받침 — U자 곡선. 채움 없음 -->
