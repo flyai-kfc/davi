@@ -278,7 +278,7 @@
                 android:layout_marginLeft="@dimen/davi_glow_card_bleed"
                 android:layout_marginTop="@dimen/davi_glow_card_bleed"
                 android:layout_marginRight="@dimen/davi_glow_card_bleed"
-                android:layout_marginBottom="@dimen/davi_glow_card_bleed"
+                android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
                 android:importantForAccessibility="no" />
 
         <LinearLayout

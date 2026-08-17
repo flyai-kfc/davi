@@ -13,7 +13,7 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
-        android:top="@dimen/davi_card_shadow_offset_y_speaking"
+        android:top="@dimen/davi_card_shadow_offset_y_speaking_senior"
         android:bottom="0dp">
         <shape android:shape="rectangle">
             <solid android:color="@color/davi_card_shadow_speaking_senior" />
@@ -21,7 +21,7 @@
         </shape>
     </item>
 
-    <item android:bottom="@dimen/davi_card_shadow_offset_y_speaking">
+    <item android:bottom="@dimen/davi_card_shadow_offset_y_speaking_senior">
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
