@@ -51,6 +51,11 @@ data class ConversationRenderModel(
      */
     val questionMaxHeightRes: Int = R.dimen.davi_question_card_max_height,
     val utteranceVisible: Boolean = false,
+    /**
+     * 시니어 카드 위쪽 "듣고 있어요" 레이블(#174). **듣는 중에만** 뜬다 — 시안 메인 3·5.
+     * 마이크가 그 동안 비활성이라(이미 듣고 있으므로) 사용자에게 남는 신호가 이것과 파도뿐이다.
+     */
+    val utteranceLabelVisible: Boolean = false,
     val utteranceText: String = "",
     val micVisible: Boolean = false,
     val micEnabled: Boolean = false,
@@ -120,6 +125,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         waveVisible = true,
         glowVisible = true,
         glowReactsToVoice = true,
+        utteranceLabelVisible = true,
     )
     // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).
     // 사용자 차례와 구분되는 신호가 그 부재이므로, 하단에 다른 모션을 넣으면 구분이 사라진다.
