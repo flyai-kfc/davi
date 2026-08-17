@@ -8,7 +8,6 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.util.AttributeSet
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.ColorUtils
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.sin
@@ -33,11 +32,6 @@ class MicGlowView @JvmOverloads constructor(
     /** 음량에 반응할지. 홈 유도에서는 들을 마이크가 없으므로 false. */
     var reactsToVoice: Boolean = true
 
-    /**
-     * 시안의 방사 그라디언트는 **48% → 24% → 0%**다(#161에서 v2 확정값으로 승격).
-     * `colors.xml`이 hex만 두므로 불투명도는 여기서 준다 — 리소스에 ARGB를 박으면
-     * Figma 시맨틱과 1:1이 깨진다.
-     */
     private val glowColor = ContextCompat.getColor(context, R.color.davi_glow_mic)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -83,21 +77,15 @@ class MicGlowView @JvmOverloads constructor(
         if (radius <= 0f) return
         // 셰이더는 크기가 바뀔 때만 만든다.
         //
-        // 시안 48 → 24 → 0%를 중심 · 마이크 가장자리 · 바깥 테두리에 건다.
-        //
-        // **중간 스톱을 마이크 가장자리에 두는 게 핵심이다.** 글로우 안쪽 절반은 마이크
-        // 버튼(불투명)이 덮으므로, 스톱을 균등하게 나누면 실제로 보이는 바깥 구간에는
-        // 이미 다 사라진 값만 남는다(실기기 실측: 흰 배경 255 대비 픽셀차가 4밖에 안 남아
-        // 유도로 읽히지 않았다). 가려지는 지점에서 24%가 되게 해야 바깥이 살아난다.
+        // **중심에서 바로 옅어지게 하면 안 된다.** 글로우 안쪽 절반은 마이크 버튼(불투명)이
+        // 덮으므로, 중심부터 감쇠시키면 실제로 보이는 바깥 테두리는 이미 다 사라진 뒤다
+        // (실기기 실측: 흰 배경 255 대비 픽셀차가 4밖에 안 남아 유도로 읽히지 않았다).
+        // 그래서 마이크에 가려지는 구간까지는 색을 유지하고, 거기서부터 바깥으로 감쇠시킨다.
         paint.shader = RadialGradient(
             w / 2f,
             h / 2f,
             radius,
-            intArrayOf(
-                withAlpha(glowColor, CENTER_ALPHA),
-                withAlpha(glowColor, MIC_EDGE_ALPHA),
-                Color.TRANSPARENT,
-            ),
+            intArrayOf(glowColor, glowColor, Color.TRANSPARENT),
             floatArrayOf(0f, MIC_EDGE_FRACTION, 1f),
             Shader.TileMode.CLAMP,
         )
@@ -119,17 +107,9 @@ class MicGlowView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    private fun withAlpha(color: Int, alpha: Float): Int =
-        ColorUtils.setAlphaComponent(color, (alpha * MAX_ALPHA).toInt().coerceIn(0, MAX_ALPHA))
-
     private companion object {
         const val MILLIS_PER_SECOND = 1000f
         val TWO_PI = (2.0 * PI).toFloat()
-        const val MAX_ALPHA = 255
-
-        /** 시안 방사 그라디언트의 불투명도 — 중심 48%, 마이크 가장자리 24%, 바깥 0%. */
-        const val CENTER_ALPHA = 0.48f
-        const val MIC_EDGE_ALPHA = 0.24f
 
         /**
          * 마이크 버튼이 글로우를 덮는 지점(글로우 반지름에 대한 비율) =
@@ -139,10 +119,12 @@ class MicGlowView @JvmOverloads constructor(
          * 마이크가 커지거나 작아져도 글로우가 함께 스케일되면 이 값은 안 바뀐다.
          * 비를 깨뜨릴 때만 다시 계산한다. 지금은 91 / 158 = 0.576이다.
          *
-         * **이 상수는 마이크 크기 PR(#164)의 dimen 둘과 한 덩어리라 거기에 있다.** 앞서 값
-         * 쪽만 #164에서 바꾸고 상수를 여기 뒀는데, 그러면 #164만 머지된 main이 "91/158인데
-         * 셰이더는 0.45"인 상태가 된다(PR #164 리뷰 지적). 셰이더 불변식("마이크
-         * 가장자리에서 24%")이 깨져 24% 스톱이 버튼 밖에 놓이고 의도보다 밝은 링이 드러난다.
+         * **이 상수는 마이크 크기(#164)의 dimen 둘과 한 덩어리라 그 PR에 있다.** 앞서 값 쪽만
+         * #164에서 바꾸고 상수를 뒤 PR에 뒀는데, 그러면 #164만 머지된 main이 "91/158인데
+         * 셰이더는 0.45"인 상태가 된다(리뷰 지적). 그때 스톱 0.45는 가장자리(0.576)보다 **안쪽**이라
+         * 가장자리에 닿기 전에 이미 감쇠가 시작되고, **보이는 링이 의도보다 어두워진다** —
+         * 48→24→0% 셰이더에서 가장자리 알파가 24%가 아니라 18.5%로 떨어진다.
+         * 0.58이면 24.2%로 불변식("마이크 가장자리에서 24%")이 지켜진다.
          *
          * 앞서 2.21배(0.45)로 뒀던 건 `v2/glow/mic`(168x168)을 근거로 삼았기 때문인데,
          * **그 컴포넌트는 어느 화면에도 배치돼 있지 않은 죽은 것**이었다(2026-08-16 확인).
