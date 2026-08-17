@@ -44,7 +44,7 @@
       파도와 글로우는 상태에 따라 renderModelOf가 켜고 끈다.
 
       **글로우가 마이크를 감싼 FrameLayout이 아니라 여기 있는 이유**는 그쪽이 wrap_content라
-      286dp짜리 글로우를 넣으면 마이크·확인쌍이 딸려 올라가기 때문이다. 자리 맞춤은
+      158dp짜리 글로우를 넣으면 마이크·확인쌍이 딸려 올라가기 때문이다. 자리 맞춤은
       davi_glow_mic_margin_bottom이 하며 그 계산 근거는 dimens.xml에 있다.
     -->
     <com.davi.helper.VoiceWaveView
@@ -57,7 +57,7 @@
     <!--
       **글로우가 파도보다 뒤에 온다(= 위에 그려진다).** 시안의 z축 순서가
       `v2/wave/bottom` → `v2/glow/mic` → `v2/button/mic`이다.
-      순서를 뒤집으면 파도 띠(152dp)가 글로우(반지름 143dp)를 거의 다 덮어
+      순서를 뒤집으면 파도 띠(152dp)가 글로우(반지름 79dp)를 통째로 덮어
       듣는 중에 글로우가 사라진 것처럼 보인다(실기기 실측).
     -->
     <com.davi.helper.MicGlowView
