@@ -256,20 +256,19 @@ def test_stub_scrolls_with_direction_when_nothing_clickable():
 
 
 def test_stub_scroll_instruction_points_the_same_way_as_the_direction():
-    """스텁 문장도 `direction`과 **같은 말**이어야 한다(C17 · #109).
+    """스텁 문장도 `direction`과 같은 손가락 기준이어야 한다(#109).
 
     문장을 만드는 자리는 셋이다 — 프롬프트로 유도하는 모델, 가드레일, 그리고 이 스텁.
-    스텁만 고정 문장("더 내려 보세요")이던 동안 `direction`과 어긋난 조합을 만들고 있었다.
+    앞의 둘은 손가락 기준으로 맞췄는데 스텁만 고정 문장("더 내려 보세요")이라, `direction=up`에
+    내용 기준 문장이 붙는 조합을 **프롬프트가 모델에게 금지한 바로 그 형태로** 만들고 있었다.
     `eval/harness.py`가 이 경로를 직접 돌고, 앱이 방향을 그리기 시작하면 화면에서 어긋난다.
-    기준이 보러 가는 방향으로 바뀌었으니 문장도 화면이 가는 쪽으로 쓴다 — 손가락 동작은
-    앱이 그림으로 따로 보여준다.
     """
 
     expected_words = {
-        SwipeDirection.UP: "위쪽으로",
-        SwipeDirection.DOWN: "아래쪽으로",
-        SwipeDirection.LEFT: "왼쪽 화면",
-        SwipeDirection.RIGHT: "오른쪽 화면",
+        SwipeDirection.UP: "위로",
+        SwipeDirection.DOWN: "아래로",
+        SwipeDirection.LEFT: "왼쪽으로",
+        SwipeDirection.RIGHT: "오른쪽으로",
     }
 
     for direction, word in expected_words.items():

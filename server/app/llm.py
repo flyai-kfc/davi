@@ -73,16 +73,15 @@ class _MissingScrollDirectionError(Exception):
 
 # 스텁의 scroll 문장은 **`direction`에서 뽑는다**(#109).
 #
-# 고정 문장("화면을 쓸어서 더 내려 보세요")은 방향이 넷인데 하나만 말할 수 있었고 `direction`과
-# 어긋나기도 했다. 이 경로는 죽은 코드가 아니라 `eval/harness.py`가 직접 도는 자리이고,
+# 고정 문장("화면을 쓸어서 더 내려 보세요")은 방향이 넷인데 하나만 말할 수 있었고, 그나마
+# 내용 기준이라 손가락 기준인 `direction`과 어긋났다 — 프롬프트가 모델에게 금지한 조합을
+# 스텁이 만들고 있었다. 이 경로는 죽은 코드가 아니라 `eval/harness.py`가 직접 도는 자리이고,
 # 앱이 방향을 화면에 그리기 시작하면 그 어긋남이 그대로 보인다(#152).
-#
-# 문장은 계약과 **같은 말**로 쓴다 — 보러 가는 쪽이지 손가락 방향이 아니다(C17).
 _SCROLL_INSTRUCTIONS = {
-    SwipeDirection.UP: "위쪽으로 스크롤해 주세요.",
-    SwipeDirection.DOWN: "아래쪽으로 스크롤해 주세요.",
-    SwipeDirection.LEFT: "왼쪽 화면으로 넘겨 주세요.",
-    SwipeDirection.RIGHT: "오른쪽 화면으로 넘겨 주세요.",
+    SwipeDirection.UP: "화면에 손가락을 대고 위로 쓸어올려 주세요.",
+    SwipeDirection.DOWN: "화면에 손가락을 대고 아래로 쓸어내려 주세요.",
+    SwipeDirection.LEFT: "화면에 손가락을 대고 왼쪽으로 밀어 주세요.",
+    SwipeDirection.RIGHT: "화면에 손가락을 대고 오른쪽으로 밀어 주세요.",
 }
 
 
@@ -93,7 +92,7 @@ class StubLlmClient(LlmClient):
     "기다리기"는 돌려주지 않는다(C6). 정체 판정은 앱의 폴링 담당이다.
 
     문장을 만드는 것은 모델이 아니라 코드지만 **나가는 자리는 같다.** 방향 표현은 `direction`과
-    같은 말로 — 보러 가는 쪽으로 쓴다(C17, `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 규칙).
+    같은 손가락 기준으로 쓴다(`prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 규칙).
     """
 
     def reason(self, req: NextStepRequest) -> GuideAction:

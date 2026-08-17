@@ -110,7 +110,7 @@ def test_scroll_state_does_not_prescribe_a_transition():
     assert "넘길 수 없다는 뜻은 아닙니다" in prompt
 
 
-def test_prompt_states_the_travel_standard_for_scroll_direction_on_every_screen():
+def test_prompt_states_the_finger_standard_for_scroll_direction_on_every_screen():
     """방향 기준은 화면과 무관하게 늘 필요하다.
 
     조건을 달면 정작 필요한 화면에서 빠진다 — 방향이 어긋난 실측은 스크롤 메타가 **없던**
@@ -120,29 +120,7 @@ def test_prompt_states_the_travel_standard_for_scroll_direction_on_every_screen(
     prompt = build_prompt(_request())
 
     assert SCROLL_DIRECTION_INSTRUCTION in prompt
-    assert "보러 가는 쪽" in SCROLL_DIRECTION_INSTRUCTION
-
-
-def test_prompt_gives_scroll_direction_as_a_value_table_not_a_wording_rule():
-    """표현 규칙이 아니라 목표→값 대응을 준다(C17).
-
-    #109는 "direction과 instruction을 같은 손가락 기준으로 쓰라"는 표현 규칙이었고, 모델이
-    자연스러운 문장에 **값을 끌어다 맞춰** 원래 맞던 값이 틀리게 바뀌었다(2026-08-17 실기기 A/B).
-    그래서 네 값 각각을 목표에 붙여 적고, 손가락 방향은 프롬프트에서 아예 뺀다.
-    """
-
-    for goal_phrase, value in (
-        ("아래쪽 내용", "down"),
-        ("위로 되돌아", "up"),
-        ("다음 페이지", "right"),
-        ("이전 페이지", "left"),
-    ):
-        assert goal_phrase in SCROLL_DIRECTION_INSTRUCTION
-        assert value in SCROLL_DIRECTION_INSTRUCTION, value
-
-    # 손가락 동작은 앱이 그림으로 보여준다 — 문장으로 지시하면 C17 이전으로 되돌아간다.
-    assert "쓸어올" not in SCROLL_DIRECTION_INSTRUCTION
-    assert "쓸어내" not in SCROLL_DIRECTION_INSTRUCTION
+    assert "손가락을 움직이는 방향" in SCROLL_DIRECTION_INSTRUCTION
 
 
 def test_prompt_explains_swipe_meta_only_when_the_screen_carries_it():
@@ -177,11 +155,10 @@ def test_schema_descriptions_of_direction_and_instruction_agree_with_the_prompt(
     direction = GuideAction.model_fields["direction"].description or ""
     instruction = GuideAction.model_fields["instruction"].description or ""
 
-    assert "보러 가는 쪽" in direction
-    assert "다음 페이지로 넘어가려면 right" in direction
-    assert "direction과 같은 말" in instruction
-    # 문장은 화면이 가는 쪽으로 쓴다 — 손가락 지시는 금지가 필드 설명에도 남아야 한다(C17).
-    assert "손가락을 어느 쪽으로 움직이라고 쓰지 않는다" in instruction
+    assert "손가락" in direction
+    assert "화면 내용이 움직일 방향이 아니다" in direction
+    assert "direction과 같은" in instruction
+    assert "손가락 기준" in instruction
 
 
 def test_prompt_keeps_conditional_type_and_result_priority_for_focused_input():
