@@ -322,6 +322,7 @@ class ConversationActivity : AppCompatActivity() {
             if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
         binding.btnStopGuide.isVisible(model.stopGuideVisible)
         binding.confirmPair.root.isVisible(model.confirmVisible)
+        binding.confirmPair.btnConfirmAccept.contentDescription = getString(model.confirmAcceptDescRes)
         binding.btnClose.isVisible(model.closeVisible)
 
         // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
@@ -372,9 +373,16 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
-    /** MA-4 ○ — 안내를 시작하고 런처로 나간다. 안내는 런처 화면에서 시작된다(GD-1). */
+    /** MA-4 ○ — 경고는 goal 재확인으로, goal 재확인은 안내 시작(GD-1)으로 진행한다. */
     private fun onConfirmAccepted() {
         val state = uiState as? ConversationUiState.Confirm ?: return
+        followUpConfirmationAfterAccept(state)?.let { goalConfirmation ->
+            cancelVoiceDialogue()
+            setState(goalConfirmation)
+            GuideTelemetry.voiceState("goal_confirmation_after_app_warning")
+            speak(getString(R.string.voice_goal_ready), onFinished = {})
+            return
+        }
         cancelVoiceDialogue()
         GuideJourneyStarter.start(this, state.goal) {
             setState(ConversationUiState.Home())
@@ -443,21 +451,19 @@ class ConversationActivity : AppCompatActivity() {
                 if (
                     shouldDropAppResolutionOutcome(
                         pending = voiceSession.isPending(pending),
-                        currentIndexRevision = launchableAppIndex.revision(),
-                        outcomeIndexRevision = appOutcome.indexRevision,
                     )
                 ) {
-                    GuideTelemetry.voiceResponseDropped(logicalRequest, "app_index_changed")
+                    GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
                     if (voiceSession.fail(pending)) {
                         setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
                     }
                     return
                 }
-                val trace = (slotResult as SlotFillResult.Success).trace
                 handleSlotFillResult(
                     pending,
                     logicalRequest,
-                    SlotFillResult.Success(appOutcome.state, trace),
+                    slotResult,
+                    appOutcome.availability,
                 )
             }
             is AppResolutionCoordinator.Outcome.Failure ->
@@ -485,6 +491,7 @@ class ConversationActivity : AppCompatActivity() {
         pending: VoiceDialogueSession.PendingRequest,
         logicalRequest: LogicalRequestAttempt,
         result: SlotFillResult,
+        appAvailability: AppAvailabilityPreflight? = null,
     ) {
         when (result) {
             is SlotFillResult.Success -> {
@@ -495,7 +502,7 @@ class ConversationActivity : AppCompatActivity() {
                 }
                 when (outcome) {
                     is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
-                    is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome)
+                    is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
                     VoiceDialogueSession.Outcome.LimitReached,
                     VoiceDialogueSession.Outcome.InvalidResponse,
                     -> {
@@ -535,11 +542,19 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
-    private fun showReadyGoal(outcome: VoiceDialogueSession.Outcome.Ready) {
-        setState(stateForOutcome(outcome)) // Confirm(goal)
+    private fun showReadyGoal(
+        outcome: VoiceDialogueSession.Outcome.Ready,
+        appAvailability: AppAvailabilityPreflight?,
+    ) {
+        val warningRes = if (appAvailability == AppAvailabilityPreflight.UNCONFIRMED) {
+            R.string.conversation_app_availability_warning
+        } else {
+            null
+        }
+        setState(ConversationUiState.Confirm(outcome.goal, promptRes = warningRes))
         GuideTelemetry.voiceState("goal_ready")
         speak(
-            outcome.message,
+            warningRes?.let(::getString) ?: outcome.message,
             // 세션 정리만 — 화면은 ○/× 입력을 기다린다. goal은 UiState가 들고 있다.
             onFinished = { voiceSession.finish(outcome.generation) },
         )

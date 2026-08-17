@@ -249,22 +249,20 @@ class MainActivity : AppCompatActivity() {
                 if (
                     shouldDropAppResolutionOutcome(
                         pending = voiceSession.isPending(pending),
-                        currentIndexRevision = launchableAppIndex.revision(),
-                        outcomeIndexRevision = appOutcome.indexRevision,
                     )
                 ) {
-                    GuideTelemetry.voiceResponseDropped(logicalRequest, "app_index_changed")
+                    GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
                     if (voiceSession.fail(pending)) {
                         setVoiceStatus(R.string.voice_server_error)
                         refreshUi()
                     }
                     return
                 }
-                val trace = (slotResult as SlotFillResult.Success).trace
                 handleSlotFillResult(
                     pending,
                     logicalRequest,
-                    SlotFillResult.Success(appOutcome.state, trace),
+                    slotResult,
+                    appOutcome.availability,
                 )
             }
             is AppResolutionCoordinator.Outcome.Failure -> handleSlotFillResult(
@@ -279,6 +277,7 @@ class MainActivity : AppCompatActivity() {
         pending: VoiceDialogueSession.PendingRequest,
         logicalRequest: LogicalRequestAttempt,
         result: SlotFillResult,
+        appAvailability: AppAvailabilityPreflight? = null,
     ) {
         when (result) {
             is SlotFillResult.Success -> {
@@ -289,7 +288,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 when (outcome) {
                     is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
-                    is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome)
+                    is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
                     VoiceDialogueSession.Outcome.LimitReached -> {
                         setVoiceStatus(R.string.voice_dialogue_limit)
                         voiceRequestTracker.reset()
@@ -336,16 +335,25 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun showReadyGoal(outcome: VoiceDialogueSession.Outcome.Ready) {
+    private fun showReadyGoal(
+        outcome: VoiceDialogueSession.Outcome.Ready,
+        appAvailability: AppAvailabilityPreflight?,
+    ) {
+        val warningRes = if (appAvailability == AppAvailabilityPreflight.UNCONFIRMED) {
+            R.string.conversation_app_availability_warning
+        } else {
+            null
+        }
+        val message = warningRes?.let(::getString) ?: outcome.message
         binding.goalInput.setText(outcome.goal)
-        binding.voiceStatus.text = outcome.message
+        binding.voiceStatus.text = message
         GuideTelemetry.voiceState("goal_ready")
         refreshUi()
         speak(
-            outcome.message,
+            message,
             onFinished = {
                 if (voiceSession.finish(outcome.generation)) {
-                    setVoiceStatus(R.string.voice_goal_ready)
+                    setVoiceStatus(warningRes ?: R.string.voice_goal_ready)
                     refreshUi()
                 }
             },

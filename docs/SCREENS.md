@@ -90,14 +90,17 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 
 ## MA-4 최종 확인 — 버킷 Now
 
-- 목적: 확정된 goal 문장을 보여주고 시작 여부를 받는다. 음성+텍스트 동시(TTS 병행, 와이어프레임 결정).
-- 구성: goal 문장(title 스타일) · `chip/confirm-pair`(lg: ×/○) · TTS 캡션.
-- 동작: ○ → `GuideSession.start(goal)` → GD-1 (voice-goal ⑪⑫). × → MA-1 복귀(전체
-  재시작 — 와이어프레임 확정).
-- 데이터: 서버 `ready` 응답의 `goal`.
-- 구현 연결: **현 구현(⑩ goalInput 채움 + 시작 탭)과 다르다** — 이 화면이 to-be이며
-  전환은 구현 이슈로. [미결] 확인 발화("네/아니오")로도 응답 가능하게 할지(voice-goal
-  §1 "음성 최종 확인" 없음과 연결).
+- 목적: 확정된 goal 문장을 보여주고 시작 여부를 받는다. 앱 실행 가능성을 확인하지 못한 경우에는
+  앱을 고르는 대신 가능성 경고를 먼저 보여 주고, 계속하면 goal을 한 번 더 확인받는다(#185).
+  음성+텍스트 동시(TTS 병행, 와이어프레임 결정).
+- 구성: 기본은 goal 문장(title 스타일), 사전 확인 미확인은 “이 과정에 필요한 앱이 설치되어 있지 않을
+  수 있어요. 그래도 안내를 시작할까요?” 문구 · `chip/confirm-pair`(lg: ×/○) · TTS 캡션.
+- 동작: 확인됨은 ○ → `GuideSession.start(goal)` → GD-1 (voice-goal ⑪⑫). 미확인 경고의 ○ →
+  원래 goal 최종 확인, 그 화면의 ○ → `GuideSession.start(goal)`. 어느 화면에서든 × → MA-1
+  복귀(전체 재시작 — 와이어프레임 확정).
+- 데이터: 서버 `ready` 응답의 원래 `goal`, Android의 실행 가능성 사전 점검 결과(확인됨/미확인).
+- 구현 연결: 구현됨(#123·#185). 앱 후보의 canonical name은 goal에 덧붙이지 않는다.
+  [미결] 확인 발화("네/아니오")로도 응답 가능하게 할지(voice-goal §1 "음성 최종 확인" 없음과 연결).
 
 ## GD-1 화면 읽는 중 — 버킷 Now (오버레이)
 

@@ -82,27 +82,26 @@
     │                                        계약 위반 → 1회 교정
     │                       ◀──────────  SlotFillState{status, message, goal}
     │                       │
-    │                ⑦ ready면 /v1/intent/app-resolution
+    │                needs_clarification이면 applyResponse(), stage=SPEAKING
+    │ ⑧ 질문 듣기      ◀──── TTS로 message 읽기
+    │ ⑨ 다시 발화      ───── onFinished → stage=LISTENING → ②로 되돌아감
+    │                10메시지 초과 → LimitReached → 실패 화면 → 홈(#123)
+    │
+    │                ready면 ⑦ /v1/intent/app-resolution
     │                   서버 일반 후보 → 기기 LaunchableAppIndex 대조
-    │                   → server-origin plan + candidate_id/status 피드백
-    │                   후보 0=첫 응답에서 needs_clarification
-    │                   한 후보=ready / 복수·unknown=needs_clarification
-    │                   그 뒤 applyResponse()
-    │                   ├─ needs_clarification ─────────────┐
-    │                   ├─ ready ──────────────┐            │
-    │                   └─ 10메시지(5왕복) 초과 → LimitReached → 실패 화면 → 홈(#123)
-    │                                          │            │
-    │ ⑧ 질문 듣기                              │      stage=SPEAKING
-    │ ◀────────────────────────────────────────┼──── TTS로 message 읽기
-    │                                          │      history에 (user,assistant) 쌍 누적
-    │ ⑨ 다시 발화                              │      onFinished → continueListening
-    ├──────────────────────────────────────────┼──── stage=LISTENING → ②로 되돌아감
+    │                   launchable ≥ 1 = 확인됨 / 그 외·불안정 = 미확인
+    │                   앱을 고르거나 canonical name을 goal에 덧붙이지 않음
+    │                   그 뒤 원래 ready 응답을 applyResponse()
     │                                          │
     │                                   ⑩ showReadyGoal()
-    │ ◀──────────────────────────────────  최종 확인 화면에 goal 문장 표시
-    │                                      message TTS로 읽기
+    │ ◀──────────────────────────────────  확인됨: 원래 goal 최종 확인
+    │                                      미확인: 앱 가능성 경고+같은 확인쌍
+    │                                      각 문구를 TTS로 읽기
     │
-    │ ⑪ 최종 확인의 ○ 탭
+    │    미확인 경고의 ○ 탭 ───────────▶ 원래 goal 최종 확인
+    │                                      (바로 안내를 시작하지 않음)
+    │
+    │ ⑪ goal 최종 확인의 ○ 탭
     ├──────────────▶ GuideSession.start(goal)   ← ★ 문장 하나만 넘어간다
     │                 (음성 대화는 여기서 끝)
     │
@@ -112,7 +111,7 @@
     │                   → 화면 변화 감지 → 반복
 ```
 
-**이 그림에서 읽어야 할 것은 ⑪이다.** 문장 하나만 넘어가므로, ⑫의 완료 판정은 모델이 **매 스텝 새로 지어낸** `expected_result`로 한다. 목표 확정 단계가 만든 판단이 안내 루프에 하나도 전달되지 않는다. §5의 작업들이 뚫으려는 지점이 여기다.
+**이 그림에서 읽어야 할 것은 ⑪이다.** 문장 하나만 넘어가므로, ⑫의 완료 판정은 모델이 **매 스텝 새로 지어낸** `expected_result`로 한다. 앱 가능성 경고를 거친 경우에도 사용자가 원래 goal을 한 번 더 확인한 뒤 같은 goal 하나만 넘어가며, 안내 중 앱 탐색 반복은 별도 서버 next-step 대응이 맡는다(#185). 목표 확정 단계가 만든 판단이 안내 루프에 하나도 전달되지 않는다. §5의 작업들이 뚫으려는 지점이 여기다.
 
 마스킹의 비대칭도 이 그림에 있다 — ⑫의 화면 트리는 1·2차 마스킹을 거치지만 ②~⑥의 발화는 거치지 않는다(위 절의 결정).
 

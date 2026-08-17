@@ -1,37 +1,15 @@
 package com.davi.helper
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppResolutionCoordinatorTest {
     @Test
-    fun `index independent outcome ignores revision changes`() {
-        assertEquals(
-            false,
-            shouldDropAppResolutionOutcome(
-                pending = true,
-                currentIndexRevision = 2,
-                outcomeIndexRevision = null,
-            ),
-        )
-        assertEquals(
-            true,
-            shouldDropAppResolutionOutcome(
-                pending = false,
-                currentIndexRevision = 2,
-                outcomeIndexRevision = null,
-            ),
-        )
-        assertEquals(
-            true,
-            shouldDropAppResolutionOutcome(
-                pending = true,
-                currentIndexRevision = 2,
-                outcomeIndexRevision = 1,
-            ),
-        )
+    fun `advisory outcome only follows dialogue generation`() {
+        assertFalse(shouldDropAppResolutionOutcome(pending = true))
+        assertTrue(shouldDropAppResolutionOutcome(pending = false))
     }
 
     @Test
@@ -50,13 +28,12 @@ class AppResolutionCoordinatorTest {
 
         assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
         outcome as AppResolutionCoordinator.Outcome.Completed
-        assertEquals(IntentDialogueStatus.NEEDS_CLARIFICATION, outcome.state.status)
-        assertNull(outcome.indexRevision)
+        assertEquals(AppAvailabilityPreflight.UNCONFIRMED, outcome.availability)
         assertEquals(1, requests.size)
     }
 
     @Test
-    fun `one local match returns ready goal without sending local app data`() {
+    fun `one local match confirms availability without feedback or goal rewrite`() {
         val source = FakeSource(
             listOf(record("com.example.delivery", "로컬 전용 label")),
         )
@@ -64,33 +41,17 @@ class AppResolutionCoordinatorTest {
         val requests = mutableListOf<AppResolutionRequest>()
         val gateway = AppResolutionGateway { request ->
             requests += request
-            if (request.feedback == null) candidateResponse()
-            else {
-                assertEquals(
-                    listOf(AppCandidateAvailability.LAUNCHABLE),
-                    request.feedback.candidateResults.map { it.status },
-                )
-                AppResolutionResult.Success(
-                    AppResolutionState(
-                        AppResolutionStatus.RESOLVED,
-                        "목표 정리",
-                        selectedCandidateId = "candidate-1",
-                        goal = "치킨 주문 (사용할 앱: 배달 앱)",
-                    ),
-                    trace(),
-                )
-            }
+            candidateResponse()
         }
 
         val outcome = AppResolutionCoordinator(index, gateway).resolve("치킨 주문", 7) { true }
 
         assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
         outcome as AppResolutionCoordinator.Outcome.Completed
-        assertEquals(IntentDialogueStatus.READY, outcome.state.status)
-        assertEquals(2, requests.size)
-        val feedbackJson = requests[1].toString()
-        assertTrue("로컬 전용 label" !in feedbackJson)
-        assertTrue("com.example.delivery" in feedbackJson) // 서버가 먼저 제안한 package만 echo
+        assertEquals(AppAvailabilityPreflight.CONFIRMED, outcome.availability)
+        assertEquals(1, requests.size)
+        assertEquals(null, requests.single().feedback)
+        assertTrue("로컬 전용 label" !in requests.single().toString())
     }
 
     @Test
@@ -130,72 +91,67 @@ class AppResolutionCoordinatorTest {
     }
 
     @Test
-    fun `package callback invalidates stale result and rematches before applying`() {
-        val source = FakeSource(listOf(record("com.example.delivery", "배달 앱")))
-        val index = LaunchableAppIndex(source) {}.also { it.start() }
-        var feedbackCalls = 0
-        val gateway = AppResolutionGateway { request ->
-            if (request.feedback == null) return@AppResolutionGateway candidateResponse()
-            feedbackCalls++
-            if (feedbackCalls == 1) {
-                source.records = emptyList()
-                source.notifyChanged()
-            }
-            val result = request.feedback.candidateResults.single()
-            val state = if (result.status == AppCandidateAvailability.LAUNCHABLE) {
-                AppResolutionState(
-                    AppResolutionStatus.RESOLVED,
-                    "목표 정리",
-                    selectedCandidateId = "candidate-1",
-                    goal = "치킨 주문 (사용할 앱: 배달 앱)",
-                )
-            } else {
-                AppResolutionState(AppResolutionStatus.NEEDS_APP_NAME, "앱 이름을 말씀해 주세요")
-            }
-            AppResolutionResult.Success(state, trace())
-        }
+    fun `stable index without a launchable candidate is unconfirmed`() {
+        val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
 
-        val outcome = AppResolutionCoordinator(index, gateway).resolve("치킨 주문", 1) { true }
+        val outcome = AppResolutionCoordinator(index) { candidateResponse() }
+            .resolve("치킨 주문", 1) { true }
 
-        assertEquals(2, feedbackCalls)
         assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
         outcome as AppResolutionCoordinator.Outcome.Completed
-        assertEquals(IntentDialogueStatus.NEEDS_CLARIFICATION, outcome.state.status)
+        assertEquals(AppAvailabilityPreflight.UNCONFIRMED, outcome.availability)
     }
 
     @Test
-    fun `unstable snapshot is retried before device feedback is sent`() {
+    fun `any launchable candidate confirms availability regardless of other statuses`() {
+        val results = listOf(
+            AppCandidateResult("launchable", AppCandidateAvailability.LAUNCHABLE),
+            AppCandidateResult("not-found", AppCandidateAvailability.NOT_FOUND),
+            AppCandidateResult("ambiguous", AppCandidateAvailability.AMBIGUOUS),
+            AppCandidateResult("unknown", AppCandidateAvailability.UNKNOWN),
+        )
+
+        assertEquals(AppAvailabilityPreflight.CONFIRMED, appAvailabilityPreflightOf(results))
+    }
+
+    @Test
+    fun `candidate absence and non-launchable statuses remain unconfirmed`() {
+        assertEquals(
+            AppAvailabilityPreflight.UNCONFIRMED,
+            appAvailabilityPreflightOf(emptyList()),
+        )
+        assertEquals(
+            AppAvailabilityPreflight.UNCONFIRMED,
+            appAvailabilityPreflightOf(
+                listOf(
+                    AppCandidateResult("not-found", AppCandidateAvailability.NOT_FOUND),
+                    AppCandidateResult("ambiguous", AppCandidateAvailability.AMBIGUOUS),
+                    AppCandidateResult("unknown", AppCandidateAvailability.UNKNOWN),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `repeatedly unstable index completes as unconfirmed without feedback`() {
         val source = FakeSource(
             listOf(record("com.example.delivery", "배달 앱")),
-            invalidationsDuringQuery = 2,
+            // LaunchableAppIndex 2회 × coordinator 2회 모두 조회 중 무효화한다.
+            invalidationsDuringQuery = 4,
         )
         val index = LaunchableAppIndex(source) {}.also { it.start() }
-        var feedbackCalls = 0
+        val requests = mutableListOf<AppResolutionRequest>()
         val gateway = AppResolutionGateway { request ->
-            if (request.feedback == null) return@AppResolutionGateway candidateResponse()
-            feedbackCalls++
-            assertEquals(
-                AppCandidateAvailability.LAUNCHABLE,
-                request.feedback.candidateResults.single().status,
-            )
-            AppResolutionResult.Success(
-                AppResolutionState(
-                    AppResolutionStatus.RESOLVED,
-                    "목표 정리",
-                    selectedCandidateId = "candidate-1",
-                    goal = "치킨 주문 (사용할 앱: 배달 앱)",
-                ),
-                trace(),
-            )
+            requests += request
+            candidateResponse()
         }
 
         val outcome = AppResolutionCoordinator(index, gateway).resolve("치킨 주문", 1) { true }
 
         assertTrue(outcome is AppResolutionCoordinator.Outcome.Completed)
         outcome as AppResolutionCoordinator.Outcome.Completed
-        assertEquals(IntentDialogueStatus.READY, outcome.state.status)
-        assertEquals(index.revision(), outcome.indexRevision)
-        assertEquals(1, feedbackCalls)
+        assertEquals(AppAvailabilityPreflight.UNCONFIRMED, outcome.availability)
+        assertEquals(1, requests.size)
     }
 
     private fun candidateResponse() = AppResolutionResult.Success(
@@ -224,7 +180,7 @@ class AppResolutionCoordinatorTest {
     private fun trace() = ServerResponseTrace(null, null, null)
 
     private class FakeSource(
-        var records: List<LaunchableAppRecord>,
+        val records: List<LaunchableAppRecord>,
         var invalidationsDuringQuery: Int = 0,
     ) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null
@@ -241,6 +197,5 @@ class AppResolutionCoordinatorTest {
         override fun unregister() {
             callback = null
         }
-        fun notifyChanged() = callback?.invoke()
     }
 }
