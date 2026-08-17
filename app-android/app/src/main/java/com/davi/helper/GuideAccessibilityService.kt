@@ -98,27 +98,43 @@ class GuideAccessibilityService : AccessibilityService() {
             this,
             object : OverlayController.Callbacks {
                 override fun onStopRequested() {
-                    Log.i(TAG, "session stopped by chip")
-                    GuideSession.stop()
+                    // 칩은 끝내지 않고 되묻는다(GD-4, #193). 종료는 그 화면의 ○뿐이다.
+                    if (!GuideSession.awaitQuitConfirm()) return
+                    Log.i(TAG, "stop chip, asking user")
+                    draw(display.showQuitConfirm(getString(R.string.overlay_quit_confirm)))
+                    // 확인 대기로 들어갔으니 읽는 중은 여기서 끈다(CONFIRM_CONFIDENT와 같은 이유).
+                    updateReading()
                 }
 
                 override fun onConfirmAccept(kind: GuideDisplayState.ConfirmKind) {
                     // 앱을 앞으로 가져오지 않는다 — 방금 끝낸 작업 화면에 그대로 남는 것이
-                    // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정).
-                    Log.i(TAG, "confirm accepted, session done")
+                    // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정). 종료 확인의 ○도 같은 자리다.
+                    Log.i(TAG, "confirm accepted ($kind), session done")
                     GuideSession.confirmAccepted()
                 }
 
                 override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
-                    Log.i(TAG, "confirm rejected, continuing")
-                    GuideSession.confirmRejected()
-                    // 확인 화면을 **버린다**(onCleared가 아니라 reset). 기억만 해 두면 다음 샘플의
-                    // redisplay가 같은 화면이라는 이유로 확인쌍을 곧바로 되살린다 — 사용자가 방금
-                    // 아니라고 답한 질문이 다시 뜨는 셈이다.
-                    overlay?.clear()
-                    display.reset()
-                    // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다(RETRY와 같은 경로).
-                    stability.markFailed()
+                    Log.i(TAG, "confirm rejected ($kind), continuing")
+                    when (kind) {
+                        // 종료 확인의 ×는 **되돌리기**다. 밀어 둔 직전 안내를 그대로 되살리고
+                        // 세션 상태는 건드리지 않는다 — 서버에 다시 묻지 않는다.
+                        GuideDisplayState.ConfirmKind.QUIT -> {
+                            GuideSession.quitRejected()
+                            display.dismissQuitConfirm()?.let { draw(it) } ?: overlay?.clear()
+                        }
+
+                        // 완료 확인의 ×는 **버리기**다. 기억만 해 두면 다음 샘플의 redisplay가
+                        // 같은 화면이라는 이유로 확인쌍을 곧바로 되살린다 — 사용자가 방금
+                        // 아니라고 답한 질문이 다시 뜨는 셈이다.
+                        GuideDisplayState.ConfirmKind.DONE -> {
+                            GuideSession.confirmRejected()
+                            overlay?.clear()
+                            display.reset()
+                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
+                            // (RETRY와 같은 경로).
+                            stability.markFailed()
+                        }
+                    }
                     updateReading()
                 }
             },

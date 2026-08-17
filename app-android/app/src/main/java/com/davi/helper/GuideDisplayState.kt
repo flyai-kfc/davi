@@ -122,6 +122,48 @@ class GuideDisplayState {
         return content
     }
 
+    /**
+     * 종료 확인(GD-4, #193)을 띄운다. 중지 칩이 부른다.
+     *
+     * **직전 안내를 밀어 두고 덮는다.** ×("계속 볼래요")가 그 안내로 **돌아가야** 하기
+     * 때문이다 — 완료 확인의 ×와 갈리는 지점이다(그쪽은 같은 질문 반복을 막으려 버린다).
+     * 밀어 두지 않으면 확인 대기 동안 막혀 있던 요청이 풀리면서 **새 모델 호출**이 나간다.
+     *
+     * **[guideSignature]는 건드리지 않는다.** 확인 화면은 화면에 소속되지 않아 폐기 판정에
+     * 걸리지 않으므로([redisplay]) 새 서명을 세울 이유가 없다. 밀어 둔 안내가 돌아올 때
+     * 자기 화면 서명을 그대로 되찾는 편이 맞다.
+     */
+    fun showQuitConfirm(text: String): Content {
+        // 중첩되지 않는다 — 이미 종료 확인 중이면 칩이 없어 다시 올 길이 없고, 그래도 온다면
+        // 밀어 둔 것을 확인 화면으로 덮어써 되돌아갈 안내를 잃는다.
+        if (guide?.confirm != ConfirmKind.QUIT) {
+            stashed = Stash(guide, stuckSuffixAllowed)
+        }
+        val content = Content(bounds = null, text = text, confirm = ConfirmKind.QUIT)
+        guide = content
+        stuckSuffixAllowed = false
+        visible = true
+        return content
+    }
+
+    /**
+     * 종료 확인을 걷고 밀어 뒀던 안내를 되돌린다. 그릴 것이 남으면 돌려주고, 없으면 null이다
+     * (칩을 누른 시점에 안내가 없었던 경우 — 호출자가 오버레이를 걷는다).
+     */
+    fun dismissQuitConfirm(): Content? {
+        val restored = stashed ?: return null
+        stashed = null
+        guide = restored.guide
+        stuckSuffixAllowed = restored.stuckSuffixAllowed
+        visible = restored.guide != null
+        return restored.guide
+    }
+
+    /** [showQuitConfirm]이 밀어 둔 직전 안내. */
+    private data class Stash(val guide: Content?, val stuckSuffixAllowed: Boolean)
+
+    private var stashed: Stash? = null
+
     /** 오버레이가 지워졌다(우리 앱이 앞에 오는 등 root=null 청소). 내용은 기억해 둔다. */
     fun onCleared() {
         visible = false
@@ -133,6 +175,9 @@ class GuideDisplayState {
         guideSignature = null
         stuckSuffixAllowed = true
         visible = false
+        // 밀어 둔 안내도 세션에 매인다. 남기면 다음 세션의 종료 확인에서 ×를 눌렀을 때
+        // 이전 세션의 안내가 되살아난다.
+        stashed = null
     }
 
     /**

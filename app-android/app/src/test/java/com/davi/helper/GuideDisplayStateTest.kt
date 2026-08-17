@@ -261,6 +261,103 @@ class GuideDisplayStateTest {
         )
     }
 
+    // --- 종료 확인 (GD-4, #193) --------------------------------------------------
+
+    private val quitText = "안내를 그만 볼까요?"
+
+    /** ×("계속 볼래요")는 직전 안내로 **되돌린다**. 완료 확인의 ×(버리기)와 갈리는 지점이다. */
+    @Test
+    fun `종료 확인의 취소는 직전 안내를 되살린다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+
+        state.showQuitConfirm(quitText)
+
+        assertEquals(
+            GuideDisplayState.Content(null, "설정을 누르세요."),
+            state.dismissQuitConfirm(),
+        )
+    }
+
+    /** 되살아난 안내는 자기 화면 서명과 접미사 규칙까지 되찾는다 — 껍데기만 돌려주면 안 된다. */
+    @Test
+    fun `되살아난 안내는 서명과 접미사 규칙을 되찾는다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        state.dismissQuitConfirm()
+
+        assertEquals(
+            GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck"),
+            state.stuckContent(stuck),
+        )
+        state.onCleared()
+        assertEquals(GuideDisplayState.Content(null, "설정을 누르세요."), state.redisplay(sigA, true))
+    }
+
+    /** 상한 안내를 밀어 뒀다면 그 접미사 금지도 함께 돌아와야 한다. */
+    @Test
+    fun `상한 안내를 밀어 뒀으면 접미사 금지도 되돌아온다`() {
+        state.showCapNotice(sigA, capNotice)
+        state.showQuitConfirm(quitText)
+
+        state.dismissQuitConfirm()
+
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.stuckContent(stuck))
+    }
+
+    /** 확인 화면 계약은 종류를 가리지 않는다 — 셰이드를 내려도 답할 자리가 따라간다. */
+    @Test
+    fun `종료 확인은 다른 화면에서도 재표시된다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, quitText, confirm = GuideDisplayState.ConfirmKind.QUIT),
+            state.redisplay(sigB, true),
+        )
+    }
+
+    /** 답을 재촉하지 않는다 — 완료 확인과 같은 이유로 정체 접미사가 붙지 않는다. */
+    @Test
+    fun `종료 확인에는 정체 접미사가 붙지 않는다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        assertEquals(
+            GuideDisplayState.Content(null, quitText, confirm = GuideDisplayState.ConfirmKind.QUIT),
+            state.stuckContent(stuck),
+        )
+    }
+
+    /**
+     * 밀어 둔 것을 확인 화면으로 덮어쓰지 않는다. 지금은 칩이 숨겨져 도달할 수 없는 경로지만,
+     * 겹치면 되돌아갈 안내를 영영 잃는다.
+     */
+    @Test
+    fun `종료 확인이 겹쳐도 밀어 둔 안내를 잃지 않는다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        state.showQuitConfirm(quitText)
+
+        assertEquals(
+            GuideDisplayState.Content(null, "설정을 누르세요."),
+            state.dismissQuitConfirm(),
+        )
+    }
+
+    /** 밀어 둔 안내는 세션에 매인다 — 남기면 다음 세션의 ×가 이전 세션 안내를 되살린다. */
+    @Test
+    fun `세션이 끝나면 밀어 둔 안내도 버려진다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        state.reset()
+
+        assertNull(state.dismissQuitConfirm())
+    }
+
     /** 새 안내는 자기 화면 서명으로 재표시된다 — 이전 서명을 끌고 가면 재표시가 어긋난다. */
     @Test
     fun `새 안내는 새 화면 서명으로 재표시된다`() {
