@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cafe24 Ssurround 번들 (C1, docs/DESIGN-CONVENTIONS.md). v2.0, SIL OFL 1.1 —
+  고지 전문은 app-android/licenses/cafe24-ssurround-LICENSE.txt (고지 화면은 베타 사이클).
+
+  **다비가 입으로 하는 말에만 쓴다.** 나머지는 Pretendard이고, 오버레이 안내창은
+  다비가 말해도 Pretendard다 — 임의의 앱 위에서 화면을 보며 읽어야 하는 조건이라
+  거기서만 가독성이 정체성을 이긴다.
+
+  **Bold 하나뿐이다.** 400과 700을 같은 파일에 물려 굵기 지정과 무관하게 이 획으로 그린다 —
+  Regular이 필요한 자리는 애초에 Pretendard로 가므로 가짜 굵기를 만들 일이 없다.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        android:font="@font/cafe24_ssurround_bold"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/cafe24_ssurround_bold"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/cafe24_ssurround_bold"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        app:font="@font/cafe24_ssurround_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+</font-family>
