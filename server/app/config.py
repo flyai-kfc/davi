@@ -106,6 +106,16 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_AUTH_RATE_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
         if self.davi_auth_rate_limit_per_source_window_seconds <= 0:
             raise ValueError("DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 양수여야 합니다")
+        # 출처 창이 전역 창보다 길면 전역 창 갱신마다 새 출처 키가 쌓여
+        # "활성 키 수 ≤ 전역 상한" 불변식이 깨진다(#167 4차 리뷰 P2).
+        if (
+            self.davi_auth_rate_limit_per_source_window_seconds
+            > self.davi_auth_rate_limit_window_seconds
+        ):
+            raise ValueError(
+                "DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
+                "DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
+            )
         return self
 
     @property

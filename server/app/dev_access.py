@@ -75,6 +75,11 @@ class SourceAndGlobalRateLimiter:
     **허용될 때만** 출처·전역 양쪽에 기록한다 — 거부된 요청은 어떤 흔적도 남기지
     않으므로, 활성 출처 키 수는 전역 상한을 소모한 요청 수로 묶인다.
     창이 끝난 키는 검사 때마다 제거한다.
+
+    이 키 수 상한은 **출처 창 ≤ 전역 창**일 때만 성립한다(#167 4차 리뷰 P2). 출처 창이
+    더 길면 전역 창이 갱신될 때마다 새 출처가 전역 상한만큼 허용되는데 기존 키는 아직
+    안 죽어, 키 수가 전역 창 갱신 횟수에 비례해 는다. 그래서 위반 조합은 조용히 받지
+    않고 거부한다 — 설정 계층(config.Settings)도 기동 시 같은 제약을 검증한다.
     """
 
     def __init__(self, clock: Callable[[], float] = time.monotonic):
@@ -92,6 +97,11 @@ class SourceAndGlobalRateLimiter:
         global_limit: int,
         global_window_seconds: int,
     ) -> RateLimitDecision:
+        if source_window_seconds > global_window_seconds:
+            raise ValueError(
+                "source_window_seconds가 global_window_seconds보다 길면 "
+                "활성 출처 키 수의 전역 상한 보장이 깨진다"
+            )
         now = self._clock()
         source_cutoff = now - source_window_seconds
         global_cutoff = now - global_window_seconds

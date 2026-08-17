@@ -1,3 +1,4 @@
+import pytest
 from app.dev_access import (
     SlidingWindowRateLimiter,
     SourceAndGlobalRateLimiter,
@@ -113,6 +114,47 @@ def test_rejected_sources_never_grow_tracked_keys():
         decision = limiter.check(f"flood-{i}", **_LIMITS)
         assert decision.limited_scope == "global"
     assert limiter.tracked_key_count() == _LIMITS["global_limit"]
+
+
+def test_check_rejects_source_window_longer_than_global():
+    """출처 창 > 전역 창은 키 수 상한이 깨지는 조합이라 조용히 받지 않는다(#167 4차 P2)."""
+
+    limiter = SourceAndGlobalRateLimiter(FakeClock())
+
+    with pytest.raises(ValueError, match="전역 상한 보장"):
+        limiter.check(
+            "a",
+            source_limit=10,
+            source_window_seconds=3600,
+            global_limit=100,
+            global_window_seconds=60,
+        )
+
+
+def test_key_bound_holds_across_multiple_global_windows():
+    """전역 창이 여러 번 갱신돼도 활성 키 수는 전역 상한을 넘지 않는다(#167 4차 P2).
+
+    출처 창 ≤ 전역 창이 강제되므로, 새 전역 창의 새 출처가 허용되는 시점에는
+    이전 창의 출처 키도 이미 만료돼 있다.
+    """
+
+    clock = FakeClock()
+    limiter = SourceAndGlobalRateLimiter(clock)
+    limits = {
+        "source_limit": 1,
+        "source_window_seconds": 30,
+        "global_limit": 5,
+        "global_window_seconds": 60,
+    }
+
+    for window_index in range(3):
+        clock.now = window_index * 61.0
+        for i in range(limits["global_limit"]):
+            assert limiter.check(f"w{window_index}-s{i}", **limits).allowed
+        # 전역 창이 찬 뒤의 새 출처는 거부되고 키도 남기지 않는다.
+        for i in range(20):
+            assert limiter.check(f"w{window_index}-x{i}", **limits).limited_scope == "global"
+        assert limiter.tracked_key_count() <= limits["global_limit"]
 
 
 def test_expired_sources_are_evicted():
