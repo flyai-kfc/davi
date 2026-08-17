@@ -105,8 +105,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/voice_home_title"
-            android:textAppearance="@style/TextAppearance.Davi.Title.Davi"
-            android:fontFamily="@font/cafe24_ssurround"
+            android:textAppearance="@style/TextAppearance.Davi.Title"
             android:gravity="center" />
 
         <TextView
@@ -185,8 +184,7 @@
                 android:lineSpacingMultiplier="1.3"
                 android:scrollbars="vertical"
                 android:accessibilityLiveRegion="polite"
-                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
-                android:fontFamily="@font/cafe24_ssurround" />
+                android:textAppearance="@style/TextAppearance.Davi.Subtitle" />
 
             <com.davi.helper.LoadingDotsView
                 android:id="@+id/loading_dots"
@@ -201,6 +199,13 @@
           시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
           "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을
           위해 같은 구조를 쓴 것과 짝이다.
+
+          **받아쓰기만 굵다**(시안 메인 3·5). 같은 카드 안에서 레이블("듣고 있어요")과
+          문장이 굵기로 갈린다 — 레이블은 상태 안내이고 문장은 사용자가 방금 한 말이라
+          읽어서 확인할 대상이다. 색으로 가르지 않는 이유는 두 글자 모두 A1(7:1)을 지켜야
+          해서 명도 차를 크게 벌릴 수 없기 때문이다.
+          굵어지면 글자 폭이 늘어 3줄 말줄임이 더 일찍 걸린다 — 배율 2.0x와 긴 문장에서
+          함께 확인한다.
         -->
         <LinearLayout
             android:id="@+id/card_utterance_container"
@@ -234,8 +239,8 @@
                 android:lineSpacingMultiplier="1.3"
                 android:maxLines="3"
                 android:ellipsize="end"
-                android:textStyle="bold"
-                android:textAppearance="@style/TextAppearance.Davi.BodyLg" />
+                android:textAppearance="@style/TextAppearance.Davi.BodyLg"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <Space
