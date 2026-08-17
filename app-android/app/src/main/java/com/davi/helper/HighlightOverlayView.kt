@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
@@ -14,6 +15,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowInsetsCompat
 import kotlin.math.abs
@@ -163,6 +165,25 @@ class HighlightOverlayView(context: Context) : View(context) {
             PorterDuff.Mode.SRC_IN,
         )
     }
+
+    /**
+     * 그림자·윤곽선·손을 **한 장으로 미리 합성해 둔** 그림. 화면에 그릴 때는 이것만 한 번 그린다.
+     *
+     * 손은 크기도 모양도 프레임마다 변하지 않으므로 매 프레임 열 번 그릴 이유가 없다
+     * (PR #159 3차 리뷰 nit). 세션 내내 다른 앱 위에서 도는 뷰라 프레임당 비용이 그대로 남는다.
+     *
+     * **미리 합성하면 `saveLayer`도 필요 없다.** 레이어를 썼던 이유는 반투명해진 흰 손 너머로
+     * 그림자가 비쳐 색이 오가는 것이었는데, 여기서 이미 겹침이 평탄화되므로 그릴 때 알파를
+     * 한 번 거는 것으로 같은 결과가 나온다.
+     *
+     * 좌표 규약: 손 그림의 **중심**이 [handCenterInComposed]만큼 들어간 자리에 있다. 그리는 쪽은
+     * 손 중심을 원하는 자리에 맞추기 위해 이 값을 빼야 한다.
+     */
+    private val handComposed by lazy(LazyThreadSafetyMode.NONE) { composeHand() }
+
+    /** [handComposed] 안에서 손 그림 중심이 놓인 위치(왼쪽 위 기준). */
+    private var handCenterInComposed = PointF()
+
     private val handDst = RectF()
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -331,7 +352,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private fun drawGestureHand(canvas: Canvas) {
         val direction = gestureDirection ?: return
         if (width == 0 || height == 0) return
-        val bitmap = handBitmap ?: return
+        val composed = handComposed ?: return
 
         val animating = ValueAnimator.areAnimatorsEnabled()
         val phase = if (animating) readingPhase else GestureMotion.STATIC_PHASE
@@ -356,26 +377,25 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (!animating) {
             drawHandAt(
                 canvas,
-                bitmap,
+                composed,
                 travel,
                 centerY,
                 GestureMotion.STATIC_GHOST_PROGRESS,
                 GestureMotion.staticGhostAlpha(),
             )
         }
-        drawHandAt(canvas, bitmap, travel, centerY, GestureMotion.progressAt(phase), alpha)
+        drawHandAt(canvas, composed, travel, centerY, GestureMotion.progressAt(phase), alpha)
     }
 
     /**
-     * 이동 구간의 [progress] 지점에 손 하나를 그린다. 그림자를 먼저, 손을 그 위에.
+     * 이동 구간의 [progress] 지점에 미리 합성해 둔 손([handComposed])을 한 번 그린다.
      *
-     * **둘을 레이어 하나에 모아 그리고 [alpha]는 그 레이어에 건다.** 손과 그림자에 각각 알파를
-     * 주면 반투명해진 흰 손 **너머로 분홍 그림자가 비쳐**, 진하기가 오갈 때 손 색이 흰색과
-     * 분홍을 오간다(2026-08-17 실기기). 손 색은 움직이는 내내 변하지 않아야 한다.
+     * 그림자·윤곽선이 이미 이 그림 안에 평탄화돼 있으므로 알파를 그냥 걸면 된다 — 색이 서로
+     * 비치지 않는다([handComposed] 문서).
      */
     private fun drawHandAt(
         canvas: Canvas,
-        bitmap: Bitmap,
+        composed: Bitmap,
         travel: GestureMotion.Travel,
         centerY: Float,
         progress: Float,
@@ -385,46 +405,62 @@ class HighlightOverlayView(context: Context) : View(context) {
         val cx = width / 2f - travel.dx / 2f + travel.dx * progress
         val cy = centerY - travel.dy / 2f + travel.dy * progress
 
-        val alpha255 = (alpha * 255).toInt().coerceIn(0, 255)
-        // **그림 비율을 지킨다.** 손 아이콘은 세로로 길어서 정사각형에 맞추면 찌그러진다.
-        val halfH = handSize / 2f
-        val halfW = halfH * bitmap.width / bitmap.height
+        // 합성 그림 안에서 손 중심이 들어가 있는 만큼 빼야 손 중심이 (cx, cy)에 온다.
+        val left = cx - handCenterInComposed.x
+        val top = cy - handCenterInComposed.y
+        handDst.set(left, top, left + composed.width, top + composed.height)
+        handPaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+        canvas.drawBitmap(composed, null, handDst, handPaint)
+    }
 
-        // 레이어 경계는 그림자 offset과 윤곽선 두께까지 담아야 잘리지 않는다.
-        val margin = maxOf(handShadowOffset, handOutline)
-        val layer = canvas.saveLayerAlpha(
-            cx - halfW - handOutline,
-            cy - halfH - handOutline,
-            cx + halfW + margin,
-            cy + halfH + margin,
-            alpha255,
+    /**
+     * 그림자 → 윤곽선 → 손 순서로 한 장에 합성한다. 크기가 프레임마다 변하지 않으므로 한 번만 돈다.
+     *
+     * 합성은 **화면에 그릴 크기 그대로** 한다 — 그래야 윤곽선 두께와 그림자 offset이 dp대로 남는다.
+     * 원본 해상도에서 합성한 뒤 축소하면 그 둘이 함께 줄어든다.
+     */
+    private fun composeHand(): Bitmap? {
+        val source = handBitmap ?: return null
+        // **그림 비율을 지킨다.** 손 아이콘은 세로로 길어서 정사각형에 맞추면 찌그러진다.
+        val drawH = handSize
+        val drawW = handSize * source.width / source.height
+        // 윤곽선은 사방으로, 그림자는 오른쪽·아래로만 삐져나온다.
+        val padStart = handOutline
+        val padEnd = maxOf(handShadowOffset, handOutline)
+        val composed = createBitmap(
+            ceil(drawW + padStart + padEnd).toInt(),
+            ceil(drawH + padStart + padEnd).toInt(),
         )
+        val canvas = Canvas(composed)
+        val handLeft = padStart
+        val handTop = padStart
 
         // 1) 어두운 그림자 — 밝은 배경에서의 대비를 맡는다.
-        // 레이어 안에서는 불투명하게 그린다. 진하기는 레이어가 한 번에 건다.
         handDst.set(
-            cx - halfW + handShadowOffset,
-            cy - halfH + handShadowOffset,
-            cx + halfW + handShadowOffset,
-            cy + halfH + handShadowOffset,
+            handLeft + handShadowOffset,
+            handTop + handShadowOffset,
+            handLeft + drawW + handShadowOffset,
+            handTop + drawH + handShadowOffset,
         )
         handShadowPaint.alpha = SHADOW_ALPHA_255
-        canvas.drawBitmap(bitmap, null, handDst, handShadowPaint)
+        canvas.drawBitmap(source, null, handDst, handShadowPaint)
 
         // 2) 강조색 윤곽선 — 사방으로 조금씩 어긋나게 깔아 둘레를 채운다.
         handOutlinePaint.alpha = 255
         OUTLINE_OFFSETS.forEach { (ox, oy) ->
             val dx = ox * handOutline
             val dy = oy * handOutline
-            handDst.set(cx - halfW + dx, cy - halfH + dy, cx + halfW + dx, cy + halfH + dy)
-            canvas.drawBitmap(bitmap, null, handDst, handOutlinePaint)
+            handDst.set(handLeft + dx, handTop + dy, handLeft + drawW + dx, handTop + drawH + dy)
+            canvas.drawBitmap(source, null, handDst, handOutlinePaint)
         }
 
         // 3) 손.
-        handDst.set(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
-        handPaint.alpha = 255
-        canvas.drawBitmap(bitmap, null, handDst, handPaint)
-        canvas.restoreToCount(layer)
+        handDst.set(handLeft, handTop, handLeft + drawW, handTop + drawH)
+        val opaqueHand = Paint(Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(source, null, handDst, opaqueHand)
+
+        handCenterInComposed = PointF(handLeft + drawW / 2f, handTop + drawH / 2f)
+        return composed
     }
 
     /** 창 크기가 잡히기 전에 온 안내는 자리를 못 잡는다. 크기가 생기면 그때 계산한다. */
