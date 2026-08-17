@@ -86,10 +86,35 @@ class GuideAccessibilityService : AccessibilityService() {
         // 오버레이를 걷는데, 그 경로가 mainHandler.post라 클릭 디스패치 안에서 자기 창을 걷지 않는다.
         // 로그를 남기는 이유: 사용자가 끝낸 세션은 그 외에 아무 흔적도 안 남아, 로그만 보면
         // "안내가 그냥 멈췄다"와 구별이 안 된다.
-        overlay = OverlayController(this) {
-            Log.i(TAG, "session stopped by chip")
-            GuideSession.stop()
-        }
+        overlay = OverlayController(
+            this,
+            object : OverlayController.Callbacks {
+                override fun onStop() {
+                    Log.i(TAG, "session stopped by chip")
+                    GuideSession.stop()
+                }
+
+                override fun onConfirmAccept() {
+                    // 앱을 앞으로 가져오지 않는다 — 방금 끝낸 작업 화면에 그대로 남는 것이
+                    // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정).
+                    Log.i(TAG, "confirm accepted, session done")
+                    GuideSession.confirmAccepted()
+                }
+
+                override fun onConfirmReject() {
+                    Log.i(TAG, "confirm rejected, continuing")
+                    GuideSession.confirmRejected()
+                    // 확인 화면을 **버린다**(onCleared가 아니라 reset). 기억만 해 두면 다음 샘플의
+                    // redisplay가 같은 화면이라는 이유로 확인쌍을 곧바로 되살린다 — 사용자가 방금
+                    // 아니라고 답한 질문이 다시 뜨는 셈이다.
+                    overlay?.clear()
+                    display.reset()
+                    // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다(RETRY와 같은 경로).
+                    stability.markFailed()
+                    updateReading()
+                }
+            },
+        )
         e2ePublisher = GuideE2ePublisher(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
@@ -206,6 +231,12 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.SEND -> {
+                // 확인 대기 중에는 묻지 않는다(#139). 폴링은 그대로 돌아야 위 redisplay가
+                // 사라진 확인 화면을 되살릴 수 있어서, 멈추는 것은 요청뿐이다.
+                if (GuideSession.awaitingConfirm) {
+                    scheduleSample(POLL_MS)
+                    return
+                }
                 if (lastLoggedScreenSignature != signature) {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)
@@ -221,8 +252,13 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.STUCK -> {
-                Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                showStuckNotice()
+                // 확인 대기 중 화면이 안 바뀌는 것은 사용자가 답을 고르는 동안 당연하다.
+                // 알리지 않는 데 그치지 않고 건너뛰는 이유는, stuckContent가 같은 내용으로
+                // 다시 그리면서 우리 창을 만져 스스로를 깨우기 때문이다(ControlOverlay 참고).
+                if (!GuideSession.awaitingConfirm) {
+                    Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
+                    showStuckNotice()
+                }
                 scheduleSample(POLL_MS)
             }
 
@@ -255,6 +291,8 @@ class GuideAccessibilityService : AccessibilityService() {
                 screenReadable = !rootUnavailable,
                 decision = lastDecision,
                 requestInFlight = requestInFlight.get(),
+                // 확인 대기 중에는 같은 자리를 성공 tone 테두리가 쓴다(#139).
+                awaitingConfirm = GuideSession.awaitingConfirm,
             ),
         )
     }
@@ -262,7 +300,7 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        overlay?.showGuide(rect, content.text, avoidRegions(content.actionType))
+        overlay?.showGuide(rect, content.text, avoidRegions(content.actionType), content.confirm)
     }
 
     /**
@@ -480,9 +518,31 @@ class GuideAccessibilityService : AccessibilityService() {
                 response = response,
                 target = null,
             )
-            when (GuideSession.onDone(session.generation, response.verified)) {
-                GuideSession.DoneOutcome.STOP ->
-                    Log.i(TAG, "session done") // 리스너가 오버레이를 지운다
+            when (GuideSession.onDone(session.generation, response.verified, response.screenSignature)) {
+                // 검증된 완료도 여기서 끝내지 않는다(#139) — 성공 오탐을 사용자에게 한 번 묻는다.
+                GuideSession.DoneOutcome.CONFIRM_CONFIDENT -> {
+                    Log.i(TAG, "done verified, asking user")
+                    draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_confident)))
+                    // 확인 대기로 들어갔으니 읽는 중은 여기서 끈다. 다음 샘플을 기다리면 그때까지
+                    // 브리딩 애니메이터가 헛돈다 — 성공 tone이 먼저 그려져 보이지는 않는다(PR #153 리뷰).
+                    updateReading()
+                }
+
+                GuideSession.DoneOutcome.CONFIRM_UNSURE -> {
+                    // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
+                    // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 확신 있는 경로와 같은
+                    // 화면이고 문구만 다르다. 문구 확정은 #29.
+                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
+                    draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_unsure)))
+                    updateReading()
+                }
+
+                GuideSession.DoneOutcome.NOTICE_ONLY -> {
+                    // 사용자가 이미 아니라고 답한 화면인데 완료 신호가 상한까지 반복됐다.
+                    // 같은 질문을 다시 하지 않으면서 재질의도 멈춘다 — 문구만 남기고 칩으로 넘긴다.
+                    Log.w(TAG, "done after reject x${GuideSession.MAX_UNVERIFIED_DONE}, notice only")
+                    draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
+                }
 
                 GuideSession.DoneOutcome.RETRY -> {
                     // 완료 검증(#54)이 화면 근거를 못 찾은 done이다. 조기 종료일 수 있으니 세션을
@@ -490,16 +550,10 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 이게 없으면 화면이 그대로인 한 다음 요청이 영영 없다 — 무시가 곧 정지다.
                     // 이 백오프는 사실상 2초 고정이다 — 위 markSucceeded()가 failures를 매번
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
+                    // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
+                    // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
                     stability.markFailed()
-                    Log.i(TAG, "done unverified, retry backoff=${stability.backoffMs()}ms")
-                }
-
-                GuideSession.DoneOutcome.LIMIT_REACHED -> {
-                    // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
-                    // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 문구는 #29에서 다시 정한다.
-                    // 이 안내는 STUCK 접미사 없이 유지되고, 지워져도 재표시된다(PR #63 리뷰 P1).
-                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
-                    draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
+                    Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }
 
                 null -> GuideTelemetry.responseDropped(logicalRequest, "session_changed")
