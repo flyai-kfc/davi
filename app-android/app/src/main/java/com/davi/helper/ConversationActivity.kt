@@ -45,6 +45,11 @@ class ConversationActivity : AppCompatActivity() {
 
     private var uiState: ConversationUiState = ConversationUiState.Home()
 
+    /** 누를 수 없는 동안의 마이크 글리프 불투명도(#172). 근거는 dimens.xml 주석. */
+    private val micDisabledImageAlpha by lazy {
+        resources.getInteger(R.integer.davi_mic_disabled_image_alpha)
+    }
+
     // 스스로 끝나지 않는 상태(실패·최종 확인)의 홈 복귀 타이머.
     // setState()가 상태 전이마다 제거하므로 유령 타이머가 없다.
     private val autoReturnHandler = Handler(Looper.getMainLooper())
@@ -286,6 +291,11 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
+        // **`isEnabled`만으로는 화면이 안 바뀐다.** ImageButton은 disabled에서 src를 자동으로
+        // 흐리게 하지 않고, 표면 selector도 시안대로 양쪽이 같은 흰 원이다 — 그래서 누를 수
+        // 없는 동안에도 활성과 똑같이 보였다(PR #173 리뷰 실측). 글리프만 흐리게 해 구분한다.
+        binding.btnMic.imageAlpha =
+            if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
         binding.btnStopGuide.isVisible(model.stopGuideVisible)
         binding.confirmPair.root.isVisible(model.confirmVisible)
         binding.btnClose.isVisible(model.closeVisible)
@@ -646,6 +656,9 @@ class ConversationActivity : AppCompatActivity() {
 
     private companion object {
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
+
+        /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
+        const val OPAQUE_IMAGE_ALPHA = 255
 
         /**
          * 두 카드가 함께 보일 때 질문 카드가 갖는 weight. 레이아웃의 값과 같아야 한다 —

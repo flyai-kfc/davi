@@ -293,9 +293,7 @@
             android:layout_gravity="center"
             android:background="@drawable/bg_davi_mic_button"
             android:src="@drawable/ic_davi_mic"
-            android:tint="@color/davi_mic_icon"
             android:scaleType="fitCenter"
-            android:padding="@dimen/davi_mic_button_padding"
             android:elevation="@dimen/davi_mic_button_elevation"
             android:contentDescription="@string/voice_home_mic_desc" />
     </FrameLayout>
