@@ -2,6 +2,10 @@
 <!--
   조작 오버레이의 내용(#126). 창 자체가 안내창 크기로 잡히므로 여기서는 자리를 정하지 않는다 —
   안내창은 창을 꽉 채우고, 칩은 GuideBoxLayout이 상자 바닥에 비워 둔 컨트롤 행에 앉는다.
+
+  컨트롤 행에 앉는 것은 **둘 중 하나**다(#139) — 평소에는 중지 칩, 완료 확인(GD-3) 중에는
+  확인쌍. 확인 중에 중지 칩을 함께 두지 않는 이유는 화면 명세 GD-3의 구성이 확인쌍뿐이고,
+  칩 셋이 한 행에 들어가면 좁은 화면에서 겹치기 때문이다.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/control_root"
@@ -36,5 +40,19 @@
         android:textAllCaps="false"
         android:textColor="@color/davi_button_on_primary"
         android:textSize="@dimen/davi_type_body" />
+
+    <!--
+      완료 확인(GD-3)의 ×아직요/○됐어요. contentDescription은 이 레이아웃이 대화 화면용으로
+      쓰이는 값을 갖고 있으므로 ControlOverlay가 오버레이 문구로 덮는다 — 그대로 두면
+      TalkBack이 "이대로 안내 시작"을 읽는다.
+    -->
+    <include
+        android:id="@+id/confirm_pair"
+        layout="@layout/view_davi_confirm_pair"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/overlay_instruction_padding"
+        android:visibility="gone" />
 
 </FrameLayout>

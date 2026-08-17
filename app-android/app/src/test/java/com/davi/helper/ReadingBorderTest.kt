@@ -17,7 +17,14 @@ class ReadingBorderTest {
         screenReadable: Boolean = true,
         decision: ScreenStabilityTracker.Decision? = null,
         requestInFlight: Boolean = false,
-    ) = ReadingBorder.isReading(sessionActive, screenReadable, decision, requestInFlight)
+        awaitingConfirm: Boolean = false,
+    ) = ReadingBorder.isReading(
+        sessionActive,
+        screenReadable,
+        decision,
+        requestInFlight,
+        awaitingConfirm,
+    )
 
     @Test
     fun `세션 시작 후 첫 샘플 전에는 켠다`() {
@@ -38,6 +45,19 @@ class ReadingBorderTest {
     fun `응답 대기 중에는 판정이 IDLE이어도 켠다`() {
         assertTrue(
             reading(decision = ScreenStabilityTracker.Decision.IDLE, requestInFlight = true),
+        )
+    }
+
+    /** 완료 확인 중에는 같은 자리를 성공 tone 테두리가 쓴다(GD-3, #139). 겹치면 색만 깜빡인다. */
+    @Test
+    fun `완료 확인을 기다리는 동안에는 끈다`() {
+        assertFalse(reading(decision = null, awaitingConfirm = true))
+        assertFalse(
+            reading(
+                decision = ScreenStabilityTracker.Decision.WAIT,
+                requestInFlight = true,
+                awaitingConfirm = true,
+            ),
         )
     }
 

@@ -28,15 +28,34 @@ import android.view.WindowManager
  */
 class OverlayController(
     private val context: Context,
-    /** 안내창 X 칩을 눌렀을 때. 메인 스레드에서 불린다. */
-    onStop: () -> Unit,
+    callbacks: Callbacks,
 ) {
+
+    /**
+     * 안내창의 칩을 눌렀을 때. 전부 메인 스레드에서 불린다.
+     *
+     * 람다 셋이 아니라 인터페이스인 이유는 호출부다 — 생성자에 이름 없는 람다가 늘어서면
+     * 어느 것이 어느 칩인지 서비스 쪽에서 읽히지 않는다.
+     */
+    interface Callbacks {
+        /** '그만 볼래요'. 안내를 여기서 끝낸다. */
+        fun onStop()
+
+        /** 완료 확인의 ○. 사용자가 "다 됐다"고 답했다(GD-3). */
+        fun onConfirmAccept()
+
+        /** 완료 확인의 ×. 아직 안 됐으니 같은 세션으로 안내를 잇는다. */
+        fun onConfirmReject()
+    }
 
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private var view: HighlightOverlayView? = null
-    private val control = ControlOverlay(context, windowManager, onStop)
+    private val control = ControlOverlay(context, windowManager, callbacks)
+
+    /** 지금 그리는 것이 완료 확인인가. 자리 계산 콜백이 조작 오버레이에 그대로 넘긴다. */
+    private var confirmMode = false
 
     /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
@@ -46,21 +65,30 @@ class OverlayController(
      *
      * [avoid]는 안내창이 가리지 말아야 할 영역이다(키보드·다이얼로그). 강조 대상은 여기 넣지
      * 않는다 — 뷰가 이미 절대 회피로 다룬다.
+     *
+     * [confirm]이면 완료 확인(GD-3)이다 — 컨트롤 행이 확인쌍이 되고 화면 가장자리에 성공 tone
+     * 테두리가 함께 켜진다. 읽는 중 테두리와 달리 **안내창과 한 몸이라** [clear]가 같이 지운다.
      */
     fun showGuide(
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+        confirm: Boolean = false,
     ) {
         if (!canDraw()) {
             Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
             return
         }
+        // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 모드를 먼저 세운다.
+        confirmMode = confirm
         val target = view ?: createView() ?: return
+        target.setConfirmFrame(confirm)
         target.setGuide(bounds, instruction, avoid)
     }
 
     fun clear() {
+        confirmMode = false
+        view?.setConfirmFrame(false)
         view?.clearTarget()
     }
 
@@ -103,7 +131,7 @@ class OverlayController(
         val created = HighlightOverlayView(context)
         // addView 전에 물린다 — 창 크기가 처음 잡힐 때(onSizeChanged) 도는 첫 계산도 놓치지 않는다.
         created.guideBoxListener = HighlightOverlayView.GuideBoxListener { rect, lines ->
-            if (rect == null) control.hide() else control.show(rect, lines)
+            if (rect == null) control.hide() else control.show(rect, lines, confirmMode)
         }
         return runCatching {
             windowManager.addView(created, OverlayWindowParams.create(touchable = false))
@@ -118,11 +146,12 @@ class OverlayController(
 }
 
 /**
- * 두 오버레이의 창 속성을 **한 곳에서** 만든다.
+ * 두 오버레이의 창 속성을 **한 곳에서** 만든다. 차이는 `FLAG_NOT_TOUCHABLE`과 크기뿐이다.
  *
- * 차이는 `FLAG_NOT_TOUCHABLE` 하나뿐이어야 한다 — 나머지가 갈리면 두 창의 프레임 원점이 달라지고,
- * 그러면 표시 오버레이가 계산한 로컬 좌표를 조작 오버레이에 그대로 넣을 수 없다. `LAYOUT_IN_SCREEN`을
- * 줘도 창마다 인셋이 다르게 붙는 실측이 있어(런처에서만 밀림) 이 대칭이 유일한 보장이다.
+ * **flags를 맞춰도 두 창의 부모 프레임은 같아지지 않는다**(#139 `dumpsys window` 실측) —
+ * MATCH_PARENT인 표시 창은 부모가 `[0,103]`(상태표시줄 인셋)인데 크기가 지정된 조작 창은
+ * `[0,0]`이었다. 그래서 창 사이에 좌표를 넘길 때는 **화면 좌표**를 쓴다. 이 대칭은 좌표
+ * 보장이 아니라 **동작 대칭**(터치·포커스·인셋 정책)을 위한 것이다.
  */
 internal object OverlayWindowParams {
 

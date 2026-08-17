@@ -11,9 +11,12 @@ import android.view.WindowManager
 /**
  * 조작 오버레이 — 안내창과 칩이 사는 창. 표시 오버레이와 달리 **터치를 받는다**(#126).
  *
- * 창은 안내창 사각형 크기로 잡히고 위치도 거기서 온다. 좌표는 표시 오버레이의 **로컬 좌표**
- * (창 프레임 기준)로 받는다 — 두 창이 같은 flags를 쓰므로 프레임 원점이 같고, 그래서 로컬 좌표를
- * 그대로 넣으면 안내창이 계산된 자리에 정확히 앉는다.
+ * 창은 안내창 사각형 크기로 잡히고 위치도 거기서 온다. 좌표는 **화면 좌표**로 받아 그대로
+ * 창 x·y에 넣는다 — 이 창은 크기가 지정된 창이라 부모 프레임이 `[0,0]`이다. 표시 오버레이의
+ * 로컬 좌표를 받던 이전 구현은 그 창의 부모 프레임(`[0,103]`)만큼 안내창을 위로 밀었다
+ * (#139 `dumpsys window` 실측, `HighlightOverlayView.GuideBoxListener` 참고).
+ *
+ * 컨트롤 행에는 **한 번에 하나**만 보인다 — 평소에는 중지 칩, 완료 확인 중에는 확인쌍(#139).
  *
  * **보여줄 것이 없으면 창을 걷는다.** 표시 오버레이는 비어 있어도 `FLAG_NOT_TOUCHABLE`이라
  * 무해하지만, 이 창은 남아 있는 동안 계속 터치를 가져간다.
@@ -21,12 +24,14 @@ import android.view.WindowManager
 class ControlOverlay(
     private val context: Context,
     private val windowManager: WindowManager,
-    /** X 칩을 눌렀을 때. 세션을 끝내는 것은 호출자 몫이다 — 이 창은 무엇이 끝나는지 모른다. */
-    private val onStop: () -> Unit,
+    /** 칩을 눌렀을 때. 세션을 어떻게 할지는 호출자 몫이다 — 이 창은 무엇이 끝나는지 모른다. */
+    private val callbacks: OverlayController.Callbacks,
 ) {
 
     private var root: View? = null
     private var box: GuideBoxView? = null
+    private var stopChip: View? = null
+    private var confirmPair: View? = null
 
     /**
      * 직전에 창에 실제로 넣은 자리. 같은 자리면 [show]가 `updateViewLayout`을 건너뛴다.
@@ -44,14 +49,23 @@ class ControlOverlay(
     private var appliedWidth = 0
     private var appliedHeight = 0
 
-    /** 안내창을 [rect] 자리에 [lines]로 띄운다. 창이 없으면 만들고, 있으면 옮긴다. */
-    fun show(rect: Rect, lines: List<String>) {
+    /**
+     * 안내창을 [rect] 자리에 [lines]로 띄운다. 창이 없으면 만들고, 있으면 옮긴다.
+     *
+     * [confirm]이면 컨트롤 행이 확인쌍이 된다(GD-3). 안내창 자체는 같은 창이라 확인으로
+     * 넘어갈 때 창을 다시 만들지 않는다.
+     */
+    fun show(rect: Rect, lines: List<String>, confirm: Boolean = false) {
         val current = root
         if (current == null) {
-            if (create(rect) != null) box?.setLines(lines)
+            if (create(rect) != null) {
+                box?.setLines(lines)
+                applyMode(confirm)
+            }
             return
         }
         box?.setLines(lines)
+        applyMode(confirm)
         if (isApplied(rect)) return
         runCatching {
             windowManager.updateViewLayout(current, params(rect))
@@ -67,6 +81,14 @@ class ControlOverlay(
         }
         root = null
         box = null
+        stopChip = null
+        confirmPair = null
+    }
+
+    /** 컨트롤 행에 무엇을 앉힐지. 둘이 함께 보이지 않게 한쪽만 켠다. */
+    private fun applyMode(confirm: Boolean) {
+        stopChip?.visibility = if (confirm) View.GONE else View.VISIBLE
+        confirmPair?.visibility = if (confirm) View.VISIBLE else View.GONE
     }
 
     private fun isApplied(rect: Rect) =
@@ -84,12 +106,27 @@ class ControlOverlay(
         // 서비스 Context에는 테마가 없다. 테마 속성을 참조하는 리소스가 하나라도 끼면 inflate가 터진다.
         val themed = ContextThemeWrapper(context, R.style.Theme_Davi)
         val created = LayoutInflater.from(themed).inflate(R.layout.overlay_control, null)
-        created.findViewById<View>(R.id.btn_stop_chip).setOnClickListener { onStop() }
+        created.findViewById<View>(R.id.btn_stop_chip).setOnClickListener { callbacks.onStop() }
+
+        val pair = created.findViewById<View>(R.id.confirm_pair)
+        // 확인쌍은 대화 화면과 공유하는 컴포넌트라 라벨이 그 화면 문구다. 오버레이에서는 뜻이
+        // 달라 여기서 덮는다 — 안 덮으면 TalkBack이 "이대로 안내 시작"을 읽는다.
+        pair.findViewById<View>(R.id.btn_confirm_accept).apply {
+            contentDescription = context.getString(R.string.overlay_confirm_accept_desc)
+            setOnClickListener { callbacks.onConfirmAccept() }
+        }
+        pair.findViewById<View>(R.id.btn_confirm_reject).apply {
+            contentDescription = context.getString(R.string.overlay_confirm_reject_desc)
+            setOnClickListener { callbacks.onConfirmReject() }
+        }
+
         return runCatching {
             windowManager.addView(created, params(rect))
             remember(rect)
             root = created
             box = created.findViewById(R.id.guide_box)
+            stopChip = created.findViewById(R.id.btn_stop_chip)
+            confirmPair = pair
             created
         }.onFailure { Log.e(TAG, "control overlay: addView 실패", it) }.getOrNull()
     }
