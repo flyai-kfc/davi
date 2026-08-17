@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
+from typing import Literal
 
 
 def token_matches(expected: str, supplied: str | None) -> bool:
@@ -23,6 +24,8 @@ def token_matches(expected: str, supplied: str | None) -> bool:
 class RateLimitDecision:
     allowed: bool
     retry_after_seconds: int | None = None
+    # 거부한 계층. 단일 창 리미터는 None, 출처+전역 리미터는 "source"/"global"이다.
+    limited_scope: Literal["source", "global"] | None = None
 
 
 class SlidingWindowRateLimiter:
@@ -62,39 +65,68 @@ class SlidingWindowRateLimiter:
             self._timestamps.clear()
 
 
-class KeyedSlidingWindowRateLimiter:
-    """출처(key)별 슬라이딩 창 제한.
+class SourceAndGlobalRateLimiter:
+    """출처(key)별 제한과 전역 상한을 한 lock 안에서 원자적으로 판정한다.
 
     로그인처럼 인증 전 공개 endpoint에서는 전역 창 하나만 있으면 한 출처의 폭주가
-    버킷을 소모해 모든 정상 사용자를 429로 막는다(#167 재리뷰 P1). 그래서 출처별로
-    창을 분리한다. 창이 끝난 키는 검사 때마다 제거해 임의 출처 폭주로 키 수가
-    무한히 늘지 않게 한다 — 유지되는 키는 현재 창 안에 요청이 있는 출처뿐이다.
+    버킷을 소모해 모든 정상 사용자를 429로 막고(#167 재리뷰 P1), 반대로 판정을 두
+    리미터로 나누면 전역 거부 전에 기록된 출처 키가 창이 끝날 때까지 남아 분산 출처
+    폭주에서 키 수가 무한히 는다(#167 3차 리뷰 P1). 그래서 두 판정을 하나로 묶고
+    **허용될 때만** 출처·전역 양쪽에 기록한다 — 거부된 요청은 어떤 흔적도 남기지
+    않으므로, 활성 출처 키 수는 전역 상한을 소모한 요청 수로 묶인다.
+    창이 끝난 키는 검사 때마다 제거한다.
     """
 
     def __init__(self, clock: Callable[[], float] = time.monotonic):
         self._clock = clock
+        self._global_window: deque[float] = deque()
         self._windows: dict[str, deque[float]] = {}
         self._lock = Lock()
 
-    def check(self, key: str, limit: int, window_seconds: int) -> RateLimitDecision:
+    def check(
+        self,
+        key: str,
+        *,
+        source_limit: int,
+        source_window_seconds: int,
+        global_limit: int,
+        global_window_seconds: int,
+    ) -> RateLimitDecision:
         now = self._clock()
-        cutoff = now - window_seconds
+        source_cutoff = now - source_window_seconds
+        global_cutoff = now - global_window_seconds
         with self._lock:
             expired_keys = [
-                k for k, window in self._windows.items() if not window or window[-1] <= cutoff
+                k
+                for k, window in self._windows.items()
+                if not window or window[-1] <= source_cutoff
             ]
             for expired in expired_keys:
                 del self._windows[expired]
+            while self._global_window and self._global_window[0] <= global_cutoff:
+                self._global_window.popleft()
 
-            window = self._windows.setdefault(key, deque())
-            while window and window[0] <= cutoff:
-                window.popleft()
+            # 이 출처의 창부터 판정한다. 출처 초과 요청이 전역 슬롯을 소모하면
+            # 한 출처의 폭주가 전역 상한을 잠그는 원래 문제로 되돌아간다.
+            window = self._windows.get(key)
+            if window is not None:
+                while window and window[0] <= source_cutoff:
+                    window.popleft()
+                if len(window) >= source_limit:
+                    retry_after = max(1, math.ceil(source_window_seconds - (now - window[0])))
+                    return RateLimitDecision(False, retry_after, limited_scope="source")
 
-            if len(window) >= limit:
-                retry_after = max(1, math.ceil(window_seconds - (now - window[0])))
-                return RateLimitDecision(False, retry_after)
+            if len(self._global_window) >= global_limit:
+                retry_after = max(
+                    1, math.ceil(global_window_seconds - (now - self._global_window[0]))
+                )
+                return RateLimitDecision(False, retry_after, limited_scope="global")
 
+            # 허용이 확정된 뒤에만 기록한다. 새 출처 키도 여기서만 생긴다.
+            if window is None:
+                window = self._windows.setdefault(key, deque())
             window.append(now)
+            self._global_window.append(now)
             return RateLimitDecision(True)
 
     def tracked_key_count(self) -> int:
@@ -107,4 +139,5 @@ class KeyedSlidingWindowRateLimiter:
         """테스트와 개발 서버 재구성에서 이전 창을 명시적으로 비운다."""
 
         with self._lock:
+            self._global_window.clear()
             self._windows.clear()

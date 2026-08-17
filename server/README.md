@@ -135,6 +135,8 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 - 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
   출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
   정상 사용자를 지키고, 전역 상한(`DAVI_AUTH_RATE_LIMIT_*`)이 카카오 API 소모 총량을 지킨다.
+  두 판정은 한 리미터 안에서 원자적으로 내려지고 **허용된 요청만 기록**하므로, 거부된
+  요청은 출처 키를 남기지 않고 활성 출처 키 수는 전역 상한으로 묶인다.
   초과하면 429와 `Retry-After`를 돌려준다. `X-Forwarded-For`는 애플리케이션에서 파싱하지
   않는다 — 프록시 뒤 배포는 uvicorn `--proxy-headers`와 `--forwarded-allow-ips`로 신뢰
   프록시가 재작성한 client 주소를 쓴다.
