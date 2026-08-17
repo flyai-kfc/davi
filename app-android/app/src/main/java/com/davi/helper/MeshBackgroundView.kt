@@ -52,15 +52,19 @@ class MeshBackgroundView @JvmOverloads constructor(
     private val baseColor = ContextCompat.getColor(context, R.color.davi_bg_mesh)
 
     private val blobs = listOf(
-        Blob(R.color.davi_bg_blob_1, 0.34f, 0.23f, 0.09f, 0.60f),
-        Blob(R.color.davi_bg_blob_2, 0.40f, 0.92f, 0.10f, 0.55f),
-        Blob(R.color.davi_bg_blob_3, 0.32f, 1.00f, 0.32f, 0.50f),
-        Blob(R.color.davi_bg_blob_4, 0.28f, 0.23f, 0.31f, 0.53f),
-        // 5·6은 아래 veil에 거의 덮인다(veil이 0.52H에서 이미 58% 불투명이고 두 중심이
-        // 0.46H·0.68H다). 정적 캐시라 런타임 비용이 0이고 Figma와 1:1이어야 배경 조정이
-        // 1:1로 대응되므로 그대로 둔다.
-        Blob(R.color.davi_bg_blob_5, 0.55f, 0.60f, 0.46f, 0.53f),
-        Blob(R.color.davi_bg_blob_6, 0.50f, 0.40f, 0.68f, 0.60f),
+        // 1~4는 **틴트**다 — 바탕보다 진한 분홍·살구를 얹어 색을 만든다.
+        Blob(R.color.davi_bg_blob_1, 0.48f, 0.23f, 0.09f, 0.60f),
+        Blob(R.color.davi_bg_blob_2, 0.52f, 0.92f, 0.10f, 0.55f),
+        Blob(R.color.davi_bg_blob_3, 0.44f, 1.00f, 0.32f, 0.50f),
+        Blob(R.color.davi_bg_blob_4, 0.42f, 0.23f, 0.31f, 0.53f),
+        // 5·6은 **하이라이트**다 — 거의 흰색(#FEE8EF·#FEF5F2)이라 진하게 깔면 화면 한가운데를
+        // 씻어 낸다. 실제로 .55/.50이던 동안 듣는 중 화면의 배경이 단색으로 보였다(실기기 실측:
+        // 세로로 초록 채널이 14밖에 안 움직였다). 시안이 2026-08-16에 .30/.26으로 내렸다.
+        //
+        // **여섯을 한 방향으로 스케일하면 안 된다.** 틴트 넷은 올리고 하이라이트 둘은 내리는
+        // 것이 이 배경의 구조다 — 함께 올리면 다시 하얘진다.
+        Blob(R.color.davi_bg_blob_5, 0.30f, 0.60f, 0.46f, 0.53f),
+        Blob(R.color.davi_bg_blob_6, 0.26f, 0.40f, 0.68f, 0.60f),
     )
 
     /** 블롭 위에 덮는 하단 세로 그라디언트. 시안의 "노이즈 레이어"(흰색 2%)는 안 보여서 뺐다. */
@@ -133,9 +137,16 @@ class MeshBackgroundView @JvmOverloads constructor(
         val BLOB_STOPS = floatArrayOf(0f, 0.45f, 1f)
         const val MID_STOP_ALPHA_SCALE = 0.55f
 
-        /** 하단 veil: 0.00~0.19H 투명 → 0.52H 58% → 1.00H 94%. */
-        val VEIL_STOPS = floatArrayOf(0f, 0.19f, 0.52f, 1f)
-        const val VEIL_MID_ALPHA = 0.58f
-        const val VEIL_END_ALPHA = 0.94f
+        /**
+         * 하단 veil: 0.00~0.19H 투명 → 0.60H 50% → 1.00H 78%.
+         *
+         * **veil 색은 바탕보다 어두워야 한다.** 바탕 #F9E4EC보다 밝은 색을 물리면 화면 아래
+         * 80%가 통째로 평평해진다 — veil이 그만큼을 덮기 때문이다. 실제로 그런 값을 한 번
+         * 넣었다가 배경이 단색으로 보였다. 시안 값은 바닥 합성이 (240,199,217)로 바탕 대비
+         * 초록이 29 움직인다.
+         */
+        val VEIL_STOPS = floatArrayOf(0f, 0.19f, 0.60f, 1f)
+        const val VEIL_MID_ALPHA = 0.50f
+        const val VEIL_END_ALPHA = 0.78f
     }
 }
