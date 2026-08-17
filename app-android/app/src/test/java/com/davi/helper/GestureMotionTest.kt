@@ -264,11 +264,25 @@ class GestureMotionTest {
     }
 
     @Test
-    fun `어느 쪽에도 안 들어가면 넓은 쪽에 두고 화면 안에 남긴다`() {
-        // 억지로 밀어내면 손이 화면 밖으로 나가 아예 안 보인다. 겹치더라도 보이는 편이 낫다.
-        val center = GestureMotion.verticalCenterFor(0f, 1000f, 900f, boxTop = 400f, boxBottom = 700f)
-        assertEquals(200f, center, TOLERANCE)
-        assertTrue("화면 밖으로 나갔다", center > 0f && center < 1000f)
+    fun `어느 쪽에도 안 들어가면 넓은 쪽에 두되 화면 안으로 물린다`() {
+        // 겹치는 것은 감수하지만 잘리는 것은 아니다 — 잘리면 방향을 말해 주는 끝점이 먼저 사라진다.
+        // 위(400)가 아래(300)보다 넓어 위쪽을 고르지만, 중점 200으로는 손이 -250까지 삐져나온다.
+        val band = 900f
+        val center = GestureMotion.verticalCenterFor(0f, 1000f, band, boxTop = 400f, boxBottom = 700f)
+        assertTrue(
+            "화면 밖으로 나갔다 — 구간 ${center - band / 2f}..${center + band / 2f}",
+            center - band / 2f >= 0f && center + band / 2f <= 1000f,
+        )
+    }
+
+    @Test
+    fun `손이 화면보다 크면 한가운데에 둔다`() {
+        // 물릴 곳이 없다. 위아래로 고르게 잘리는 편이 한쪽만 잘리는 것보다 낫다.
+        assertEquals(
+            500f,
+            GestureMotion.verticalCenterFor(0f, 1000f, 1200f, boxTop = 400f, boxBottom = 700f),
+            TOLERANCE,
+        )
     }
 
     private companion object {

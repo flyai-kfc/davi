@@ -90,8 +90,10 @@ object GestureMotion {
      * @param boxTop·boxBottom 안내창의 세로 범위. 안내창이 없으면 둘 다 null이다.
      * @return 손 모션의 중심 y.
      *
-     * 남은 공간이 [bandHeight]보다 좁으면 넓은 쪽 가운데에 그대로 둔다 — 완전히 피할 수 없는
-     * 화면에서 억지로 밀어내면 손이 화면 밖으로 나가 아예 안 보인다. 겹치더라도 보이는 편이 낫다.
+     * 남은 공간이 [bandHeight]보다 좁으면 넓은 쪽에 두되 **화면 안으로 물린다**. 감수하는 것은
+     * 안내창과 겹치는 것까지이고, 화면 밖으로 나가는 것은 아니다 — 잘리면 방향을 말해 주는
+     * 끝점 프레임이 먼저 사라진다(PR #159 2차 리뷰). 손이 캔버스보다 크면 물릴 곳이 없어
+     * 화면 한가운데에 둔다.
      */
     fun verticalCenterFor(
         canvasTop: Float,
@@ -102,6 +104,7 @@ object GestureMotion {
     ): Float {
         val canvasCenter = (canvasTop + canvasBottom) / 2f
         if (boxTop == null || boxBottom == null) return canvasCenter
+        if (bandHeight > canvasBottom - canvasTop) return canvasCenter
 
         val above = boxTop - canvasTop
         val below = canvasBottom - boxBottom
@@ -111,7 +114,9 @@ object GestureMotion {
             below >= bandHeight && above < bandHeight -> false
             else -> above >= below
         }
-        return if (useAbove) (canvasTop + boxTop) / 2f else (boxBottom + canvasBottom) / 2f
+        val center = if (useAbove) (canvasTop + boxTop) / 2f else (boxBottom + canvasBottom) / 2f
+        val half = bandHeight / 2f
+        return center.coerceIn(canvasTop + half, canvasBottom - half)
     }
 
     /**
