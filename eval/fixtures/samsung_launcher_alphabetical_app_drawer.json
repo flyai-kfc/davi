@@ -26,8 +26,8 @@
           "can_scroll_forward": true,
           "can_scroll_backward": false,
           "scroll_axis": "vertical",
-          "next_swipe_direction": "up",
-          "prev_swipe_direction": "down"
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
         },
         {
           "node_id": "n2",
