@@ -62,6 +62,10 @@ _TRACED_API_PATHS = frozenset(
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
+# 로그인 전용 리미터(#167 리뷰 P1). dev 리미터는 development에서만 돌지만, 로그인은 인증 전
+# 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 전역으로 제한한다. 별도 창을 쓰는
+# 이유: dev 창을 공유하면 로그인 폭주가 팀의 추론 쿼터까지 잠근다.
+auth_rate_limiter = SlidingWindowRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -354,6 +358,25 @@ def post_kakao_login(
     """
 
     request.state.request_metadata = {"client_version": req.client_version}
+    decision = auth_rate_limiter.check(
+        settings.davi_auth_rate_limit_requests,
+        settings.davi_auth_rate_limit_window_seconds,
+    )
+    if not decision.allowed:
+        retry_after = decision.retry_after_seconds or 1
+        request.state.error_kind = "AUTH_RATE_LIMIT"
+        request.state.retry_after_seconds = retry_after
+        error = ApiError(
+            kind=ErrorKind.QUOTA,
+            message="kakao login request limit exceeded",
+            retry_after_seconds=retry_after,
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=error.model_dump(),
+            headers={"Retry-After": str(retry_after)},
+        )
     try:
         return login_with_kakao(req)
     except AuthError as e:

@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     davi_auth_jwt_secret: SecretStr = SecretStr("")
     # 세션 토큰 수명(초). 기본 30일 — 시니어 사용자가 자주 재로그인하지 않게 길게 둔다.
     davi_auth_session_ttl_seconds: int = 60 * 60 * 24 * 30
+    # 로그인 endpoint 전용 인프로세스 제한(#167 리뷰 P1). 인증 전 공개 endpoint가 요청마다
+    # 카카오 API를 소모하므로 dev 전용이 아니라 **모든 프로필**에 적용한다. dev 리미터와 별도 창.
+    davi_auth_rate_limit_requests: int = 10
+    davi_auth_rate_limit_window_seconds: int = 60
 
     @field_validator("gemini_api_key", mode="after")
     @classmethod
@@ -87,6 +91,10 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_KAKAO_APP_ID는 음수일 수 없습니다")
         if self.davi_auth_session_ttl_seconds <= 0:
             raise ValueError("DAVI_AUTH_SESSION_TTL_SECONDS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_requests <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_window_seconds <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
         return self
 
     @property

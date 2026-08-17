@@ -191,6 +191,83 @@ def test_login_endpoint_validation_error_uses_api_error_shape():
     assert r.json()["request_id"]
 
 
+def test_login_rejects_oversized_and_blank_inputs():
+    """인증 전 공개 endpoint의 입력 상한(#167 리뷰 P2). 카카오 API 호출 전에 스키마에서 자른다."""
+
+    oversized_token = client.post("/v1/auth/kakao", json={"kakao_access_token": "t" * 513})
+    blank_token = client.post("/v1/auth/kakao", json={"kakao_access_token": "   "})
+    oversized_version = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token", "client_version": "v" * 65},
+    )
+
+    for response in (oversized_token, blank_token, oversized_version):
+        assert response.status_code == 422
+        assert response.json()["kind"] == "BAD_REQUEST"
+
+
+def test_login_rate_limit_applies_in_every_profile(
+    configured_auth,
+    monkeypatch,
+    set_runtime_profile,
+):
+    """로그인 리미터는 dev 게이트와 달리 production에서도 돈다(#167 리뷰 P1)."""
+
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+    )
+    monkeypatch.setattr(settings, "davi_auth_jwt_secret", SecretStr(_SECRET))
+    monkeypatch.setattr(settings, "davi_kakao_app_id", _APP_ID)
+    monkeypatch.setattr(settings, "davi_auth_rate_limit_requests", 2)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+
+    first = client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    second = client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    limited = client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["kind"] == "QUOTA"
+    assert limited.json()["retry_after_seconds"] >= 1
+    assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
+
+
+def test_login_rate_limit_does_not_share_the_dev_window(configured_auth, monkeypatch):
+    """로그인 폭주가 팀 추론 쿼터(dev 리미터)를 잠그지 않는다 — 창이 분리돼 있다."""
+
+    monkeypatch.setattr(settings, "davi_auth_rate_limit_requests", 1)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+
+    ok = client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    limited = client.post("/v1/auth/kakao", json={"kakao_access_token": "token"})
+    next_step_still_ok = client.post(
+        "/v1/next-step",
+        json={
+            "goal": "카카오톡 열기",
+            "client_version": "0.1.0",
+            "screen": {
+                "package_name": "com.sec.android.app.launcher",
+                "elements": [{"node_id": "n1", "label": "카카오톡", "clickable": True}],
+            },
+        },
+    )
+
+    assert ok.status_code == 200
+    assert limited.status_code == 429
+    assert next_step_still_ok.status_code == 200
+
+
 def test_login_endpoint_never_logs_tokens(configured_auth, monkeypatch, caplog):
     kakao_token = "kakao-secret-access-token-value"
     monkeypatch.setattr(

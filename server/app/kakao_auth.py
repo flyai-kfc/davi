@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 import jwt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .config import settings
 from .schemas import ErrorKind
@@ -29,10 +29,23 @@ _JWT_ISSUER = "davi"
 
 
 class KakaoLoginRequest(BaseModel):
-    """앱 -> 서버 로그인 요청. 카카오 토큰은 body로만 받고 어디에도 echo하지 않는다."""
+    """앱 -> 서버 로그인 요청. 카카오 토큰은 body로만 받고 어디에도 echo하지 않는다.
 
-    kakao_access_token: str = Field(min_length=1)
-    client_version: str | None = None
+    인증 전 공개 endpoint라 입력 상한을 스키마에서 자른다(#167 리뷰 P2) — 토큰은 그대로
+    Authorization 헤더로 복사되고 client_version은 로그 메타로 들어가므로, 상한이 없으면
+    임의 크기 입력이 메모리·로그·HTTP 헤더를 오염시킨다. 카카오 토큰 실측은 수십~수백 자라
+    512는 여유 상한이다.
+    """
+
+    kakao_access_token: str = Field(min_length=1, max_length=512)
+    client_version: str | None = Field(default=None, max_length=64)
+
+    @field_validator("kakao_access_token")
+    @classmethod
+    def reject_blank_token(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("kakao_access_token은 공백일 수 없습니다")
+        return value
 
 
 class SessionTokenResponse(BaseModel):
