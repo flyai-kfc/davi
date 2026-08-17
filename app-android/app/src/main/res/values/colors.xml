@@ -220,8 +220,13 @@
     <color name="davi_card_inner_highlight">#F2FFFFFF</color>
     <!--
       방향 제스처 시연의 손 그림자(#152). 오버레이는 아래에 어떤 앱이 깔릴지 알 수 없어,
-      밝은 화면에서는 살구색 손이 묻힌다. 같은 그림을 이 색으로 칠해 살짝 어긋나게 먼저 깔아
-      윤곽을 남긴다. 손 자체의 색은 그림(ic_davi_hand)이 갖고 있다.
+      밝은 화면에서는 **흰 손이 통째로 묻힌다**. 같은 그림을 이 색으로 칠해 살짝 어긋나게 먼저
+      깔아 윤곽을 남긴다. 손 자체의 색은 그림(ic_davi_hand)이 갖고 있다.
+
+      색은 마이크 글로우(davi_glow_mic)의 RGB다 — 같은 앱의 같은 강조색을 쓴다.
+      **알파는 가져오지 않는다.** 글로우의 B8은 "마이크 뒤에 깔리는 빛"이라 옅은 값인데,
+      그림자 알파는 HighlightOverlayView.SHADOW_ALPHA_RATIO가 따로 곱한다. 둘을 겹치면
+      흰 손의 유일한 윤곽이 흐려진다. 여기서는 불투명으로 두고 비율에 맡긴다.
     -->
-    <color name="davi_overlay_hand_shadow">#1A1A1A</color>
+    <color name="davi_overlay_hand_shadow">#FFF2657E</color>
 </resources>

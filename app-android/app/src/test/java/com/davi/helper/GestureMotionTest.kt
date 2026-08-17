@@ -22,6 +22,7 @@ class GestureMotionTest {
     @Test
     fun `서버가 준 방향을 넷 모두 뒤집는다`() {
         // 서버가 계약과 달리 "내용이 움직일 방향"을 보내므로 앱에서 보정한다(2026-08-14 결정).
+        // 조건부 보정으로 바꿨다가 실기기에서 모션이 통째로 반대가 되어 되돌렸다(2026-08-17).
         // #109가 고쳐지면 이 테스트가 먼저 깨져야 한다 — 그게 되돌릴 신호다.
         assertEquals(SwipeDirection.DOWN, GestureMotion.fingerDirectionFor(SwipeDirection.UP))
         assertEquals(SwipeDirection.UP, GestureMotion.fingerDirectionFor(SwipeDirection.DOWN))
@@ -31,8 +32,8 @@ class GestureMotionTest {
 
     @Test
     fun `두 번 보정하면 제자리로 돌아온다`() {
-        // 보정이 어딘가에서 두 번 걸리면 아무 일도 안 한 것과 같아진다 — 뷰가 한 번만 부르는지
-        // 확인하는 근거가 된다.
+        // 보정이 어딘가에서 두 번 걸리면 아무 일도 안 한 것과 같아진다 — 서비스가 한 번만 부르고
+        // 뷰는 받은 값을 그대로 그리는지 확인하는 근거가 된다.
         SwipeDirection.entries.forEach {
             assertEquals(it, GestureMotion.fingerDirectionFor(GestureMotion.fingerDirectionFor(it)))
         }
@@ -210,7 +211,69 @@ class GestureMotionTest {
         assertTrue("정지 진하기 ${GestureMotion.staticAlpha()}", GestureMotion.staticAlpha() > 0.8f)
     }
 
+    @Test
+    fun `정지 프레임은 출발점 잔상과 본체가 떨어져 있다`() {
+        // 한 장만 있으면 기준점이 없어 어느 쪽으로 가라는 것인지 읽히지 않는다(PR #159 리뷰 5번).
+        val ghost = GestureMotion.STATIC_GHOST_PROGRESS
+        val main = GestureMotion.progressAt(GestureMotion.STATIC_PHASE)
+        assertTrue("잔상 $ghost 과 본체 $main 이 겹친다", main - ghost > 0.5f)
+    }
+
+    @Test
+    fun `잔상은 본체보다 확실히 옅다`() {
+        // 둘이 비슷하면 어느 손이 도착점인지 알 수 없어 방향이 다시 모호해진다.
+        assertTrue(
+            "잔상 ${GestureMotion.staticGhostAlpha()} vs 본체 ${GestureMotion.staticAlpha()}",
+            GestureMotion.staticGhostAlpha() < GestureMotion.staticAlpha() * 0.5f,
+        )
+        assertTrue("잔상이 아예 안 보인다", GestureMotion.staticGhostAlpha() > 0.1f)
+    }
+
+    // --- 안내창 회피 ---------------------------------------------------------------
+
+    @Test
+    fun `안내창이 없으면 화면 한가운데다`() {
+        assertEquals(
+            500f,
+            GestureMotion.verticalCenterFor(0f, 1000f, BAND, boxTop = null, boxBottom = null),
+            TOLERANCE,
+        )
+    }
+
+    @Test
+    fun `안내창이 아래에 있으면 손은 위쪽 공간 가운데로 간다`() {
+        // 안내창은 대상이 없을 때 화면 아래에 붙는다 — 가장 흔한 배치다.
+        val center = GestureMotion.verticalCenterFor(0f, 1000f, BAND, boxTop = 700f, boxBottom = 1000f)
+        assertEquals(350f, center, TOLERANCE)
+        assertTrue("손이 안내창을 침범한다", center + BAND / 2f <= 700f)
+    }
+
+    @Test
+    fun `안내창이 위에 있으면 손은 아래쪽 공간 가운데로 간다`() {
+        val center = GestureMotion.verticalCenterFor(0f, 1000f, BAND, boxTop = 0f, boxBottom = 300f)
+        assertEquals(650f, center, TOLERANCE)
+        assertTrue("손이 안내창을 침범한다", center - BAND / 2f >= 300f)
+    }
+
+    @Test
+    fun `손이 다 들어가는 쪽이 하나뿐이면 넓지 않아도 그쪽을 고른다`() {
+        // 위가 더 넓지만 손이 안 들어간다. 아래는 좁아도 들어간다 — 겹치지 않는 쪽이 우선이다.
+        val center = GestureMotion.verticalCenterFor(0f, 1000f, 300f, boxTop = 280f, boxBottom = 600f)
+        assertEquals(800f, center, TOLERANCE)
+        assertTrue(center - 150f >= 600f)
+    }
+
+    @Test
+    fun `어느 쪽에도 안 들어가면 넓은 쪽에 두고 화면 안에 남긴다`() {
+        // 억지로 밀어내면 손이 화면 밖으로 나가 아예 안 보인다. 겹치더라도 보이는 편이 낫다.
+        val center = GestureMotion.verticalCenterFor(0f, 1000f, 900f, boxTop = 400f, boxBottom = 700f)
+        assertEquals(200f, center, TOLERANCE)
+        assertTrue("화면 밖으로 나갔다", center > 0f && center < 1000f)
+    }
+
     private companion object {
+        /** 세로 스크롤에서 손이 훑는 폭 — 이동 거리 + 손 높이. */
+        const val BAND = 200f
         const val DISTANCE = 120f
         const val TOLERANCE = 0.001f
     }

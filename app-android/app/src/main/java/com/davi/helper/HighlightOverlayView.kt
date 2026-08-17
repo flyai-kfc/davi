@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -15,6 +16,7 @@ import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -136,7 +138,10 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     /**
      * 손 뒤에 까는 그림자. 오버레이는 **아래에 어떤 앱이 깔릴지 알 수 없어**, 밝은 화면에서는
-     * 살구색 손이 묻힌다. 같은 그림을 검게 칠해 살짝 어긋나게 먼저 깔아 윤곽을 남긴다.
+     * 흰 손이 통째로 묻힌다. 같은 그림을 강조색으로 칠해 살짝 어긋나게 먼저 깔아 윤곽을 남긴다.
+     *
+     * 색만 마이크 글로우에서 가져왔고 **글로우처럼 움직이지는 않는다** — 여기서는 대비를 만드는
+     * 고정 그림자다(2026-08-17 요청).
      */
     private val handShadowPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
         colorFilter = PorterDuffColorFilter(
@@ -299,46 +304,100 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 방향 제스처 시연 — 화면 중앙에서 손이 서버가 준 방향으로 밀린다.
+     * 방향 제스처 시연 — 손이 **손가락 방향**으로 밀린다.
      *
-     * **방향을 여기서 뒤집지 않는다.** [GestureMotion.travelFor]가 서버 값을 그대로 변위로
-     * 바꾼다. 자세한 근거는 [GestureMotion] 문서.
+     * **안내창을 피해 놓는다**(2026-08-17 요청). 화면 정중앙이 기본이지만 안내창이 그 자리를
+     * 쓰면 글이 손에 가리므로, 위/아래 남은 공간 중 넓은 쪽으로 옮긴다
+     * ([GestureMotion.verticalCenterFor]).
+     *
+     * **방향을 여기서 보정하지 않는다.** [gestureDirection]은 이미 보정을 마친 손가락 방향이다
+     * (보정 자리는 `GuideAccessibilityService`, 규칙은 [GestureMotion.fingerDirectionFor]).
+     * 여기서 한 번 더 손대면 보정이 두 번 걸려 아무 일도 안 한 것과 같아진다.
      */
     private fun drawGestureHand(canvas: Canvas) {
         val direction = gestureDirection ?: return
         if (width == 0 || height == 0) return
+        val bitmap = handBitmap ?: return
 
         val animating = ValueAnimator.areAnimatorsEnabled()
         val phase = if (animating) readingPhase else GestureMotion.STATIC_PHASE
         val alpha = if (animating) GestureMotion.alphaAt(phase) else GestureMotion.staticAlpha()
         if (alpha <= 0f) return
 
-        // 서버가 내용 방향을 보내므로 한 번 뒤집어 그린다(#109 — 되돌릴 자리는 그 함수 하나다).
-        val travel = GestureMotion.travelFor(GestureMotion.fingerDirectionFor(direction), handTravel)
-        val progress = GestureMotion.progressAt(phase)
-        // 이동 구간의 절반을 중앙에 두어, 손이 화면 중앙을 지나가며 움직인다.
-        val cx = width / 2f - travel.dx / 2f + travel.dx * progress
-        val cy = height / 2f - travel.dy / 2f + travel.dy * progress
+        val travel = GestureMotion.travelFor(direction, handTravel)
+        // 손이 훑는 세로 폭 — 세로 이동이면 이동 거리까지, 가로 이동이면 손 높이만.
+        val bandHeight = abs(travel.dy) + handSize
+        // 안내창은 화면 좌표라 이 뷰의 로컬 좌표로 옮겨서 본다.
+        val box = layout?.box
+        val centerY = GestureMotion.verticalCenterFor(
+            canvasTop = 0f,
+            canvasBottom = height.toFloat(),
+            bandHeight = bandHeight,
+            boxTop = box?.let { it.top - layoutOriginY },
+            boxBottom = box?.let { it.bottom - layoutOriginY },
+        )
 
-        val bitmap = handBitmap ?: return
+        // 애니메이터가 꺼진 기기에서는 출발점에 잔상을 함께 깔아 방향을 읽히게 한다
+        // (PR #159 리뷰 5번 — 한 장만으로는 어느 쪽으로 가라는 것인지 알 수 없다).
+        if (!animating) {
+            drawHandAt(
+                canvas,
+                bitmap,
+                travel,
+                centerY,
+                GestureMotion.STATIC_GHOST_PROGRESS,
+                GestureMotion.staticGhostAlpha(),
+            )
+        }
+        drawHandAt(canvas, bitmap, travel, centerY, GestureMotion.progressAt(phase), alpha)
+    }
+
+    /**
+     * 이동 구간의 [progress] 지점에 손 하나를 그린다. 그림자를 먼저, 손을 그 위에.
+     *
+     * **둘을 레이어 하나에 모아 그리고 [alpha]는 그 레이어에 건다.** 손과 그림자에 각각 알파를
+     * 주면 반투명해진 흰 손 **너머로 분홍 그림자가 비쳐**, 진하기가 오갈 때 손 색이 흰색과
+     * 분홍을 오간다(2026-08-17 실기기). 손 색은 움직이는 내내 변하지 않아야 한다.
+     */
+    private fun drawHandAt(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        travel: GestureMotion.Travel,
+        centerY: Float,
+        progress: Float,
+        alpha: Float,
+    ) {
+        // 이동 구간의 절반을 중심에 두어, 손이 [centerY]를 지나가며 움직인다.
+        val cx = width / 2f - travel.dx / 2f + travel.dx * progress
+        val cy = centerY - travel.dy / 2f + travel.dy * progress
+
         val alpha255 = (alpha * 255).toInt().coerceIn(0, 255)
         // **그림 비율을 지킨다.** 손 아이콘은 세로로 길어서 정사각형에 맞추면 찌그러진다.
         val halfH = handSize / 2f
         val halfW = halfH * bitmap.width / bitmap.height
 
-        // 그림자를 먼저, 손을 그 위에.
+        // 레이어 경계는 그림자 offset까지 담아야 잘리지 않는다.
+        val layer = canvas.saveLayerAlpha(
+            cx - halfW,
+            cy - halfH,
+            cx + halfW + handShadowOffset,
+            cy + halfH + handShadowOffset,
+            alpha255,
+        )
         handDst.set(
             cx - halfW + handShadowOffset,
             cy - halfH + handShadowOffset,
             cx + halfW + handShadowOffset,
             cy + halfH + handShadowOffset,
         )
-        handShadowPaint.alpha = (alpha255 * SHADOW_ALPHA_RATIO).toInt().coerceIn(0, 255)
+        // 레이어 안에서는 불투명하게 그린다 — 진하기는 레이어가 한 번에 건다.
+        handShadowPaint.alpha = SHADOW_ALPHA_255
         canvas.drawBitmap(bitmap, null, handDst, handShadowPaint)
 
         handDst.set(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
-        handPaint.alpha = alpha255
+        handPaint.alpha = 255
         canvas.drawBitmap(bitmap, null, handDst, handPaint)
+        canvas.restoreToCount(layer)
     }
 
     /** 창 크기가 잡히기 전에 온 안내는 자리를 못 잡는다. 크기가 생기면 그때 계산한다. */
@@ -571,5 +630,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     private companion object {
         /** 그림자가 손보다 얼마나 옅은가. 진하면 손이 아니라 얼룩으로 보인다. */
         const val SHADOW_ALPHA_RATIO = 0.45f
+
+        /** 레이어 안에서 쓰는 고정 그림자 알파. 모션의 진하기는 레이어가 따로 건다. */
+        const val SHADOW_ALPHA_255 = (255 * SHADOW_ALPHA_RATIO).toInt()
     }
 }
