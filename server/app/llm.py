@@ -71,11 +71,28 @@ class _MissingScrollDirectionError(Exception):
     """scroll 응답만 한 번 복구하기 위해 일반 파싱 실패와 구분하는 내부 예외."""
 
 
+# 스텁의 scroll 문장은 **`direction`에서 뽑는다**(#109).
+#
+# 고정 문장("화면을 쓸어서 더 내려 보세요")은 방향이 넷인데 하나만 말할 수 있었고, 그나마
+# 내용 기준이라 손가락 기준인 `direction`과 어긋났다 — 프롬프트가 모델에게 금지한 조합을
+# 스텁이 만들고 있었다. 이 경로는 죽은 코드가 아니라 `eval/harness.py`가 직접 도는 자리이고,
+# 앱이 방향을 화면에 그리기 시작하면 그 어긋남이 그대로 보인다(#152).
+_SCROLL_INSTRUCTIONS = {
+    SwipeDirection.UP: "화면에 손가락을 대고 위로 쓸어올려 주세요.",
+    SwipeDirection.DOWN: "화면에 손가락을 대고 아래로 쓸어내려 주세요.",
+    SwipeDirection.LEFT: "화면에 손가락을 대고 왼쪽으로 밀어 주세요.",
+    SwipeDirection.RIGHT: "화면에 손가락을 대고 오른쪽으로 밀어 주세요.",
+}
+
+
 class StubLlmClient(LlmClient):
     """규칙 기반 가짜 추론. 계약·파이프라인 테스트용. LLM 품질을 대변하지 않는다.
 
     우선순위: 누를 수 있는 것을 누른다 -> 없으면 더 넘겨본다 -> 그래도 없으면 실패로 알린다.
     "기다리기"는 돌려주지 않는다(C6). 정체 판정은 앱의 폴링 담당이다.
+
+    문장을 만드는 것은 모델이 아니라 코드지만 **나가는 자리는 같다.** 방향 표현은 `direction`과
+    같은 손가락 기준으로 쓴다(`prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 규칙).
     """
 
     def reason(self, req: NextStepRequest) -> GuideAction:
@@ -104,7 +121,7 @@ class StubLlmClient(LlmClient):
                 action_type=ActionType.SCROLL,
                 direction=direction,
                 target_node_id=scrollable.node_id,
-                instruction="화면을 쓸어서 더 내려 보세요.",
+                instruction=_SCROLL_INSTRUCTIONS[direction],
             )
 
         # 막힘 상태의 제품적 종착지는 아직 미설계다(SPEC §11). 스텁은 조용히 끝내지 않고 알린다.

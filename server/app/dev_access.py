@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
+from typing import Literal
 
 
 def token_matches(expected: str, supplied: str | None) -> bool:
@@ -23,6 +24,8 @@ def token_matches(expected: str, supplied: str | None) -> bool:
 class RateLimitDecision:
     allowed: bool
     retry_after_seconds: int | None = None
+    # 거부한 계층. 단일 창 리미터는 None, 출처+전역 리미터는 "source"/"global"이다.
+    limited_scope: Literal["source", "global"] | None = None
 
 
 class SlidingWindowRateLimiter:
@@ -60,3 +63,91 @@ class SlidingWindowRateLimiter:
 
         with self._lock:
             self._timestamps.clear()
+
+
+class SourceAndGlobalRateLimiter:
+    """출처(key)별 제한과 전역 상한을 한 lock 안에서 원자적으로 판정한다.
+
+    로그인처럼 인증 전 공개 endpoint에서는 전역 창 하나만 있으면 한 출처의 폭주가
+    버킷을 소모해 모든 정상 사용자를 429로 막고(#167 재리뷰 P1), 반대로 판정을 두
+    리미터로 나누면 전역 거부 전에 기록된 출처 키가 창이 끝날 때까지 남아 분산 출처
+    폭주에서 키 수가 무한히 는다(#167 3차 리뷰 P1). 그래서 두 판정을 하나로 묶고
+    **허용될 때만** 출처·전역 양쪽에 기록한다 — 거부된 요청은 어떤 흔적도 남기지
+    않으므로, 활성 출처 키 수는 전역 상한을 소모한 요청 수로 묶인다.
+    창이 끝난 키는 검사 때마다 제거한다.
+
+    이 키 수 상한은 **출처 창 ≤ 전역 창**일 때만 성립한다(#167 4차 리뷰 P2). 출처 창이
+    더 길면 전역 창이 갱신될 때마다 새 출처가 전역 상한만큼 허용되는데 기존 키는 아직
+    안 죽어, 키 수가 전역 창 갱신 횟수에 비례해 는다. 그래서 위반 조합은 조용히 받지
+    않고 거부한다 — 설정 계층(config.Settings)도 기동 시 같은 제약을 검증한다.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic):
+        self._clock = clock
+        self._global_window: deque[float] = deque()
+        self._windows: dict[str, deque[float]] = {}
+        self._lock = Lock()
+
+    def check(
+        self,
+        key: str,
+        *,
+        source_limit: int,
+        source_window_seconds: int,
+        global_limit: int,
+        global_window_seconds: int,
+    ) -> RateLimitDecision:
+        if source_window_seconds > global_window_seconds:
+            raise ValueError(
+                "source_window_seconds가 global_window_seconds보다 길면 "
+                "활성 출처 키 수의 전역 상한 보장이 깨진다"
+            )
+        now = self._clock()
+        source_cutoff = now - source_window_seconds
+        global_cutoff = now - global_window_seconds
+        with self._lock:
+            expired_keys = [
+                k
+                for k, window in self._windows.items()
+                if not window or window[-1] <= source_cutoff
+            ]
+            for expired in expired_keys:
+                del self._windows[expired]
+            while self._global_window and self._global_window[0] <= global_cutoff:
+                self._global_window.popleft()
+
+            # 이 출처의 창부터 판정한다. 출처 초과 요청이 전역 슬롯을 소모하면
+            # 한 출처의 폭주가 전역 상한을 잠그는 원래 문제로 되돌아간다.
+            window = self._windows.get(key)
+            if window is not None:
+                while window and window[0] <= source_cutoff:
+                    window.popleft()
+                if len(window) >= source_limit:
+                    retry_after = max(1, math.ceil(source_window_seconds - (now - window[0])))
+                    return RateLimitDecision(False, retry_after, limited_scope="source")
+
+            if len(self._global_window) >= global_limit:
+                retry_after = max(
+                    1, math.ceil(global_window_seconds - (now - self._global_window[0]))
+                )
+                return RateLimitDecision(False, retry_after, limited_scope="global")
+
+            # 허용이 확정된 뒤에만 기록한다. 새 출처 키도 여기서만 생긴다.
+            if window is None:
+                window = self._windows.setdefault(key, deque())
+            window.append(now)
+            self._global_window.append(now)
+            return RateLimitDecision(True)
+
+    def tracked_key_count(self) -> int:
+        """메모리 상한 검증용 — 현재 창에 남아 있는 출처 수."""
+
+        with self._lock:
+            return len(self._windows)
+
+    def reset(self) -> None:
+        """테스트와 개발 서버 재구성에서 이전 창을 명시적으로 비운다."""
+
+        with self._lock:
+            self._global_window.clear()
+            self._windows.clear()

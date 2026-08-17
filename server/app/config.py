@@ -35,6 +35,24 @@ class Settings(BaseSettings):
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
 
+    # 카카오 로그인(kakao_auth.py). 앱 ID는 검증용 숫자 ID이며 REST API 키가 아니다.
+    # 둘 다 채워야 로그인 endpoint가 동작한다. 비어 있으면 SERVER 오류로 닫힌다.
+    davi_kakao_app_id: int = 0
+    davi_auth_jwt_secret: SecretStr = SecretStr("")
+    # 세션 토큰 수명(초). 기본 30일 — 시니어 사용자가 자주 재로그인하지 않게 길게 둔다.
+    davi_auth_session_ttl_seconds: int = 60 * 60 * 24 * 30
+    # 로그인 endpoint 인프로세스 제한(#167 리뷰 P1). 인증 전 공개 endpoint가 요청마다
+    # 카카오 API를 소모하므로 dev 전용이 아니라 **모든 프로필**에 적용한다. dev 리미터와 별도 창.
+    # 이 두 값은 카카오 API 소모를 막는 **전체 상한**이다. 정상 사용자 보호는 아래 출처별
+    # 제한이 맡으므로, 전체 상한은 동시 사용자 수를 수용할 만큼 넉넉히 둔다.
+    davi_auth_rate_limit_requests: int = 100
+    davi_auth_rate_limit_window_seconds: int = 60
+    # 출처별 제한(#167 재리뷰 P1). 전체 창 하나만 있으면 한 출처의 폭주가 버킷을 소모해
+    # 모든 정상 사용자의 로그인을 막는다. 출처는 직접 연결 peer IP다 — X-Forwarded-For를
+    # 애플리케이션에서 파싱하지 않고, 프록시 뒤에서는 uvicorn --proxy-headers 경로를 쓴다.
+    davi_auth_rate_limit_per_source_requests: int = 10
+    davi_auth_rate_limit_per_source_window_seconds: int = 60
+
     @field_validator("gemini_api_key", mode="after")
     @classmethod
     def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
@@ -73,6 +91,31 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
         if not self.davi_dogfood_raw_dir.strip():
             raise ValueError("DAVI_DOGFOOD_RAW_DIR은 비어 있을 수 없습니다")
+        auth_secret = self.davi_auth_jwt_secret.get_secret_value().strip()
+        if auth_secret and len(auth_secret) < 32:
+            raise ValueError("DAVI_AUTH_JWT_SECRET은 32자 이상이어야 합니다")
+        if self.davi_kakao_app_id < 0:
+            raise ValueError("DAVI_KAKAO_APP_ID는 음수일 수 없습니다")
+        if self.davi_auth_session_ttl_seconds <= 0:
+            raise ValueError("DAVI_AUTH_SESSION_TTL_SECONDS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_requests <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_window_seconds <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_per_source_requests <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
+        if self.davi_auth_rate_limit_per_source_window_seconds <= 0:
+            raise ValueError("DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 양수여야 합니다")
+        # 출처 창이 전역 창보다 길면 전역 창 갱신마다 새 출처 키가 쌓여
+        # "활성 키 수 ≤ 전역 상한" 불변식이 깨진다(#167 4차 리뷰 P2).
+        if (
+            self.davi_auth_rate_limit_per_source_window_seconds
+            > self.davi_auth_rate_limit_window_seconds
+        ):
+            raise ValueError(
+                "DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
+                "DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
+            )
         return self
 
     @property
