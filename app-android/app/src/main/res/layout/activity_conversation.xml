@@ -225,7 +225,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="@dimen/davi_spacing_xl">
+        android:layout_marginBottom="@dimen/davi_mic_margin_bottom">
 
         <include
             android:id="@+id/confirm_pair"
