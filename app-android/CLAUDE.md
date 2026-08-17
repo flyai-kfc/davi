@@ -36,6 +36,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   그리고 터치는 아래 앱으로 통과)와 **조작 오버레이**(안내창과 칩이 살고 그 영역의 터치를 받는다).
   안내창을 조작 쪽에 둔 이유는 칩이 안내창에서 떨어지지 않게 하려는 것이고, 창 전체가 터치를
   흡수하는 이유는 칩을 빗맞혔을 때 가려진 아래 앱이 눌리는 오조작을 막으려는 것이다.
+  안내창의 컨트롤 행에는 **한 번에 하나**만 앉는다(#139) — 평소에는 중지 칩, 완료 확인(GD-3)
+  중에는 확인쌍(×아직요/○됐어요). 확인 중에는 화면 가장자리 테두리가 성공 tone으로 함께 켜지고
+  읽는 중 표시는 꺼진다. **검증된 완료도 앱이 스스로 끝내지 않는다** — 종료는 ○ 응답뿐이다.
   방향 스와이프 애니메이션은 아직 없다(HANDOFF §4의 `SwipeGuideView`).
   오버레이가 안 그려지는 화면(설정 앱)의 헤드업 폴백도 아직 없다.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
@@ -53,7 +56,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
-- **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
+- **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화·오버레이 권한 확인까지 끝난다. Android Studio를 열 필요가 없다.
+- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성·오버레이를 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다.
 - `HANDOFF.md` §3-15의 "CLI 빌드 불가"는 **해결됐다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓이었고, 소켓 임시 폴더를 옮기면 정상 동작한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
@@ -62,7 +66,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `build/reports/device-e2e-private/`에 기본 생성되며 로컬 분석 전용이라 공유·커밋하지 않는다.
   기본 시나리오는 Davi 최신 화면 → Android 홈 → 여러 package를 같은 세션에서 잇는
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.
-- **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로 `./scripts/dev-install.ps1 -SkipBuild`로 권한만 복구한다(2초).
+- **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로 `./scripts/dev-install.ps1 -A11yOnly`로 권한만 복구한다(2초).
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
 - **API 키를 앱에 넣지 않는다.** debug에만 서버 URL·개발 접근 토큰을 주입한다. release는
   개발 설정을 읽거나 포함하지 않는다. 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
@@ -70,7 +74,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - `RECORD_AUDIO`는 사용자가 `말로 입력`을 누를 때 런타임 요청한다. 원시 음성을 Davi 서버로
   직접 보내거나 저장하지 않는다. 인식된 텍스트와 이전 턴은 의미 정리를 위해 서버/Gemini로
   전송된다(SPEC §4 음성 목표 계약).
-- 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 확인: `adb shell settings get secure enabled_accessibility_services`.
+- 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 확인: `./scripts/dev-install.ps1 -Status`.
+  목록(`settings get secure enabled_accessibility_services`)에 값이 있어도 바인딩이 죽어
+  있을 수 있어(`dumpsys accessibility`의 `Bound services:{}`) 목록만 봐선 모른다.
 - adb 서버 버전 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server` → `adb devices`.
 
 ## 디버깅
@@ -92,8 +98,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   앱서랍은 page 없이 `scrollable=true`인 세로 목록이다. 앱 규칙으로 일반화하지 않고
   `../eval/fixtures/`의 구성별 입력으로 보존한다(#47).
 - 오버레이 좌표는 `FLAG_LAYOUT_IN_SCREEN` 없이는 상태표시줄만큼 어긋난다. 있어도 창마다 인셋이 다르게
-  붙는다(런처에서만 밀린 실측). 오버레이가 둘이 된 뒤로는 이 어긋남이 **둘 사이의 어긋남**으로 나타나므로,
-  두 창의 flags를 `FLAG_NOT_TOUCHABLE` 하나만 빼고 똑같이 맞춰 프레임 원점을 공유시킨다.
+  붙는다(런처에서만 밀린 실측). **flags를 맞춰도 두 창의 부모 프레임은 같아지지 않는다**(#139
+  `dumpsys window` 실측 — MATCH_PARENT인 표시 창은 `[0,103]`, 크기가 지정된 조작 창은 `[0,0]`).
+  그래서 창 사이에 자리를 넘길 때는 **화면 좌표**를 쓰고, 창 원점 보정은 그리는 쪽에서만 한다.
 - 안내문이 키보드를 가리면 접근성 `windows`의 `TYPE_INPUT_METHOD` top 위에 배치.
 - 한 instruction에 동작 두 개 금지("홈 누르고 위로 쓸어올리세요").
 - 타 제조사·구버전은 미검증. 기기 분기는 베타 사이클.

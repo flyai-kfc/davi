@@ -75,10 +75,14 @@ data class NextStepResponse(
      */
     val verified: Boolean = false,
     /**
-     * 서버가 label 없이 계산한 현재 화면 구조 서명. 낡은 서버 응답과의 비대칭을 위해 선택 필드다.
-     * 앱은 내용을 해석하거나 만들지 않고, 표시한 행동과 함께 다음 요청으로 되돌려 보낸다.
+     * 서버가 label 없이 계산한 현재 화면 구조 서명. 앱은 내용을 해석하거나 만들지 않고,
+     * 표시한 행동과 함께 다음 요청으로 되돌려 보낸다.
+     *
+     * **선택 필드가 아니다.** 서버 스키마가 `str` + 패턴 검증으로 required이고 응답을 만드는
+     * 곳이 한 군데뿐이라, 이 값이 빠진 응답은 서버가 만들 수 없다. 선택으로 열어 두면 세션이
+     * "부정한 화면"을 가릴 수 없어 ×아직요가 조용히 먹지 않는다(PR #153 리뷰).
      */
-    @SerialName("screen_signature") val screenSignature: String? = null,
+    @SerialName("screen_signature") val screenSignature: String,
 )
 
 @Serializable
