@@ -16,8 +16,12 @@ import androidx.core.content.ContextCompat
  *
  * **컬러 그림자를 `elevation`으로 만들 수 없다** — `setOutlineSpotShadowColor`가 API 28+인데
  * minSdk는 26이다. 인계문은 9-patch를 굽는 방안을 적었으나 여기서는
- * [Paint.setShadowLayer]를 쓴다. 시안의 세 수치(색·y·blur)를 **그대로** 넣을 수 있고
- * 바이너리 에셋이 없어 값이 바뀌어도 다시 굽지 않는다.
+ * [Paint.setShadowLayer]를 쓴다. 색과 y는 시안 값을 그대로 넣고 바이너리 에셋이 없어
+ * 값이 바뀌어도 다시 굽지 않는다.
+ *
+ * **단 blur는 그대로 넘기지 않는다.** Figma는 sigma = r/2이고 Skia는 sigma = r x 0.57735 + 0.5라,
+ * 시안의 36을 그대로 주면 sigma 21.3으로 시안(18)보다 18% 넓게 번진다. 그래서
+ * `davi_glow_card_blur`는 **30dp**이고 sigma 17.8로 맞는다. 환산 근거는 그 토큰 주석에 있다.
  *
  * `setShadowLayer`는 하드웨어 가속에서 무시되므로 **소프트웨어 레이어가 필수**다.
  * 정적인 그림 한 장이고 발화자 전환은 이 뷰의 `alpha`만 바꾸므로 비용이 프레임마다 들지 않는다.
