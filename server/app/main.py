@@ -8,7 +8,7 @@ import time
 import uuid
 from ipaddress import ip_address
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -381,6 +381,7 @@ def _auth_rate_limit_response(
 def post_kakao_login(
     req: KakaoLoginRequest,
     request: Request,
+    response: Response,
 ) -> SessionTokenResponse | JSONResponse:
     """앱이 받아 온 카카오 access token을 검증하고 우리 세션 토큰을 발급한다.
 
@@ -406,11 +407,15 @@ def post_kakao_login(
     if not global_decision.allowed:
         return _auth_rate_limit_response(request, global_decision, "AUTH_RATE_LIMIT")
     try:
-        return login_with_kakao(req)
+        issued = login_with_kakao(req)
     except AuthError as e:
         error = ApiError(kind=e.kind, message=e.message, request_id=request.state.request_id)
         request.state.error_kind = e.kind.value
         return JSONResponse(status_code=e.http_status, content=error.model_dump())
+    # 성공 응답에는 30일 bearer JWT가 들어간다. 클라이언트·중간 계층이 토큰 응답을
+    # 저장하지 못하게 캐시를 금지한다(#167 재리뷰 P2).
+    response.headers["Cache-Control"] = "no-store"
+    return issued
 
 
 @app.post("/v1/intent/slot-fill", response_model=SlotFillState)

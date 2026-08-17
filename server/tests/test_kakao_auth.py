@@ -162,6 +162,21 @@ def test_login_endpoint_returns_session_token(configured_auth, monkeypatch):
     assert r.headers["X-Request-ID"]
 
 
+def test_login_success_response_is_not_cacheable(configured_auth, monkeypatch):
+    """세션 토큰이 담긴 성공 응답은 캐시 금지다(#167 재리뷰 P2)."""
+
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+
+    r = client.post("/v1/auth/kakao", json={"kakao_access_token": "kakao-token"})
+
+    assert r.status_code == 200
+    assert r.headers["Cache-Control"] == "no-store"
+
+
 def test_login_endpoint_maps_auth_error(configured_auth, monkeypatch):
     monkeypatch.setattr(
         kakao_auth,
