@@ -108,7 +108,7 @@
 |---|---|
 | 같은 안내 반복 (앱이 `recent_instructions` 미전송) | #31 — 이력을 실으니 문구가 고정됐다 |
 | 앱 진입 직후 덜 그려진 트리로 요청이 나감 | #32 — 3단계에서 오안내까지 갔다 |
-| 화면이 안 바뀌면 다음 안내가 영영 안 옴 | #39 — 시간 기반 폴링 부재 |
+| 화면이 안 바뀌면 다음 안내가 영영 안 옴 | #39 — 시간 기반 폴링을 넣어 이벤트 없이도 돈다 |
 | 안내 상자가 대상이 속한 다이얼로그 본문을 덮음 | #38 |
 | 홈에만 스크롤·페이지 정보가 없음 (앱서랍엔 `page=2/2`가 잡힘) | #37 |
 
@@ -337,12 +337,14 @@ davi/
 │  ├─ gradle/libs.versions.toml    ← 버전 카탈로그
 │  ├─ gradle/gradle-daemon-jvm.properties  ← 데몬 JVM 고정 (Java 21 / JetBrains)
 │  ├─ gradle/wrapper/gradle-wrapper.{properties,jar}
+│  ├─ e2e-driver/                  ← 실기기 E2E 드라이버 (별도 앱, `DEVICE-E2E.md`)
 │  └─ app/
 │     ├─ build.gradle.kts · proguard-rules.pro
-│     └─ src/main/
-│        ├─ AndroidManifest.xml
-│        ├─ java/com/davi/helper/{MainActivity,GuideAccessibilityService}.kt
-│        └─ res/{values/strings.xml, values/themes.xml, xml/accessibility_service_config.xml}
+│     ├─ src/main/                  ← 아래는 **경계만** 뽑은 것이다. 전체는 소스 트리 참고
+│     │  ├─ AndroidManifest.xml
+│     │  ├─ java/com/davi/helper/{OnboardingActivity,ConversationActivity,GuideAccessibilityService,…}.kt
+│     │  └─ res/{values/*, layout/*, drawable/*, font/*, xml/accessibility_service_config.xml}
+│     └─ src/debug/                ← 개발 전용. 백업 화면 MainActivity는 여기에만 있다
 ├─ server/                         ← FastAPI 추론 오케스트레이터
 │  ├─ CLAUDE.md · README.md · .gitignore · .env.example
 │  ├─ pyproject.toml               ← ruff·pytest 설정 (의존성은 requirements)
