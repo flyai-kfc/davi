@@ -50,8 +50,8 @@ class GuideAccessibilityService : AccessibilityService() {
     private val display = GuideDisplayState()
 
     /**
-     * 오류를 언제 알릴지의 판정(#29). [stability]의 `failures`와 **일부러 따로 센다** —
-     * 그쪽은 백오프 대상이라 `onConfirmReject`·done 불신에서도 올라간다([ErrorNoticeGate] KDoc).
+     * 오류를 언제 알릴지의 판정(#29). **연속으로 실패한 요청 수**를 원인 무관하게 센다.
+     * [stability]의 `failures`와 일부러 따로 두는 이유는 [ErrorNoticeGate] KDoc에 있다.
      */
     private val errorNotice = ErrorNoticeGate()
 
@@ -399,9 +399,9 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "history=${session.recentInstructions.size}",
                         )
                         mainHandler.post {
-                            // 서버에 닿았다. applyAction이 세대·화면 가드로 되돌아가더라도
-                            // "연속으로 못 닿은 횟수"는 여기서 끊긴다.
-                            errorNotice.onReached()
+                            // **Success 분기에서만** 끊는다. ApiFailure·HttpFailure도 서버에는
+                            // 닿지만 안내를 못 그렸으므로 실패로 센다(ErrorNoticeGate KDoc).
+                            errorNotice.onRequestSucceeded()
                             logicalRequests.markHttpResponse(logicalRequest, 200)
                             applyAction(request, signature, result.response, session, logicalRequest)
                         }
@@ -499,11 +499,11 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun retryThisScreen(signature: String, generation: Long, messageRes: Int?) {
         mainHandler.post {
             stability.markFailed()
-            val notify = errorNotice.onTransportFailure()
+            val notify = errorNotice.onRequestFailed()
             Log.i(
                 TAG,
                 "retry backoff=${stability.backoffMs()}ms " +
-                    "transport_failures=${errorNotice.failureCount()}",
+                    "failed_requests=${errorNotice.failureCount()}",
             )
             if (messageRes == null || !notify) return@post
             // 늦게 온 실패가 새 세션의 화면을 덮지 않게 한다(applyAction과 같은 세대 가드).

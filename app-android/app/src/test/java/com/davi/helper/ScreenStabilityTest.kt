@@ -229,7 +229,6 @@ class ScreenStabilityTrackerTest {
         assertEquals(0L, tracker.backoffMs())
     }
 
-
     @Test
     fun `진행 중인 요청이 있으면 새 화면을 보내지 않는다`() {
         // A가 도는 동안 B를 SEND로 내면, 호출자는 "보냈다"고 기록하는데 실제 요청은
