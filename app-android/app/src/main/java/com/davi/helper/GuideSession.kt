@@ -84,47 +84,136 @@ object GuideSession {
     private val actions = ArrayDeque<RecentAction>()
 
     /**
-     * 이 세션에서 **연속으로** 무시한 미검증 `done` 수. done이 아닌 안내가 실제로 표시되면
+     * 이 세션에서 **연속으로** 믿지 않고 넘긴 `done` 수. done이 아닌 안내가 실제로 표시되면
      * 0으로 돌아간다 — 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다.
+     *
+     * 보통은 미검증 done이지만, 사용자가 "아직요"로 부정한 화면에서는 검증된 done도 여기서
+     * 센다([onDone]) — 근거를 잃은 완료 신호라는 점이 같고, 세는 목적(재질의 총량 제한)도 같다.
      */
     private var unverifiedDones = 0
 
+    /**
+     * 사용자의 확인 응답을 기다리는 중인가(#139). 그동안 서비스는 화면을 계속 보되 서버에
+     * 묻지 않는다. 샘플 루프가 매 폴링 읽으므로 volatile로 둔다.
+     */
+    @Volatile
+    var awaitingConfirm: Boolean = false
+        private set
+
+    /** 확인 화면을 띄운 화면의 서명. ×아직요를 받으면 이 값이 부정 이력이 된다. */
+    private var pendingConfirmSignature: String? = null
+
+    /**
+     * 사용자가 "아직요"로 완료를 부정한 화면의 서명. 그 화면에서 다시 오는 done은 확인 화면을
+     * 띄우지 않는다 — 안 그러면 같은 화면이 done을 계속 주는 동안 확인 화면이 무한 반복된다.
+     *
+     * **유효기간이 있다.** 다른 화면의 done이 오거나 **안내가 실제로 나가면**(= 사용자가
+     * 진행했다) 지운다. 후자가 없으면 완료 신호가 드문 실제 세션에서 이력이 끝까지 남는다
+     * ([recordInstruction], PR #153 리뷰 P2).
+     */
+    private var rejectedSignature: String? = null
+
     /** `done` 응답 하나를 세션이 어떻게 처리할지. [onDone]이 돌려준다. */
     enum class DoneOutcome {
-        /** 검증된 완료. 세션은 이미 끝났다. */
-        STOP,
+        /** 검증된 완료. 확신 있는 문구로 사용자에게 끝났는지 묻는다(GD-3). */
+        CONFIRM_CONFIDENT,
+
+        /** 미검증 완료가 [MAX_UNVERIFIED_DONE]에 닿았다. 확신 없는 문구로 같은 화면을 띄운다. */
+        CONFIRM_UNSURE,
 
         /** 미검증 완료. 세션을 두고 같은 화면을 다시 물어본다. */
         RETRY,
 
-        /** 미검증 완료가 [MAX_UNVERIFIED_DONE]에 닿았다. 더 묻지 말고 사용자에게 확인을 넘긴다. */
-        LIMIT_REACHED,
+        /**
+         * 사용자가 이미 "아직요"라고 답한 화면에서 완료 신호가 상한까지 반복됐다. 확인 화면
+         * 대신 문구만 띄운다 — 같은 질문을 다시 하지 않으면서 재질의도 멈춘다.
+         */
+        NOTICE_ONLY,
     }
 
     /**
-     * 서버의 `done` 응답 하나를 판정한다. 서버발로 세션이 끝나는 유일한 경로다.
+     * 서버의 `done` 응답 하나를 판정한다. **여기서 세션이 끝나지는 않는다**(#139) — 검증된
+     * 완료도 확인 화면을 거치고, 종료는 사용자의 "됐어요"([confirmAccepted])만이 만든다.
+     * 성공 경로가 오버레이만 조용히 사라지던 무표시 종료를 없애려는 것이다.
      *
      * `verified=false`인 done은 완료 검증(#54)이 화면 근거를 못 찾은 것이라 종료 신호로 믿지
-     * 않는다(#55). 대신 몇 번 다시 물었는지 세고, 상한부터는 [DoneOutcome.LIMIT_REACHED]로
-     * 사용자에게 넘긴다. **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다
-     * (server/CLAUDE.md C11이 fallback에서 done을 배제한 것과 같은 근거).
+     * 않는다(#55). 대신 몇 번 다시 물었는지 세고, 상한부터는 확인 화면으로 넘긴다.
+     * **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다(server/CLAUDE.md C11이
+     * fallback에서 done을 배제한 것과 같은 근거).
      *
-     * 판정과 종료를 한자리에 둔 것은 "미검증 done이 세션을 끝내지 않는다"를 JVM 테스트로
-     * 고정하기 위해서다. 이전 세대의 늦은 done은 여기서도 버린다(null).
+     * [screenSignature]는 그 done이 온 화면이다. 사용자가 이미 부정한 화면인지 이 값으로 가린다.
+     *
+     * 이전 세대의 늦은 done은 여기서도 버린다(null).
      */
-    fun onDone(generation: Long, verified: Boolean): DoneOutcome? {
-        val outcome = synchronized(this) {
-            if (!isCurrent(generation)) return null
-            if (verified) {
-                DoneOutcome.STOP
-            } else {
-                unverifiedDones++
-                if (unverifiedDones >= MAX_UNVERIFIED_DONE) DoneOutcome.LIMIT_REACHED else DoneOutcome.RETRY
-            }
+    @Synchronized
+    fun onDone(generation: Long, verified: Boolean, screenSignature: String): DoneOutcome? {
+        if (!isCurrent(generation)) return null
+
+        // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
+        val rejected = screenSignature == rejectedSignature
+        if (!rejected) rejectedSignature = null
+
+        if (verified && !rejected) {
+            awaitConfirm(screenSignature)
+            return DoneOutcome.CONFIRM_CONFIDENT
         }
-        // stop()은 리스너를 부르므로 잠금 밖에서(클래스 규칙: 리스너는 잠금 안에서 부르지 않는다).
-        if (outcome == DoneOutcome.STOP) stop()
-        return outcome
+
+        // 부정된 화면의 done은 검증 여부와 무관하게 여기서 센다. 사용자가 아니라고 한 이상
+        // 그 화면의 완료 신호는 근거가 없고, 세는 이유도 재질의 총량을 묶는 것으로 같다.
+        unverifiedDones++
+        if (unverifiedDones < MAX_UNVERIFIED_DONE) return DoneOutcome.RETRY
+        if (rejected) return DoneOutcome.NOTICE_ONLY
+        awaitConfirm(screenSignature)
+        return DoneOutcome.CONFIRM_UNSURE
+    }
+
+    private fun awaitConfirm(screenSignature: String) {
+        awaitingConfirm = true
+        pendingConfirmSignature = screenSignature
+    }
+
+    /**
+     * 확인 대기를 **원자적으로** 내린다. 대기가 아니었으면 false — 그때 호출자는 아무것도 하지 않는다.
+     *
+     * **서명은 돌려주지 않는다.** 대기 여부와 서명을 한 반환값에 겹치면 "대기가 아니었다"와
+     * "대기였는데 서명이 없다"가 구별되지 않는다. 지금은 서명이 required라 후자가 없지만, 계약이
+     * 다시 열리면 ○을 눌러도 세션이 안 끝나는 실패로 나타나고 원인을 여기서 찾기 어렵다
+     * (PR #153 리뷰 nit). 서명이 필요한 호출자는 [pendingConfirmSignature]를 같은 잠금 안에서 읽는다.
+     *
+     * 두 응답 경로가 이걸 공유하는 이유는 "확인 상태를 만지는 자리는 전부 잠근다"를 코드로
+     * 보이기 위해서다. 실제로는 확인 콜백도 샘플 루프도 메인 스레드지만, [awaitingConfirm]에 붙은
+     * `@Volatile`이 "읽는 쪽 스레드가 다르다"로 읽히므로 검사와 해제가 따로 놀면 그 자리만
+     * 규칙 밖으로 보인다.
+     */
+    @Synchronized
+    private fun consumeConfirm(): Boolean {
+        if (!awaitingConfirm) return false
+        awaitingConfirm = false
+        return true
+    }
+
+    /** 사용자가 "됐어요"를 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다. */
+    fun confirmAccepted() {
+        if (!consumeConfirm()) return
+        // stop() -> update()가 남은 확인 상태까지 비운다. 리스너를 부르므로 잠금 밖에서.
+        stop()
+    }
+
+    /**
+     * 사용자가 "아직요"를 눌렀다. 세션은 그대로 두고 안내를 잇는다.
+     *
+     * 그 화면을 부정 이력에 남겨 확인 화면이 곧바로 다시 뜨지 않게 하고, 미검증 카운터는
+     * 0으로 돌린다 — 재질의 예산을 이 시점부터 새로 준다.
+     *
+     * 함수 전체에 잠금을 건다. JVM 모니터는 재진입이라 [consumeConfirm]을 그대로 부를 수 있고,
+     * 그래야 대기 해제부터 이력 기록까지가 **한 구간으로** 원자적이다(PR #153 리뷰 nit).
+     */
+    @Synchronized
+    fun confirmRejected() {
+        if (!consumeConfirm()) return
+        rejectedSignature = pendingConfirmSignature
+        pendingConfirmSignature = null
+        unverifiedDones = 0
     }
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
@@ -144,6 +233,12 @@ object GuideSession {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
         unverifiedDones = 0
+        // 같은 근거로 부정 이력의 유효기간도 여기서 끝난다. ×아직요는 "지금 이 순간 아직 안
+        // 됐다"는 답인데, 이력을 done으로만 지우면 완료 신호가 드문 실제 세션에서 세션이 끝날
+        // 때까지 남는다 — 사용자가 여러 단계를 거쳐 그 화면에서 실제로 목표를 달성해도 성공
+        // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
+        // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
+        rejectedSignature = null
         val trimmed = instruction.trim()
         if (trimmed.isEmpty()) return
         instructions.addLast(trimmed)
@@ -155,12 +250,11 @@ object GuideSession {
     /**
      * 사용자에게 실제로 표시한 행동만 기록한다.
      *
-     * 낡은 서버는 화면 서명을 주지 않으므로 기록하지 않는다. 이전 세대의 늦은 응답도
-     * [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
+     * 이전 세대의 늦은 응답은 [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
      */
     @Synchronized
-    fun recordAction(generation: Long, screenSignature: String?, action: GuideAction) {
-        if (!isCurrent(generation) || screenSignature == null) return
+    fun recordAction(generation: Long, screenSignature: String, action: GuideAction) {
+        if (!isCurrent(generation)) return
         actions.addLast(
             RecentAction(
                 screenSignature = screenSignature,
@@ -174,7 +268,10 @@ object GuideSession {
         }
     }
 
-    /** 사용자가 중지했거나 서버가 `done`을 줬다. 둘의 상태 결과는 같다. */
+    /**
+     * 세션을 끝낸다. 사용자가 중지했거나(칩·앱의 중지 버튼), 확인 화면에서 "됐어요"를 눌렀거나,
+     * 권한이 사라져 진행할 수 없을 때. **서버의 `done`은 더 이상 여기로 오지 않는다**(#139).
+     */
     fun stop() = update(null)
 
     fun addListener(listener: Listener) {
@@ -196,6 +293,11 @@ object GuideSession {
             instructions.clear()
             actions.clear()
             unverifiedDones = 0
+            // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
+            // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.
+            awaitingConfirm = false
+            pendingConfirmSignature = null
+            rejectedSignature = null
         }
         listeners.forEach { it.onSessionChanged(next) }
     }

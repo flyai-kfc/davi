@@ -111,7 +111,7 @@ class GuideApiClientTest {
     fun `parses a scroll action with direction`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"action":{"expected_result":"목록 아래가 보인다","evidence":"더 넘길 수 있는 목록","action_type":"scroll","direction":"up","target_node_id":"n3","instruction":"화면을 쓸어서 더 내려 보세요."},"model":"stub","verified":false}""",
+                """{"action":{"expected_result":"목록 아래가 보인다","evidence":"더 넘길 수 있는 목록","action_type":"scroll","direction":"up","target_node_id":"n3","instruction":"화면을 쓸어서 더 내려 보세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
             ),
         )
 
@@ -129,7 +129,7 @@ class GuideApiClientTest {
         repeat(2) {
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false}""",
+                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
                 ),
             )
         }
@@ -173,7 +173,7 @@ class GuideApiClientTest {
                 )
                 .addHeader(RequestTracingContract.ATTEMPT_HEADER, "01")
                 .setBody(
-                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false}""",
+                    """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
                 ),
         )
 
