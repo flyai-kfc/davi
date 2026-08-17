@@ -37,7 +37,8 @@
     <FrameLayout
         android:id="@+id/conversation_insets"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:clipChildren="false">
 
     <!--
       음성 모션 (#132). 배경 바로 위, 나머지 내용 아래에 둔다 — 첫 자식이라 z축 맨 뒤다.
@@ -75,7 +76,9 @@
         android:gravity="center_horizontal"
         android:paddingLeft="@dimen/davi_spacing_xl"
         android:paddingRight="@dimen/davi_spacing_xl"
-        android:paddingBottom="@dimen/davi_conversation_control_reserve">
+        android:paddingBottom="@dimen/davi_conversation_control_reserve"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <Space
             android:id="@+id/space_home_top"
@@ -152,9 +155,11 @@
         <FrameLayout
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="176"
-            android:layout_marginTop="@dimen/davi_badge_overlap_negative">
+            android:minHeight="@dimen/davi_card_min_height_davi"
+            android:layout_marginTop="@dimen/davi_badge_overlap_negative"
+            android:clipChildren="false">
 
             <com.davi.helper.CardGlowView
                 android:id="@+id/glow_card"
@@ -166,8 +171,7 @@
         <LinearLayout
             android:id="@+id/card_question_container"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="@dimen/davi_card_min_height_davi"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center_horizontal"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
@@ -210,7 +214,7 @@
         <LinearLayout
             android:id="@+id/card_utterance_container"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="196"
             android:layout_marginTop="@dimen/davi_card_gap"
             android:minHeight="@dimen/davi_card_min_height_senior"
