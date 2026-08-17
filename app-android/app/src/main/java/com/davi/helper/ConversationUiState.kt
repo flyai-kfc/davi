@@ -66,6 +66,11 @@ data class ConversationRenderModel(
     /** 마이크 글로우. 듣는 중(음량 반응)과 홈 유도(고정 숨쉬기) 두 자리에서 쓴다. */
     val glowVisible: Boolean = false,
     /**
+     * 다비 카드 뒤 분홍 글로우(#170). **다비가 말하는 동안에만** true.
+     * 파도가 "사용자 차례"의 신호이듯 이쪽이 "다비 차례"의 신호다 — 둘은 같이 켜지지 않는다.
+     */
+    val cardGlowVisible: Boolean = false,
+    /**
      * 글로우가 음량에 반응하는가. 듣는 중에는 true, 홈 유도에서는 들을 마이크가 없어 false.
      * [glowVisible]이 false면 의미가 없다.
      */
@@ -116,8 +121,10 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         glowVisible = true,
         glowReactsToVoice = true,
     )
-    // 다비가 말하는 중 — 파도·글로우를 **의도적으로 켜지 않는다**(#132). 사용자 차례와 구분되는
-    // 신호가 그 부재이므로, 여기에 다른 모션을 넣으면 구분이 사라진다.
+    // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).
+    // 사용자 차례와 구분되는 신호가 그 부재이므로, 하단에 다른 모션을 넣으면 구분이 사라진다.
+    // 대신 v2는 **다비 카드 뒤 분홍 글로우**로 다비 차례를 표시한다(#170) — 신호가 하단이
+    // 아니라 카드 쪽에 생기므로 위 구분을 흐리지 않는다.
     is ConversationUiState.Speaking -> ConversationRenderModel(
         logoVisible = true,
         questionText = state.question,
@@ -125,6 +132,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         micVisible = true,
         micEnabled = true, // barge-in — 재생을 끊고 바로 답할 수 있다
         closeVisible = true,
+        cardGlowVisible = true,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
