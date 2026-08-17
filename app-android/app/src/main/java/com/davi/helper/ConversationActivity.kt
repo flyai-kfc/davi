@@ -291,6 +291,10 @@ class ConversationActivity : AppCompatActivity() {
             lastQuestionKey = questionKey
             binding.cardQuestion.scrollTo(0, 0)
         }
+        // **래퍼까지 끈다.** 안쪽 컨테이너만 끄면 빈 래퍼가 weight로 자리를 먹어 홈 제목이
+        // 위로 밀리고 그 자리가 빈 화면으로 남는다(2026-08-17 실기기). 다비 카드도 같은 이유로
+        // cardQuestionWrap을 함께 끈다.
+        binding.cardUtteranceWrap.isVisible(model.utteranceVisible)
         binding.cardUtteranceContainer.isVisible(model.utteranceVisible)
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
