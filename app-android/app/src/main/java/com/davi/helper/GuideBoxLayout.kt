@@ -45,6 +45,8 @@ object GuideBoxLayout {
      * @param avoid    대상 밖의 회피 영역.
      * @param controlHeight 안내창 안에 비워 둘 컨트롤 행의 높이(칩이 앉는 자리, #126). 0이면 없다 —
      *   기본값이 0이라 칩을 모르는 호출자와 기존 테스트는 산술이 그대로다.
+     * @param centered 화면 세로 중앙에 놓는다(GD-4 종료 확인, #193). **[target]·[avoid]를 보지
+     *   않는다** — 스크림 위 모달이라 가릴 대상이 없고, 자리를 흥정할 상대도 없다.
      * @return 그릴 것이 없으면 null.
      */
     fun compute(
@@ -57,6 +59,7 @@ object GuideBoxLayout {
         measure: Measure,
         avoid: List<Avoid> = emptyList(),
         controlHeight: Float = 0f,
+        centered: Boolean = false,
     ): Layout? {
         if (instruction.isEmpty()) return null
 
@@ -74,7 +77,9 @@ object GuideBoxLayout {
             (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - padding * 2 - controlHeight) / lineHeight)
                 .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight)
+            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight, centered)
+        // 중앙 배치는 자리를 흥정하지 않는다 — 회피를 안 보므로 축소 폴백이 할 일도 없다.
+        if (centered) return primary.layout
         if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
 
         // 2차: 절반 상자가 무언가를 덮으면 3줄로 줄여 한 번 재시도한다. hard뿐 아니라
@@ -89,7 +94,7 @@ object GuideBoxLayout {
         val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight)
+            canvas, target, avoid, margin, padding, lineHeight, measure, controlHeight, centered)
         // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
         // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         val improves = compact.hardCoverage < primary.hardCoverage ||
@@ -119,12 +124,17 @@ object GuideBoxLayout {
         lineHeight: Float,
         measure: Measure,
         controlHeight: Float,
+        centered: Boolean,
     ): Attempt {
         // 잘림 표현은 W8에서 재론.
         val lines = truncate(wrapped, maxLines, textWidth, measure)
         val height = lines.size * lineHeight + padding * 2 + controlHeight
 
-        val top = topFor(height, left, right, canvas, target, avoid, margin)
+        val top = if (centered) {
+            centeredTop(height, canvas)
+        } else {
+            topFor(height, left, right, canvas, target, avoid, margin)
+        }
         val box = Bounds(left, top, right, top + height)
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
         val soft = avoid.filterNot { it.hard }.map { it.bounds }
@@ -219,6 +229,13 @@ object GuideBoxLayout {
     /** 어느 자리도 온전히 들어가지 않을 때. 상자가 화면보다 크면 위쪽을 살린다. */
     private fun bottomAnchored(height: Float, canvas: Bounds, margin: Float): Float =
         (canvas.bottom - margin - height).coerceAtLeast(canvas.top)
+
+    /**
+     * 화면 세로 중앙(GD-4). 상자가 화면보다 크면 [bottomAnchored]와 같은 이유로 위쪽을 살린다 —
+     * 아래로 넘치면 확인쌍이 화면 밖으로 나가 답할 수 없다.
+     */
+    private fun centeredTop(height: Float, canvas: Bounds): Float =
+        (canvas.top + (canvas.bottom - canvas.top - height) / 2f).coerceAtLeast(canvas.top)
 
     /**
      * 명시적 개행을 먼저 끊고, 각 문단을 폭에 맞춰 접는다.

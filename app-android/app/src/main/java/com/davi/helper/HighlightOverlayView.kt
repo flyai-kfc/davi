@@ -106,6 +106,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     private val readingColor = ContextCompat.getColor(context, R.color.davi_overlay_reading)
     private val confirmColor = ContextCompat.getColor(context, R.color.davi_overlay_confirm)
+    private val scrimColor = ContextCompat.getColor(context, R.color.davi_overlay_scrim)
 
     /** 서비스가 요청한 상태. 실제 표시는 onset 지연 뒤라 [readingVisible]과 다를 수 있다. */
     private var reading = false
@@ -267,6 +268,11 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        // 스크림(GD-4)도 테두리와 같은 이유로 translate 앞이다 — 뷰가 차지한 범위를 덮는다.
+        // **터치는 막지 않는다.** 이 창이 FLAG_NOT_TOUCHABLE이고, 뒤집으면 "대신 조작하지
+        // 않는다"(SPEC §2)와 부딪친다. 막을 이유도 없다 — 이 화면은 ○/× 말고는 사라지지
+        // 않으므로 아래 앱을 만져도 답할 자리가 남는다.
+        if (confirmKind == GuideDisplayState.ConfirmKind.QUIT) canvas.drawColor(scrimColor)
         // 읽는 중 테두리는 **뷰 로컬 좌표**라 아래 translate 앞에서 그린다. 창이 밀려 놓이는
         // 기기에서도 뷰가 실제로 차지한 사각형을 따라가야 잘리지 않는다.
         drawReadingBorder(canvas)
@@ -361,6 +367,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     },
                     avoid = avoid,
                     controlHeight = controlRow,
+                    centered = confirmKind == GuideDisplayState.ConfirmKind.QUIT,
                 )
             },
         )

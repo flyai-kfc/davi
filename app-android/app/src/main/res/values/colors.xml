@@ -34,6 +34,12 @@
       "다 된 것 같아요"를 가른다. 위와 같은 이유로 raw 값 대신 상태 색을 별칭으로 문다.
     -->
     <color name="davi_overlay_confirm">@color/davi_success</color>
+    <!--
+      종료 확인(GD-4, #193)의 전면 스크림. 검정 40% — v2 시안 실측값이다.
+      시각 표시일 뿐 터치를 막지 않는다(그리는 창이 FLAG_NOT_TOUCHABLE).
+      값 조정은 #178. 다른 토큰의 별칭이 아니다 — 시안이 직접 지정한 유일한 오버레이 채움이다.
+    -->
+    <color name="davi_overlay_scrim">#66000000</color>
 
     <!-- 눌림 상태 레이어(E2): 검정 12%. Material state layer 관례 — ripple 색으로 쓴다. -->
     <color name="davi_state_layer_pressed">#1F000000</color>
