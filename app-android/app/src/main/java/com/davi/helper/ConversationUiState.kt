@@ -84,7 +84,8 @@ data class ConversationRenderModel(
  * 마이크: active=누를 수 있는 상태(홈 idle, 질문 재생 중 barge-in) / deactive=누르지 못하는
  * 상태(듣는 중·응답 대기 — 둘의 시각 구분은 추후 웨이브폼 등으로).
  *
- * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다(#123).
+ * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠그며, **왜 잠겼는지를
+ * 상태 문구로 말한다**(#29 — 그 전에는 문구가 비어 있어 화면에 이유가 없었다).
  * #126이 오버레이에 X 칩을 세워 앱에 오지 않고도 끝낼 수 있게 됐지만, 사용자가 실수로 앱을
  * 다녀오는 경로가 남아 **중단 수단을 양쪽에 둔다**(2026-08-13 결정).
  *
@@ -96,7 +97,9 @@ data class ConversationRenderModel(
 fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
     is ConversationUiState.Home -> ConversationRenderModel(
         homeVisible = true,
-        statusRes = state.statusRes,
+        // 안내 중이면 그 사실이 직전 시도의 오류보다 급하다(#29) — 마이크가 잠긴 이유가
+        // 화면에 없으면 사용자는 눌리지 않는 버튼을 반복해서 누른다.
+        statusRes = if (guideActive) R.string.conversation_guide_active else state.statusRes,
         micVisible = true,
         micEnabled = !guideActive,
         stopGuideVisible = guideActive,

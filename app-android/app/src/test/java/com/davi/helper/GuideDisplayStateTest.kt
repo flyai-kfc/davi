@@ -20,6 +20,71 @@ class GuideDisplayStateTest {
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
     private val confirmText = "다 됐어요! 해결되셨나요?"
+    private val errorText = "인터넷 연결이 원활하지 않아요."
+    private val otherErrorText = "지금은 이용하는 분이 많아요."
+
+    // ── 안내 중 서버 오류(#29) ─────────────────────────────────────────
+
+    /** 오류는 기존 안내를 덮는다. 걷히면 다음 성공 응답이 새 안내로 다시 덮는다. */
+    @Test
+    fun `오류는 기존 안내를 덮고 성공 응답이 다시 덮는다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+
+        assertEquals(GuideDisplayState.Content(null, errorText), state.showError(sigA, errorText))
+        assertEquals(
+            GuideDisplayState.Content(listOf(5, 6, 7, 8), "다음을 누르세요"),
+            state.show(sigA, listOf(5, 6, 7, 8), "다음을 누르세요"),
+        )
+    }
+
+    /**
+     * 재시도는 백오프로 계속 도는데 그때마다 같은 내용을 다시 그리면 조작 오버레이가 자기
+     * 창을 만져 스스로를 깨운다(#153에서 정체 알림이 실제로 그랬다).
+     */
+    @Test
+    fun `같은 화면의 같은 오류는 다시 그리지 않는다`() {
+        state.showError(sigA, errorText)
+
+        assertNull(state.showError(sigA, errorText))
+    }
+
+    /** 오류 종류가 바뀌었으면 사용자가 볼 말도 달라진다 — 억제 대상이 아니다. */
+    @Test
+    fun `오류 문구가 바뀌면 다시 그린다`() {
+        state.showError(sigA, errorText)
+
+        assertEquals(
+            GuideDisplayState.Content(null, otherErrorText),
+            state.showError(sigA, otherErrorText),
+        )
+    }
+
+    /** 지워졌다면 같은 오류라도 다시 그려야 화면이 빈 채 남지 않는다. */
+    @Test
+    fun `지워진 뒤에는 같은 오류도 다시 그린다`() {
+        state.showError(sigA, errorText)
+        state.onCleared()
+
+        assertEquals(GuideDisplayState.Content(null, errorText), state.showError(sigA, errorText))
+    }
+
+    /** 서버가 안 되어 화면이 그대로인 것이지 사용자가 조작을 놓친 게 아니다. */
+    @Test
+    fun `오류에는 정체 접미사를 붙이지 않는다`() {
+        state.show(sigA, null, "확인을 누르세요")
+        state.showError(sigA, errorText)
+
+        assertEquals(GuideDisplayState.Content(null, errorText), state.stuckContent(stuck))
+    }
+
+    /** 확인 화면과 달리 오류는 화면을 따라다니지 않는다 — 그 화면의 새 요청이 어차피 나간다. */
+    @Test
+    fun `오류는 화면이 바뀌면 폐기된다`() {
+        state.showError(sigA, errorText)
+        state.onCleared()
+
+        assertNull(state.redisplay(sigB, true))
+    }
 
     @Test
     fun `상한 안내는 지워진 뒤 같은 화면에서 재표시된다`() {

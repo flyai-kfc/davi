@@ -144,6 +144,15 @@ class ScreenStabilityTracker(
         stuckReported = false
     }
 
+    /**
+     * 연속 실패 횟수. 오류를 **언제 사용자에게 알릴지**를 이 값으로 가른다(#29) — 첫 실패는
+     * 조용히 재시도하고 두 번째부터 안내창에 띄운다. 순간적인 끊김이 안내를 2초간 오류 문구로
+     * 덮었다 되돌리면, 그 깜빡임이 어르신에게는 안내보다 먼저 눈에 들어온다.
+     *
+     * [backoffMs]에서 역산하지 않는다 — 상한에 걸리면 실패가 늘어도 값이 안 변한다.
+     */
+    fun failureCount(): Int = failures
+
     /** 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다. */
     fun backoffMs(): Long {
         if (failures <= 0) return 0L
