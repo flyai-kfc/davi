@@ -7,45 +7,31 @@
   **E3(Lucide 24 그리드)의 예외다.** 마이크는 이 앱의 유일한 주 조작 수단이고 시안이
   전용으로 그린 글리프라, 24 그리드로 다시 그리면 시안 대응(76 -> 91dp)이 깨진다.
 
-  이 파일에는 아이콘 6-path 만 있다. 흰 원과 뒤쪽 빨강 글로우는 배경 레이어라
+  이 파일에는 아이콘 6-path 만 있다(전부 선, 채움 없음). 흰 원과 뒤쪽 빨강 글로우는 배경 레이어라
   여기 넣지 않는다 (bg_davi_mic_button · MicGlowView).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="76dp"
     android:height="76dp"
     android:viewportWidth="76"
     android:viewportHeight="76">
 
     <!--
-      1. 마이크 몸통 — 캡슐. 채움은 세로 2톤(50/51% 하드 스플릿), 테두리 4.
+      1. 마이크 몸통 — 캡슐. **채우지 않는다**, 테두리 4.
 
       **Figma에서 테두리가 INSIDE 정렬**인데 VectorDrawable의 stroke는 중앙 정렬이라,
       사각형을 굵기의 절반(2)만큼 안으로 넣었다 — 시안 x28 y9 w20 h36 반경 10이
       여기서는 x30 y11 w16 h32 반경 8이다. 바깥 경계는 시안과 같은 x28~48 / y9~45.
 
-      그라디언트 범위는 안쪽 path가 아니라 **바깥 캡슐 경계(y9~45)** 기준이다.
-      **offset을 뭉개면 안 된다** — 부드러운 그라디언트가 아니라 딱 반으로 갈리는 형태다.
-    -->
-    <path
-        android:pathData="M30,19 A8,8 0 0 1 46,19 L46,35 A8,8 0 0 1 30,35 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="linear"
-                android:startX="38" android:startY="9"
-                android:endX="38"   android:endY="45">
-                <item android:offset="0.0"  android:color="@color/davi_surface_secondary" />
-                <item android:offset="0.5"  android:color="@color/davi_surface_secondary" />
-                <item android:offset="0.51" android:color="@color/davi_mic_capsule_bottom" />
-                <item android:offset="1.0"  android:color="@color/davi_mic_capsule_bottom" />
-            </gradient>
-        </aapt:attr>
-    </path>
+      **시안의 분홍 2톤 채움(0.50/0.51 하드 스플릿)을 뺐다**(2026-08-17 결정).
+      채운 캡슐 위에 그릴 선이 얹히면 캡슐이 조각나 마이크가 아니라 배터리처럼 읽혔다.
+      비우면 흰 버튼 표면이 그대로 비쳐 선 아이콘 하나로 읽힌다.
+      `davi_surface_secondary`·`davi_mic_capsule_bottom`은 이 아이콘에서 더 쓰이지 않는다 —
+      토큰 자체는 Figma 시맨틱이라 남겨 둔다.
 
-    <!--
-      **테두리를 채움과 같은 path에 두면 안 그려진다.** 한 path에 aapt:attr 그라디언트
-      채움과 stroke를 함께 주면 stroke가 누락된다(실기기 실측 — 캡슐만 빨강 선이 빠졌다).
-      그래서 같은 좌표를 두 path로 나눠 채움과 선을 따로 그린다.
+      채움을 되살릴 일이 생기면 **테두리와 같은 path에 두면 안 된다** — 한 path에
+      aapt:attr 그라디언트 채움과 stroke를 함께 주면 stroke가 누락된다(실기기 실측).
+      좌표가 같은 두 path로 나눠야 한다.
     -->
     <path
         android:pathData="M30,19 A8,8 0 0 1 46,19 L46,35 A8,8 0 0 1 30,35 Z"
