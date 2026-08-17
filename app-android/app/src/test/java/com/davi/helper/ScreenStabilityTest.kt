@@ -229,28 +229,6 @@ class ScreenStabilityTrackerTest {
         assertEquals(0L, tracker.backoffMs())
     }
 
-    /**
-     * 오류를 언제 사용자에게 알릴지가 이 값에 달려 있다(#29 — 두 번째 실패부터).
-     * [ScreenStabilityTracker.backoffMs]로 역산하지 않는 이유는 상한에 걸리면 실패가 늘어도
-     * 값이 안 변해서다 — 아래 마지막 단언이 그 차이를 지킨다.
-     */
-    @Test
-    fun `연속 실패 횟수를 셀 수 있고 성공하면 0으로 돌아간다`() {
-        assertEquals(0, tracker.failureCount())
-
-        tracker.markFailed()
-        assertEquals(1, tracker.failureCount())
-
-        tracker.markFailed()
-        assertEquals(2, tracker.failureCount())
-
-        tracker.markSucceeded()
-        assertEquals(0, tracker.failureCount())
-
-        repeat(40) { tracker.markFailed() }
-        assertEquals(40, tracker.failureCount())
-        assertEquals(ScreenStabilityTracker.RETRY_MAX_MS, tracker.backoffMs()) // 백오프는 상한에서 멈춘다
-    }
 
     @Test
     fun `진행 중인 요청이 있으면 새 화면을 보내지 않는다`() {

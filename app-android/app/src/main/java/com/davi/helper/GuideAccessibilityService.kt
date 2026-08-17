@@ -49,6 +49,12 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 무엇이 보여야 하는지의 판정. 재표시·정체 접미사 규칙이 여기 있다(PR #63 리뷰 P1). */
     private val display = GuideDisplayState()
 
+    /**
+     * 오류를 언제 알릴지의 판정(#29). [stability]의 `failures`와 **일부러 따로 센다** —
+     * 그쪽은 백오프 대상이라 `onConfirmReject`·done 불신에서도 올라간다([ErrorNoticeGate] KDoc).
+     */
+    private val errorNotice = ErrorNoticeGate()
+
     /** 직전 샘플의 판정. null이면 세션 시작 후 첫 샘플 전이다([ReadingBorder.isReading]). */
     private var lastDecision: ScreenStabilityTracker.Decision? = null
 
@@ -69,6 +75,7 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            errorNotice.reset()
             lastDecision = null
             if (goal == null) {
                 mainHandler.removeCallbacks(sampleRunnable)
@@ -392,6 +399,9 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "history=${session.recentInstructions.size}",
                         )
                         mainHandler.post {
+                            // 서버에 닿았다. applyAction이 세대·화면 가드로 되돌아가더라도
+                            // "연속으로 못 닿은 횟수"는 여기서 끊긴다.
+                            errorNotice.onReached()
                             logicalRequests.markHttpResponse(logicalRequest, 200)
                             applyAction(request, signature, result.response, session, logicalRequest)
                         }
@@ -479,12 +489,23 @@ class GuideAccessibilityService : AccessibilityService() {
      *
      * 오류는 기존 안내를 **덮는다**. 되살릴 것을 기억하지 않는 이유는 오류가 걷히는 순간
      * 성공 응답이 새 안내를 그리기 때문이다 — 걷힌 뒤 옛 안내를 되살리면 오히려 낡은 지시가 뜬다.
+     *
+     * [signature]는 **요청을 보낸 시점의 화면**이다. 그 사이 화면이 바뀌고 오버레이가 한 번
+     * 걷히면(우리 앱 왕복 등) 재표시가 서명 불일치로 폐기해 백오프가 끝날 때까지 화면이 빈다.
+     * 수용한다 — 되살릴 대상은 **떠난 화면의** 오류이고, 새 화면의 요청은 백오프가 지나면
+     * 어차피 나간다. 그때 성공하면 안내가, 또 실패하면 오류가 새 서명으로 다시 뜬다
+     * (PR #189 리뷰 관찰).
      */
     private fun retryThisScreen(signature: String, generation: Long, messageRes: Int?) {
         mainHandler.post {
             stability.markFailed()
-            Log.i(TAG, "retry backoff=${stability.backoffMs()}ms failures=${stability.failureCount()}")
-            if (messageRes == null || stability.failureCount() < ERROR_NOTICE_MIN_FAILURES) return@post
+            val notify = errorNotice.onTransportFailure()
+            Log.i(
+                TAG,
+                "retry backoff=${stability.backoffMs()}ms " +
+                    "transport_failures=${errorNotice.failureCount()}",
+            )
+            if (messageRes == null || !notify) return@post
             // 늦게 온 실패가 새 세션의 화면을 덮지 않게 한다(applyAction과 같은 세대 가드).
             if (!GuideSession.isCurrent(generation)) return@post
             // 확인 대기 중에는 아무것도 덮지 않는다 — 답할 자리가 사라진다(#153).
@@ -696,12 +717,6 @@ class GuideAccessibilityService : AccessibilityService() {
         private const val POLL_MS = 700L
 
         private const val MAX_LOGGED_ELEMENTS = 30
-
-        /**
-         * 오류를 안내창에 띄우기 전에 요구하는 연속 실패 횟수(#29). 첫 실패는 백오프 2초로
-         * 조용히 다시 묻는다 — 한 번 끊긴 것과 서버가 죽은 것을 사용자에게 같게 보이지 않게 한다.
-         */
-        private const val ERROR_NOTICE_MIN_FAILURES = 2
 
         /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */
         internal fun isInterestingEvent(eventType: Int): Boolean =

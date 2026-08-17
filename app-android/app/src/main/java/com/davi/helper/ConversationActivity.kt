@@ -520,9 +520,11 @@ class ConversationActivity : AppCompatActivity() {
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
             -> R.string.voice_no_speech
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> R.string.voice_permission_denied
-            SpeechRecognizerHelper.ERROR_UNAVAILABLE,
-            SpeechRecognizerHelper.ERROR_START_FAILED,
-            -> R.string.voice_recognizer_unavailable
+            // ERROR_UNAVAILABLE만 "이 기기는 못 쓴다"로 보낸다(#29 리뷰). ERROR_START_FAILED는
+            // createRecognizer/startListening의 RuntimeException — 바인딩 순간 실패나 폴백 실패라
+            // 일시적이다. 재시도 여지를 지운 종료 선언을 그쪽에 쓰면 멀쩡한 기기의 어르신이
+            // 한 번 삐끗한 것으로 앱을 접는다(릴리스엔 되돌릴 글자 입력칸도 없다).
+            SpeechRecognizerHelper.ERROR_UNAVAILABLE -> R.string.voice_recognizer_unavailable
             else -> R.string.voice_recognition_error
         }
         setState(ConversationUiState.Home(statusRes = message))
