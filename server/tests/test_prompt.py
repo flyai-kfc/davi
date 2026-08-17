@@ -5,8 +5,10 @@ from app.prompt import (
     FOCUSED_INPUT_KEYBOARD_CLOSED,
     IME_NOT_VISIBLE,
     IME_VISIBLE,
+    SCROLL_DIRECTION_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
+    SWIPE_DIRECTION_LEGEND,
     build_prompt,
     fallback_prompt,
 )
@@ -106,6 +108,57 @@ def test_scroll_state_does_not_prescribe_a_transition():
 
     assert "앱서랍" not in prompt
     assert "넘길 수 없다는 뜻은 아닙니다" in prompt
+
+
+def test_prompt_states_the_finger_standard_for_scroll_direction_on_every_screen():
+    """방향 기준은 화면과 무관하게 늘 필요하다.
+
+    조건을 달면 정작 필요한 화면에서 빠진다 — 방향이 어긋난 실측은 스크롤 메타가 **없던**
+    런처 화면에서 나왔다(#159). scroll은 어느 화면에서나 고를 수 있는 액션이다.
+    """
+
+    prompt = build_prompt(_request())
+
+    assert SCROLL_DIRECTION_INSTRUCTION in prompt
+    assert "손가락을 움직이는 방향" in SCROLL_DIRECTION_INSTRUCTION
+
+
+def test_prompt_explains_swipe_meta_only_when_the_screen_carries_it():
+    """값이 실릴 때만 범례를 붙인다. 없는 필드를 설명하면 프롬프트가 사실이 아닌 말을 한다."""
+
+    without = build_prompt(_request())
+    with_meta = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="목록",
+                    can_scroll_forward=True,
+                    next_swipe_direction=SwipeDirection.UP,
+                )
+            ]
+        )
+    )
+
+    assert SWIPE_DIRECTION_LEGEND not in without
+    assert SWIPE_DIRECTION_LEGEND in with_meta
+
+
+def test_schema_descriptions_of_direction_and_instruction_agree_with_the_prompt():
+    """이 두 설명은 주석이 아니라 responseSchema를 타고 모델에게 간다.
+
+    #109의 원인이 정확히 이 자리다 — 기준을 말하는 문장이 `SwipeDirection` 클래스 docstring에만
+    있어 모델에 도달하지 않았다. 무스키마 폴백에서는 스키마 JSON이 프롬프트 본문에 통째로
+    붙으므로, 둘이 어긋나면 한 프롬프트에 정반대 지시가 함께 들어간다.
+    """
+
+    direction = GuideAction.model_fields["direction"].description or ""
+    instruction = GuideAction.model_fields["instruction"].description or ""
+
+    assert "손가락" in direction
+    assert "화면 내용이 움직일 방향이 아니다" in direction
+    assert "direction과 같은" in instruction
+    assert "손가락 기준" in instruction
 
 
 def test_prompt_keeps_conditional_type_and_result_priority_for_focused_input():

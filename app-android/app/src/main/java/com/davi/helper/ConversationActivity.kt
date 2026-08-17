@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,6 +13,7 @@ import android.speech.SpeechRecognizer
 import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -134,8 +136,20 @@ class ConversationActivity : AppCompatActivity() {
         launchableAppIndex.start()
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
 
+        // 3버튼 내비게이션에서 시스템이 내비 바에 스크림을 깔아 배경을 가린다(PR #162 리뷰 실측:
+        // y=2178부터 54dp가 흰 띠). 배경이 화면 끝까지 깔리려면 그 대비 강제를 꺼야 한다.
+        //
+        // API 29+에만 있는 설정이지만 "API 분기가 필요한 기법"을 채택하는 것은 아니다 —
+        // 26~28에는 이 강제 자체가 없어 그냥 동작한다. 즉 신버전에서 생긴 문제를 신버전에서
+        // 끄는 것이고, 구버전 경로가 열등해지지 않는다(SpeechRecognizerHelper의 온디바이스
+        // 분기와 같은 성격).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+
         // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+        // 배경(MeshBackgroundView)은 이 층 밖에 있어 인셋을 받지 않는다 — 화면 끝까지 깔린다.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.conversationInsets) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left
@@ -231,7 +245,7 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        binding.spaceHomeTop.isVisible(model.homeVisible)
+        binding.spaceFlexTop.isVisible(model.homeVisible)
         binding.spaceHomeMid.isVisible(model.homeVisible)
         binding.homeTitle.isVisible(model.homeVisible)
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
@@ -239,8 +253,23 @@ class ConversationActivity : AppCompatActivity() {
         binding.logo.isVisible(model.logoVisible)
         // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
         val questionVisible = model.questionRes != null || model.questionText != null
+        // **래퍼를 토글한다.** 래퍼가 세로 weight를 갖고 있어(카드 두 장이 남는 공간을
+        // 나눠 가진다) 안쪽만 숨기면 빈 래퍼가 계속 자리를 먹어 홈 화면 문구가 밀려 올라간다.
+        binding.cardQuestionWrap.isVisible(questionVisible || model.loadingDotsVisible)
+        // **카드가 혼자 남으면 weight를 끈다**(PR #171 리뷰 지적).
+        //
+        // 최종 확인·실패에서는 발화 카드와 홈 여백 둘이 모두 숨어, 질문 카드 하나가 남는
+        // 세로 공간을 전부 받아 내용과 무관하게 수백 dp까지 커진다. weight는 **두 카드가
+        // 함께 보일 때 둘의 비(176:196)를 뜻하는 값**이지 혼자일 때 쓰라는 값이 아니다.
+        //
+        // 끄면 wrap_content + minHeight가 살아 카드가 내용 높이(하한 176dp)로 선다.
+        // 시안 메인 7·8의 카드 높이 200은 그 화면들을 다시 짤 때 함께 본다.
+        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+            weight = if (model.utteranceVisible) CARD_WEIGHT_DAVI else 0f
+        }
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
+        binding.glowCard.isVisible(model.cardGlowVisible)
         binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
@@ -617,5 +646,11 @@ class ConversationActivity : AppCompatActivity() {
 
     private companion object {
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
+
+        /**
+         * 두 카드가 함께 보일 때 질문 카드가 갖는 weight. 레이아웃의 값과 같아야 한다 —
+         * 카드가 혼자 남는 상태에서 0으로 껐다가 되돌릴 때 쓴다.
+         */
+        const val CARD_WEIGHT_DAVI = 176f
     }
 }

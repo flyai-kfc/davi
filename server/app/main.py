@@ -8,16 +8,27 @@ import time
 import uuid
 from ipaddress import ip_address
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .app_resolution import resolve_app_request
 from .config import settings
-from .dev_access import SlidingWindowRateLimiter, token_matches
+from .dev_access import (
+    RateLimitDecision,
+    SlidingWindowRateLimiter,
+    SourceAndGlobalRateLimiter,
+    token_matches,
+)
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
 from .intent_resolution import resolve_intent
+from .kakao_auth import (
+    AuthError,
+    KakaoLoginRequest,
+    SessionTokenResponse,
+    login_with_kakao,
+)
 from .llm import get_llm_client
 from .observability import (
     ATTEMPT_HEADER,
@@ -48,11 +59,21 @@ request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 _NEXT_STEP_PATH = "/v1/next-step"
 _SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
+_AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
-_TRACED_API_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH})
+_TRACED_API_PATHS = frozenset(
+    {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
+)
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
 dev_rate_limiter = SlidingWindowRateLimiter()
+# 로그인 전용 리미터(#167 리뷰 P1). dev 리미터는 development에서만 돌지만, 로그인은 인증 전
+# 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 제한한다. 별도 창을 쓰는
+# 이유: dev 창을 공유하면 로그인 폭주가 팀의 추론 쿼터까지 잠근다.
+# 출처별 제한과 전역 상한을 **하나의 리미터에서 원자적으로** 판정한다(#167 재리뷰·3차 P1):
+# 출처별 제한이 한 출처의 폭주로부터 정상 사용자를, 전역 상한이 카카오 API 소모 총량을
+# 지키며, 거부된 요청은 출처 키를 남기지 않아 분산 출처 폭주에도 키 수가 전역 상한으로 묶인다.
+auth_rate_limiter = SourceAndGlobalRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -64,6 +85,8 @@ def _request_route(path: str) -> str:
         return _SLOT_FILL_PATH
     if path == _APP_RESOLUTION_PATH:
         return _APP_RESOLUTION_PATH
+    if path == _AUTH_KAKAO_PATH:
+        return _AUTH_KAKAO_PATH
     if path == _HEALTH_PATH:
         return _HEALTH_PATH
     return "unmatched"
@@ -134,6 +157,12 @@ def _development_access_error(request: Request) -> JSONResponse | None:
     supplied = request.headers.get(_DEV_TOKEN_HEADER)
     if not token_matches(expected, supplied):
         return _development_auth_error(request)
+
+    if request.url.path == _AUTH_KAKAO_PATH:
+        # 로그인은 전용 리미터가 모든 프로필에서 따로 제한한다. dev 창은 팀 추론 쿼터
+        # (Gemini) 보호용이라, 카카오만 부르는 로그인 폭주가 이 창을 소모해 팀의 추론을
+        # 잠그면 안 된다 — 토큰 검사까지만 적용하고 dev 창은 건너뛴다.
+        return None
 
     decision = dev_rate_limiter.check(
         settings.davi_dev_rate_limit_requests,
@@ -206,10 +235,10 @@ def _store_raw_if_dogfood(
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     request.state.error_kind = "VALIDATION"
     request.state.validation_error_count = len(exc.errors())
-    if request.url.path in {_SLOT_FILL_PATH, _APP_RESOLUTION_PATH}:
+    if request.url.path in {_SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}:
         error = ApiError(
             kind=ErrorKind.BAD_REQUEST,
-            message="intent request validation failed",
+            message="request validation failed",
             request_id=request.state.request_id,
         )
         return JSONResponse(
@@ -330,6 +359,65 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         )
     _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
     return response
+
+
+def _auth_rate_limit_response(
+    request: Request,
+    decision: RateLimitDecision,
+) -> JSONResponse:
+    retry_after = decision.retry_after_seconds or 1
+    request.state.error_kind = (
+        "AUTH_RATE_LIMIT_SOURCE" if decision.limited_scope == "source" else "AUTH_RATE_LIMIT"
+    )
+    request.state.retry_after_seconds = retry_after
+    error = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="kakao login request limit exceeded",
+        retry_after_seconds=retry_after,
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=error.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+@app.post("/v1/auth/kakao", response_model=SessionTokenResponse)
+def post_kakao_login(
+    req: KakaoLoginRequest,
+    request: Request,
+    response: Response,
+) -> SessionTokenResponse | JSONResponse:
+    """앱이 받아 온 카카오 access token을 검증하고 우리 세션 토큰을 발급한다.
+
+    토큰 원문은 로그에 남기지 않는다(kakao_auth.py). 사용자 문구는 앱이 kind로 만든다(C8).
+    """
+
+    request.state.request_metadata = {"client_version": req.client_version}
+    # 출처는 직접 연결 peer IP만 쓴다. X-Forwarded-For는 클라이언트가 임의로 채울 수 있어
+    # 여기서 파싱하지 않는다 — 프록시 뒤 배포에서는 uvicorn --proxy-headers와
+    # --forwarded-allow-ips로 신뢰 프록시가 request.client를 재작성한 값이 그대로 들어온다.
+    source = request.client.host if request.client else "unknown"
+    decision = auth_rate_limiter.check(
+        source,
+        source_limit=settings.davi_auth_rate_limit_per_source_requests,
+        source_window_seconds=settings.davi_auth_rate_limit_per_source_window_seconds,
+        global_limit=settings.davi_auth_rate_limit_requests,
+        global_window_seconds=settings.davi_auth_rate_limit_window_seconds,
+    )
+    if not decision.allowed:
+        return _auth_rate_limit_response(request, decision)
+    try:
+        issued = login_with_kakao(req)
+    except AuthError as e:
+        error = ApiError(kind=e.kind, message=e.message, request_id=request.state.request_id)
+        request.state.error_kind = e.kind.value
+        return JSONResponse(status_code=e.http_status, content=error.model_dump())
+    # 성공 응답에는 30일 bearer JWT가 들어간다. 클라이언트·중간 계층이 토큰 응답을
+    # 저장하지 못하게 캐시를 금지한다(#167 재리뷰 P2).
+    response.headers["Cache-Control"] = "no-store"
+    return issued
 
 
 @app.post("/v1/intent/slot-fill", response_model=SlotFillState)

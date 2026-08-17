@@ -1,7 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 질문 카드(회색): 안내·질문 문구가 앉는 자리. 임시 디자인 — 확정 시 card/guide와 정합 재검토. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="@color/davi_surface" />
-    <corners android:radius="@dimen/davi_radius_md" />
-</shape>
+<!--
+  다비 발화 카드 — 반투명 글라스(#170).
+
+  **elevation을 쓰지 않는다.** 반투명이라 시스템 그림자가 카드를 통과해 안쪽으로 비친다.
+  그림자는 이 layer-list의 첫 겹으로 카드 뒤에 직접 그린다.
+
+  구조는 시안의 글라스와 같다 — 흰 그라디언트(86→82→78%) 위에 틴트를 얹는다.
+  틴트가 위에 와야 흰 바탕이 비쳐 유리처럼 보인다. 순서를 뒤집으면 틴트가 씻긴다.
+
+  **그림자는 번지지 않는다 — 단순화한 것이다**(PR #171 리뷰 지적). 시안은 검정 8%,
+  아래로 3, 번짐 10인데 여기서는 **같은 폭의 단색 도형을 3dp 내린 것**이라 하단에
+  단단한 띠로 보인다. layer-list의 shape에는 blur가 없다.
+  시안의 번짐이 필요하면 9-patch나 별도 View로 가야 하고, 그건 별도 이슈다.
+  발화 중에는 뒤에 깔리는 davi_glow_card(분홍 글로우) View가 켜지고 이 그림자는 그대로 둔다.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 그림자: 카드와 같은 폭의 단색 도형을 3dp 아래로 내린 것. 번짐은 없다(위 주석). -->
+    <item
+        android:top="@dimen/davi_card_shadow_offset_y"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_shadow_idle" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <!-- 흰 바탕 그라디언트 86 → 82 → 78% -->
+    <item android:bottom="@dimen/davi_card_shadow_offset_y">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/davi_card_glass_top"
+                android:centerColor="@color/davi_card_glass_mid"
+                android:endColor="@color/davi_card_glass_bottom"
+                android:type="linear" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <!-- 틴트: 다비 카드 색 28% -->
+    <item android:bottom="@dimen/davi_card_shadow_offset_y">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_tint_davi" />
+            <stroke
+                android:width="@dimen/davi_card_border_width"
+                android:color="@color/davi_card_border" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+</layer-list>

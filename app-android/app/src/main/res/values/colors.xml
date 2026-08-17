@@ -54,16 +54,52 @@
       그라디언트 4곳은 변수에 바인딩하지 않았다 — 물리면 스톱의 투명도가 변수 색으로
       덮여 파도가 불투명 덩어리가 된다.
 
-      아직 쓰는 화면이 없다. 화면 구현 이슈가 소비처를 만든다.
+      소비처는 화면 구현 이슈가 만든다 — 배경·파도·마이크 글로우는 #161이 받았고,
+      카드 틴트·안내창은 아직 쓰는 화면이 없다.
     -->
     <!--
-      davi_bg_mesh는 두 곳에 쓰인다 — 앱 배경 바탕(100%)과 **안내창 그라디언트의 위쪽**(90%).
-      그 그라디언트의 아래쪽이 바로 다음 줄 davi_overlay_window_bottom(80%)이다. 짝이다.
+      배경 핑크 메시(#161). 바탕은 davi_bg_mesh이고 그 위에 블롭 6개를 얹는다.
 
-      **davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)가 v2에서 이 그라디언트로 바뀔 자리다.**
-      지금 바꾸면 오버레이 안내창이 즉시 달라지므로 화면 구현 이슈로 넘긴다.
+      **위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다.** 값의 출처가 Foundations의 변수가
+      아니라 `v2/bg/pink` 레이어의 채움이라 대응하는 변수 이름이 없다 — 머리말의 "이름은 각
+      변수의 code syntax와 1:1"은 여기에 적용되지 않는다.
+      **승격 조건**: Foundations에 `color/bg/blob-N`·`color/bg/veil-*`가 생기면 그 이름으로
+      맞추고 이 단서를 지운다.
+
+      **중심·반지름은 뷰 크기 대비 비율이라 dimens.xml에 못 넣는다** — 시안 프레임이
+      300×620이라 그 숫자를 dp로 쓰면 좁은 화면에서 블롭이 밖으로 나간다.
+      비율과 불투명도는 MeshBackgroundView의 상수에 있다.
     -->
-    <color name="davi_bg_mesh">#FDF6F8</color>
+    <color name="davi_bg_blob_1">#F6B2C9</color>
+    <color name="davi_bg_blob_2">#FCCADC</color>
+    <color name="davi_bg_blob_3">#FDD8CA</color>
+    <color name="davi_bg_blob_4">#F9BFD4</color>
+    <color name="davi_bg_blob_5">#FEE8EF</color>
+    <color name="davi_bg_blob_6">#FEF5F2</color>
+    <!--
+      블롭 위에 얹는 하단 세로 그라디언트. 0.19H 투명 → 0.60H 50% → 1.0H 78%.
+      불투명도와 스톱은 MeshBackgroundView에 있다.
+
+      **바탕(davi_bg_mesh #F9E4EC)보다 어두워야 한다.** 이 그라디언트가 화면 아래 80%를
+      덮으므로 바탕보다 밝은 색을 물리면 그 구간이 통째로 평평해진다. 실제로 #FBE9EF /
+      #FAE4EB를 넣었다가 배경이 단색으로 보였다(2026-08-17 실기기). 시안 값은 바닥 합성이
+      (240,199,217)로 바탕 대비 초록이 29 움직인다.
+    -->
+    <color name="davi_bg_veil_mid">#F2CFDD</color>
+    <color name="davi_bg_veil_end">#EDBFD3</color>
+
+    <!--
+      앱 배경의 바탕색. 이 위에 블롭 6개와 베일이 얹힌다(MeshBackgroundView).
+
+      시안이 2026-08-16에 #FDF6F8에서 내린 값이다. 바탕만으로는 블롭이 얇은 화면 상단에서만
+      드러나므로(상단 -13, 중앙 -4, 하단 -1) 아래쪽은 위 veil이 함께 만든다.
+
+      **더 이상 안내창 그라디언트의 위쪽을 겸하지 않는다.** Figma가 둘을 나눴고
+      안드로이드 쪽 overlay/window/top은 건드리지 말라는 지시가 있다(2026-08-16 디자인 담당).
+      대응 토큰은 아직 안 만들었다 — 안내창을 v2로 바꾸는 화면 구현 이슈가 함께 받는다.
+      지금 안내창은 davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)를 그대로 쓴다.
+    -->
+    <color name="davi_bg_mesh">#F9E4EC</color>
     <color name="davi_overlay_window_bottom">#FADCE6</color>
     <color name="davi_wave_fade_start">#FFB3B3</color>
     <color name="davi_wave_fade_mid">#FF9A9A</color>
@@ -85,31 +121,63 @@
     <color name="davi_button_affirm">#1B5E20</color>
 
     <!--
-      음성 모션 색 (#132) — **임시 토큰이다.**
+      음성 모션 색 — 파도 3겹과 마이크 글로우(#161). #132가 심은 임시 토큰을 v2 확정값으로
+      승격하면서 이름도 Figma 시맨틱과 1:1로 맞췄다(color/wave/layer-N, color/glow/mic).
 
-      값은 Figma SSoT SCREENS "메인 v2"의 `v2/wave/bottom`·`v2/glow/mic`(**승인 대기**)에서
-      뽑았다. 시안은 분홍 그라데이션 배경 위에 얹히는데 **저장소 배경은 아직 흰색**
-      (`davi_bg`)이라, 흰 배경 위에서는 시안보다 파도가 도드라져 보인다.
-      v2 배경이 들어오면 **여기 값만** 갈아끼운다 — 뷰 코드는 건드리지 않는다.
-
-      위 시맨틱 토큰들과 달리 Figma 변수와 1:1이 아니다. 확정 시 Foundations 변수로 승격하고
-      이 블록을 지운다.
-
-      **이관 계획(#155에서 보류).** v2 확정값은 아래와 같은데, 값만 갈아끼울 수 없다 —
-      셋 다 불투명도가 붙어야 하고 지금 뷰는 색 리소스의 알파를 그대로 쓴다.
-
-        davi_wave_back  → color/wave/layer-1 #FF7A88 (26%)
-        davi_wave_mid   → color/wave/layer-2 #EE5568 (20%)
-        davi_wave_front → color/wave/layer-3 #E03A55 (16%)
-        davi_glow_mic   → color/glow/mic     #FF3B52 (방사 48→24→0%)
-
-      새 이름을 미리 추가하면 같은 색에 이름이 둘 남으므로(옛 것은 VoiceWaveView·MicGlowView가
-      쓰고 새 것은 아무도 안 씀) 넣지 않았다. **화면 구현 이슈에서 이름 변경 + 값 확정 +
-      뷰의 알파 적용을 한 번에** 하고 이 블록을 지운다.
+      **hex만 둔다.** 불투명도는 VoiceWaveView·MicGlowView가 준다 —
+      겹 26/20/16%, 페이드 0→22→42%, 글로우 방사 48→24→0%.
+      리소스에 ARGB를 박으면 Figma 시맨틱과 1:1이 깨지고, 알파를 바꿀 때 색까지 다시 적게 된다.
     -->
-    <color name="davi_wave_back">#FFD6D9</color>
-    <color name="davi_wave_mid">#FCB1B7</color>
-    <color name="davi_wave_front">#F799A4</color>
-    <!-- 글로우는 마이크 뒤에 깔리므로 반투명이다. 불투명이면 배경을 도려낸 것처럼 보인다. -->
-    <color name="davi_glow_mic">#B8F2657E</color>
+    <color name="davi_wave_layer_1">#FF7A88</color>
+    <color name="davi_wave_layer_2">#EE5568</color>
+    <color name="davi_wave_layer_3">#E03A55</color>
+    <color name="davi_glow_mic">#FF3B52</color>
+    <!--
+      v2 카드 글라스(#170). 흰 그라디언트 위에 틴트를 얹는 구조라 **여기는 ARGB다** —
+      위 토큰들과 달리 불투명도가 색의 일부다. 시안이 카드마다 다른 불투명도를 쓰고
+      뷰가 아니라 drawable이 그리므로 코드에서 알파를 줄 자리가 없다.
+
+      흰 바탕 86 → 82 → 78% (시안 "글라스"), 틴트는 다비 #F4F4F6 28% / 시니어 #F7C6D5 58%.
+      그림자는 elevation이 아니라 layer-list로 카드 뒤에 그린다 — 반투명이라 시스템
+      그림자가 카드를 통과해 비친다.
+    -->
+    <color name="davi_card_glass_top">#DBFFFFFF</color>
+    <color name="davi_card_glass_mid">#D1FFFFFF</color>
+    <color name="davi_card_glass_bottom">#C7FFFFFF</color>
+    <color name="davi_card_tint_davi">#47F4F4F6</color>
+    <color name="davi_card_tint_senior">#94F7C6D5</color>
+    <!--
+      시니어 카드 채움 — **불투명 그라디언트**(2026-08-17 결정). 다비 카드와 달리 글라스가 아니다.
+
+      **시안 구조(글라스 + 틴트 58%)에서 이탈한다.** 그 구조로는 배경과 분리가 안 된다 —
+      실기기 실측으로 시니어 카드가 (249,219,228), 배경이 (242,218,227)로 **ΔG가 +1**이었다.
+      사실상 같은 색이고, 흰 테두리는 경계선만 그을 뿐 면을 갈라 주지 못한다.
+
+      제안색을 틴트 방식으로 얹어도 안 나온다 — 아래 흰 글라스(78%)가 희석해서 58%에서는
+      ΔG +2로 지금과 같다. 80%에서 -8, 90%에서 -12, 100%에서야 -17이 된다.
+      즉 **이 분리는 불투명이어야만 나온다.**
+
+      **잃는 것이 없다.** ΔG +1이라는 건 지금도 비쳐 보이는 게 없다는 뜻이다.
+      다비 카드는 그대로 글라스로 둔다 — 흰색이라 배경 대비 ΔG +28로 이미 분리된다.
+
+      위쪽은 배경보다 밝고(ΔG +12) 아래쪽은 어둡다(-17). 카드 중간에서 초록값이 배경과
+      스치지만 빨강이 +13으로 일정하고 흰 테두리가 경계를 잡는다.
+    -->
+    <color name="davi_card_senior_top">#FFE6E7</color>
+    <color name="davi_card_senior_bottom">#FFC9CE</color>
+    <!--
+      카드 테두리 — 흰색 90%. **글라스는 채움 대비가 아니라 테두리로 배경과 분리한다.**
+      안내창(overlay/window)은 처음부터 이 방식이었고 카드에만 빠져 있었다(2026-08-17).
+
+      면 대비로는 답이 안 나온다 — 실기기에서 다비 카드가 배경 대비 1.25:1, 시니어 카드가
+      1.23:1이다(배경 #F2D7E2 / 카드 #F8F6F7 · #F3DCE4). 특히 시니어 카드는 분홍 위의
+      분홍이라 색상으로도 안 갈린다. 경계선은 면보다 훨씬 잘 읽히므로 이 한 줄이 맡는다.
+
+      **배경도 카드 채움도 바꾸지 않는다.** 둘 다 확정값이고, 대비가 좁아진 것은 배경을
+      진하게 한 결과이지 카드 값이 틀린 게 아니다.
+    -->
+    <color name="davi_card_border">#E6FFFFFF</color>
+    <!-- 대기 상태 그림자 — 시안 검정 8%(다비) / 7%(시니어). -->
+    <color name="davi_card_shadow_idle">#14000000</color>
+    <color name="davi_card_shadow_idle_senior">#12000000</color>
 </resources>
