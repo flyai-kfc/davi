@@ -63,6 +63,28 @@ class CardGlowView @JvmOverloads constructor(
         paint.setShadowLayer(blur, 0f, offsetY, glowColor)
     }
 
+    /**
+     * **wrap_content 부모를 부풀리지 않는다.**
+     *
+     * 이 뷰는 카드보다 사방 blur만큼 커야 번질 자리가 생기므로 `match_parent` + 음수 마진으로
+     * 잡는다. 그런데 FrameLayout은 wrap_content로 크기를 정할 때 `match_parent` 자식의 1차
+     * 측정값까지 최댓값 계산에 넣는다 — 그대로 두면 **글로우가 자기 부모를 부풀리고**, 부모가
+     * 커지면 이 뷰가 또 커지는 되먹임이 생긴다(2026-08-17 실기기: 발화 상태에서 다비 카드가
+     * 시니어 카드를 화면 밖으로 밀어냈다).
+     *
+     * 1차 측정에서 0을 보고하면 부모 크기는 형제(카드)가 정하고, FrameLayout이 `match_parent`
+     * 자식에게 돌리는 **2차 측정(EXACTLY)** 에서 이 뷰가 제 크기를 받는다.
+     */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val exact = MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.EXACTLY &&
+            MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY
+        if (exact) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        } else {
+            setMeasuredDimension(0, 0)
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (width == 0 || height == 0) return
