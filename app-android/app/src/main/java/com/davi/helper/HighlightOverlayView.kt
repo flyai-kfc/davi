@@ -123,6 +123,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val handSize = resources.getDimension(R.dimen.davi_overlay_hand_size)
     private val handTravel = resources.getDimension(R.dimen.davi_overlay_hand_travel)
     private val handShadowOffset = resources.getDimension(R.dimen.davi_overlay_hand_shadow_offset)
+    private val handOutline = resources.getDimension(R.dimen.davi_overlay_hand_outline)
 
     /**
      * 손 아이콘. **직접 그리지 않고 그림을 쓴다** — 검지를 세운 손을 경로로 그리면 각도에 따라
@@ -138,14 +139,27 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     /**
      * 손 뒤에 까는 그림자. 오버레이는 **아래에 어떤 앱이 깔릴지 알 수 없어**, 밝은 화면에서는
-     * 흰 손이 통째로 묻힌다. 같은 그림을 강조색으로 칠해 살짝 어긋나게 먼저 깔아 윤곽을 남긴다.
+     * 흰 손이 통째로 묻힌다. 같은 그림을 어둡게 칠해 살짝 어긋나게 먼저 깔아 깊이를 준다.
      *
-     * 색만 마이크 글로우에서 가져왔고 **글로우처럼 움직이지는 않는다** — 여기서는 대비를 만드는
-     * 고정 그림자다(2026-08-17 요청).
+     * **밝은 배경 대비는 이 어두운 색이 맡는다**(PR #159 2차 리뷰). 분홍은 [handOutlinePaint]다.
      */
     private val handShadowPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
         colorFilter = PorterDuffColorFilter(
             ContextCompat.getColor(context, R.color.davi_overlay_hand_shadow),
+            PorterDuff.Mode.SRC_IN,
+        )
+    }
+
+    /**
+     * 손 둘레를 감싸는 강조색 윤곽선. 색만 마이크 글로우에서 가져왔고 **글로우처럼 움직이지는
+     * 않는다**(2026-08-17 요청).
+     *
+     * 그림자는 한쪽으로만 어긋나 두 변에만 생기므로, 흰 화면에서 손의 좌상단 실루엣이 사라진다.
+     * 같은 그림을 사방으로 조금씩 어긋나게 깔아 둘레를 채운다.
+     */
+    private val handOutlinePaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(
+            ContextCompat.getColor(context, R.color.davi_overlay_hand_outline),
             PorterDuff.Mode.SRC_IN,
         )
     }
@@ -376,24 +390,37 @@ class HighlightOverlayView(context: Context) : View(context) {
         val halfH = handSize / 2f
         val halfW = halfH * bitmap.width / bitmap.height
 
-        // 레이어 경계는 그림자 offset까지 담아야 잘리지 않는다.
+        // 레이어 경계는 그림자 offset과 윤곽선 두께까지 담아야 잘리지 않는다.
+        val margin = maxOf(handShadowOffset, handOutline)
         val layer = canvas.saveLayerAlpha(
-            cx - halfW,
-            cy - halfH,
-            cx + halfW + handShadowOffset,
-            cy + halfH + handShadowOffset,
+            cx - halfW - handOutline,
+            cy - halfH - handOutline,
+            cx + halfW + margin,
+            cy + halfH + margin,
             alpha255,
         )
+
+        // 1) 어두운 그림자 — 밝은 배경에서의 대비를 맡는다.
+        // 레이어 안에서는 불투명하게 그린다. 진하기는 레이어가 한 번에 건다.
         handDst.set(
             cx - halfW + handShadowOffset,
             cy - halfH + handShadowOffset,
             cx + halfW + handShadowOffset,
             cy + halfH + handShadowOffset,
         )
-        // 레이어 안에서는 불투명하게 그린다 — 진하기는 레이어가 한 번에 건다.
         handShadowPaint.alpha = SHADOW_ALPHA_255
         canvas.drawBitmap(bitmap, null, handDst, handShadowPaint)
 
+        // 2) 강조색 윤곽선 — 사방으로 조금씩 어긋나게 깔아 둘레를 채운다.
+        handOutlinePaint.alpha = 255
+        OUTLINE_OFFSETS.forEach { (ox, oy) ->
+            val dx = ox * handOutline
+            val dy = oy * handOutline
+            handDst.set(cx - halfW + dx, cy - halfH + dy, cx + halfW + dx, cy + halfH + dy)
+            canvas.drawBitmap(bitmap, null, handDst, handOutlinePaint)
+        }
+
+        // 3) 손.
         handDst.set(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
         handPaint.alpha = 255
         canvas.drawBitmap(bitmap, null, handDst, handPaint)
@@ -633,5 +660,17 @@ class HighlightOverlayView(context: Context) : View(context) {
 
         /** 레이어 안에서 쓰는 고정 그림자 알파. 모션의 진하기는 레이어가 따로 건다. */
         const val SHADOW_ALPHA_255 = (255 * SHADOW_ALPHA_RATIO).toInt()
+
+        /**
+         * 윤곽선을 그릴 여덟 방향의 단위 벡터. 대각선은 √2로 나눠 사방 두께를 고르게 만든다 —
+         * 나누지 않으면 모서리만 굵어져 손이 팔각형처럼 보인다.
+         */
+        val OUTLINE_OFFSETS = listOf(
+            1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f,
+            DIAGONAL to DIAGONAL, DIAGONAL to -DIAGONAL,
+            -DIAGONAL to DIAGONAL, -DIAGONAL to -DIAGONAL,
+        )
+
+        const val DIAGONAL = 0.7071f
     }
 }
