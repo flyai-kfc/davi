@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  시니어 발화 카드 — 반투명 글라스(#170). 구조와 elevation 금지 근거는 bg_davi_card와 같다.
-  틴트만 시니어 색(58%)으로 다르고 그림자는 검정 7%로 조금 더 옅다.
+  시니어 발화 카드 — **불투명 그라디언트**(2026-08-17). 다비 카드와 달리 글라스가 아니다.
+  근거는 colors.xml의 davi_card_senior_top 주석에 있다(글라스로는 배경과 ΔG +1로 안 갈렸다).
+  elevation 금지 근거는 bg_davi_card와 같고 그림자는 검정 7%로 조금 더 옅다.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -18,17 +19,9 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="@color/davi_card_glass_top"
-                android:centerColor="@color/davi_card_glass_mid"
-                android:endColor="@color/davi_card_glass_bottom"
+                android:startColor="@color/davi_card_senior_top"
+                android:endColor="@color/davi_card_senior_bottom"
                 android:type="linear" />
-            <corners android:radius="@dimen/davi_radius_xl" />
-        </shape>
-    </item>
-
-    <item android:bottom="@dimen/davi_card_shadow_offset_y">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/davi_card_tint_senior" />
             <stroke
                 android:width="@dimen/davi_card_border_width"
                 android:color="@color/davi_card_border" />
