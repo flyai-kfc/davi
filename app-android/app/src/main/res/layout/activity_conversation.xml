@@ -24,7 +24,7 @@
       파도와 글로우는 상태에 따라 renderModelOf가 켜고 끈다.
 
       **글로우가 마이크를 감싼 FrameLayout이 아니라 여기 있는 이유**는 그쪽이 wrap_content라
-      286dp짜리 글로우를 넣으면 마이크·확인쌍이 딸려 올라가기 때문이다. 자리 맞춤은
+      158dp짜리 글로우를 넣으면 마이크·확인쌍이 딸려 올라가기 때문이다. 자리 맞춤은
       davi_glow_mic_margin_bottom이 하며 그 계산 근거는 dimens.xml에 있다.
     -->
     <com.davi.helper.VoiceWaveView
@@ -37,7 +37,7 @@
     <!--
       **글로우가 파도보다 뒤에 온다(= 위에 그려진다).** 시안의 z축 순서가
       `v2/wave/bottom` → `v2/glow/mic` → `v2/button/mic`이다.
-      순서를 뒤집으면 파도 띠(152dp)가 글로우(반지름 143dp)를 거의 다 덮어
+      순서를 뒤집으면 파도 띠(152dp)가 글로우(반지름 79dp)를 통째로 덮어
       듣는 중에 글로우가 사라진 것처럼 보인다(실기기 실측).
     -->
     <com.davi.helper.MicGlowView
@@ -155,12 +155,20 @@
             android:layout_weight="3" />
     </LinearLayout>
 
-    <!-- 조작 수단: 마이크와 확인쌍은 동시에 보이지 않으므로 같은 자리를 쓴다. -->
+    <!--
+      조작 수단: 마이크와 확인쌍은 동시에 보이지 않으므로 같은 자리를 쓴다.
+
+      **바닥 여백이 둘에 함께 걸린다.** davi_mic_margin_bottom을 8dp 올린 것은 마이크가
+      낮아 보여서였지만, 확인쌍도 24 -> 32dp로 같이 올라간다(PR #164 리뷰 지적).
+      **의도한 것이다** — 둘은 번갈아 나타나는 같은 슬롯의 컨트롤이라 높이가 다르면
+      최종 확인으로 넘어갈 때 버튼이 아래로 뛴다. 마이크만 올리려면 래퍼가 아니라
+      마이크에 여백을 줘야 하고, 그때는 두 컨트롤의 높이를 따로 관리하게 된다.
+    -->
     <FrameLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="@dimen/davi_spacing_xl">
+        android:layout_marginBottom="@dimen/davi_mic_margin_bottom">
 
         <include
             android:id="@+id/confirm_pair"

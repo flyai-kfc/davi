@@ -59,9 +59,54 @@
     <dimen name="davi_size_touch_target">56dp</dimen>
 
     <!-- 컴포넌트 고정 크기 (Figma Components 실측) -->
-    <dimen name="davi_mic_button_size">130dp</dimen>
+    <!--
+      마이크 지름(#163). **근거는 시안 폭 대비 스케일이다** — 시안 마이크 76을 프레임 폭
+      300에서 검증 기기 폭 360dp로 옮겨 76 x (360/300) = 91.
+
+      **"카드 폭의 30%"는 근거가 아니라 결과이고, 기기마다 다르다.** 시안의 좌우 여백 24는
+      코드의 24dp와 같은 절대값이라(300 - 48 = 252) 카드가 화면 폭에 비례해 커지지 않는다.
+
+        기기 폭   카드    91dp의 비
+        320dp    272dp   33.5%    (밀도 540 — 화면 크기를 키운 설정)
+        360dp    312dp   29.2%    (밀도 480 — 검증 기기 기본, 시안 30.2%에 가장 가깝다)
+        411dp    363dp   25.1%
+
+      **그래도 고정 dp로 둔다.** 마이크는 이 앱의 유일한 주 조작 수단이고 터치 대상이다.
+      비율로 잡으면 **화면 크기를 키운 사용자에게 마이크가 오히려 작아진다** — 크게 보려고
+      올린 설정인데 반대로 움직이는 것이라 시니어 대상에서 특히 나쁘다. 고정 dp는 물리적
+      크기를 유지하고, 카드가 좁아지면 상대적으로 커져 오히려 눌리기 쉬워진다.
+      파도·글로우·로딩 점도 같은 방침이다("비율이 아니라 눈에 보이는 크기").
+
+      130dp였을 때는 360dp 기기에서 카드 대비 41.7%라 v2 구도가 깨졌다.
+
+      **이 값은 아래 셋의 입력이다.** 혼자 바꾸면 글로우가 어긋나고 카드 열이 잘못 비워지며
+      아이콘이 뭉개진다 — davi_glow_mic_size · davi_glow_mic_margin_bottom ·
+      davi_conversation_control_reserve · davi_mic_button_padding을 함께 본다.
+
+      D1 터치 타깃 하한 56dp는 그대로 넘는다.
+    -->
+    <dimen name="davi_mic_button_size">91dp</dimen>
+    <!--
+      바닥 컨트롤의 여백. davi_spacing_xl(24dp)을 쓰다가 전용 토큰으로 뺐다 —
+      **이 값이 아래 둘의 입력**이라 간격 토큰과 함께 움직이면 안 된다.
+      실기기에서 마이크가 조금 낮아 보여 8dp 올렸다(2026-08-16).
+
+      **이름은 마이크지만 확인쌍에도 걸린다.** 둘은 번갈아 나타나는 같은 슬롯의 컨트롤이라
+      레이아웃에서 하나의 FrameLayout을 공유한다(activity_conversation.xml). 높이를 따로
+      두면 최종 확인으로 넘어갈 때 버튼이 아래로 뛴다. 이름을 안 바꾸는 것은 아래 두
+      파생값이 마이크 기하에서 나오기 때문이다 — 확인쌍은 이 값만 쓰고 파생에 관여하지 않는다.
+        davi_conversation_control_reserve = 이 값 + 91 - 38   = 85dp
+        davi_glow_mic_margin_bottom       = 이 값 + 91/2 - 158/2 = -2dp
+      (38은 마이크가 시니어 카드를 파고드는 깊이 = 91 x 0.42. 각 항의 근거는 해당 토큰 주석에.)
+    -->
+    <dimen name="davi_mic_margin_bottom">32dp</dimen>
+    <!--
+      테두리 굵기는 크기에 비례해 줄이지 않는다 — 선은 시인성 문제라 얇아지면 안 보인다.
+      마이크 모양 자체(시안은 분홍 캡슐 + 빨강 선 아이콘)를 바꿀 때 함께 본다.
+    -->
     <dimen name="davi_mic_button_stroke">4dp</dimen>
-    <dimen name="davi_mic_button_padding">40dp</dimen>
+    <!-- 아이콘 여백. 지름과 같은 비(0.70)로 줄인다 — 40 그대로면 아이콘이 11dp만 남는다. -->
+    <dimen name="davi_mic_button_padding">28dp</dimen>
     <dimen name="davi_mic_button_elevation">4dp</dimen>
     <dimen name="davi_button_stroke">1.5dp</dimen>
     <dimen name="davi_button_padding_h">20dp</dimen>
@@ -86,8 +131,25 @@
       이 값은 **가용 높이로 검증되지 않았다.** 위 블록의 임시치 단서가 여기에도 그대로 적용된다.
     -->
     <dimen name="davi_question_card_max_height_confirm">400dp</dimen>
-    <!-- 바닥 고정 컨트롤(마이크·확인쌍)이 차지하는 높이. 위 열은 이만큼을 비워 둔다. -->
-    <dimen name="davi_conversation_control_reserve">178dp</dimen>
+    <!--
+      카드 열의 바닥 여백. **마이크가 시니어 카드를 겹치는 깊이**로 정해진다.
+
+        겹침 = 마이크 높이 x 0.42   (시안: 카드 하단 528, 마이크 상단 496 -> 32/76)
+        여백 = 32(davi_mic_margin_bottom) + 91(마이크) - 38(겹침) = 85dp
+
+      **비율로 두는 이유**는 마이크 크기나 바닥 여백이 또 바뀌어도 따라오게 하려는 것이다.
+
+      **배지와 값이 다르다.** 배지는 카드 상단을 절반(30/60) 파고들고 마이크는 42%다 —
+      시안이 서로 다르게 잡았으므로 한 상수로 묶지 않는다.
+
+      앞서 "카드 하단 = 마이크 중심"(78dp)으로 뒀는데 그건 근사였다. 시안은 마이크 중심 534,
+      카드 하단 528로 6만큼 어긋나 있다 — 7dp 덜 파고드는 쪽이 맞다.
+
+      **이 값만으로는 겹침이 안 생긴다.** 카드가 고정 높이면 아래를 덜 비워도 카드가
+      내려오지 않고 빈 공간만 는다 — 카드 두 장이 weight로 남는 공간을 나눠 가져야
+      이 값이 뜻을 갖는다(#170). 실기기에서 겹침이 안 생겨 찾았다.
+    -->
+    <dimen name="davi_conversation_control_reserve">85dp</dimen>
 
     <!--
       음성 모션 크기 (#132). 시안(메인 v2, 승인 대기)의 300×620 프레임 기준을 dp로 옮긴 값이다.
@@ -97,22 +159,29 @@
     <dimen name="davi_wave_height">152dp</dimen>
     <!-- 파도 마루-골 진폭(최대 음량 기준). 띠 높이 안에서 세 겹이 겹칠 여유를 남긴다. -->
     <dimen name="davi_wave_amplitude">22dp</dimen>
-    <!-- 마이크 글로우 지름. 시안 168 대 마이크 76 ≈ 2.2배 — 마이크 130dp에 맞춰 키웠다. -->
-    <dimen name="davi_glow_mic_size">286dp</dimen>
+    <!--
+      마이크 글로우 지름. **시안 비 132:76 = 1.74배**를 유지한다 — 91 x 1.74 ≈ 158.
+
+      앞서 201dp(2.21배)로 잡았던 건 `v2/glow/mic`(168x168)을 근거로 삼았기 때문인데,
+      **그 컴포넌트는 어느 화면에도 배치돼 있지 않은 죽은 것**이었다. 화면에 실제로
+      그려지는 건 마이크 컴포넌트 안의 132다(2026-08-16 디자인 담당 확인).
+
+      MicGlowView.MIC_EDGE_FRACTION이 이 비에서 나온다 — 함께 바뀐다.
+    -->
+    <dimen name="davi_glow_mic_size">158dp</dimen>
     <!--
       글로우를 마이크 **중심**에 맞추기 위한 음수 여백.
 
       글로우는 마이크를 감싼 FrameLayout이 아니라 루트의 형제로 둔다 — 그 FrameLayout은
-      wrap_content라 글로우(286dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
+      wrap_content라 글로우(158dp)를 넣으면 확인쌍·마이크가 딸려 올라간다. 대신 루트 바닥에서
       직접 위치를 잡는다.
 
-      계산: 마이크 중심은 바닥에서 24dp(davi_spacing_xl) + 130dp/2 = 89dp.
-      글로우 중심을 거기 맞추려면 바닥 여백 = 89dp - 286dp/2 = -54dp.
+      계산: 마이크 중심은 바닥에서 32dp(davi_mic_margin_bottom) + 91dp/2 = 77.5dp.
+      글로우 중심을 거기 맞추려면 바닥 여백 = 77.5dp - 158dp/2 = -1.5dp -> -2dp.
 
-      **davi_mic_button_size·davi_spacing_xl·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
-      확정 디자인에서 컨트롤 크기를 다시 잡을 때 함께 재계산한다.
+      **davi_mic_button_size·davi_mic_margin_bottom·davi_glow_mic_size가 바뀌면 이 값도 바뀐다.**
     -->
-    <dimen name="davi_glow_mic_margin_bottom">-54dp</dimen>
+    <dimen name="davi_glow_mic_margin_bottom">-2dp</dimen>
 
     <!--
       응답 대기 점 3개 (#142). 시안 실측은 지름 16 / 11, 중심 간격 28(300 폭 프레임 기준)이다.
