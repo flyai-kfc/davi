@@ -340,10 +340,10 @@ davi/
 │  ├─ e2e-driver/                  ← 실기기 E2E 드라이버 (별도 앱, `DEVICE-E2E.md`)
 │  └─ app/
 │     ├─ build.gradle.kts · proguard-rules.pro
-│     ├─ src/main/
+│     ├─ src/main/                  ← 아래는 **경계만** 뽑은 것이다. 전체는 소스 트리 참고
 │     │  ├─ AndroidManifest.xml
-│     │  ├─ java/com/davi/helper/{OnboardingActivity,ConversationActivity,GuideAccessibilityService}.kt
-│     │  └─ res/{values/strings.xml, values/themes.xml, xml/accessibility_service_config.xml}
+│     │  ├─ java/com/davi/helper/{OnboardingActivity,ConversationActivity,GuideAccessibilityService,…}.kt
+│     │  └─ res/{values/*, layout/*, drawable/*, font/*, xml/accessibility_service_config.xml}
 │     └─ src/debug/                ← 개발 전용. 백업 화면 MainActivity는 여기에만 있다
 ├─ server/                         ← FastAPI 추론 오케스트레이터
 │  ├─ CLAUDE.md · README.md · .gitignore · .env.example

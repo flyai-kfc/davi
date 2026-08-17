@@ -232,7 +232,7 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 | `.../AppResolutionApiClient.kt` | `/v1/intent/app-resolution` 계약·추적 header·오류 분류 |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
-| **독립 판정 단위** (Android 타입에 의존하지 않아 JVM 테스트로 고정한다) | |
+| **경계가 되는 판정 단위** (여기 없는 것도 JVM 테스트가 있다 — `app/src/test/` 참고) | |
 | `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동·완료 확인 대기). 인메모리 — 영속화하지 않는다 |
 | `.../GuideDisplayState.kt` | 오버레이에 지금 무엇이 보여야 하는가(재표시·정체 접미사) |
 | `.../ScreenStability.kt` | 화면 서명과 안정·정체 판정 |
