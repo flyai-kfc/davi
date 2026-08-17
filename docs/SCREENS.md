@@ -22,8 +22,9 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 | 앱 화면 | ON-*, MA-* | 일반 Activity UI (XML+ViewBinding) |
 | 오버레이 | GD-* | 다른 앱 위에 그림. **표시 오버레이**(하이라이트 — 터치가 아래 앱으로 통과) + **조작 오버레이**(안내창·칩 — 터치를 받는다) 둘로 나뉜다(#126) |
 
-제외: 사용법 가이드 화면(와이어프레임에서 보류/삭제), 텍스트 목표 입력 화면(기존
-MainActivity — 음성 폴백 목적지로만 등장, 아래 미결).
+제외: 사용법 가이드 화면(와이어프레임에서 보류/삭제), 텍스트 목표 입력 화면(`MainActivity` —
+**개발 전용 백업으로 물러났다.** `src/debug/`에만 있고 런처에도 없어 `adb shell am start`로만
+열린다, #123·#156). 음성 실패의 목적지는 MA-2 재시도 화면이다(#106).
 
 ---
 
@@ -50,7 +51,8 @@ MainActivity — 음성 폴백 목적지로만 등장, 아래 미결).
 - 데이터: 접근성 활성 여부(`AccessibilityManager` 대조), `Settings.canDrawOverlays()`.
   버튼 탭 → 시스템 설정 딥링크, 복귀 시 재확인(현 구현 경로 유지).
 - [미결] 카드의 "반복 애니메이션" 실물 미정(현재 일러스트 슬롯만).
-- 구현 연결: `MainActivity` 권한 경로(구현됨), 화면 분리·자동 진행은 신규.
+- 구현 연결: `OnboardingActivity`로 구현됨(#123). 권한 두 개가 갖춰지면 `ConversationActivity`로
+  자동 진행하고, 밖에서 권한이 꺼지면 그쪽 `onResume`이 이 화면으로 되돌린다.
 
 ## MA-1 홈 — 버킷 Now
 

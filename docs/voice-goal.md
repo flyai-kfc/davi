@@ -37,11 +37,11 @@
 
 - **완료 판정 가능성 게이트** — 프롬프트에 "안내에 꼭 필요한 정보가 없으면 질문" 정도만 있고, 완료를 판정할 수 있는 문장인지 보는 축이 없다. 지금 충분성 기준은 모델 재량이다.
 - **완료 신호(done_signal)** — 관찰 가능한 종료 상태를 뽑는 필드가 없다.
-- 인식 실패·무응답 복구 — `MainActivity.handleSpeechError`가 모든 오류에서 `voiceSession.cancel()`로 대화를 통째로 닫는다.
+- 인식 실패·무응답 복구 — `ConversationActivity.handleSpeechError`가 모든 오류에서 `voiceSession.cancel()`로 대화를 통째로 닫는다. 홈에 오류 문구는 남기지만 재시도 흐름이 없다(#106 범위).
 - 같은 질문 반복 방지, 음성 최종 확인("이거 맞으세요?").
 
 **없는 것이 아니라 안 하기로 한 것 — 음성 경로의 패턴 마스킹.**
-`MainActivity`·`SlotFillApiClient`·`main.py`·`intent_resolution.py` 어디에도 마스킹 호출이 없는 것은 사실이지만, **누락이 아니라 `SPEC.md` §4(#92)의 결정이다.**
+`ConversationActivity`·`SlotFillApiClient`·`main.py`·`intent_resolution.py` 어디에도 마스킹 호출이 없는 것은 사실이지만, **누락이 아니라 `SPEC.md` §4(#92)의 결정이다.**
 
 > 음성 원문은 연락처 이름처럼 의미 자체가 개인 데이터일 수 있어 화면 트리의 패턴 마스킹을 그대로 적용하면 **목표가 깨진다.** … 인식된 텍스트와 이전 턴이 서버와 Gemini로 **전송됨을 전제로 하되**, 앱·서버 운영 로그, 도그푸딩 raw 저장, 픽스처에는 남기지 않는다.
 

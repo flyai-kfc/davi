@@ -216,24 +216,34 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
 ## 구성
+
+**경계만 적는다.** 소스 파일은 30개가 넘고 계속 는다 — 전부 나열하면 곧 낡으므로, 여기에는
+**진입점·계약 경계·독립 판정 단위**만 둔다. 나머지는 `app/src/main/java/com/davi/helper/`를 보면 된다.
+
 | 경로 | 역할 |
 |---|---|
-| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림/마이크), MainActivity, 접근성 서비스 |
-| `.../MainActivity.kt` | 온보딩 + 텍스트/음성 목표 입력, 안내 세션 시작·중지 |
-| `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동). 인메모리 — 영속화하지 않는다 |
+| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림/마이크), 두 Activity, 접근성 서비스 |
+| `.../OnboardingActivity.kt` | 권한 두 개를 켜게 안내하고 갖춰지면 대화 화면으로(ON-2) |
+| `.../ConversationActivity.kt` | 릴리스 진입점. 음성 목표 입력과 안내 시작(MA-*) |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
+| **계약 경계** | |
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
-| `.../SpeechRecognizerHelper.kt` | 온디바이스 우선 음성인식 결과 하나의 lifecycle 경계 |
-| `.../VoiceDialogueSession.kt` | 최대 5왕복의 이전 턴과 늦은 응답 generation 격리 |
 | `.../SlotFillApiClient.kt` | `/v1/intent/slot-fill` 계약·추적 header·오류 분류 |
-| `.../LaunchableAppIndex.kt` | launcher 앱의 메모리 index·정규화 대조·callback revision |
 | `.../AppResolutionApiClient.kt` | `/v1/intent/app-resolution` 계약·추적 header·오류 분류 |
-| `.../AppResolutionCoordinator.kt` | 후보 생성→로컬 대조→피드백과 generation/revision 격리 |
-| `.../TextToSpeechHelper.kt` | 서버 질문/완료 문장을 읽고 다음 청취 callback 연결 |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
+| **독립 판정 단위** (Android 타입에 의존하지 않아 JVM 테스트로 고정한다) | |
+| `.../GuideSession.kt` | 안내 세션 하나(목표·최근 안내·구조화 행동·완료 확인 대기). 인메모리 — 영속화하지 않는다 |
+| `.../GuideDisplayState.kt` | 오버레이에 지금 무엇이 보여야 하는가(재표시·정체 접미사) |
+| `.../ScreenStability.kt` | 화면 서명과 안정·정체 판정 |
+| `.../UiTreeSerializer.kt` + `.../PrivacyMasker.kt` | 접근성 트리 → 요소 목록, 1차 마스킹 |
+| `.../LaunchableAppIndex.kt` | launcher 앱의 메모리 index·정규화 대조·callback revision |
+| **그 밖** | |
+| `.../*View.kt` · `.../*Motion.kt` · `res/layout/` | 화면·오버레이 렌더링과 모션 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |
 | `gradle/libs.versions.toml` | 버전 카탈로그 |
+| `app/src/debug/` | 개발 전용. 백업 화면 `MainActivity`(런처에 없다 — `adb shell am start`로 연다)와 E2E 브리지 |
+| `e2e-driver/` | 실기기 E2E 드라이버(별도 앱). `DEVICE-E2E.md` |
 
 ## 지금 무엇이 진짜인가
 
@@ -243,14 +253,19 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 
 **동작하는 구현**
 - Gradle 구성(버전 카탈로그, viewBinding, debug 전용 서버 URL·개발 토큰 주입), 매니페스트, 접근성 서비스 등록.
-- `MainActivity` + `GuideSession` — 두 권한이 있을 때만 목표를 입력해 안내를 시작·중지한다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
-- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal의 기존 입력칸
-  전달까지 연결된다. 앱은 고정 슬롯을 조합하거나 음성만으로 안내를 자동 시작하지 않는다.
+- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 두 권한이 갖춰지면 대화 화면으로
+  넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
+  온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
+- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal 전달까지
+  연결된다. 앱은 고정 슬롯을 조합하거나 음성만으로 안내를 자동 시작하지 않는다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
 - `GuideApiClient` — 서버의 JSON 계약을 직렬화·파싱하고 Logical Request ID/attempt header를
   전송한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 분류하며 앱을 종료하지 않는다.
-- `OverlayController` + `HighlightOverlayView` — 서버가 고른 대상에 테두리를 그리고 안내문을 상자에 담아 함께 보여준다. `done`이면 지운다.
+- `OverlayController` — 오버레이 **둘**을 소유한다(#126). **표시 오버레이**(`HighlightOverlayView`)는
+  강조 테두리와 화면 가장자리 테두리를 그리고 터치를 아래 앱으로 통과시키며, **조작 오버레이**
+  (`ControlOverlay`)는 안내창과 칩이 살고 그 영역의 터치를 받는다. 화면 가장자리 테두리는 두 tone을
+  나눠 쓴다 — 읽는 중(#127)과 완료 확인(#139). 완료는 사용자가 ○/×로 답해야 끝난다.
 - `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·카드번호·휴대폰·계좌번호를 `•••`로 1차 마스킹한다. 스크롤 메타·페이지 dot과
   `editable`·`focused`·`ime_visible`도 채운다. 일반 편집 요소의 입력된 `text`와 IME 키 트리는 보내지
   않고 hint만 label 후보로 쓴다(#112). `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
@@ -264,8 +279,8 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
   화면 서명과 구조화 행동을 활성 세션에 최대 10개만 보관하며 세션 재시작 때 비운다.
 - ~~**앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.**~~ 같은 화면 연속 샘플을 확인한 뒤
   요청하고, 응답 대기 중 화면 변화와 정체를 폴링으로 판정한다(#39).
-- 권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다.
-- 정체 감지, 오버레이 불가 화면(설정 앱)의 헤드업 폴백은 아직 없다.
+- 권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다(#29).
+- 오버레이가 안 그려지는 화면(설정 앱)의 헤드업 폴백은 아직 없다(#56).
 
 붙일 때 검증된 국소 구현은 `HANDOFF.md` §4 인덱스로 **해당 파일만** 참고한다(복사·이동 금지).
 
