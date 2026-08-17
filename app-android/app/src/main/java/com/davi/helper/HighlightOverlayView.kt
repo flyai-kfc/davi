@@ -6,9 +6,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
 import android.view.View
+import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -359,7 +362,9 @@ class HighlightOverlayView(context: Context) : View(context) {
                 val metrics = instructionPaint.fontMetrics
                 GuideBoxLayout.compute(
                     instruction = instruction,
-                    canvas = drawableBounds(),
+                    // 강조 클램프와 달리 **시스템 바를 뺀** 범위다(#169) — 안내창이 내비게이션
+                    // 바를 덮으면 그 밴드의 탭까지 조작 오버레이가 흡수한다.
+                    canvas = boxBounds(),
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
                     padding = instructionPadding,
@@ -401,7 +406,12 @@ class HighlightOverlayView(context: Context) : View(context) {
         )
     }
 
-    /** 선 두께를 물린 뒤 실제로 그릴 수 있는 화면 범위. 화면 좌표계다. */
+    /**
+     * 선 두께를 물린 뒤 실제로 **그릴 수 있는** 화면 범위. 화면 좌표계다.
+     *
+     * 시스템 바를 뺀 범위가 아니다 — 강조 대상이 내비게이션 바 버튼일 수 있고, 그때 아랫변이
+     * 잘리면 안 된다. 안내창이 앉을 범위는 [boxBounds]가 따로 준다.
+     */
     private fun drawableBounds(): GuideBoxLayout.Bounds {
         val half = highlightStroke / 2f
         return GuideBoxLayout.Bounds(
@@ -410,6 +420,51 @@ class HighlightOverlayView(context: Context) : View(context) {
             right = locationOnScreen[0] + width - half,
             bottom = locationOnScreen[1] + height - half,
         )
+    }
+
+    /**
+     * 안내창이 앉을 수 있는 범위 — [drawableBounds]에서 **시스템 바 인셋을 뺀다**(#169).
+     *
+     * 안 빼면 `bottomAnchored`가 안내창을 내비게이션 바 안으로 밀어 넣는다. 그 자체는 시각
+     * 문제로 보이지만, 안내창 사각형이 곧 **조작 오버레이 창의 터치 영역**이라(#126) 겹친
+     * 밴드의 탭을 우리 창이 흡수한다 — 실측에서 내비바 162px 중 상단 88px의 뒤로·홈·최근 앱이
+     * 죽었다(2026-08-17 SM-S921N, `dumpsys`의 z-order상 우리 창이 `NavigationBar0` 위).
+     * 시니어 대상 앱에서 시스템 버튼 절반이 안 눌리는 자리다.
+     *
+     * **상수로 박지 않는다.** 하단 인셋이 3버튼 162px / 제스처 51px로 3배 차이라(같은 실측)
+     * 런타임에 읽어야 한다. 앱 화면은 이미 같은 처리를 한다(`ConversationActivity`, #78 패턴) —
+     * 오버레이만 빠져 있었다.
+     *
+     * 인셋은 **창이 아니라 디스플레이**에서 읽는다. 이 창은 `FLAG_LAYOUT_NO_LIMITS`라
+     * `getRootWindowInsets()`가 `top=0 bottom=0`을 준다(2026-08-17 실측) — 시스템이 "이 창은
+     * 인셋에 안 눌린다"고 답하는 것이라, 그걸 믿으면 아무것도 안 빼게 된다.
+     * `currentWindowMetrics`는 창 flags와 무관하게 화면 기준 인셋을 준다.
+     *
+     * 인셋은 화면 기준이고 이 창은 이미 상태표시줄 아래에서 시작할 수 있다. 두 번 빼지 않도록
+     * **화면 좌표에서 겹치는 만큼만** 자른다.
+     */
+    private fun boxBounds(): GuideBoxLayout.Bounds {
+        val drawable = drawableBounds()
+        val (safeTop, safeBottom) = safeVerticalRange() ?: return drawable
+        return drawable.copy(
+            top = maxOf(drawable.top, safeTop),
+            bottom = minOf(drawable.bottom, safeBottom),
+        )
+    }
+
+    /**
+     * 화면 좌표에서 시스템 바를 뺀 세로 구간. 읽을 수 없으면 null이고 그때는 아무것도 빼지 않는다
+     * (지금 동작 그대로 — 검증 기기 밖에서 근거 없이 자리를 흔들지 않는다).
+     */
+    private fun safeVerticalRange(): Pair<Float, Float>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val windowManager = context.getSystemService(WindowManager::class.java) ?: return null
+        val metrics = windowManager.currentWindowMetrics
+        val insets = WindowInsetsCompat
+            .toWindowInsetsCompat(metrics.windowInsets)
+            .getInsets(WindowInsetsCompat.Type.systemBars())
+        return (metrics.bounds.top + insets.top).toFloat() to
+            (metrics.bounds.bottom - insets.bottom).toFloat()
     }
 
     private fun RectF.toLayoutBounds() = GuideBoxLayout.Bounds(left, top, right, bottom)
