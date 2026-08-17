@@ -55,6 +55,10 @@ PoC의 단일 스텝 반응형 + 가드레일 누적 구조를 넘어선다.
   `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON fence 제거는 `gemini_response.py`의 순수 함수로
   eval과 공유한다. HTTP 재시도, 로그, 서비스·평가 오류 분류는 각 호출 경계에 남긴다.
+- **enum 클래스 docstring은 스키마에 실리지 않는다.** `gemini_schema`가 responseSchema에 싣는 것은
+  **필드의 `description`**뿐이라, `SwipeDirection` docstring에만 있던 "손가락 기준"이 모델에
+  도달하지 않았다(#109 원인). 값의 뜻을 모델에게 말하려면 **필드 description이나 프롬프트**에
+  둔다 — 그 둘은 서로 같은 뜻이어야 한다(무스키마 폴백에서 한 프롬프트에 함께 들어간다).
 - `scroll`인데 `direction`이 빠지면 화면 메타로 앞/뒤 방향을 추측하지 않는다. 같은 schema 모드에서
   방향을 명시하도록 **한 번만 재요청**하고, 다시 빠지면 PARSE로 실패한다. 로그에는 응답 원문 대신
   `scroll_direction_missing` 진단 코드만 남긴다.
