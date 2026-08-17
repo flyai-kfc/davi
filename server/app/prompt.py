@@ -32,8 +32,9 @@ EVIDENCE_INSTRUCTION = (
 #
 # **이 문장이 프롬프트에 있어야 하는 이유는 스키마가 이걸 전달하지 못하기 때문이다.**
 # 기준을 설명하는 문장은 `SwipeDirection` **enum 클래스 docstring**에 있는데,
-# `gemini_schema`는 필드의 `description`만 responseSchema에 싣는다(HANDOFF §10). 그래서
-# 모델은 필드명과 짧은 필드 설명만 보고 기준을 추측해 왔다.
+# `gemini_schema.build_response_schema`가 responseSchema에 싣는 것은 필드의 `description`뿐이라
+# 모델에 도달한 적이 없다(`../CLAUDE.md`의 "Gemini 구조화 출력 함정" 참고). 그래서 모델은
+# 필드명과 짧은 필드 설명만 보고 기준을 추측해 왔다.
 #
 # **조건을 달지 않고 항상 넣는다.** scroll은 어느 화면에서나 고를 수 있는 액션이고, 실제로
 # 방향이 어긋난 실측은 스크롤 메타가 **없던** 화면에서 나왔다(#159). 조건을 달면 정작

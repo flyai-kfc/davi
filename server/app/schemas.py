@@ -161,8 +161,9 @@ class GuideAction(BaseModel):
     )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
-    # 않아서**다 — 필드 description만 responseSchema를 탄다(HANDOFF §10). 그래서 "동작 기준"이
-    # 모델에게 도달하지 않았다(#109). `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
+    # 않아서**다 — `gemini_schema.build_response_schema`가 싣는 것은 필드 description뿐이라
+    # "동작 기준"이 모델에게 도달하지 않았다(#109 원인, `../CLAUDE.md`의 "Gemini 구조화 출력
+    # 함정"). `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
     direction: SwipeDirection | None = Field(
         default=None,
         description=(
