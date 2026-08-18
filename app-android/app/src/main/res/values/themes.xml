@@ -106,4 +106,46 @@
         <item name="backgroundTint">@null</item>
         <item name="android:textColor">@color/davi_button_on_kakao</item>
     </style>
+
+    <!--
+      메인 7 최종 확인의 캡슐 버튼쌍(#196). Widget.Davi.Button을 상속하지 않는다 —
+      그쪽은 minHeight 56 · 20sp · elevation을 갖는데 여기는 72dp · 18sp · 그림자 없음이다.
+
+      **서체는 Pretendard다.** C1이 "다비가 입으로 하는 말만 Cafe24"인데 버튼 라벨은
+      사용자가 누르는 대답이라 본문 서체가 맞다. 시안 인스턴스가 Cafe24로 덮여 있으나
+      Figma 마스터를 Pretendard 18로 맞추기로 했다(#196).
+
+      **높이는 wrap_content + minHeight다.** 고정 높이면 글자 배율 2.0x에서 라벨이 잘린다.
+    -->
+    <style name="Widget.Davi.ButtonPair" parent="Widget.Material3.Button">
+        <item name="android:minHeight">@dimen/davi_button_pair_height</item>
+        <item name="android:textSize">@dimen/davi_type_button_pair</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">@font/pretendard</item>
+        <item name="fontFamily">@font/pretendard</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <!--
+          **채움이 아래로 그림자 offset만큼 짧으므로 글자도 그만큼 올린다.** 이게 없으면
+          라벨이 뷰(72dp) 기준으로 가운데 와서 보이는 캡슐(68dp) 안에서는 처져 보인다.
+          두 버튼에 함께 걸어야 라벨 높이가 서로 어긋나지 않는다.
+
+          **위쪽도 0으로 못 박는다.** 아래만 주면 Material3 Button의 기본 위 패딩이 남아
+          라벨이 오히려 더 내려간다(실기기 실측 +4.7dp). 위아래를 모두 지정해야 결과가
+          기본값에 좌우되지 않는다.
+        -->
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">@dimen/davi_button_pair_shadow_offset_y</item>
+        <item name="backgroundTint">@null</item>
+    </style>
+    <style name="Widget.Davi.ButtonPair.Primary">
+        <item name="android:background">@drawable/bg_davi_button_pair_primary</item>
+        <item name="android:textColor">@color/davi_button_on_primary</item>
+    </style>
+    <style name="Widget.Davi.ButtonPair.Secondary">
+        <item name="android:background">@drawable/bg_davi_button_pair_secondary</item>
+        <item name="android:textColor">@color/davi_button_primary</item>
+    </style>
 </resources>

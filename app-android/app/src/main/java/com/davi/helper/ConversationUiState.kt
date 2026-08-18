@@ -73,7 +73,21 @@ data class ConversationRenderModel(
     val micEnabled: Boolean = false,
     val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
-    val confirmAcceptDescRes: Int = R.string.conversation_confirm_accept_desc,
+    /**
+     * 질문 카드가 남는 세로 공간을 나눠 갖는가(weight). 끄면 wrap_content + minHeight로 선다.
+     *
+     * **최종 확인에서도 켜야 한다**(#200 리뷰). 확인쌍이 카드 아래 열 안에 있어 카드가
+     * 먼저 커지면 버튼이 화면 밖으로 밀린다 — 긴 goal과 큰 글꼴이 겹칠 때 실제로 넘친다
+     * (가용 698dp에 고정 소비 351dp인데 카드 상한은 496dp까지 간다). 확인 화면에서
+     * 버튼을 못 누르면 빠져나갈 길이 없으므로 카드 쪽이 양보한다.
+     */
+    val cardQuestionFlexible: Boolean = false,
+    /**
+     * 확인쌍 ○의 **보이는 글자**. 확인 화면이 둘이라(경고 -> 최종 확인) 같은 모양이 연달아
+     * 나오는데, 무엇을 누르는지가 글자로 갈려야 한다. #194는 아이콘 전용이라 이 구분을
+     * contentDescription으로만 줄 수 있었고 눈으로 읽는 사용자에게는 두 화면이 같아 보였다.
+     */
+    val confirmAcceptTextRes: Int = R.string.conversation_confirm_accept,
     val closeVisible: Boolean = false,
     /**
      * 하단 파도(#132). **사용자가 말하는 동안에만** true — 다비가 말할 때는 다른 모양으로
@@ -141,6 +155,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionRes = if (state.question == null) R.string.conversation_prompt_initial else null,
         questionText = state.question,
         utteranceVisible = true,
+        cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
         closeVisible = true,
@@ -158,6 +173,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         logoVisible = true,
         questionText = state.question,
         utteranceVisible = true,
+        cardQuestionFlexible = true,
         micVisible = true,
         micEnabled = true, // barge-in — 재생을 끊고 바로 답할 수 있다
         closeVisible = true,
@@ -167,6 +183,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         logoVisible = true,
         questionRes = R.string.conversation_requesting,
         utteranceVisible = true,
+        cardQuestionFlexible = true,
         utteranceText = state.utterance,
         micVisible = true,
         closeVisible = true,
@@ -177,15 +194,17 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             logoVisible = true,
             questionText = state.goal,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
+            cardQuestionFlexible = true,
             confirmVisible = true,
-            confirmAcceptDescRes = R.string.conversation_confirm_accept_desc,
+            confirmAcceptTextRes = R.string.conversation_confirm_accept,
         )
         ConfirmKind.APP_AVAILABILITY_WARNING -> ConversationRenderModel(
             logoVisible = true,
             questionRes = R.string.conversation_app_availability_warning,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
+            cardQuestionFlexible = true,
             confirmVisible = true,
-            confirmAcceptDescRes = R.string.conversation_confirm_continue_desc,
+            confirmAcceptTextRes = R.string.conversation_confirm_continue,
         )
     }
     ConversationUiState.Failed -> ConversationRenderModel(

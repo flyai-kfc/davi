@@ -4,9 +4,14 @@
   상태 6개가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
   고정 배치 — 루트 스크롤 컨벤션은 폼형 화면에만 적용한다(app-android/CLAUDE.md).
 
-  **조작 수단은 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
-  잘라내는데, 그 자리에 마이크·확인쌍을 두면 큰 글꼴에서 유일한 조작 수단이 사라진다
-  (PR #125 리뷰). 컨트롤을 FrameLayout 바닥에 붙이고 위 열에는 그만큼 padding을 비워 둔다.
+  **마이크는 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
+  잘라내는데, 그 자리에 마이크를 두면 큰 글꼴에서 유일한 입력 수단이 사라진다
+  (PR #125 리뷰). 마이크를 FrameLayout 바닥에 붙이고 위 열에는 그만큼 padding을 비워 둔다.
+
+  **최종 확인의 버튼쌍은 그 슬롯을 쓰지 않는다**(#196) — 시안대로 카드 바로 아래에 있고
+  화면 아래는 비운다. 마이크 자리에 버튼이 앉으면 "눌러 말하세요"의 자리와 겹쳐서
+  확인 화면인데 입력 자리처럼 보이기 때문이다. 그 버튼쌍은 열 안에 있으므로 위 잘림
+  규칙을 함께 받는데, 최종 확인에서는 카드 weight가 0이라 열이 남는 높이를 다 쓰지 않는다.
 
   질문 카드는 maxHeight로 묶고 **내부 스크롤**로 넘긴다 — 이 카드에는 최종 확인의 goal도
   들어오는데(renderModelOf), maxLines+ellipsize면 사용자가 다 읽지 못한 문구를 ○로 승인하게
@@ -189,7 +194,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="176"
-            android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
 
@@ -215,6 +219,7 @@
             android:id="@+id/card_question_container"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:minHeight="@dimen/davi_card_min_height_davi"
             android:orientation="vertical"
             android:gravity="center_horizontal"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
@@ -321,6 +326,26 @@
         </LinearLayout>
         </FrameLayout>
 
+        <!--
+          최종 확인(MA-4)의 캡슐 버튼쌍(#196). **마이크와 같은 바닥 슬롯을 쓰지 않는다** —
+          시안 메인 7이 버튼쌍을 카드 바로 아래(카드 하단에서 86dp)에 두고 화면 아래를 비운다.
+
+          PR #164는 마이크와 확인쌍을 한 슬롯에 묶었다("최종 확인으로 넘어갈 때 버튼이 아래로
+          뛴다"). **그 결정을 뒤집는다** — 마이크 자리에 버튼이 앉으면 "여기 눌러 말하세요"의
+          자리와 겹쳐서, 확인 화면인데 입력 자리처럼 보인다. 마이크에서 버튼쌍으로 넘어가는
+          것은 상태 전환이라 자리가 바뀌는 편이 맞다.
+
+          **절대 y로 옮기지 않았다.** 시안 프레임(620 units = 744dp)이 실기기 가용 높이
+          (698dp, 인셋 뺀 실측)보다 크다. 대신 관계로 둔다 — 최종 확인에서는 카드 weight가
+          0이라 열이 위에서부터 쌓이므로, 카드 뒤에 이 여백만 주면 아래가 저절로 빈다.
+        -->
+        <include
+            android:id="@+id/button_pair"
+            layout="@layout/view_davi_button_pair"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_button_pair_margin_top" />
+
         <Space
             android:id="@+id/space_home_mid"
             android:layout_width="match_parent"
@@ -329,26 +354,19 @@
     </LinearLayout>
 
     <!--
-      조작 수단: 마이크와 확인쌍은 동시에 보이지 않으므로 같은 자리를 쓴다.
+      조작 수단: 마이크. **이제 확인쌍과 자리를 나눠 쓰지 않는다**(#196) — 최종 확인의
+      버튼쌍은 위 열 안, 카드 바로 아래로 갔다. PR #164가 둘을 한 슬롯에 묶은 것은
+      "버튼이 아래로 뛴다"는 이유였는데, 그 뜀은 상태 전환의 일부라 그대로 둔다.
 
-      **바닥 여백이 둘에 함께 걸린다.** davi_mic_margin_bottom을 8dp 올린 것은 마이크가
-      낮아 보여서였지만, 확인쌍도 24 -> 32dp로 같이 올라간다(PR #164 리뷰 지적).
-      **의도한 것이다** — 둘은 번갈아 나타나는 같은 슬롯의 컨트롤이라 높이가 다르면
-      최종 확인으로 넘어갈 때 버튼이 아래로 뛴다. 마이크만 올리려면 래퍼가 아니라
-      마이크에 여백을 줘야 하고, 그때는 두 컨트롤의 높이를 따로 관리하게 된다.
+      davi_mic_margin_bottom은 그대로다 — 이 값에서 파생되는 두 토큰
+      (davi_conversation_control_reserve · davi_glow_mic_margin_bottom)이 마이크 기하에
+      묶여 있어 확인쌍이 떠나도 계산이 바뀌지 않는다.
     -->
     <FrameLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="@dimen/davi_mic_margin_bottom">
-
-        <include
-            android:id="@+id/confirm_pair"
-            layout="@layout/view_davi_confirm_pair"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center" />
 
         <ImageButton
             android:id="@+id/btn_mic"

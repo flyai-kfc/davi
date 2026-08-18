@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 7 최종 확인의 **주** 버튼 배경(○). 시안 `v2/button/pair` 우측.
+  채움 #A50014 · 완전 캡슐 · 아래로 민 그림자. 눌림은 state layer(검정 12%) ripple — E2.
+
+  **그림자는 blur 없는 근사다.** 시안은 `#59000D @28% y3 blur8`인데 색 있는 그림자를
+  elevation으로 못 만들어(API 28+, minSdk 26) 카드와 같은 layer-list 방식으로 넣는다 —
+  단색 도형을 y만큼 아래로 밀고 채움을 그만큼 위로 들인다. 흐림이 없으므로 가장자리가
+  선명하지만, 버튼이 떠 보이는 목적은 달성한다.
+
+  **채움이 그림자 offset만큼 짧아진다**(72 -> 68dp). 카드 그림자도 같은 사정이고,
+  터치 영역은 뷰 크기 그대로라 줄지 않는다.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed">
+    <item>
+        <layer-list>
+            <item
+                android:top="@dimen/davi_button_pair_shadow_offset_y"
+                android:bottom="0dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_button_shadow" />
+                    <corners android:radius="@dimen/davi_button_pair_radius" />
+                </shape>
+            </item>
+            <item android:bottom="@dimen/davi_button_pair_shadow_offset_y">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_button_primary" />
+                    <corners android:radius="@dimen/davi_button_pair_radius" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

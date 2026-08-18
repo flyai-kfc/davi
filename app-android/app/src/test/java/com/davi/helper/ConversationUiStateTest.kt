@@ -124,7 +124,7 @@ class ConversationUiStateTest {
         assertEquals(R.string.conversation_app_availability_warning, model.questionRes)
         assertNull(model.questionText)
         assertTrue(model.confirmVisible)
-        assertEquals(R.string.conversation_confirm_continue_desc, model.confirmAcceptDescRes)
+        assertEquals(R.string.conversation_confirm_continue, model.confirmAcceptTextRes)
     }
 
     @Test
@@ -139,8 +139,8 @@ class ConversationUiStateTest {
         assertEquals(ConversationUiState.Confirm("손자에게 사진 보내기"), goalConfirmation)
         assertNull(followUpConfirmationAfterAccept(goalConfirmation))
         assertEquals(
-            R.string.conversation_confirm_accept_desc,
-            renderModelOf(goalConfirmation).confirmAcceptDescRes,
+            R.string.conversation_confirm_accept,
+            renderModelOf(goalConfirmation).confirmAcceptTextRes,
         )
     }
 
@@ -308,5 +308,23 @@ class ConversationUiStateTest {
                 model.cardGlowVisible && model.utteranceSpeaking,
             )
         }
+    }
+
+    @Test
+    fun `카드는 확인 화면에서도 남는 공간만 갖는다`() {
+        // 확인쌍이 카드 아래 열 안에 있어(#196) 카드가 wrap_content면 긴 goal에서 버튼을
+        // 화면 밖으로 밀어낸다 — 확인 화면에서 버튼을 못 누르면 빠져나갈 길이 없다.
+        for (state in listOf(
+            ConversationUiState.Confirm("목표"),
+            ConversationUiState.Confirm("목표", ConfirmKind.APP_AVAILABILITY_WARNING),
+            ConversationUiState.Listening(),
+            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Requesting("발화"),
+        )) {
+            assertTrue("$state 에서 카드가 고정 높이다", renderModelOf(state).cardQuestionFlexible)
+        }
+        // 카드가 혼자 남는 화면은 내용 높이로 선다.
+        assertFalse(renderModelOf(ConversationUiState.Home()).cardQuestionFlexible)
+        assertFalse(renderModelOf(ConversationUiState.Failed).cardQuestionFlexible)
     }
 }
