@@ -65,9 +65,10 @@ class LoginActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        // 네이티브 앱 키가 없는 빌드(키 미설정 개발 환경·현 release)는 SDK가 init되지 않았다.
-        // 카카오 경로를 숨기고 스킵만 노출한다 — 로그인 실패가 앱을 막지 않는다는 원칙의 빌드판.
-        binding.btnKakaoLogin.isVisible = BuildConfig.KAKAO_NATIVE_APP_KEY.isNotEmpty()
+        // 로그인이 끝까지 갈 수 없는 빌드는 카카오 경로를 숨기고 스킵만 노출한다 — 로그인 실패가
+        // 앱을 막지 않는다는 원칙의 빌드판. 키가 없어 SDK가 init되지 않은 경우뿐 아니라, 키는
+        // 있는데 세션을 교환할 서버 주소가 아직 placeholder인 경우까지 LOGIN_ENABLED가 덮는다.
+        binding.btnKakaoLogin.isVisible = BuildConfig.LOGIN_ENABLED
 
         binding.btnKakaoLogin.setOnClickListener { startKakaoLogin() }
         binding.btnLoginSkip.setOnClickListener {

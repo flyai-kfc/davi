@@ -174,8 +174,9 @@ requireAlphanumericKakaoKey("debug(DAVI_KAKAO_NATIVE_APP_KEY)", debugKakaoNative
 // 소유자를 Play 개발자 계정과 대조하지 않고, 우리 로그인은 동의항목을 요청하지 않아(서버가
 // id·app_id만 읽는다) 비즈 앱 전환도 필요 없다 — 콘솔 접근은 팀원 초대로 연다.
 // 같은 앱이라 서버 DAVI_KAKAO_APP_ID는 그대로 맞는다.
-// 남은 관문은 서명 해시다: Play App Signing이 재서명한 인증서 지문을 카카오 콘솔에 등록해야
-// 실기기 로그인이 성공한다(업로드 키 해시가 아니다).
+// 남은 관문은 서명 해시다. 서명 주체마다 지문이 달라 등록할 해시가 셋이고(debug·업로드 키·
+// Play 앱 서명 키), 어느 것이 어느 배포 경로에 쓰이는지는 README "카카오 키 해시" 절에 모아
+// 두었다 — 여기에 다시 적으면 두 곳이 어긋난다.
 val releaseKakaoNativeAppKey = "96ec16afc31462078e4d7daefa9cf0b2"
 requireAlphanumericKakaoKey("release(releaseKakaoNativeAppKey)", releaseKakaoNativeAppKey)
 
@@ -185,6 +186,15 @@ requireAlphanumericKakaoKey("release(releaseKakaoNativeAppKey)", releaseKakaoNat
 val dogfoodOptIn = debugSetting("DAVI_DOGFOOD") == "true"
 
 val releaseServerUrl = "https://example.invalid"
+
+// 로그인 버튼은 "키가 있다"가 아니라 **"로그인이 끝까지 갈 수 있다"**에 건다. 카카오 인증에
+// 성공해도 세션을 교환할 상대가 없으면 매번 login_error_server로 끝나므로, 그 상태에서
+// 버튼을 띄우면 첫 내부 테스트에서 테스터가 가장 먼저 누르는 자리가 항상 실패한다.
+// RFC 2606이 .invalid를 절대 해석되지 않는 TLD로 예약했으니, placeholder 문자열과 비교하는
+// 대신 그 성질로 판정한다. #214가 실주소를 넣으면 조건이 저절로 참이 된다.
+val releaseServerConfigured =
+    !URI(releaseServerUrl).host.orEmpty().endsWith(".invalid")
+val releaseLoginEnabled = releaseKakaoNativeAppKey.isNotEmpty() && releaseServerConfigured
 val generatedDebugNetworkSecurityDir =
     layout.buildDirectory.dir("generated/res/network-security/debug")
 
@@ -215,6 +225,7 @@ android {
         buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
         buildConfigField("boolean", "DOGFOOD_OPT_IN", "false")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"\"")
+        buildConfigField("boolean", "LOGIN_ENABLED", "false")
         // 기본값은 모든 variant에서 마스킹 활성화다. debug만 아래에서 덮어쓴다(#203).
         buildConfigField("boolean", "PRIVACY_MASKING_DISABLED", "false")
         // 커스텀 scheme은 값이 무엇이든 Android가 정상 매칭한다(#168 리뷰 P1 — "죽은 scheme"은
@@ -239,6 +250,11 @@ android {
                 "PRIVACY_MASKING_DISABLED",
                 disablePrivacyMasking.toString(),
             )
+            buildConfigField(
+                "boolean",
+                "LOGIN_ENABLED",
+                debugKakaoNativeAppKey.isNotEmpty().toString(),
+            )
             if (debugKakaoNativeAppKey.isNotEmpty()) {
                 manifestPlaceholders["kakaoOauthScheme"] = "kakao$debugKakaoNativeAppKey"
                 manifestPlaceholders["kakaoLoginEnabled"] = "true"
@@ -257,6 +273,9 @@ android {
                 "KAKAO_NATIVE_APP_KEY",
                 releaseKakaoNativeAppKey.asBuildConfigString(),
             )
+            // 진입점(scheme·handler activity)은 키와 함께 켜 둔다. 버튼만 releaseLoginEnabled로
+            // 늦추면 #214는 주소 한 줄만 바꾸면 되고, 켜는 순간 리다이렉트가 이미 받아진다.
+            buildConfigField("boolean", "LOGIN_ENABLED", releaseLoginEnabled.toString())
             if (releaseKakaoNativeAppKey.isNotEmpty()) {
                 manifestPlaceholders["kakaoOauthScheme"] = "kakao$releaseKakaoNativeAppKey"
                 manifestPlaceholders["kakaoLoginEnabled"] = "true"

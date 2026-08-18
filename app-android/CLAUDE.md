@@ -66,6 +66,10 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `releaseKakaoNativeAppKey` 상수에서 읽는다. 이 둘은 섞이지 않는다: local.properties 값이
   있으면 `verifyReleaseConfiguration`이 release 빌드를 막는다. 키 없는 빌드는 SDK init·카카오
   버튼·OAuth handler를 함께 끈다. 카카오 토큰·세션 토큰은 logcat 금지.
+- **로그인 버튼은 `BuildConfig.LOGIN_ENABLED`에 건다** — 키 유무가 아니라 **로그인이 끝까지
+  갈 수 있는가**다. 카카오 인증에 성공해도 세션을 교환할 `SERVER_URL`이 placeholder면
+  `login_error_server`로 끝나므로, 그 빌드는 버튼을 띄우지 않는다. 진입점(scheme·handler
+  activity)은 키와 함께 켜 두어 주소가 정해지는 순간(#214) 조건만 참이 되게 한다.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
 
 ## UI 컨벤션 (확정 2026-07-24)
