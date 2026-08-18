@@ -14,7 +14,9 @@
     x16 y42  M 0 18 L 14 0   →   (12,28) → (26,10)
     x24 y52  M 0 10 L 21 0   →   (20,30) → (41,20)
 
-  크기는 x1.2, 굵기는 환산하지 않는다(선 두께 1:1, `01-tokens.md` §6-1).
+  **굵기도 그림과 함께 커진다.** viewport 43을 52dp로 그리므로 `strokeWidth="4"`는 화면에서
+  4.84dp다 — 시안이 그린 그대로의 비율이다. `01-tokens.md` §6-1의 "선 두께 1:1"은 테두리 같은
+  UI 선을 말하는 것이고, 여기는 그림의 획이다(캐릭터 `ic_davi_cane`의 지휘봉 막대와 같다).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="52dp"

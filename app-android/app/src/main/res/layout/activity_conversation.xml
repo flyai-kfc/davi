@@ -97,7 +97,8 @@
           위로 벌어지는 건 X 버튼과 배지 사이인데 그건 배경(분홍 메시)일 뿐이다.
           아래로 벌어지면 마이크가 카드에서 떨어져 나와 겹침 규칙이 화면마다 달라진다.
 
-          카드 상태에서도 보인다 — 홈에서만 아래 space_home_mid와 짝을 이뤄 제목을 가운데 둔다.
+          **홈에서는 아래 짝(space_home_mid)이 없다**(#231) — 마이크가 바닥에 못 박혀 있고
+          열 아래 여백이 그 자리를 대신한다. 지금 이 뷰와 짝을 이루는 것은 안내(메인 9)뿐이다.
         -->
         <Space
             android:id="@+id/space_flex_top"
@@ -149,9 +150,9 @@
 
           폭죽은 **글자가 아니라 화면 오른쪽 가장자리에 붙인다** — 제목이 가운데 정렬이라
           글자의 오른쪽 끝이 문구마다 달라진다. 장식이라 스크린리더에서 뺀다.
-          제목은 두 줄이 이어진 한 문장이라
-          첫 줄에 전체를 읽히고 둘째 줄을 뺀다 — 안 그러면 "어려운 건" "물어보세요"가
-          따로 읽혀 문장이 두 동강 난다.
+          제목은 두 줄이 이어진 한 문장이라 **첫 줄에 `contentDescription`으로 전체를
+          물리고** 둘째 줄을 트리에서 뺀다. 둘째 줄만 빼고 끝내면 TalkBack이 "어려운 건"만
+          읽고 "물어보세요"가 통째로 사라진다(PR #235 리뷰).
         -->
         <FrameLayout
             android:id="@+id/home_head"
@@ -170,6 +171,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/voice_home_title"
+                    android:contentDescription="@string/voice_home_title_desc"
                     android:textAppearance="@style/TextAppearance.Davi.HomeTitle"
                     android:fontFamily="@font/cafe24_ssurround"
                     app:fontFamily="@font/cafe24_ssurround"

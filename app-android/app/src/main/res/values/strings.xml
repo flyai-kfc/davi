@@ -129,15 +129,22 @@
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 
-    <!-- MA-1 홈 (docs/SCREENS.md). \n을 명시하는 이유는 제목이 28sp라 글꼴 배율 2.0에서
-         한 줄에 안 들어가고, 없으면 어디서 끊길지 기기가 정하기 때문이다. -->
     <!--
-      메인 1 홈(#231). 제목이 두 줄이고 **줄마다 색이 다르다**(둘째 줄 #F2001C) — 한
+      MA-1 홈 (docs/SCREENS.md). 제목이 두 줄이고 **줄마다 색이 다르다**(둘째 줄 #F2001C) — 한
       TextView에 넣으면 색을 가를 수 없어 뷰를 둘로 나눴다.
       가운뎃점은 시안 그대로다(· 문구 ·).
+
+      **\n을 쓰지 않는다.** 옛 제목(28sp 한 뷰)은 배율 2.0에서 한 줄에 안 들어가 \n으로
+      끊을 자리를 못 박아야 했는데, 지금은 줄이 곧 뷰라 그럴 일이 없다.
     -->
     <string name="voice_home_title">어려운 건</string>
     <string name="voice_home_title_accent">물어보세요</string>
+    <!--
+      제목 두 줄을 이어 읽는 스크린리더용 문장. **두 조각을 코드에서 잇지 않는다** —
+      띄어쓰기가 번역이나 수정 때 조용히 깨진다. 뷰가 둘로 갈린 것은 줄마다 색이 달라서일 뿐
+      한 문장이다.
+    -->
+    <string name="voice_home_title_desc">어려운 건 물어보세요</string>
     <string name="voice_home_subtitle">· 하나씩 알려드릴게요 ·</string>
     <string name="voice_home_bubble">무엇을 도와드릴까요?</string>
     <string name="voice_home_caption">· 눌러서 말하기 ·</string>

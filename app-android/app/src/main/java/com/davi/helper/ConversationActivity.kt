@@ -301,12 +301,12 @@ class ConversationActivity : AppCompatActivity() {
         // 내용이 가운데로 내려오고, 배율이 커져 남는 게 없으면 저절로 0이 된다 —
         // 배율마다 다른 값을 두지 않고 한 구조로 양쪽을 만족시킨다.
         // (1.0배율에서 아래가 177dp 비어 있었고, 2.0에서는 0이다.)
+        // **위아래로 나눠 먹는 것은 안내(메인 9)뿐이다** — 홈은 아래 짝을 걷었다(#231, 아래 참고).
         binding.spaceFlexTop.isVisible(model.homeVisible || model.guidingVisible)
         // **홈에서는 아래 빈칸을 걷는다**(#231) — 남는 세로를 아래가 나눠 가지면 말풍선과
         // 마이크 사이가 시안(48)과 무관하게 벌어진다. 홈은 마이크가 바닥에 못 박혀 있어
         // 아래 여백(davi_home_control_reserve)이 그 자리를 대신한다.
         binding.spaceHomeMid.isVisible(model.guidingVisible)
-        binding.homeTitle.isVisible(model.homeVisible)
         binding.homeHead.isVisible(model.homeVisible)
         binding.homeSubtitle.isVisible(model.homeVisible)
         binding.homeCane.isVisible(model.homeVisible)
