@@ -63,6 +63,12 @@ data class ConversationRenderModel(
     val homeVisible: Boolean = false,
     val statusRes: Int? = null,
     val logoVisible: Boolean = false,
+    /**
+     * 실패 화면의 전신 캐릭터(메인 8, #208). **[logoVisible]과 배타적이다** — 이 화면만
+     * 배지 대신 캐릭터가 위를 차지하고, 카드가 그 하단을 파고든다.
+     * 장식이라 스크린리더에서는 읽지 않는다(레이아웃에서 제외).
+     */
+    val standVisible: Boolean = false,
     /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
     val guidingVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
@@ -224,8 +230,12 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             confirmAcceptTextRes = R.string.conversation_confirm_continue,
         )
     }
+    // 메인 8 — 배지가 아니라 전신 캐릭터가 서고 카드가 그 하단을 파고든다(#208).
+    // **카드는 시안에서 state=speaking이다** — 실패 문구도 다비가 하는 말이므로 분홍
+    // 글로우가 켜진다("글로우가 화자를 가리킨다", #176). 대기로 착각해 빼면 안 된다.
     ConversationUiState.Failed -> ConversationRenderModel(
-        logoVisible = true,
+        standVisible = true,
+        cardGlowVisible = true,
         questionRes = R.string.conversation_failed,
     )
 }

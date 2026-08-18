@@ -167,14 +167,39 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `실패 화면은 실패 문구 카드만 보인다`() {
+    fun `실패 화면은 캐릭터와 문구 카드만 보인다`() {
         val model = renderModelOf(ConversationUiState.Failed)
         assertEquals(R.string.conversation_failed, model.questionRes)
-        assertTrue(model.logoVisible)
         assertFalse(model.micVisible)
         assertFalse(model.confirmVisible)
         assertFalse(model.closeVisible)
         assertFalse(model.utteranceVisible)
+    }
+
+    @Test
+    fun `실패 화면만 배지 대신 전신 캐릭터가 선다`() {
+        // 메인 8은 이 화면에서만 구도가 다르다 — 캐릭터가 위를 차지하고 카드가 그 하단을
+        // 파고든다. 둘이 함께 뜨면 배지가 캐릭터 위에 겹쳐 그려진다.
+        val 실패 = renderModelOf(ConversationUiState.Failed)
+        assertTrue(실패.standVisible)
+        assertFalse(실패.logoVisible)
+
+        for (state in listOf(
+            ConversationUiState.Home(),
+            ConversationUiState.Listening(),
+            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Requesting("발화"),
+            ConversationUiState.Confirm("목표"),
+        )) {
+            assertFalse("$state 에는 캐릭터가 없다", renderModelOf(state).standVisible)
+        }
+    }
+
+    @Test
+    fun `실패 문구도 다비가 하는 말이라 카드가 빛난다`() {
+        // 시안이 이 카드를 state=speaking으로 뒀다 — "글로우가 화자를 가리킨다"(#176)와
+        // 같은 결이다. 대기로 착각해 빼면 안 된다.
+        assertTrue(renderModelOf(ConversationUiState.Failed).cardGlowVisible)
     }
 
     @Test
