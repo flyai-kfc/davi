@@ -94,7 +94,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 ## 빌드·실행 (코드만 봐선 모르는 것)
 - **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화·오버레이 권한 확인까지 끝난다. Android Studio를 열 필요가 없다.
 - **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성·오버레이를 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다.
-- `HANDOFF.md` §3-15의 "CLI 빌드 불가"는 **해결됐다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓이었고, 소켓 임시 폴더를 옮기면 정상 동작한다. 자세한 건 `README.md`.
+- **Gradle CLI가 `Unable to establish loopback connection`으로 죽는 PC가 있다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓 임시 폴더이고, 스크립트가 흡수한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
   `scripts/run-device-e2e.sh` 또는 `.ps1`을 쓴다. API 키는 서버에만 두고, 일반 CI는
@@ -106,7 +106,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
 - **API 키를 앱에 넣지 않는다.** debug에만 서버 URL·개발 접근 토큰을 주입한다. release는
   개발 설정을 읽거나 포함하지 않는다. 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
-  **되살리지 않는다**(§5-2).
+  **되살리지 않는다**(HANDOFF §5-2).
 - **release 서명은 debug 설정이 아니다**(#221). 업로드 키스토어 경로·비밀번호는
   `local.properties`에서 읽되 `debugSetting`이 아니라 `localSetting`으로 읽는다 — release가
   정당하게 쓰는 값이라 `verifyReleaseConfiguration`이 막는 대상에 넣으면 안 된다.
@@ -137,7 +137,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **`adb shell input text`는 한글을 못 넣는다.** 목표 입력은 기기에서 직접 치거나 다른 경로로.
 - **중지 버튼 좌표는 스크롤 위치에 따라 달라진다.** 좌표를 외워 탭하지 말고 직전 캡처로 확인한다. 빗나가면 세션이 계속 돌며 모델 쿼터를 쓴다(실제로 두 번 겪었다).
 
-## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준, `HANDOFF.md` §3)
+## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준)
 - 설정 앱 위에서 숨겨지는 것은 `SYSTEM_ALERT_WINDOW` 계열 오버레이뿐이다. **접근성 서비스가
   띄우는 `TYPE_ACCESSIBILITY_OVERLAY`는 그려진다**(2026-08-18 SM-S921N 실측, #56) — 강조·안내창·
   칩이 모두 뜨고 표시 오버레이 아래로 터치도 통과한다. `HANDOFF.md` §3-1의 "우회 불가"는 이
