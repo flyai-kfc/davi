@@ -1,7 +1,8 @@
 package com.davi.helper
 
 /**
- * 서버로 나갈 label에 1차 개인정보 마스킹을 적용할지 정하는 정책(#203).
+ * 서버로 나갈 label의 1차 개인정보 마스킹과, 우회 중 함께 닫아야 할 식별자·상세 로그 경계를
+ * 정하는 정책(#203).
  *
  * 기본은 언제나 [PrivacyMaskingLabelMasker]다. 우회는 **debug variant에서 빌드 시
  * 명시적으로 opt-in한 비교 실험**에서만 쓴다. release 산출물은
@@ -41,3 +42,21 @@ object PassthroughLabelMasker : LabelMasker {
  */
 fun labelMaskerFor(maskingDisabled: Boolean): LabelMasker =
     if (maskingDisabled) PassthroughLabelMasker else PrivacyMaskingLabelMasker
+
+/**
+ * dogfood raw 저장 식별자를 요청에 붙여도 되는지 정한다.
+ *
+ * 앱의 1차 마스킹을 우회한 요청에는 원문 label이 들어 있다. 서버는 wire contract만으로 앱의
+ * 우회 상태를 알 수 없으므로, 이때 식별자를 보내면 서버의 dogfood whitelist가 원문 요청을
+ * 저장할 수 있다. 따라서 우회 중에는 opt-in 여부와 무관하게 식별자를 보내지 않는다.
+ */
+fun shouldAttachDogfoodDeviceId(
+    dogfoodOptIn: Boolean,
+    maskingDisabled: Boolean,
+): Boolean = dogfoodOptIn && !maskingDisabled
+
+/** 원문 label을 포함하는 화면 상세 로그는 1차 마스킹 우회 중에는 항상 막는다. */
+fun shouldLogDetailedScreen(
+    maskingDisabled: Boolean,
+    e2eSuppressesDetailedLogs: Boolean,
+): Boolean = !maskingDisabled && !e2eSuppressesDetailedLogs

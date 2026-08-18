@@ -201,10 +201,10 @@ DAVI_DOGFOOD=true
 # 켜면 원문 화면 label이 서버와 실제 Gemini까지 나간다. 합성 데이터만 넣은 전용 기기에서만.
 # 실행 하나만 덮으려면 -PdaviDisablePrivacyMasking=true/false (속성이 이 파일보다 우선).
 # 실험이 끝나면 지운다 — 남겨 두면 그 머신이 계속 우회 APK를 만든다.
-DAVI_DISABLE_PRIVACY_MASKING=true
+DAVI_DISABLE_PRIVACY_MASKING=false
 ```
 
-두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
+위 개발 설정은 필요한 항목만 debug `BuildConfig`에 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
 `10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
 없다. 사설 Wi-Fi 주소에는 토큰이 필수다. Azure 공유 개발 서버는 기본 443 포트의
 `*.azurecontainerapps.io` **HTTPS** URL만 허용하며 원격 host이므로 토큰이 필수다. HTTPS에는

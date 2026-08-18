@@ -69,6 +69,10 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 ./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey
 ```
 
+도그푸딩 화이트리스트에 기기 해시를 등록할 때도 이 기준선 APK에서 연결 로그의
+`dogfoodDeviceId=` 값을 읽는다. 우회 APK는 raw 저장 경로를 닫기 위해 opt-in 빌드에서도
+식별자를 보내지 않고 `dogfoodDeviceId=-`로 표시한다.
+
 비교군은 **서버와 앱 두 겹을 모두** 우회해야 한다. 서버를 우회 설정으로 다시 띄우고,
 
 ```bash
@@ -121,7 +125,11 @@ DAVI_DISABLE_PRIVACY_MASKING=true
 
 - **상세 보고서를 만들지 않는다.** 어느 한 겹이라도 우회면 실행기가 `--no-detailed-report`와
   같은 상태로 내려간다. 상세 보고서는 화면 label과 모델 문장을 그대로 담기 때문이다.
-- **도그푸딩 raw 봉투를 저장하지 않는다.** 화이트리스트 기기라도 서버가 저장을 건너뛴다.
+- **도그푸딩 raw 봉투를 저장하지 않는다.** 앱 1차 우회는 `dogfoodDeviceId`를 요청에서 빼고,
+  서버 2차 우회는 서버 저장 정책을 끈다. 따라서 어느 한 겹만 우회해도 원문 요청이 raw 저장소에
+  들어가지 않는다.
+- **원문 label 상세 logcat을 남기지 않는다.** 앱 1차 우회 중에는 E2E 세션 밖의 일반 debug
+  안내에서도 상세 화면 로그를 끈다. 상태 확인용 `connected ... privacyMasking=DISABLED`는 남는다.
 - 비교에 남기는 것은 기본 비식별 보고서의 **판정 · 실패 코드 · 관측한 안내 단계 · 비종료 이탈**
   같은 지표뿐이다. 원문 logcat이나 서버 로그를 PR·이슈·채팅에 붙이지 않는다.
 

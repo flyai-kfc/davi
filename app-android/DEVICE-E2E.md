@@ -109,7 +109,9 @@ build/reports/device-e2e-private/<scenario>/latest.md
 `Screen.elements`, `recent_instructions`, `recent_actions`와 응답의 `expected_result`, `evidence`,
 `instruction`, `action_type`, `direction`, `target_node_id`를 함께 보여 준다. 상세 파일은 마스킹 뒤에도
 개인 앱 이름 등이 남을 수 있는 **로컬 민감 산출물**이며 `.gitignore` 대상이다. PR·이슈에 첨부하지
-않는다. 생성하지 않으려면 `--no-detailed-report` 또는 `-NoDetailedReport`를 사용한다.
+않는다. 직접 생성하지 않으려면 `--no-detailed-report` 또는 `-NoDetailedReport`를 사용한다.
+앱 1차 또는 서버 2차 마스킹 중 하나라도 우회 중이면 실행기가 상세 보고서를 자동으로
+비활성화하며, 기기에도 원문 label을 포함하는 상세 화면 로그를 남기지 않는다.
 
 두 렌더러는 다음 명령으로 API 키 없이 검증한다.
 

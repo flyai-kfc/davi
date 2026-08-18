@@ -1,8 +1,10 @@
 package com.davi.helper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 
 /**
@@ -46,13 +48,60 @@ class LabelMaskingTest {
     }
 
     @Test
-    fun `release 산출물은 우회 플래그를 false로 고정한다`() {
-        // 이 단위 테스트는 debug BuildConfig로 돈다. 기본 debug 빌드(-P 없이)에서도 꺼져
-        // 있어야 한다는 것이 "기본값은 모든 variant에서 마스킹 활성화"의 실제 보증이다.
-        // release 쪽 상수 false는 build.gradle.kts가 buildConfigField로 못박는다.
+    fun `마스킹 우회 중에는 dogfood raw 저장 식별자를 보내지 않는다`() {
+        assertFalse(
+            shouldAttachDogfoodDeviceId(
+                dogfoodOptIn = true,
+                maskingDisabled = true,
+            ),
+        )
+        assertFalse(
+            shouldAttachDogfoodDeviceId(
+                dogfoodOptIn = false,
+                maskingDisabled = true,
+            ),
+        )
         assertTrue(
-            "기본 debug 빌드에서 우회가 켜져 있으면 안 된다",
-            !BuildConfig.PRIVACY_MASKING_DISABLED,
+            shouldAttachDogfoodDeviceId(
+                dogfoodOptIn = true,
+                maskingDisabled = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `마스킹 우회 중에는 화면 상세 로그를 남기지 않는다`() {
+        assertFalse(
+            shouldLogDetailedScreen(
+                maskingDisabled = true,
+                e2eSuppressesDetailedLogs = false,
+            ),
+        )
+        assertFalse(
+            shouldLogDetailedScreen(
+                maskingDisabled = false,
+                e2eSuppressesDetailedLogs = true,
+            ),
+        )
+        assertTrue(
+            shouldLogDetailedScreen(
+                maskingDisabled = false,
+                e2eSuppressesDetailedLogs = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `기본 debug 빌드는 우회가 꺼져 있다`() {
+        // local.properties 또는 -P로 의도적으로 우회 실험을 하는 빌드에서는 이 기본값 검사를
+        // 건너뛴다. 기준선은 -PdaviDisablePrivacyMasking=false로 명시해 다시 실행할 수 있다.
+        assumeFalse(
+            "마스킹 우회 실험 빌드에서는 기본값 검사를 건너뜁니다",
+            BuildConfig.PRIVACY_MASKING_DISABLED,
+        )
+        assertSame(
+            PrivacyMaskingLabelMasker,
+            labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
         )
     }
 }

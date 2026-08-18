@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from .config import settings
 from .schemas import Screen
 
 _TOKEN = "•••"
@@ -118,7 +119,5 @@ DISABLED_MASKING = MaskingPolicy(enabled=False)
 
 def active_masking_policy() -> MaskingPolicy:
     """설정이 정한 현재 정책. 설정 해석을 이 함수 하나로 모은다."""
-
-    from .config import settings
 
     return DISABLED_MASKING if settings.davi_disable_privacy_masking else ENABLED_MASKING
