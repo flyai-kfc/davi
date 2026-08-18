@@ -315,7 +315,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 screenReadable = !rootUnavailable,
                 decision = lastDecision,
                 requestInFlight = requestInFlight.get(),
-                // 확인 대기 중에는 같은 자리를 성공 tone 테두리가 쓴다(#139).
+                // 확인 대기 중에는 어느 종류든 읽는 중 표시를 끈다. 완료 확인(GD-3)은 같은
+                // 자리를 성공 tone 테두리가 쓰고(#139), 종료 확인(GD-4)은 그 자리를 아무도
+                // 안 쓴다 — 스크림은 다른 자리고 테두리가 없다(#193).
                 awaitingConfirm = GuideSession.awaitingConfirm,
             ),
         )
@@ -559,6 +561,22 @@ class GuideAccessibilityService : AccessibilityService() {
 
         // 전송은 성공했으니 백오프는 푼다. 화면이 바뀌었는지는 그다음 문제다.
         stability.markSucceeded()
+
+        // 확인 대기 중에 도착한 응답은 답할 자리를 덮는다(오류 경로와 같은 규칙, #153).
+        //
+        // GD-3까지는 이 가드가 필요 없었다 — 확인 대기를 **여는 것이 이 함수 자신**이라 응답
+        // 도착 시점에 대기 중인 경우가 없었다. GD-4는 그 전제를 깬다(#193): 중지 칩은 요청이
+        // 나가 있는 동안에도 눌리고(읽는 중 테두리가 도는 그 몇 초가 오히려 그만두고 싶어지는
+        // 구간이다), 그 응답이 확인 화면을 덮으면 `awaitingConfirm`만 true로 남아 세션이 갇힌다 —
+        // 요청은 막히고, 확인쌍이 사라져 답할 수도 없고, 칩 재탭은 그 플래그에 막힌다.
+        //
+        // **`markFailed()`는 부르지 않는다.** 그 함수가 `sentSignature`를 비워 재질의를 만드는데,
+        // "×는 서버에 다시 묻지 않는다"는 이 화면의 계약과 어긋난다. 화면이 그대로면 ×로 돌아온 뒤
+        // 재질의가 없는 것이 맞고, 화면이 바뀌었으면 다음 샘플이 새 서명으로 알아서 묻는다.
+        if (GuideSession.awaitingConfirm) {
+            GuideTelemetry.responseDropped(logicalRequest, "awaiting_confirm")
+            return
+        }
 
         // 세대만 보면 같은 세션 안에서 A 화면의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
         // 버리면 다음 샘플이 B를 새로 물어본다.
