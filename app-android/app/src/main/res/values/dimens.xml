@@ -65,11 +65,6 @@
       기준은 GD-1·2·3·4 넷이다.
     -->
     <!--
-      강조: 대상 bounds에서 사방 8 확장 · 반경 10 · 두께 4.
-      **후광 28dp는 시안에 없지만 유지한다** — 사방 8로는 실기기에서 "자세히 봐야 보이는"
-      정도라 "여기를 누르세요"가 안 보인다. 시안이 아니라 **실기기 보정**으로 기록한다.
-    -->
-    <!--
       안내창: 반경 18 · 테두리 1.5 · 화면 하단에서 55dp(시안 46 × 1.2).
       여백 위18/오44/아18/왼44 — 좌우 44는 점과 종료 X가 앉는 자리다.
     -->
@@ -79,11 +74,18 @@
          함께 움직여 실기기 확인이 필요하다. 지금은 overlay_instruction_margin(20)이 상하를 잡는다. -->
     <dimen name="davi_overlay_window_margin_bottom">55dp</dimen>
     <!--
-      창과 화면 좌우 가장자리 사이. **하단(55)과 다른 값이다** — 시안 프레임 여백 16.
+      창과 화면 좌우 가장자리 사이. **상하(20)와 다른 값이다** — 시안 프레임 여백 16.
+      v2의 하단 55는 아직 안 쓴다(바로 위 davi_overlay_window_margin_bottom 주석).
       하나로 묶었더니 창이 110dp나 좁아져 확인쌍이 접혔다(당시에는 라벨이 있었다)
       (2026-08-18 실기기).
     -->
     <dimen name="davi_overlay_window_margin_h">16dp</dimen>
+    <!--
+      강조 상자와 안내창 사이 간격. **화면 가장자리 여백과 다른 뜻이라 자기 토큰을 준다** —
+      한동안 좌우 여백(16)을 빌려 쓰면서 이 간격이 20에서 16으로 조용히 줄어 있었다
+      (PR #229 리뷰 B). 값은 줄기 전인 20으로 되돌린 것이고, 시안에는 아직 근거가 없다.
+    -->
+    <dimen name="davi_overlay_window_target_gap">20dp</dimen>
     <dimen name="davi_overlay_window_padding_v">18dp</dimen>
     <dimen name="davi_overlay_window_padding_h">44dp</dimen>
     <!--
@@ -111,11 +113,6 @@
          구역의 무게중심(0.42R)보다 바깥으로 밀어 대각선 위쪽에 앉힌다. -->
     <dimen name="davi_overlay_close_mark_dx">20dp</dimen>
     <dimen name="davi_overlay_close_mark_dy">17dp</dimen>
-    <!--
-      위 값들에서 나오는 패딩. 68 터치 대상이 창 오른쪽 위에 붙으므로 상자 안 좌표로
-      옮기면 ✕ 중심이 (46, 18)이다 — 12 글리프 기준 좌 40 / 상 12 / 우 16 / 하 44.
-      터치 대상은 davi_overlay_close_size가 따로 잡는다 — 글리프가 작아도 누를 자리는 넓어야 한다.
-    -->
     <!-- 확인쌍: 높이 56 캡슐 · gap 12. 폭은 창을 따르고 높이·반경만 고정한다. -->
     <!-- 안내창 점 셋. 대화 화면(20/13/15)보다 훨씬 작다 — 창이 작아 같은 크기로는
          문구만큼 무겁게 보인다. 자리 높이는 지름 + 아래 여백 18이다. -->
@@ -134,10 +131,6 @@
     <dimen name="davi_overlay_confirm_inset">24dp</dimen>
     <dimen name="davi_overlay_confirm_gap">12dp</dimen>
     <dimen name="davi_overlay_confirm_shadow_y">3dp</dimen>
-    <!--
-      GD-1 로딩 점 셋. **크기와 불투명도가 둘 다 다르다** — 애니메이션 없이도 진행 방향이
-      읽히게 한 것이라 균일하게 만들면 안 된다. 모션은 추후(2026-08-18 결정).
-    -->
     <!-- 안내 문구: GD-1 20sp · GD-2 18sp · 확인창 18sp. 전부 Pretendard Bold 가운데. -->
     <dimen name="davi_overlay_text_reading">20sp</dimen>
     <dimen name="davi_overlay_text_instruction">18sp</dimen>

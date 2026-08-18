@@ -138,7 +138,6 @@
     <color name="davi_overlay_close_mark">#F2001C</color>
     <!-- 확인쌍 그림자(#330D17 24%). 채움은 davi_button_primary / davi_button_affirm을 쓴다. -->
     <color name="davi_overlay_confirm_shadow">#3D330D17</color>
-    <!-- GD-1 로딩 점. 세 점이 크기와 불투명도가 모두 다르다 — 진행 방향을 정지 상태로도 읽힌다. -->
     <color name="davi_wave_fade_start">#FFB3B3</color>
     <color name="davi_wave_fade_mid">#FF9A9A</color>
     <color name="davi_wave_fade_end">#FF5C70</color>

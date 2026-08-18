@@ -107,6 +107,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPaddingV = GuideBoxStyle.paddingVertical(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
     private val instructionMarginV = GuideBoxStyle.marginVertical(context)
+    private val instructionTargetGap = GuideBoxStyle.targetGap(context)
     private val controlRow = GuideBoxStyle.controlRow(context)
     private val dotsRow = resources.getDimension(R.dimen.davi_overlay_dots_row)
 
@@ -624,6 +625,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
                     marginVertical = instructionMarginV,
+                    targetGap = instructionTargetGap,
                     padding = instructionPadding,
                     paddingVertical = instructionPaddingV,
                     lineHeight = metrics.bottom - metrics.top,

@@ -74,6 +74,16 @@ object GuideBoxStyle {
         context.resources.getDimension(R.dimen.overlay_instruction_margin)
 
     /**
+     * 강조 상자와 안내창 사이 간격.
+     *
+     * **화면 가장자리 여백과 다른 뜻이다.** 한동안 좌우 여백을 빌려 썼는데, 그러면 좌우를
+     * 조정할 때 이 간격이 딸려 움직인다 — 실제로 16으로 갈면서 20에서 조용히 줄었다
+     * (PR #229 리뷰 B). 값에 시안 근거는 아직 없고, 줄기 전 값을 지킨 것이다.
+     */
+    fun targetGap(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_target_gap)
+
+    /**
      * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).
      *
      * 계산 쪽은 이만큼 상자를 키우고, 그리기 쪽은 이 자리에 글자를 쓰지 않는다. 값이 갈리면

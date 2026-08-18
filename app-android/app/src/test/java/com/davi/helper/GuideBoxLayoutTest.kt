@@ -31,6 +31,7 @@ class GuideBoxLayoutTest {
         target = target,
         margin = MARGIN,
         marginVertical = MARGIN_V,
+        targetGap = TARGET_GAP,
         padding = PADDING,
         paddingVertical = PADDING_V,
         lineHeight = LINE_HEIGHT,
@@ -96,14 +97,14 @@ class GuideBoxLayoutTest {
     fun `대상 위에 자리가 있으면 위에 놓는다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 500f, 400f, 600f))
 
-        assertEquals(500f - MARGIN - boxHeight(1), layout?.box?.top)
+        assertEquals(500f - TARGET_GAP - boxHeight(1), layout?.box?.top)
     }
 
     @Test
     fun `대상 위가 좁으면 아래에 놓는다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 100f))
 
-        assertEquals(100f + MARGIN, layout?.box?.top)
+        assertEquals(100f + TARGET_GAP, layout?.box?.top)
     }
 
     @Test
@@ -143,7 +144,7 @@ class GuideBoxLayoutTest {
         val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = true)))
 
         // 키보드를 건드리지 않는 자리 중 첫 번째(대상 위).
-        assertEquals(1000f - MARGIN - boxHeight(1), layout?.box?.top)
+        assertEquals(1000f - TARGET_GAP - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -330,7 +331,7 @@ class GuideBoxLayoutTest {
         val plain = compute(text, target = TARGET, avoid = listOf(band))
         val withRow = compute(text, target = TARGET, avoid = listOf(band), controlHeight = CONTROL_ROW)
 
-        assertEquals(1000f - MARGIN - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
+        assertEquals(1000f - TARGET_GAP - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
         assertEquals(1120f, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
     }
 
@@ -390,6 +391,9 @@ class GuideBoxLayoutTest {
 
         /** 화면 위아래 가장자리와의 여백. 좌우(MARGIN)와 다른 값이다. */
         const val MARGIN_V = 24f
+
+        /** 강조 상자와 안내창 사이. **셋 다 다른 값이어야** 어느 하나를 빌려 써도 걸린다. */
+        const val TARGET_GAP = 20f
         const val LINE_HEIGHT = 30f
 
         /** 칩이 앉는 컨트롤 행 높이(#126). */
