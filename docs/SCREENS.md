@@ -11,6 +11,9 @@
 그 이슈가 무엇을 근거로 삼는지를 한자리에 모았다는 뜻이지, 이 문서 자체가 확정 장부라는
 뜻이 아니다.
 
+Figma Screens의 constraints·auto layout(**리깅**)은 이 문서 소관이 아니다 — 에셋을 다른
+비율로 뽑기 위한 것이고 규칙은 `DESIGN-CONVENTIONS.md`에 있다.
+
 참조: `../SPEC.md`(범위) · `voice-goal.md`(음성 목표 계약) · `DESIGN-CONVENTIONS.md`
 (토큰·컴포넌트·파이프라인) · davi-docs `PLAN.md`(장기 기획) ·
 Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
