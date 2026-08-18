@@ -225,9 +225,14 @@ class GuideAccessibilityService : AccessibilityService() {
                 addAction(Intent.ACTION_USER_PRESENT)
             },
         )
-        // 실제 전원 상태에서 시작한다. false로 두면 ① 화면이 꺼진 리그에서 debug E2E가 세션을
-        // 먼저 시작한 경합과 ② 재바인드 때 남은 true 잔재를 둘 다 놓친다(3차 리뷰).
-        screenOff = getSystemService(PowerManager::class.java)?.isInteractive == false
+        // 실제 전원·잠금 상태에서 시작한다. false로 두면 ① 화면이 꺼진 리그에서 debug E2E가
+        // 세션을 먼저 시작한 경합과 ② 재바인드 때 남은 true 잔재를 둘 다 놓친다(3차 리뷰).
+        //
+        // **키가드도 함께 본다** — 재개가 `ACTION_USER_PRESENT`라 "켜져 있지만 잠금은 아직"은
+        // 일시정지 쪽이다. `isInteractive`만 보면 그 상태로 재바인드될 때 두 경로가 반 칸
+        // 어긋난다(4차 리뷰).
+        screenOff = getSystemService(PowerManager::class.java)?.isInteractive == false ||
+            getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
         // debug E2E 제어 receiver가 접근성 callback보다 먼저 세션을 시작한 경합도 복구한다.
         // 보통은 listener가 시작 이벤트를 받지만, 시스템의 Bound 표시는 callback보다 먼저 바뀔 수 있다.
         if (GuideSession.isActive) scheduleSample(SETTLE_MS)
@@ -844,8 +849,12 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        // **정리를 먼저 한다.** 아래 startActivity가 BAL로 던지면 정리 전체를 건너뛰어
-        // 유령 오버레이와 등록된 리시버가 남는다(3차 리뷰). 알림은 정리와 무관하다.
+        // **리시버와 예약된 샘플을 먼저 걷는다.** 아래 startActivity가 BAL로 던지면 이 둘이
+        // 등록된 채 남는다(3차 리뷰). 알림 판정과 무관해서 앞으로 올릴 수 있다.
+        //
+        // **창 제거(destroy)는 여기로 올리지 않는다** — 아래 when이 `GuideSession.isActive`를
+        // 읽으므로 stop()은 뒤여야 하고, 창을 미리 걷으면 복귀가 기대는
+        // `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`를 스스로 없앤다(4차 리뷰).
         mainHandler.removeCallbacks(sampleRunnable)
         runCatching { unregisterReceiver(screenReceiver) }
             .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
