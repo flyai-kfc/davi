@@ -113,6 +113,38 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `앱 실행 가능성 미확인은 원래 goal을 보존하고 경고와 확인쌍을 보인다`() {
+        val state = ConversationUiState.Confirm(
+            goal = "손자에게 사진 보내기",
+            kind = ConfirmKind.APP_AVAILABILITY_WARNING,
+        )
+        val model = renderModelOf(state)
+
+        assertEquals("손자에게 사진 보내기", state.goal)
+        assertEquals(R.string.conversation_app_availability_warning, model.questionRes)
+        assertNull(model.questionText)
+        assertTrue(model.confirmVisible)
+        assertEquals(R.string.conversation_confirm_continue_desc, model.confirmAcceptDescRes)
+    }
+
+    @Test
+    fun `앱 가능성 경고 계속은 원래 goal 최종 확인을 필수로 거친다`() {
+        val warning = ConversationUiState.Confirm(
+            goal = "손자에게 사진 보내기",
+            kind = ConfirmKind.APP_AVAILABILITY_WARNING,
+        )
+
+        val goalConfirmation = requireNotNull(followUpConfirmationAfterAccept(warning))
+
+        assertEquals(ConversationUiState.Confirm("손자에게 사진 보내기"), goalConfirmation)
+        assertNull(followUpConfirmationAfterAccept(goalConfirmation))
+        assertEquals(
+            R.string.conversation_confirm_accept_desc,
+            renderModelOf(goalConfirmation).confirmAcceptDescRes,
+        )
+    }
+
+    @Test
     fun `실패 화면은 실패 문구 카드만 보인다`() {
         val model = renderModelOf(ConversationUiState.Failed)
         assertEquals(R.string.conversation_failed, model.questionRes)

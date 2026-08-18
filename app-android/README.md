@@ -136,9 +136,13 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 인식된 현재 발화와 이전에 끝난 user/assistant 쌍을 `/v1/intent/slot-fill`에 보낸다. 서버가
 `needs_clarification`이면 `message`를 화면에 표시하고 Android TTS로 읽은 뒤 자동으로 다음 발화를
 듣는다. `ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
-기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 한 후보만
-확정되면 최종 확인 화면으로 가고, 복수·0개·불확실은 기존 TTS 후속 질문 흐름으로 돌아간다.
-**안내는 자동 시작하지 않으며** 사용자가 최종 확인의 ○를 눌러야 한다.
+기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 앱 하나를
+확정하거나 goal을 다시 쓰지 않는다. `launchable` 후보가 하나 이상이면 원래 goal의 최종 확인으로,
+하나도 없거나 index가 불안정하거나 후보 요청이 실패하면 “이 과정에 필요한 앱이 설치되어 있지 않을
+수 있어요. 그래도 계속할까요?” 경고와 같은 확인쌍으로 간다. 후보 요청 실패도 이미 완성된 goal을
+폐기하지 않는다. 경고의 ○는 원래 goal 최종 확인 화면으로 이동하고, 그 화면에서 다시 ○를 눌러야
+안내를 시작한다. 어느 화면에서든 ×는 홈으로 돌아간다. **안내는 자동 시작하지 않는다.** 안내 중 앱
+탐색 반복은 기존 서버 next-step 경로가 맡는다(#185).
 
 index는 `QUERY_ALL_PACKAGES`를 쓰지 않고 현재 접근 가능한 profile의 `MAIN`/`LAUNCHER` activity만
 조회한다. 잠긴 profile은 지금 안내할 수 없는 범위라 제외한다. 설치·삭제·변경 callback은 revision을
@@ -238,6 +242,7 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 | `.../ScreenStability.kt` | 화면 서명과 안정·정체 판정 |
 | `.../UiTreeSerializer.kt` + `.../PrivacyMasker.kt` | 접근성 트리 → 요소 목록, 1차 마스킹 |
 | `.../LaunchableAppIndex.kt` | launcher 앱의 메모리 index·정규화 대조·callback revision |
+| `.../AppResolutionCoordinator.kt` | 후보 생성→로컬 대조→실행 가능성 사전 점검과 generation 격리 |
 | **그 밖** | |
 | `.../*View.kt` · `.../*Motion.kt` · `res/layout/` | 화면·오버레이 렌더링과 모션 |
 | `.../res/xml/accessibility_service_config.xml` | 접근성 서비스 설정 |

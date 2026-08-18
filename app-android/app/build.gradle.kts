@@ -160,6 +160,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // release의 안전한 기본값. 실제 제품 endpoint는 별도 배포 이슈에서 정한다.
         buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
@@ -261,4 +262,6 @@ dependencies {
     implementation(libs.kakao.user)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

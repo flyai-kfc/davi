@@ -20,7 +20,10 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   넣는다. 자동으로 안내를 시작하지 않는다. 발화·질문·goal·대화 UUID는 logcat에 남기지 않는다.
 - **실행 가능 앱 index** — `QUERY_ALL_PACKAGES` 없이 `LauncherApps`의 현재 profile launcher
   activity만 메모리에 유지한다. 서버의 최대 5개 후보를 package exact→정규화 alias 순으로 기기
-  안에서 대조하고, 기기 고유 package·label·component·profile이나 전체 목록은 전송·저장하지 않는다.
+  안에서 대조한다. `launchable` 후보가 없거나 후보 요청이 실패하면 가능성 경고를 보여 주며, 앱
+  하나를 고르거나 canonical name을 goal에 덧붙이지 않는다. 후보 요청 실패로 이미 완성된 goal을
+  폐기하지 않는다. 경고에서 계속해도 바로 안내를 시작하지 않고 원래 goal의 최종 확인을 한 번 더
+  거친다. 기기 고유 package·label·component·profile이나 전체 목록은 전송·저장하지 않는다(#185).
 - **정체 감지** — 시간(폴링) 기반. 조작 이벤트에 의존하지 않는다(목록 끝에서 이벤트가 안 옴).
   접근성 이벤트는 "지금 볼 만하다"는 신호로만 쓰고 판단은 샘플러가 한다(#39). 같은 화면이
   `STUCK_AFTER_MS` 넘게 그대로면 정체로 보고 안내에 한 줄을 덧붙인다 — **서버를 다시 부르지 않는다**
