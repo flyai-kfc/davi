@@ -56,6 +56,16 @@ from .schemas import (
 app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
+# 2차 마스킹 우회는 시작 시점에 한 번 크게 알린다(#203). 설정을 켜 놓은 것을 잊은 채
+# 실기기를 붙이면 그 기기의 원문 화면이 실제 Gemini까지 나간다.
+# `Settings` 검증이 development·loopback·개발 토큰 없음을 이미 강제하므로 여기서는 경고만 한다.
+if settings.davi_disable_privacy_masking:
+    logging.getLogger(__name__).warning(
+        "2차 개인정보 마스킹이 꺼져 있습니다(DAVI_DISABLE_PRIVACY_MASKING=true). "
+        "앱이 보낸 label이 치환 없이 실제 모델까지 전달되고 raw 봉투 저장은 비활성화됩니다. "
+        "합성 데이터만 넣은 전용 테스트 기기에서만 사용하세요(#203).",
+    )
+
 _NEXT_STEP_PATH = "/v1/next-step"
 _SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
@@ -333,6 +343,9 @@ def health() -> dict:
         "environment": settings.davi_env,
         "model": settings.davi_model,
         "stub_llm": settings.davi_use_stub_llm,
+        # 서버 2차 상태만 알린다. 앱 1차 상태는 앱이 logcat으로 따로 드러내며(GuideSvc의
+        # privacyMasking=), 두 값을 합치지 않아야 한쪽만 우회한 상태를 오인하지 않는다(#203).
+        "privacy_masking_disabled": settings.davi_disable_privacy_masking,
     }
 
 

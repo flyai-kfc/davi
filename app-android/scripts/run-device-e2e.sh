@@ -24,6 +24,7 @@ SCENARIO=""
 LIST_SCENARIOS=false
 DETAILED_REPORT=true
 PRIVATE_TRACE_AVAILABLE=false
+DISABLE_PRIVACY_MASKING=false
 
 usage() {
     cat <<'EOF'
@@ -33,6 +34,11 @@ usage() {
   --scenario ID      실행할 시나리오 ID (생략 시 registry 기본값)
   --list-scenarios   실행 가능한 시나리오 목록 출력
   --no-detailed-report  로컬 상세 요청·응답 보고서를 생성하지 않음
+  --disable-privacy-masking
+                     앱 1차 마스킹을 끈 debug APK로 설치해 실행한다(#203 비교 실험).
+                     서버도 DAVI_DISABLE_PRIVACY_MASKING=true로 띄워야 두 겹 모두 우회된다.
+                     원문 화면 label이 실제 Gemini까지 나가므로 합성 데이터만 넣은
+                     전용 테스트 기기에서만 사용한다. 상세 보고서는 자동으로 꺼진다.
   -h, --help         도움말 출력
 EOF
 }
@@ -46,6 +52,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --list-scenarios) LIST_SCENARIOS=true; shift ;;
         --no-detailed-report) DETAILED_REPORT=false; shift ;;
+        --disable-privacy-masking) DISABLE_PRIVACY_MASKING=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) printf '알 수 없는 옵션: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
@@ -82,6 +89,22 @@ if ! printf '%s' "$HEALTH_JSON" |
     exit 2
 fi
 MODEL="$(printf '%s' "$HEALTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("model", "unknown"))')"
+# 서버 2차 마스킹을 우회한 실행은 상세 보고서를 만들지 않는다(#203). 상세 보고서는 화면 label과
+# 모델 문장을 그대로 담으므로, 우회 실행에서는 그 파일이 원문 화면을 디스크에 남기게 된다.
+# 우회 실험이 남겨야 하는 것은 성공 여부·단계 수·실패 코드 같은 비식별 지표뿐이다.
+SERVER_MASKING_DISABLED="$(printf '%s' "$HEALTH_JSON" |
+    python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("privacy_masking_disabled", False)).lower())')"
+if [[ "$SERVER_MASKING_DISABLED" == true || "$DISABLE_PRIVACY_MASKING" == true ]]; then
+    if [[ "$DETAILED_REPORT" == true ]]; then
+        printf '마스킹 우회 실행이라 상세 보고서 생성을 끕니다(#203).\n' >&2
+    fi
+    DETAILED_REPORT=false
+fi
+# 두 겹의 상태를 각각 알린다. 한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지
+# 모른 채 결과를 읽으면 안 된다(#203 안전 경계).
+printf '개인정보 마스킹 — 앱 1차: %s / 서버 2차: %s\n' \
+    "$(if [[ "$DISABLE_PRIVACY_MASKING" == true ]]; then echo '우회'; else echo '적용'; fi)" \
+    "$(if [[ "$SERVER_MASKING_DISABLED" == true ]]; then echo '우회'; else echo '적용'; fi)" >&2
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
     SERIAL="$ANDROID_SERIAL"
@@ -173,7 +196,13 @@ fi
 DAVI_DISABLED=true
 
 # signature 권한을 선언하는 Davi debug 앱을 먼저 설치한 뒤 그 권한을 요청하는 driver를 설치한다.
-./gradlew -PdaviE2eServerUrl="$SERVER_URL" :app:installDebug
+# 우회 속성은 켠 실행에서만 넘긴다. 안 넘기면 debug BuildConfig 기본값이 그대로 마스킹 활성이라,
+# 직전 실행이 우회 APK였더라도 이 설치가 마스킹된 APK로 되돌린다(#203).
+APP_INSTALL_ARGS=(-PdaviE2eServerUrl="$SERVER_URL")
+if [[ "$DISABLE_PRIVACY_MASKING" == true ]]; then
+    APP_INSTALL_ARGS+=(-PdaviDisablePrivacyMasking=true)
+fi
+./gradlew "${APP_INSTALL_ARGS[@]}" :app:installDebug
 ./gradlew :e2e-driver:installDebug :e2e-driver:installDebugAndroidTest
 
 "${ADB_DEVICE[@]}" logcat -c

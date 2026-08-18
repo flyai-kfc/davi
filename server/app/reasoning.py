@@ -15,7 +15,7 @@ import re
 
 from .config import settings
 from .llm import LlmClient
-from .masking import mask_screen_model, mask_text
+from .masking import MaskingPolicy, active_masking_policy
 from .schemas import (
     ActionType,
     GuideAction,
@@ -203,17 +203,26 @@ def _normalize_for_evidence(text: str) -> str:
     return _EVIDENCE_NOISE.sub("", text.casefold())
 
 
-def next_step(req: NextStepRequest, llm: LlmClient) -> NextStepResponse:
-    """앱 요청 하나 -> 다음 안내 하나. 파이프라인의 진입점."""
+def next_step(
+    req: NextStepRequest,
+    llm: LlmClient,
+    masking: MaskingPolicy | None = None,
+) -> NextStepResponse:
+    """앱 요청 하나 -> 다음 안내 하나. 파이프라인의 진입점.
+
+    `masking`을 주지 않으면 설정이 정한 정책을 쓴다. 기본은 항상 2차 마스킹 적용이며,
+    우회는 local development 비교 실험에서만 켜진다(#203).
+    """
     # 2차 마스킹 그물: 모델에 넘기기 전에 한 번 더(1차는 앱에서 이미 수행).
     #
     # 이력도 함께 훑는다. 1차가 놓친 값이 label에 있었다면 모델이 그걸 instruction에 인용하고,
     # 앱은 그 문장을 이력에 담아 매 요청마다 다시 보낸다 — 화면은 넘어가도 이력은 남으므로
     # 놓친 값이 계속 재전송된다. 그물은 들어오는 모든 텍스트에 걸려야 의미가 있다(SPEC §2).
+    policy = masking if masking is not None else active_masking_policy()
     masked = req.model_copy(
         update={
-            "screen": mask_screen_model(req.screen),
-            "recent_instructions": [mask_text(i) for i in req.recent_instructions],
+            "screen": policy.apply_screen(req.screen),
+            "recent_instructions": [policy.apply_text(i) for i in req.recent_instructions],
         }
     )
 

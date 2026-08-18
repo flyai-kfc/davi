@@ -44,7 +44,18 @@ def test_development_health_includes_diagnostics():
         "environment": "development",
         "model": "gemini-3.5-flash-lite",
         "stub_llm": True,
+        "privacy_masking_disabled": False,
     }
+
+
+def test_development_health_reports_the_masking_bypass(set_runtime_profile):
+    """실기기 E2E 실행기가 이 값을 읽어 상세 보고서 생성을 끈다(#203)."""
+    set_runtime_profile(davi_disable_privacy_masking=True)
+
+    r = client.get("/health")
+
+    assert r.status_code == 200
+    assert r.json()["privacy_masking_disabled"] is True
 
 
 def test_production_health_only_includes_status(set_runtime_profile):

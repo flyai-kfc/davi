@@ -172,6 +172,26 @@ jobs:
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
 
+      # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 속성 값이 false여도
+      # "줬다는 것" 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다.
+      - name: release에서 마스킹 우회 속성 거부
+        run: |
+          set +e
+          output="$(./gradlew -PdaviDisablePrivacyMasking=false verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "daviDisablePrivacyMasking" <<<"$output"
+
+      # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
+      # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.
+      - name: release BuildConfig의 마스킹 상수 고정 확인
+        run: |
+          ./gradlew :app:generateReleaseBuildConfig
+          generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
+          test -f "$generated"
+          grep -q 'PRIVACY_MASKING_DISABLED = false' "$generated"
+
   backend:
     name: Backend (ruff + pytest)
     needs: changes

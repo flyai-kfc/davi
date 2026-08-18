@@ -174,8 +174,18 @@ class GuideAccessibilityService : AccessibilityService() {
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
                 "overlayPermission=${overlay?.canDraw()} " +
-                "dogfoodDeviceId=${dogfoodDeviceId ?: "-"}",
+                "dogfoodDeviceId=${dogfoodDeviceId ?: "-"} " +
+                // 앱 1차 마스킹 상태는 서버 2차 상태와 독립으로 드러낸다. 한쪽만 우회한 상태를
+                // "둘 다 우회"로 오인하면 비교 결과를 잘못 읽는다(#203).
+                "privacyMasking=${if (BuildConfig.PRIVACY_MASKING_DISABLED) "DISABLED" else "on"}",
         )
+        if (BuildConfig.PRIVACY_MASKING_DISABLED) {
+            Log.w(
+                TAG,
+                "1차 개인정보 마스킹이 꺼져 있습니다. 원문 화면 label이 서버와 실제 Gemini까지 " +
+                    "그대로 나갑니다. 합성 데이터만 넣은 전용 테스트 기기에서만 사용하세요(#203).",
+            )
+        }
     }
 
     /**
