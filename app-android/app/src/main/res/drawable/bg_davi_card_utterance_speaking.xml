@@ -10,7 +10,7 @@
   둘은 배타적이라 동시에 켜지지 않는다(ConversationUiStateTest가 고정한다).
 
   **INNER_SHADOW를 근사한다.** Android drawable에는 안쪽 그림자가 없어 카드 윗변에
-  흰 띠를 얹는다. 좌우를 반경의 절반만큼 들여 둥근 모서리 밖으로 삐져나오지 않게 했다 —
+  흰 띠를 얹는다. 좌우 인셋은 **하이라이트 윗변 높이에서 곡선이 안쪽으로 들어온 거리**다(davi_card_highlight_inset 주석). 반경의 절반으로 잡았더니 그 지점 경계를 3.6dp 넘어 삐져나왔다 —
   시안의 하이라이트도 윗변 평평한 구간에 몰려 있다.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
