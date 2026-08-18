@@ -30,7 +30,10 @@ class OnboardingActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+        // **루트가 아니라 인셋 층에 준다**(#236). 루트에 주면 그 안에 든 배경 메시까지 함께
+        // 밀려 화면 끝까지 못 가고, 시스템 바 뒤로 windowBackground가 흰 띠로 드러난다.
+        // 대화 화면이 conversation_insets를 따로 둔 것과 같은 이유다(PR #237 리뷰).
+        ViewCompat.setOnApplyWindowInsetsListener(binding.onboardingInsets) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left

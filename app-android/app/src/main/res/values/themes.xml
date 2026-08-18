@@ -134,9 +134,9 @@
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
     <!--
-      ON-2 권한 화면(#236). 카드 제목·본문과 버튼 라벨은 다비가 하는 말이라 Cafe24다(C1).
-      **안내 문구만 Pretendard**다 — 시안이 그렇게 잡았다(다비의 말이 아니라 규칙 설명).
-      두 네임스페이스를 함께 주는 이유는 AppCompatTextView가 app:fontFamily를 먼저 읽어서다.
+      ON-2 권한 화면(#236). 카드 제목·본문과 버튼 라벨은 다비가 하는 말이라 Cafe24다(C1) —
+      서체는 부모(Title.Davi)에서 온다. **안내 문구만 Pretendard**다. 시안이 그렇게 잡았다
+      (다비의 말이 아니라 규칙 설명이라서).
     -->
     <style name="TextAppearance.Davi.OnboardingTitle" parent="TextAppearance.Davi.Title.Davi">
         <item name="android:textSize">@dimen/davi_type_onboarding_title</item>
@@ -153,6 +153,9 @@
     <!--
       권한 버튼. 채움·테두리·그림자는 배경 드로어블이 갖고 여기는 글자와 여백만 잡는다.
       Material3 Button이 android:background를 무시하므로 backgroundTint를 끈다(다른 화면과 같다).
+
+      **서체를 두 네임스페이스에 함께 준다** — AppCompatTextView가 app:fontFamily를 먼저 읽어서,
+      한쪽만 주면 테마 글꼴이 이긴다(C1).
     -->
     <style name="Widget.Davi.OnboardingButton" parent="Widget.Material3.Button">
         <item name="android:background">@drawable/bg_davi_onboarding_button</item>

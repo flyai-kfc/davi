@@ -13,11 +13,25 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 대화 화면이 쓰는 그 뷰다(2026-08-18 결정: 앱의 모든 배경은 같은 분홍 메시). -->
+    <!--
+      대화 화면이 쓰는 그 뷰다(2026-08-18 결정: 앱의 모든 배경은 같은 분홍 메시).
+
+      **인셋 층 바깥에 둔다** — 안에 넣으면 시스템 바 마진이 메시에도 걸려 메시가 화면 끝까지
+      못 가고, 그 바깥으로 windowBackground(davi_bg #FFFFFF)가 흰 띠로 드러난다.
+      바뀌기 전에는 루트 배경이 davi_bg라 같은 색이어서 안 보였다(PR #237 리뷰).
+      대화 화면이 conversation_root / conversation_insets로 층을 가른 것과 같은 구조다.
+    -->
     <com.davi.helper.MeshBackgroundView
+        android:id="@+id/mesh_background"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:importantForAccessibility="no" />
+
+    <!-- 시스템 바 인셋을 받는 층. OnboardingActivity가 이 뷰에 마진을 준다. -->
+    <FrameLayout
+        android:id="@+id/onboarding_insets"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -40,7 +54,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_onboarding_card_height"
+                android:minHeight="@dimen/davi_onboarding_card_min_height"
                 android:layout_marginStart="@dimen/davi_onboarding_card_margin_h"
                 android:layout_marginEnd="@dimen/davi_onboarding_card_margin_h"
                 android:layout_marginTop="@dimen/davi_onboarding_card_margin_top"
@@ -105,7 +119,7 @@
                 style="@style/Widget.Davi.OnboardingButton"
                 android:layout_width="@dimen/davi_onboarding_button_width"
                 android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_onboarding_button_height"
+                android:minHeight="@dimen/davi_onboarding_button_min_height"
                 android:layout_marginTop="@dimen/davi_onboarding_button_margin_top"
                 android:text="@string/btn_open_accessibility" />
 
@@ -114,7 +128,7 @@
                 style="@style/Widget.Davi.OnboardingButton"
                 android:layout_width="@dimen/davi_onboarding_button_width"
                 android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_onboarding_button_height"
+                android:minHeight="@dimen/davi_onboarding_button_min_height"
                 android:layout_marginTop="@dimen/davi_onboarding_button_gap"
                 android:text="@string/btn_open_overlay" />
 
@@ -132,4 +146,5 @@
                 android:textAppearance="@style/TextAppearance.Davi.OnboardingHint" />
         </LinearLayout>
     </ScrollView>
+    </FrameLayout>
 </FrameLayout>

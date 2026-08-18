@@ -599,25 +599,33 @@
     -->
     <dimen name="davi_home_sparkle_margin_end">16dp</dimen>
     <dimen name="davi_home_sparkle_margin_top">29dp</dimen>
+
+    <!--
       ON-2 권한 화면(#236). 시안 프레임 300×620 · **크기 x1.2 · 반지름과 선 두께와 글자는 1:1**.
 
       카드 높이는 시안이 188 고정이고 내용(56+8+28+8+24=124)보다 크다 — 오토레이아웃 정렬이
-      CENTER라 위아래로 32씩 남는다. 그래서 **높이를 고정하고 내용을 세로 가운데** 둔다.
+      CENTER라 위아래로 32씩 남는다. 그래서 이 값은 **고정 높이가 아니라 최소 높이**이고
+      내용을 세로 가운데 둔다 — 고정으로 박으면 글자 배율 2.0에서 상자가 못 커져 잘린다.
       최소 여백(20/16)이 아니라 실측 자리(32)가 맞는 값이다.
 
       버튼 폭 240은 카드 252보다 12 좁다. 컴포넌트 기본값일 가능성이 크지만 **실측 그대로
       쓴다** — 카드 폭으로 늘리면 근거 없는 값이 된다(#236에 확인 대기로 남겼다).
+
+      **폭이 절대치라 좁은 화면에서 깨진다.** 카드는 화면 폭을 따라가는데(match_parent − 29)
+      버튼만 288 고정이라, 폭이 288+72보다 좁아지면 버튼이 카드보다 넓어지고 더 좁아지면
+      잘린다 — 세로 스크롤이라 가로로는 피할 곳이 없다. 검증 기기(360dp)에서는 302 대 288로
+      맞지만 분할 화면 같은 조건이 남는다. 시안 확인(#236)에서 카드 폭으로 갈지와 함께 본다.
     -->
     <dimen name="davi_onboarding_card_margin_h">29dp</dimen>
     <dimen name="davi_onboarding_card_margin_top">67dp</dimen>
-    <dimen name="davi_onboarding_card_height">226dp</dimen>
+    <dimen name="davi_onboarding_card_min_height">226dp</dimen>
     <dimen name="davi_onboarding_card_radius">16dp</dimen>
     <dimen name="davi_onboarding_card_padding_h">19dp</dimen>
     <dimen name="davi_onboarding_card_gap">10dp</dimen>
     <dimen name="davi_onboarding_slot_size">67dp</dimen>
     <dimen name="davi_onboarding_icon_size">47dp</dimen>
     <dimen name="davi_onboarding_button_width">288dp</dimen>
-    <dimen name="davi_onboarding_button_height">72dp</dimen>
+    <dimen name="davi_onboarding_button_min_height">72dp</dimen>
     <dimen name="davi_onboarding_button_stroke">1.5dp</dimen>
     <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
     <dimen name="davi_onboarding_button_margin_top">50dp</dimen>
