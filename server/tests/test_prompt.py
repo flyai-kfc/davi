@@ -5,7 +5,12 @@ from app.prompt import (
     FOCUSED_INPUT_KEYBOARD_CLOSED,
     IME_NOT_VISIBLE,
     IME_VISIBLE,
+    PAGE_FIRST,
+    PAGE_LAST,
+    PAGE_ONLY_ONE,
+    SCROLL_ALL_ENDS_REACHED,
     SCROLL_DIRECTION_INSTRUCTION,
+    SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     SWIPE_DIRECTION_LEGEND,
@@ -16,6 +21,7 @@ from app.schemas import (
     GuideAction,
     NextStepRequest,
     Screen,
+    ScrollAxis,
     SwipeDirection,
     UiElement,
 )
@@ -344,3 +350,133 @@ def test_fallback_prompt_carries_the_same_json_contract():
 
     assert "원래 프롬프트" in prompt
     assert '"required":["instruction"]' in prompt
+
+
+def _scrollable_list(*, forward: bool, backward: bool) -> UiElement:
+    """세로 목록 컨테이너 하나. forward=아래로 더 갈 수 있나, backward=위로 더 갈 수 있나."""
+
+    return UiElement(
+        node_id="n1",
+        label="목록",
+        can_scroll_forward=forward,
+        can_scroll_backward=backward,
+        scroll_axis=ScrollAxis.VERTICAL,
+        next_swipe_direction=SwipeDirection.DOWN,
+        prev_swipe_direction=SwipeDirection.UP,
+    )
+
+
+def test_prompt_states_which_direction_has_reached_its_end():
+    """끝을 값이 아니라 사실로 말한다(#217).
+
+    `can_scroll_forward=False`는 요소 줄에 원시 값으로만 실렸고, `forward`가 어느 방향인지도
+    `False`가 "끝"이라는 뜻인지도 프롬프트에 없었다. 그래서 목록 끝에서도 같은 방향 안내가
+    계속 나갔다.
+    """
+
+    prompt = build_prompt(
+        _request(
+            has_scrollable_element=True,
+            elements=[_scrollable_list(forward=False, backward=True)],
+        )
+    )
+
+    assert "down 방향은 이미 끝에 도달했습니다" in prompt
+    assert "지금 더 갈 수 있는 방향은 up입니다" in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+
+
+def test_prompt_says_scrolling_shows_nothing_more_when_both_ends_are_reached():
+    """양쪽 끝에서도 `has_scrollable_element`는 true다 — 그 줄만 있으면 계속 넘기라고 읽힌다."""
+
+    prompt = build_prompt(
+        _request(
+            has_scrollable_element=True,
+            elements=[_scrollable_list(forward=False, backward=False)],
+        )
+    )
+
+    assert SCROLL_ALL_ENDS_REACHED in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+    assert "더 갈 수 있는 방향" not in prompt
+
+
+def test_one_element_with_room_keeps_that_direction_open():
+    """안 보이는 컨테이너의 false가 실제로 넘어가는 목록을 "끝"으로 만들면 안 된다."""
+
+    prompt = build_prompt(
+        _request(
+            has_scrollable_element=True,
+            elements=[
+                _scrollable_list(forward=False, backward=False),
+                UiElement(
+                    node_id="n2",
+                    can_scroll_forward=True,
+                    scroll_axis=ScrollAxis.VERTICAL,
+                    next_swipe_direction=SwipeDirection.DOWN,
+                ),
+            ],
+        )
+    )
+
+    assert "지금 더 갈 수 있는 방향은 down입니다" in prompt
+    assert "down 방향은 이미 끝" not in prompt
+    assert SCROLL_ALL_ENDS_REACHED not in prompt
+
+
+def test_prompt_concludes_that_the_last_page_cannot_be_turned_further():
+    """런처처럼 scrollable 노드가 0개인 화면에서는 페이지 줄이 유일한 끝 정보원이다(#202 실측 ①)."""
+
+    prompt = build_prompt(
+        _request(
+            package_name="com.sec.android.app.launcher",
+            has_scrollable_element=False,
+            current_page=2,
+            total_pages=2,
+        )
+    )
+
+    assert PAGE_LAST in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+
+
+def test_prompt_concludes_the_first_and_only_page_boundaries():
+    first = build_prompt(_request(current_page=1, total_pages=3))
+    only = build_prompt(_request(current_page=1, total_pages=1))
+    middle = build_prompt(_request(current_page=2, total_pages=3))
+
+    assert PAGE_FIRST in first
+    assert PAGE_ONLY_ONE in only
+    assert PAGE_LAST not in first
+    assert SCROLL_END_INSTRUCTION not in middle
+
+
+def test_page_boundary_is_not_concluded_from_inconsistent_values():
+    """어긋난 값(현재 쪽 > 전체 쪽)에서 결론을 지어내지 않는다."""
+
+    prompt = build_prompt(_request(current_page=5, total_pages=3))
+
+    assert "페이지: 전체 3쪽 중 5쪽" in prompt
+    assert PAGE_LAST not in prompt
+    assert SCROLL_END_INSTRUCTION not in prompt
+
+
+def test_end_state_is_silent_when_the_app_did_not_observe_scrolling():
+    """스크롤 관측을 안 보낸 앱(None)에는 스크롤 줄이 없다 — 없는 줄을 가리키는 지시도 없다."""
+
+    prompt = build_prompt(_request(elements=[_scrollable_list(forward=False, backward=True)]))
+
+    assert "스크롤:" not in prompt
+    assert SCROLL_END_INSTRUCTION not in prompt
+
+
+def test_end_state_does_not_tell_the_model_where_to_go_instead():
+    """끝난 방향을 말할 뿐 대체 방향을 지시하지 않는다.
+
+    문구 규칙이 값을 끌어당겨 원래 맞던 방향을 틀리게 만든 전례가 있다(C17 · #109).
+    """
+
+    assert "끝에 도달한 방향" in SCROLL_END_INSTRUCTION
+    assert "다른 행동" in SCROLL_END_INSTRUCTION
+    for wrong in ("반대", "up", "down", "left", "right"):
+        assert wrong not in SCROLL_END_INSTRUCTION
