@@ -197,6 +197,11 @@ DAVI_DEBUG_SERVER_URL=http://192.168.x.y:8000
 DAVI_DEBUG_ACCESS_TOKEN=<shared development token>
 # 공기계(도그푸딩) 빌드 머신에서만: 기기 해시 계산·전송 옵트인(#41). 개인 기기 빌드엔 넣지 않는다.
 DAVI_DOGFOOD=true
+# 1차 마스킹 우회(#203). masked/unmasked 비교 실험 전용이며 기본은 꺼짐이다.
+# 켜면 원문 화면 label이 서버와 실제 Gemini까지 나간다. 합성 데이터만 넣은 전용 기기에서만.
+# 실행 하나만 덮으려면 -PdaviDisablePrivacyMasking=true/false (속성이 이 파일보다 우선).
+# 실험이 끝나면 지운다 — 남겨 두면 그 머신이 계속 우회 APK를 만든다.
+DAVI_DISABLE_PRIVACY_MASKING=true
 ```
 
 두 값은 debug `BuildConfig`에만 주입된다. 평문 HTTP는 `127.0.0.1`, `localhost`,
@@ -213,6 +218,11 @@ DAVI_DOGFOOD=true
 release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 빌드되고 평문 HTTP를
 거부한다. `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이
 남아 있으면 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
+
+`DAVI_DISABLE_PRIVACY_MASKING`도 마찬가지로 release 관문에 걸린다 — **값이 `false`여도
+설정이 남아 있다는 것 자체를 실패로 본다.** `-PdaviDisablePrivacyMasking`을 준 release 빌드도
+같다. release `BuildConfig`의 `PRIVACY_MASKING_DISABLED`는 어느 경우에도 상수 `false`다.
+비교 실험 절차는 `DEVICE-E2E-RUN.md`, 경계는 `../SPEC.md` §3에 있다.
 **Gemini API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
 
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.

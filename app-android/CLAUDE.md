@@ -15,7 +15,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   그 숫자는 화면 시그니처에도 포함해 picker 스크롤을 새 상태로 감지한다.
 - **1차 마스킹** — 전화·계좌·주민·카드·이메일 패턴을 서버로 보내기 전에 치환. **원본은 여기서 떠나지 않는다.**
   정책은 `LabelMasking.kt`의 `LabelMasker`가 들고 `UiTreeSerializer`가 주입받는다. 유일한 예외는
-  `debug` 전용 비교 실험(`-PdaviDisablePrivacyMasking=true`, #203)이며 release는 상수 `false`에
+  `debug` 전용 비교 실험(#203)이며, `local.properties`의 `DAVI_DISABLE_PRIVACY_MASKING`이나
+  일회성 `-PdaviDisablePrivacyMasking`(속성 우선)으로 켠다. release는 상수 `false`에
   `verifyReleaseConfiguration`으로 잠긴다. 절차·경계는 `DEVICE-E2E-RUN.md`와 `../SPEC.md` §3.
 - **세션 관리** — 사용자가 입력한 목표를 시작·중지한다. **세션이 없으면 화면을 아예 읽지 않는다**(직렬화 이전에 끊는다). 인메모리라 프로세스가 죽으면 함께 끝난다.
 - **음성 목표 입력** — `SpeechRecognizer`는 온디바이스를 우선하고, 서버의 LLM 질문은 Android

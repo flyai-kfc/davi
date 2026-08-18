@@ -142,10 +142,12 @@
 설정만으로 우회할 수 없다.
 
 - **기본값** — 모든 variant·프로필에서 마스킹 활성화. 우회는 매 실행 명시적 opt-in이다.
-- **앱 1차** — `debug` variant에서 일회성 Gradle 속성 `-PdaviDisablePrivacyMasking=true`로만
-  켠다. `local.properties`로는 받지 않는다 — 파일에 적히면 그 머신이 계속 우회 APK를 만든다.
+- **앱 1차** — `debug` variant에서만 켠다. `local.properties`의
+  `DAVI_DISABLE_PRIVACY_MASKING=true`는 비교 실험을 여러 번 도는 동안 유지되고, 일회성 Gradle
+  속성 `-PdaviDisablePrivacyMasking`은 그 설정을 실행 하나만 덮는다(**속성이 우선**).
+  파일에 켜 두면 그 머신이 계속 우회 APK를 만든다는 뜻이므로, 실험이 끝나면 지운다.
   release는 `BuildConfig.PRIVACY_MASKING_DISABLED`가 상수 `false`이고,
-  `verifyReleaseConfiguration`이 속성 존재 자체를 실패시킨다.
+  `verifyReleaseConfiguration`이 **두 경로 중 어느 하나라도 존재하면** 실패시킨다.
 - **서버 2차** — `DAVI_DISABLE_PRIVACY_MASKING=true`. **development + loopback 바인딩 +
   개발 토큰 없음**을 모두 만족할 때만 기동한다. 공용 개발 endpoint(#94 Azure, 사설 Wi-Fi 맥)는
   토큰·바인딩 조건에서 걸러진다 — 남의 기기 화면까지 원문으로 받는 자리이기 때문이다.

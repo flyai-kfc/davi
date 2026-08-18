@@ -36,7 +36,9 @@ usage() {
   --no-detailed-report  로컬 상세 요청·응답 보고서를 생성하지 않음
   --disable-privacy-masking
                      앱 1차 마스킹을 끈 debug APK로 설치해 실행한다(#203 비교 실험).
-                     서버도 DAVI_DISABLE_PRIVACY_MASKING=true로 띄워야 두 겹 모두 우회된다.
+                     local.properties에 DAVI_DISABLE_PRIVACY_MASKING=true를 둔 머신은
+                     이 플래그 없이도 우회 APK가 설치된다. 서버도
+                     DAVI_DISABLE_PRIVACY_MASKING=true로 띄워야 두 겹 모두 우회된다.
                      원문 화면 label이 실제 Gemini까지 나가므로 합성 데이터만 넣은
                      전용 테스트 기기에서만 사용한다. 상세 보고서는 자동으로 꺼진다.
   -h, --help         도움말 출력
@@ -94,17 +96,12 @@ MODEL="$(printf '%s' "$HEALTH_JSON" | python3 -c 'import json,sys; print(json.lo
 # 우회 실험이 남겨야 하는 것은 성공 여부·단계 수·실패 코드 같은 비식별 지표뿐이다.
 SERVER_MASKING_DISABLED="$(printf '%s' "$HEALTH_JSON" |
     python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("privacy_masking_disabled", False)).lower())')"
-if [[ "$SERVER_MASKING_DISABLED" == true || "$DISABLE_PRIVACY_MASKING" == true ]]; then
+if [[ "$SERVER_MASKING_DISABLED" == true ]]; then
     if [[ "$DETAILED_REPORT" == true ]]; then
-        printf '마스킹 우회 실행이라 상세 보고서 생성을 끕니다(#203).\n' >&2
+        printf '서버 2차 마스킹 우회라 상세 보고서 생성을 끕니다(#203).\n' >&2
     fi
     DETAILED_REPORT=false
 fi
-# 두 겹의 상태를 각각 알린다. 한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지
-# 모른 채 결과를 읽으면 안 된다(#203 안전 경계).
-printf '개인정보 마스킹 — 앱 1차: %s / 서버 2차: %s\n' \
-    "$(if [[ "$DISABLE_PRIVACY_MASKING" == true ]]; then echo '우회'; else echo '적용'; fi)" \
-    "$(if [[ "$SERVER_MASKING_DISABLED" == true ]]; then echo '우회'; else echo '적용'; fi)" >&2
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
     SERIAL="$ANDROID_SERIAL"
@@ -196,8 +193,9 @@ fi
 DAVI_DISABLED=true
 
 # signature 권한을 선언하는 Davi debug 앱을 먼저 설치한 뒤 그 권한을 요청하는 driver를 설치한다.
-# 우회 속성은 켠 실행에서만 넘긴다. 안 넘기면 debug BuildConfig 기본값이 그대로 마스킹 활성이라,
-# 직전 실행이 우회 APK였더라도 이 설치가 마스킹된 APK로 되돌린다(#203).
+# 우회 속성은 켠 실행에서만 넘긴다. 안 넘기면 `local.properties`의 DAVI_DISABLE_PRIVACY_MASKING이
+# 그대로 적용되므로, 그 파일로 켜 둔 머신에서는 이 설치도 우회 APK가 된다(#203).
+# 실제로 무엇이 설치됐는지는 아래에서 앱이 보고한 값으로 확인한다.
 APP_INSTALL_ARGS=(-PdaviE2eServerUrl="$SERVER_URL")
 if [[ "$DISABLE_PRIVACY_MASKING" == true ]]; then
     APP_INSTALL_ARGS+=(-PdaviDisablePrivacyMasking=true)
@@ -222,6 +220,22 @@ if [[ "$CONNECTED" != true ]]; then
     printf 'Davi 접근성 서비스의 실제 연결 callback을 30초 안에 확인하지 못했습니다.\n' >&2
     exit 2
 fi
+
+# 앱 1차 상태는 **설치된 앱이 스스로 보고한 값**으로 읽는다(#203). 실행기 플래그로 짐작하면
+# `local.properties`의 DAVI_DISABLE_PRIVACY_MASKING으로 켠 경우를 "적용"으로 잘못 알린다.
+APP_MASKING_DISABLED=false
+if "${ADB_DEVICE[@]}" logcat -d -s GuideSvc:I '*:S' | grep -q 'privacyMasking=DISABLED'; then
+    APP_MASKING_DISABLED=true
+fi
+if [[ "$APP_MASKING_DISABLED" == true && "$DETAILED_REPORT" == true ]]; then
+    printf '앱 1차 마스킹 우회라 상세 보고서 생성을 끕니다(#203).\n' >&2
+    DETAILED_REPORT=false
+fi
+# 두 겹의 상태를 각각 알린다. 한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지
+# 모른 채 결과를 읽으면 안 된다(#203 안전 경계).
+printf '개인정보 마스킹 — 앱 1차: %s / 서버 2차: %s\n' \
+    "$(if [[ "$APP_MASKING_DISABLED" == true ]]; then echo '우회'; else echo '적용'; fi)" \
+    "$(if [[ "$SERVER_MASKING_DISABLED" == true ]]; then echo '우회'; else echo '적용'; fi)" >&2
 
 ENABLED_SERVICES="$("${ADB_DEVICE[@]}" shell settings get secure enabled_accessibility_services | tr -d '\r')"
 if [[ "$ENABLED_SERVICES" != *"$SERVICE"* ]]; then

@@ -172,8 +172,8 @@ jobs:
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
 
-      # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 속성 값이 false여도
-      # "줬다는 것" 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다.
+      # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 값이 false여도 "설정이 있다는 것"
+      # 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다. 두 입력 경로를 각각 확인한다.
       - name: release에서 마스킹 우회 속성 거부
         run: |
           set +e
@@ -182,6 +182,17 @@ jobs:
           set -e
           test "$status" -ne 0
           grep -q "daviDisablePrivacyMasking" <<<"$output"
+
+      - name: release에서 마스킹 우회 local.properties 설정 거부
+        env:
+          DAVI_DISABLE_PRIVACY_MASKING: 'false'
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_DISABLE_PRIVACY_MASKING" <<<"$output"
 
       # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
       # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.

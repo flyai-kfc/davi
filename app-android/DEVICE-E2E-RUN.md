@@ -85,6 +85,16 @@ DAVI_DISABLE_PRIVACY_MASKING=true .venv/bin/python -m uvicorn app.main:app --hos
 이 플래그 없이 실행하면 debug 기본값이 마스킹 적용이므로 **직전 우회 APK가 다시 덮인다** —
 비교군을 연속으로 돌릴 때도 매번 붙여야 한다.
 
+여러 번 반복한다면 `local.properties`에 적어 두는 편이 편하다.
+
+```properties
+DAVI_DISABLE_PRIVACY_MASKING=true
+```
+
+이 경우 `--disable-privacy-masking` 없이 돌려도 우회 APK가 설치된다. **다만 그 머신은 그때부터
+계속 우회 APK를 만든다** — 기준선을 다시 뜨려면 `-PdaviDisablePrivacyMasking=false`로 한 번만
+덮거나(속성이 파일보다 우선한다) 실험이 끝난 뒤 파일에서 지운다.
+
 ### 두 겹의 상태를 각각 확인한다
 
 한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지 모른 채 결과를 읽으면 안 된다.
