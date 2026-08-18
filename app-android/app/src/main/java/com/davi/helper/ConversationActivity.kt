@@ -433,7 +433,13 @@ class ConversationActivity : AppCompatActivity() {
         // **모달 중에는 뒤 화면을 스크린리더에서 뺀다.** 스크림은 시각 차단일 뿐이라
         // 그것만으로는 TalkBack이 뒤의 "기존 안내 이어서하기"·"안내 종료"로 넘어간다 —
         // 답하기 전에는 사라지지 않는 화면인데 뒤를 누를 수 있게 읽히면 안 된다.
-        binding.cardColumn.importantForAccessibility =
+        // **인셋 층 전체를 뺀다.** 카드 열만 빼면 그 밖의 것(마이크·파도·X 버튼)이 남는다.
+        // 모달은 인셋 층 **밖**(루트의 마지막 자식)이라 함께 가려지지 않는다.
+        //
+        // **uiautomator로는 확인할 수 없다.** UiAutomation이 not-important 뷰까지 포함해
+        // 덤프하므로 제외한 뷰가 그대로 나온다 — 레이아웃에서 이미 제외한 mesh_background나
+        // logo도 덤프에 찍힌다(2026-08-18 실측). 실제 확인은 TalkBack을 켜야 한다.
+        binding.conversationInsets.importantForAccessibility =
             if (model.stopConfirmVisible) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         if (model.stopConfirmVisible && !stopConfirmAnnounced) {
