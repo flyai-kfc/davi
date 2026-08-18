@@ -681,12 +681,42 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        // 안내를 받던 중이었다면 그 사실을 알린다(#29). **토스트인 이유**는 이 순간 사용자가
-        // 접근성 설정 화면 위에 있고 거기엔 오버레이가 안 그려지기 때문이다(기기 함정).
-        // 세션이 없었으면 알리지 않는다 — 안내 중이 아닐 때 서비스를 끄는 건 정상 조작이다.
-        if (GuideSession.isActive) {
-            Log.w(TAG, "service unbound during session")
-            Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+        // 안내를 받던 중이었다면 그 사실을 알린다(#29·#190). 판정은 [serviceOffAction]에 있다.
+        // **여기서 토스트를 띄우고 화면도 바꾸면 토스트가 사라진다** — 복귀를 넣은 뒤 실측에서
+        // Toast.show()는 불렸는데 0.7·1.4·2.1초 캡처 어디에도 없었다(화면 전환이 삼킨다).
+        // 그래서 복귀 경로는 **복귀한 화면이 말하게** 하고, 여기서는 복귀가 막힌 경우만 띄운다.
+        when (serviceOffAction(GuideSession.isActive, hasGuideOverlayPermission())) {
+            ServiceOffAction.RETURN_TO_APP -> {
+                // CLEAR_TASK가 **꼭 필요하다**(PR #198 리뷰). 세션 중에는 우리 task에
+                // ConversationActivity가 살아 있다 — 그쪽 onPause는 대화만 접고 finish()하지
+                // 않는다. NEW_TASK만 주면 그 위에 온보딩이 얹히고, 사용자가 권한을 다시 켜면
+                // OnboardingActivity.onResume이 startActivity(Conversation) + finish()를 해서
+                // 대화 화면이 두 겹이 된다. 껐다 켤 때마다 한 겹씩 쌓이고 뒤로 키에 옛 인스턴스가 나온다.
+                //
+                // 온보딩을 task 루트로 만들면 그 겹침이 닫히고, "돌아가서 다시 켜고 처음부터"라는
+                // 이 경로의 뜻과도 맞는다. **전제는 위의 onPause 동작이다** — 그쪽이 스스로
+                // finish()하게 바뀌면 이 플래그의 근거도 다시 봐야 한다.
+                Log.w(TAG, "service unbound during session, returning to app")
+                startActivity(
+                    android.content.Intent(this, OnboardingActivity::class.java)
+                        .addFlags(
+                            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                        )
+                        .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
+                )
+            }
+
+            ServiceOffAction.NOTICE_ONLY -> {
+                // 오버레이 권한이 없어 복귀가 막힌다(BAL 면제 없음). 설정 앱 위라 안내창도 못 쓴다.
+                // **이 토스트는 지금 안 보인다** — 알림 권한을 아직 요청하지 않아 백그라운드
+                // 토스트가 억제된다(#56이 그 권한을 들여오면 살아난다, [ServiceOffAction.NOTICE_ONLY]).
+                // 그래도 호출은 남긴다. 지우면 권한이 생겨도 이 자리만 조용히 비어 있게 된다.
+                Log.w(TAG, "service unbound during session, cannot return")
+                Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+            }
+
+            ServiceOffAction.SILENT -> Unit
         }
         // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
         // 아무 일도 일어나지 않는 상태가 된다.
