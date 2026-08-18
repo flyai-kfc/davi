@@ -122,14 +122,26 @@ if (debugAccessToken.isNotEmpty() && debugAccessToken.length < 32) {
     throw GradleException("DAVI_DEBUG_ACCESS_TOKEN은 32자 이상이어야 합니다.")
 }
 
-// 카카오 네이티브 앱 키(로그인). APK에서 추출 가능한 공개 전제 식별자라 비밀 키 규칙과는
-// 다르지만, 팀 카카오 앱이 확정되기 전엔 개발자별 테스트 앱 키를 쓸 수 있게 debug만
-// local.properties에서 읽는다. release 실키는 배포 이슈에서 확정한다(SERVER_URL과 같은 결).
+// 카카오 네이티브 앱 키(로그인). 빌드 타입마다 출처가 다르다.
 // 키가 비면 SDK init을 건너뛰고 로그인 버튼을 숨긴다 — 빌드·실행은 깨지지 않는다.
-val kakaoNativeAppKey = debugSetting("DAVI_KAKAO_NATIVE_APP_KEY")
-if (kakaoNativeAppKey.isNotEmpty() && !kakaoNativeAppKey.all { it.isLetterOrDigit() }) {
-    throw GradleException("DAVI_KAKAO_NATIVE_APP_KEY는 영숫자여야 합니다.")
+fun requireAlphanumericKakaoKey(source: String, value: String) {
+    if (value.isNotEmpty() && !value.all { it.isLetterOrDigit() }) {
+        throw GradleException("$source 카카오 네이티브 앱 키는 영숫자여야 합니다.")
+    }
 }
+
+// debug: 개발자별 테스트 앱 키를 쓸 수 있게 local.properties에서 읽는다. release로는 새지 않는다
+// (verifyReleaseConfiguration이 값이 있으면 release 빌드를 막는다).
+val debugKakaoNativeAppKey = debugSetting("DAVI_KAKAO_NATIVE_APP_KEY")
+requireAlphanumericKakaoKey("debug(DAVI_KAKAO_NATIVE_APP_KEY)", debugKakaoNativeAppKey)
+
+// release: 팀 카카오 앱 키를 저장소 상수로 둔다(#215). 네이티브 앱 키는 APK에서 추출 가능한
+// 공개 전제 식별자이고 등록된 패키지명·서명 해시와 함께여야만 동작하므로 비밀이 아니다 —
+// 저장소가 private이라 CI secret으로 옮길 이득이 없다. 키가 확정되면 이 상수만 채운다.
+// 비어 있는 동안은 release에서 카카오 경로 전체가 꺼진 채 남는다(지금 동작 그대로).
+// 키를 채워도 카카오 콘솔에 release 서명 해시를 등록해야 실기기 로그인이 성공한다.
+val releaseKakaoNativeAppKey = ""
+requireAlphanumericKakaoKey("release(releaseKakaoNativeAppKey)", releaseKakaoNativeAppKey)
 
 // 도그푸딩 옵트인(#41 리뷰). true인 debug 빌드만 기기 해시를 계산·로그·전송한다.
 // 켜는 곳: 공기계(SM-S921N)용 빌드를 만드는 머신의 local.properties. 기본은 꺼짐 —
@@ -182,10 +194,10 @@ android {
             buildConfigField(
                 "String",
                 "KAKAO_NATIVE_APP_KEY",
-                kakaoNativeAppKey.asBuildConfigString(),
+                debugKakaoNativeAppKey.asBuildConfigString(),
             )
-            if (kakaoNativeAppKey.isNotEmpty()) {
-                manifestPlaceholders["kakaoOauthScheme"] = "kakao$kakaoNativeAppKey"
+            if (debugKakaoNativeAppKey.isNotEmpty()) {
+                manifestPlaceholders["kakaoOauthScheme"] = "kakao$debugKakaoNativeAppKey"
                 manifestPlaceholders["kakaoLoginEnabled"] = "true"
             }
         }
@@ -193,6 +205,17 @@ android {
             isMinifyEnabled = false
             buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
             buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
+            // 키와 placeholder는 함께 켜야 한다. 키만 넣으면 버튼은 뜨지만 handler activity가
+            // 꺼진 채라 카카오톡·계정 웹에서 돌아오는 리다이렉트를 받을 진입점이 없다.
+            buildConfigField(
+                "String",
+                "KAKAO_NATIVE_APP_KEY",
+                releaseKakaoNativeAppKey.asBuildConfigString(),
+            )
+            if (releaseKakaoNativeAppKey.isNotEmpty()) {
+                manifestPlaceholders["kakaoOauthScheme"] = "kakao$releaseKakaoNativeAppKey"
+                manifestPlaceholders["kakaoLoginEnabled"] = "true"
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -228,15 +251,16 @@ val verifyReleaseConfiguration by tasks.registering {
     description = "release 빌드에 debug 전용 설정이 존재하지 않는지 확인"
     inputs.property("debugServerConfigured", debugServerProperty.isNotEmpty())
     inputs.property("debugAccessTokenConfigured", debugAccessToken.isNotEmpty())
-    inputs.property("kakaoNativeAppKeyConfigured", kakaoNativeAppKey.isNotEmpty())
+    inputs.property("debugKakaoKeyConfigured", debugKakaoNativeAppKey.isNotEmpty())
     doLast {
         val debugServerConfigured = inputs.properties["debugServerConfigured"] as Boolean
         val debugAccessTokenConfigured = inputs.properties["debugAccessTokenConfigured"] as Boolean
-        val kakaoKeyConfigured = inputs.properties["kakaoNativeAppKeyConfigured"] as Boolean
-        if (debugServerConfigured || debugAccessTokenConfigured || kakaoKeyConfigured) {
+        val debugKakaoKeyConfigured = inputs.properties["debugKakaoKeyConfigured"] as Boolean
+        if (debugServerConfigured || debugAccessTokenConfigured || debugKakaoKeyConfigured) {
             throw GradleException(
                 "release 빌드 전에 DAVI_DEBUG_SERVER_URL·DAVI_DEBUG_ACCESS_TOKEN·" +
-                    "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요.",
+                    "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요. " +
+                    "release 카카오 키는 이 경로가 아니라 releaseKakaoNativeAppKey 상수로 들어갑니다.",
             )
         }
     }

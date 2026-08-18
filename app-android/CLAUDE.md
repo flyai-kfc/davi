@@ -57,8 +57,11 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **로그인 진입(ON-1, #166)** — 카카오 SDK로 받은 access token을 서버 `/v1/auth/kakao`와
   교환하고 세션 토큰을 `AuthStore`(SharedPreferences)에 보관한다. **스킵이 항상 열려 있고
   어떤 실패도 앱 사용을 막지 않는다.** `GuideSession`의 비영속 규칙은 안내 세션 이야기라
-  별개 계층이다. 네이티브 앱 키는 debug만 `local.properties`에서 주입하고, 키 없는 빌드는
-  SDK init·카카오 버튼·OAuth handler를 함께 끈다. 카카오 토큰·세션 토큰은 logcat 금지.
+  별개 계층이다. 네이티브 앱 키는 **빌드 타입마다 출처가 다르다**(#215) — debug는 개발자별
+  테스트 앱 키를 `local.properties`에서 읽고, release는 팀 앱 키를 `build.gradle.kts`의
+  `releaseKakaoNativeAppKey` 상수에서 읽는다. 이 둘은 섞이지 않는다: local.properties 값이
+  있으면 `verifyReleaseConfiguration`이 release 빌드를 막는다. 키 없는 빌드는 SDK init·카카오
+  버튼·OAuth handler를 함께 끈다. 카카오 토큰·세션 토큰은 logcat 금지.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
 
 ## UI 컨벤션 (확정 2026-07-24)
