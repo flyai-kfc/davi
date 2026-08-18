@@ -16,6 +16,11 @@ import android.view.accessibility.AccessibilityWindowInfo
  * 펼쳐진 셰이드는 화면을 덮으니 크기로 이기고, 접힌 상태표시줄은 작아서 자연히 진다.
  *
  * 걸러내는 것은 **우리 앱뿐**이다. 우리가 띄운 오버레이/온보딩을 화면으로 착각하면 안 된다.
+ *
+ * **오버레이를 실제로 걸러내는 것은 이제 package 필터가 아니라 그 앞의 type 화이트리스트다**(#56).
+ * 구 창 타입은 `TYPE_SYSTEM`으로 올라와 package 필터에 걸렸지만, `TYPE_ACCESSIBILITY_OVERLAY`는
+ * 화이트리스트(`TYPE_APPLICATION`·`TYPE_SYSTEM`)에서 먼저 탈락한다. 결과는 같고 package 필터가
+ * 백스톱으로 남는다 — 다만 **아래 서술은 이제 그 백스톱을 설명하는 문장이다.**
  */
 object ActiveWindowResolver {
 
