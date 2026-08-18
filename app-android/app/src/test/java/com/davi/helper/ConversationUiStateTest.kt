@@ -311,20 +311,29 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `카드는 확인 화면에서도 남는 공간만 갖는다`() {
-        // 확인쌍이 카드 아래 열 안에 있어(#196) 카드가 wrap_content면 긴 goal에서 버튼을
-        // 화면 밖으로 밀어낸다 — 확인 화면에서 버튼을 못 누르면 빠져나갈 길이 없다.
+    fun `읽어야 하는 쪽 카드가 남는 공간을 먹는다`() {
+        // 다비 카드에는 **처음 보는 질문**이, 시니어 카드에는 **방금 한 말**이 들어온다.
+        // 읽어야 하는 쪽에 공간을 준다(#207 본문).
+        //
+        // **"말하는 쪽"으로 잡으면 안 된다** — 다비가 질문을 던지고 듣는 Listening에서
+        // 시니어가 커지면서 질문 상자가 하한으로 눌린다. 사용자가 그 질문을 읽고 답하는
+        // 바로 그 순간이다(2026-08-18 실기기: 다비 176dp / 시니어 280dp).
         for (state in listOf(
-            ConversationUiState.Confirm("목표"),
-            ConversationUiState.Confirm("목표", ConfirmKind.APP_AVAILABILITY_WARNING),
             ConversationUiState.Listening(),
+            ConversationUiState.Listening(question = "누구에게 보내시겠어요?", partial = "손자에게"),
             ConversationUiState.Speaking("질문", generation = 1L),
             ConversationUiState.Requesting("발화"),
         )) {
-            assertTrue("$state 에서 카드가 고정 높이다", renderModelOf(state).cardQuestionFlexible)
+            assertTrue("$state 는 다비 카드가 커야 한다", renderModelOf(state).daviCardFills)
         }
-        // 카드가 혼자 남는 화면은 내용 높이로 선다.
-        assertFalse(renderModelOf(ConversationUiState.Home()).cardQuestionFlexible)
-        assertFalse(renderModelOf(ConversationUiState.Failed).cardQuestionFlexible)
+        // 카드가 하나뿐인 화면은 아래를 비운다.
+        for (state in listOf(
+            ConversationUiState.Confirm("목표"),
+            ConversationUiState.Failed,
+        )) {
+            val model = renderModelOf(state)
+            assertTrue("$state 는 아래를 비운다", model.spaceBottomVisible)
+            assertFalse("$state 에는 시니어 카드가 없다", model.daviCardFills)
+        }
     }
 }

@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.marginTop
 import androidx.core.view.updateLayoutParams
 import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
@@ -178,8 +179,16 @@ class ConversationActivity : AppCompatActivity() {
         binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
         binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
 
-        // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
-        // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
+        // **흰 상자 안에 글자 칸을 따로 두지 않는다**(2026-08-18 결정, #207).
+        // 예전에는 내부 스크롤이 카드 크기와 무관하게 늘 걸려 있어, 상자는 큰데 글자만
+        // 좁은 칸에서 움직이는 "상자 안의 상자"로 보였다.
+        // 이제 **글자가 상자 밑면에 닿으면 상자가 자란다** — 자라는 한계는 화면이 정한다.
+        //
+        // **그래도 스크롤은 남긴다.** 상자가 자랄 자리마저 없을 때(아주 긴 서버 문구 ·
+        // 큰 글꼴 · 작은 화면) 넘친 글자는 잘려서 보이지도 닿지도 않는다 — maxLines도
+        // ellipsize도 없어 잘린 사실조차 안 보인다. 특히 최종 확인은 **다 읽지 못한 goal을
+        // ○로 승인하게 되는** 자리다(PR #125 리뷰가 스크롤을 넣은 이유).
+        // 목표는 스크롤을 **드물게** 만드는 것이지 없애는 것이 아니다(#207 본문).
         binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
 
 
@@ -253,8 +262,18 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        // 남는 공간을 어디에 둘지는 상태가 정한다(#207) — 홈은 제목을 가운데 두려고 둘 다 켠다.
         binding.spaceFlexTop.isVisible(model.homeVisible)
-        binding.spaceHomeMid.isVisible(model.homeVisible)
+        binding.spaceFlexBottom.isVisible(model.homeVisible || model.spaceBottomVisible)
+        // **말하는 쪽 카드가 남는 공간을 먹는다**(시안 메인 3·4, #207). 둘 다 주면 양쪽이
+        // 커져 문구(위 정렬) 아래가 크게 빈다 — 그게 "글자가 위로 쏠렸다"의 원인이었다.
+        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+            height = if (model.daviCardFills) 0 else LinearLayout.LayoutParams.WRAP_CONTENT
+            weight = if (model.daviCardFills) 1f else 0f
+        }
+        // **시니어 카드는 제 내용만큼만 선다.** 사용자가 방금 한 말이라 잘리면 안 되므로
+        // 필요한 높이를 먼저 가져가고(weight 없는 자식이 먼저 배분받는다), 남은 것을
+        // 다비 카드가 갖는다 — 우선순위 "시니어 전체 표시 > 다비 표시"의 구현이다.
         binding.homeTitle.isVisible(model.homeVisible)
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
@@ -272,14 +291,7 @@ class ConversationActivity : AppCompatActivity() {
         //
         // 끄면 wrap_content + minHeight가 살아 카드가 내용 높이(하한 176dp)로 선다.
         // 시안 메인 7·8의 카드 높이 200은 그 화면들을 다시 짤 때 함께 본다.
-        // **최종 확인에서도 weight를 준다**(#200 리뷰). 버튼쌍이 열 안으로 들어오면서
-        // 잘림 규칙을 함께 받게 됐는데, 카드가 wrap_content면 긴 goal에서 카드가 먼저
-        // 커져 버튼을 화면 밖으로 밀어낸다 — 확인 화면에서 ×/○를 못 누르면 빠져나갈
-        // 길이 없다. weight를 주면 카드가 **남는 공간만** 갖고, 모자라면 카드가 줄어
-        // 버튼이 보장된다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
-        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
-            weight = if (model.cardQuestionFlexible) CARD_WEIGHT_DAVI else 0f
-        }
+
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
@@ -298,7 +310,8 @@ class ConversationActivity : AppCompatActivity() {
                 R.drawable.bg_davi_card_utterance
             },
         )
-        binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
+        // **상한은 가용 공간 하나뿐이다**(#207) — 아래 bindCardMaxHeights.
+        binding.cardColumn.post { bindCardMaxHeights(model) }
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
             model.questionText != null -> binding.cardQuestion.text = model.questionText
@@ -523,6 +536,67 @@ class ConversationActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+
+    /**
+     * 두 카드의 상한을 **실제 가용 공간에 묶는다**(#207).
+     *
+     * **흰 상자가 곧 글자 칸이다.** 안에 별도 상한을 하나 더 걸면 "상자 안의 상자"가 되어,
+     * 상자는 큰데 글자만 좁은 칸에서 스크롤하는 모양이 된다. 그래서 리소스 고정 상한
+     * (davi_question_card_max_height*)을 걸지 않고 **가용 공간 하나만** 상한으로 쓴다.
+     *
+     * 카드가 남는 공간을 먹지 않게 weight를 뺐더니(시안 AUTO + minHeight) 반대 문제가 남는다 —
+     * 문구가 길면 카드가 자라 **뒤에 오는 버튼쌍을 화면 밖으로 밀어낸다**(#200 리뷰가 잡은 자리).
+     * 리소스의 고정 상한(220/400dp)은 화면 높이와 무관해 작은 화면에서 보장이 안 된다.
+     *
+     * **모자랄 때 누가 먼저 줄어드는지는 정해져 있다.**
+     * ```
+     * 마이크 위치 > 마이크·시니어 겹침 > 시니어 전체 표시 > 다비 표시
+     * ```
+     * 시니어 카드는 사용자가 방금 한 말이라 잘리면 "내가 뭐라고 했더라"가 되고, 다비 카드는
+     * 내부 스크롤로 이어 볼 수 있다. 그래서 **다비가 먼저 줄어든다.**
+     *
+     * 고정 요소만으로 계산해 순환을 피한다 — 유연 여백(space_flex_*)은 남는 것을 받을 뿐이다.
+     */
+    /**
+     * 질문 카드의 **상한을 상자 기준으로** 잡는다(#207).
+     *
+     * **흰 상자 안에 글자 칸을 따로 두지 않는다.** 글자가 상자 밑면에 닿으면 상자가 자라고,
+     * 자라는 한계는 화면이 정한다 — 예전처럼 내부 스크롤을 붙이면 상자는 큰데 글자만 좁은
+     * 칸에서 움직이는 "상자 안의 상자"로 보인다.
+     *
+     * 상한이 필요한 이유는 하나뿐이다 — 확인 화면에서 카드가 계속 자라면 **뒤에 오는
+     * 버튼쌍을 화면 밖으로 밀어낸다**(#200 리뷰가 잡은 자리). 그 자리에서만 묶는다.
+     *
+     * 카드가 남는 공간을 먹는 상태(다비 발화·응답 대기)에서는 이미 상자가 가용 공간만큼
+     * 커져 있으므로 **상자 안쪽이 곧 상한**이다. 따로 계산하면 몇 dp 어긋나 안쪽 상자가 보인다.
+     */
+    private fun bindCardMaxHeights(model: ConversationRenderModel) {
+        val container = binding.cardQuestionContainer
+        val padding = container.paddingTop + container.paddingBottom
+
+        if (model.daviCardFills) {
+            val inner = container.height - padding
+            if (inner > 0) binding.cardQuestion.maxHeight = inner
+            return
+        }
+
+        val column = binding.cardColumn
+        if (column.height == 0) return
+        var available = column.height - column.paddingTop - column.paddingBottom
+        if (model.logoVisible) available -= binding.logo.let { it.height + it.marginTop }
+        if (model.confirmVisible) {
+            available -= binding.buttonPair.root.let { it.height + it.marginTop }
+        }
+        if (model.utteranceVisible) {
+            available -= resources.getDimensionPixelSize(R.dimen.davi_card_gap)
+            // 시니어 카드는 깎지 않는다 — 사용자가 방금 한 말이라 잘리면 안 된다.
+            // 모자라면 다비가 먼저 줄어든다(우선순위: 시니어 전체 표시 > 다비 표시).
+            available -= binding.cardUtteranceWrap.height
+        }
+        val cap = available - padding
+        if (cap > 0) binding.cardQuestion.maxHeight = cap
     }
 
     private fun speakFollowUp(outcome: VoiceDialogueSession.Outcome.Ask) {

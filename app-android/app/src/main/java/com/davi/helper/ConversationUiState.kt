@@ -74,14 +74,25 @@ data class ConversationRenderModel(
     val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
     /**
-     * 질문 카드가 남는 세로 공간을 나눠 갖는가(weight). 끄면 wrap_content + minHeight로 선다.
+     * 남는 세로 공간을 **다비 카드**가 먹는가.
      *
-     * **최종 확인에서도 켜야 한다**(#200 리뷰). 확인쌍이 카드 아래 열 안에 있어 카드가
-     * 먼저 커지면 버튼이 화면 밖으로 밀린다 — 긴 goal과 큰 글꼴이 겹칠 때 실제로 넘친다
-     * (가용 698dp에 고정 소비 351dp인데 카드 상한은 496dp까지 간다). 확인 화면에서
-     * 버튼을 못 누르면 빠져나갈 길이 없으므로 카드 쪽이 양보한다.
+     * **읽어야 하는 쪽이 커진다**(#207). 다비 카드에는 **처음 보는 질문**이 들어오고 시니어
+     * 카드에는 **사용자가 방금 한 말**이 들어온다 — 이미 아는 내용이다. 그래서 다비 문구가
+     * 있는 동안은 다비 카드가 남는 공간을 갖고, 시니어 카드는 제 내용만큼만 선다.
+     *
+     * **"말하는 쪽"이 아니다.** 그렇게 잡았더니 다비가 질문을 던지고 듣는 상태에서 시니어가
+     * 커지면서 **질문 상자가 하한(176dp)으로 눌렸다** — 사용자가 그 질문을 읽고 답하는
+     * 바로 그 순간이다(2026-08-18 실기기: 다비 176dp / 시니어 280dp).
+     *
+     * **둘 다 켜면 안 된다.** 예전에는 두 카드가 weight를 나눠 가져(176:196) 둘 다 커졌고,
+     * 문구가 위 정렬이라 양쪽 아래가 크게 비어 "글자가 위로 쏠렸다"로 보였다(#207).
      */
-    val cardQuestionFlexible: Boolean = false,
+    val daviCardFills: Boolean = false,
+    /**
+     * 남는 세로 공간을 **아래**에 둘 것인가. 확인·실패에서 켠다 — 카드가 하나뿐이고
+     * 마이크가 없으며, 시안이 버튼쌍 아래를 비워 둔다.
+     */
+    val spaceBottomVisible: Boolean = false,
     /**
      * 확인쌍 ○의 **보이는 글자**. 확인 화면이 둘이라(경고 -> 최종 확인) 같은 모양이 연달아
      * 나오는데, 무엇을 누르는지가 글자로 갈려야 한다. #194는 아이콘 전용이라 이 구분을
@@ -155,7 +166,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionRes = if (state.question == null) R.string.conversation_prompt_initial else null,
         questionText = state.question,
         utteranceVisible = true,
-        cardQuestionFlexible = true,
+        daviCardFills = true,
         utteranceText = state.partial,
         micVisible = true,
         closeVisible = true,
@@ -173,7 +184,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         logoVisible = true,
         questionText = state.question,
         utteranceVisible = true,
-        cardQuestionFlexible = true,
+        daviCardFills = true,
         micVisible = true,
         micEnabled = true, // barge-in — 재생을 끊고 바로 답할 수 있다
         closeVisible = true,
@@ -183,7 +194,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         logoVisible = true,
         questionRes = R.string.conversation_requesting,
         utteranceVisible = true,
-        cardQuestionFlexible = true,
+        daviCardFills = true,
         utteranceText = state.utterance,
         micVisible = true,
         closeVisible = true,
@@ -194,7 +205,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             logoVisible = true,
             questionText = state.goal,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
-            cardQuestionFlexible = true,
+            spaceBottomVisible = true,
             confirmVisible = true,
             confirmAcceptTextRes = R.string.conversation_confirm_accept,
         )
@@ -202,13 +213,14 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             logoVisible = true,
             questionRes = R.string.conversation_app_availability_warning,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
-            cardQuestionFlexible = true,
+            spaceBottomVisible = true,
             confirmVisible = true,
             confirmAcceptTextRes = R.string.conversation_confirm_continue,
         )
     }
     ConversationUiState.Failed -> ConversationRenderModel(
         logoVisible = true,
+        spaceBottomVisible = true,
         questionRes = R.string.conversation_failed,
     )
 }

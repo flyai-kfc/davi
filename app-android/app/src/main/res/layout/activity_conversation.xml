@@ -76,6 +76,7 @@
         android:importantForAccessibility="no" />
 
     <LinearLayout
+        android:id="@+id/card_column"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -193,7 +194,6 @@
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="176"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
 
@@ -275,7 +275,7 @@
             android:id="@+id/card_utterance_wrap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="196"
+
             android:minHeight="@dimen/davi_card_min_height_senior"
             android:layout_marginTop="@dimen/davi_card_gap"
             android:clipChildren="false">
@@ -346,8 +346,20 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/davi_button_pair_margin_top" />
 
+        <!--
+          **남는 세로 공간은 카드가 아니라 이 둘이 먹는다**(#207). 시안은 카드를
+          AUTO + minHeight로 두어 내용에 맞게 줄고 최소치에서 멈추게 했는데, 코드가
+          weight로 남는 공간을 카드에 나눠 주고 있었다 — 카드 문구가 **위 정렬**이라
+          (시안 primaryAxisAlignItems: MIN) 카드만 커지면 아래가 크게 비어
+          "글자가 위로 쏠렸다"로 보인다. 정렬 탓이 아니라 카드 크기 탓이었다.
+
+          **어디를 비울지는 상태가 정한다.**
+            마이크가 있는 상태  위를 비운다 — 아래는 마이크가 시니어 카드를 파고드는
+                              겹침이 있어 벌어지면 안 된다
+            확인·실패         아래를 비운다 — 시안이 버튼쌍 아래를 비워 둔다
+        -->
         <Space
-            android:id="@+id/space_home_mid"
+            android:id="@+id/space_flex_bottom"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="3" />
