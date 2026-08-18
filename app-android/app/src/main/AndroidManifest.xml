@@ -3,8 +3,6 @@
 
     <!-- 서버(추론 오케스트레이터) 호출 -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 다른 앱 위 오버레이. 사용자가 설정에서 켠다(온보딩) -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 이 권한이 필요한 이유는 알림을 띄우기 위해서가 아니다. 알림이 막힌 앱은 백그라운드
          토스트도 시스템이 억제해서, ServiceOffAction.NOTICE_ONLY가 띄우는 **토스트**가 안 보인다
          (근거는 ServiceOffAction.NOTICE_ONLY KDoc). 런타임 요청이 아직 없어 그 갈래는 죽어 있다 —

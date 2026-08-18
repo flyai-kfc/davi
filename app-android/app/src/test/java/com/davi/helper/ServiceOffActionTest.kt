@@ -6,42 +6,25 @@ import org.junit.Test
 /**
  * 안내 중 접근성이 꺼졌을 때의 판정(#190).
  *
- * 셋의 근거가 다르다는 것이 이 클래스가 따로 있는 이유다 — 특히
- * `오버레이 권한이 없으면 복귀를 시도하지 않는다`는 플랫폼 제약을 코드로 고정한다.
+ * **축이 하나로 줄었다**(#212). 예전에는 오버레이 권한이 두 번째 축이었다 — 그 권한이 있으면
+ * 앱을 앞으로 가져오고(`RETURN_TO_APP`), 없으면 알리기만 했다(`NOTICE_ONLY`). 권한을 걷어내며
+ * 자동 복귀를 알림 탭으로 옮겼으므로 이제 "안내 중이었나"만 남는다.
+ * 왜 그렇게 바꿨는지는 [ServiceOffAction] KDoc의 실측에 있다.
  */
 class ServiceOffActionTest {
 
     /** 안내 중이 아닐 때 서비스를 끄는 건 정상 조작이다 — 알릴 것이 없다. */
     @Test
     fun `세션이 없으면 아무것도 하지 않는다`() {
-        assertEquals(ServiceOffAction.SILENT, serviceOffAction(sessionActive = false, canDrawOverlays = true))
-        assertEquals(ServiceOffAction.SILENT, serviceOffAction(sessionActive = false, canDrawOverlays = false))
-    }
-
-    /** 다시 켜려면 어차피 앱으로 돌아와야 한다 — 사용자가 설정 앱에서 길을 잃지 않게 한다. */
-    @Test
-    fun `안내 중이었고 오버레이 권한이 있으면 앱을 앞으로 가져온다`() {
-        assertEquals(
-            ServiceOffAction.RETURN_TO_APP,
-            serviceOffAction(sessionActive = true, canDrawOverlays = true),
-        )
+        assertEquals(ServiceOffAction.SILENT, serviceOffAction(sessionActive = false))
     }
 
     /**
-     * **오버레이 권한이 복귀의 성립 조건이다.** Android 10+의 백그라운드 activity 실행 금지에서
-     * 우리가 쓰는 면제 둘(`BAL_ALLOW_SAW_PERMISSION` · `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`)이
-     * 모두 그 권한에서 나오므로, 권한이 없으면 `startActivity`가 조용히 막힌다.
-     * 면제 둘의 관계는 **구 창 타입 기준 실측**이다 — 지금 오버레이는 접근성 창이라 인과가
-     * 끊겼고, 결론만 `BAL_ALLOW_SAW_PERMISSION`으로 선다([ServiceOffAction.RETURN_TO_APP], #56).
-     *
-     * 그 경우 토스트라도 남겨야 사용자가 이유를 안다(다만 알림 권한 전까지는 그 토스트도
-     * 억제된다 — [ServiceOffAction.NOTICE_ONLY]. 권한 요청은 **#212**).
+     * 안내가 도는 중에 꺼졌으면 사용자는 **왜 멈췄는지 알 길이 없다.** 알림이 그걸 말하고,
+     * 그 알림을 누르면 온보딩으로 가서 다시 켤 수 있다 — 예전의 자동 복귀가 하던 일이다.
      */
     @Test
-    fun `오버레이 권한이 없으면 복귀를 시도하지 않고 알리기만 한다`() {
-        assertEquals(
-            ServiceOffAction.NOTICE_ONLY,
-            serviceOffAction(sessionActive = true, canDrawOverlays = false),
-        )
+    fun `안내 중이었으면 알린다`() {
+        assertEquals(ServiceOffAction.NOTIFY, serviceOffAction(sessionActive = true))
     }
 }

@@ -15,7 +15,6 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
-import android.widget.Toast
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -129,6 +128,8 @@ class GuideAccessibilityService : AccessibilityService() {
                 mainHandler.removeCallbacks(sampleRunnable)
                 overlay?.clear()
             } else {
+                // 안내가 다시 도는데 "멈췄어요" 알림이 남아 있으면 서로 어긋난다(#212).
+                GuideNotifier.clear(this)
                 scheduleSample(SETTLE_MS)
             }
             // 시작이면 첫 샘플까지의 공백(SETTLE_MS)부터 읽는 중으로 덮는다.
@@ -247,7 +248,6 @@ class GuideAccessibilityService : AccessibilityService() {
         Log.i(
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
-                "overlayPermission=${overlay?.canDraw()} " +
                 "dogfoodDeviceId=${dogfoodDeviceId ?: "-"} " +
                 // 앱 1차 마스킹 상태는 서버 2차 상태와 독립으로 드러낸다. 한쪽만 우회한 상태를
                 // "둘 다 우회"로 오인하면 비교 결과를 잘못 읽는다(#203).
@@ -910,42 +910,13 @@ class GuideAccessibilityService : AccessibilityService() {
             .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
 
         // 안내를 받던 중이었다면 그 사실을 알린다(#29·#190). 판정은 [serviceOffAction]에 있다.
-        // **여기서 토스트를 띄우고 화면도 바꾸면 토스트가 사라진다** — 복귀를 넣은 뒤 실측에서
-        // Toast.show()는 불렸는데 0.7·1.4·2.1초 캡처 어디에도 없었다(화면 전환이 삼킨다).
-        // 그래서 복귀 경로는 **복귀한 화면이 말하게** 하고, 여기서는 복귀가 막힌 경우만 띄운다.
-        when (serviceOffAction(GuideSession.isActive, hasGuideOverlayPermission())) {
-            ServiceOffAction.RETURN_TO_APP -> {
-                // CLEAR_TASK가 **꼭 필요하다**(PR #198 리뷰). 세션 중에는 우리 task에
-                // ConversationActivity가 살아 있다 — 그쪽 onPause는 대화만 접고 finish()하지
-                // 않는다. NEW_TASK만 주면 그 위에 온보딩이 얹히고, 사용자가 권한을 다시 켜면
-                // OnboardingActivity.onResume이 startActivity(Conversation) + finish()를 해서
-                // 대화 화면이 두 겹이 된다. 껐다 켤 때마다 한 겹씩 쌓이고 뒤로 키에 옛 인스턴스가 나온다.
-                //
-                // 온보딩을 task 루트로 만들면 그 겹침이 닫히고, "돌아가서 다시 켜고 처음부터"라는
-                // 이 경로의 뜻과도 맞는다. **전제는 위의 onPause 동작이다** — 그쪽이 스스로
-                // finish()하게 바뀌면 이 플래그의 근거도 다시 봐야 한다.
-                Log.w(TAG, "service unbound during session, returning to app")
-                startActivity(
-                    android.content.Intent(this, OnboardingActivity::class.java)
-                        .addFlags(
-                            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK,
-                        )
-                        .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
-                )
-            }
-
-            ServiceOffAction.NOTICE_ONLY -> {
-                // 오버레이 권한이 없어 복귀가 막힌다(BAL 면제 없음). 안내창도 못 쓴다 —
-                // **이 갈래가 정의상 `!canDrawOverlays`라 [OverlayController.showGuide]가 게이트에서
-                // 조기 반환한다.** 화면이 설정 앱이라서가 아니다(#56 — 접근성 오버레이는 설정 앱
-                // 위에도 그려진다). 창 수명도 곧 끊기지만 그건 아래 destroy() 뒤의 이야기라
-                // 지금의 이유가 아니다(미검증, PR #216 2차 리뷰).
-                // **이 토스트는 지금 안 보인다** — 알림 권한을 아직 요청하지 않아 백그라운드
-                // 토스트가 억제된다(**#212**가 그 권한을 들여오면 살아난다, [ServiceOffAction.NOTICE_ONLY]).
-                // 그래도 호출은 남긴다. 지우면 권한이 생겨도 이 자리만 조용히 비어 있게 된다.
-                Log.w(TAG, "service unbound during session, cannot return")
-                Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+        // **여기서는 화면을 바꾸지 않는다** — 예전의 자동 복귀는 오버레이 권한이 주던 BAL 면제로만
+        // 성립했고, 그 권한을 걷어내며 알림 탭으로 옮겼다(#212, `ServiceOffAction` KDoc의 실측).
+        // 토스트도 쓰지 않는다: 이 갈래는 우리가 백그라운드일 때만 생기고 그때 토스트는 억제된다.
+        when (serviceOffAction(GuideSession.isActive)) {
+            ServiceOffAction.NOTIFY -> {
+                Log.w(TAG, "service unbound during session, notifying")
+                GuideNotifier.notifyGuideStopped(this, R.string.guide_service_off)
             }
 
             ServiceOffAction.SILENT -> Unit

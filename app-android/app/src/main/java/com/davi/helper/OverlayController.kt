@@ -28,6 +28,9 @@ import android.view.WindowManager
  *
  * 이 타입을 쓰는 이상 **"안내만 한다"는 선택이 아니라 전제다** — 시스템이 가려 둔 자리에
  * 그리는 것이므로 `performAction` 금지(루트 `CLAUDE.md`)가 그 조건이다.
+ *
+ * **오버레이 권한 게이트는 없다**(#212). `SYSTEM_ALERT_WINDOW`를 아예 선언하지 않으므로
+ * 그릴 수 있는지 물을 것이 없다 — 창 타입이 그 권한을 타지 않는다.
  */
 class OverlayController(
     private val context: Context,
@@ -64,19 +67,6 @@ class OverlayController(
     private var confirmKind: GuideDisplayState.ConfirmKind? = null
 
     /**
-     * **이 게이트는 "그릴 수 있는가"가 아니라 "그리기로 한 조건"이다.** 창 타입이
-     * `TYPE_ACCESSIBILITY_OVERLAY`가 된 뒤로 오버레이 자체는 `SYSTEM_ALERT_WINDOW` 없이도
-     * 붙는다(머리 주석). 그래도 게이트를 남기는 이유는 **#190의 앱 복귀**다 — 백그라운드
-     * activity 실행 금지의 면제가 그 권한에서 나오므로, 권한 없이 안내를 돌리면 접근성이
-     * 꺼졌을 때 사용자를 되돌릴 길이 없다. **흔적 코드로 보고 지우지 말 것.** 유지·제거
-     * 판정은 #212.
-     *
-     * 판정 자체는 [hasGuideOverlayPermission]에 있다 — 온보딩과 기준이 갈리면 온보딩은
-     * 통과시키고 안내는 조용히 실패한다([GuidePermissions]).
-     */
-    fun canDraw(): Boolean = context.hasGuideOverlayPermission()
-
-    /**
      * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
      *
      * [avoid]는 안내창이 가리지 말아야 할 영역이다(키보드·다이얼로그). 강조 대상은 여기 넣지
@@ -94,11 +84,6 @@ class OverlayController(
         direction: SwipeDirection? = null,
         confirm: GuideDisplayState.ConfirmKind? = null,
     ) {
-        if (!canDraw()) {
-            // 창 타입은 이 권한을 안 타지만 위 게이트가 #190 복귀를 위해 막는다.
-            Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
-            return
-        }
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
         val target = view ?: createView() ?: return
@@ -121,22 +106,11 @@ class OverlayController(
      * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
      */
     fun setReading(on: Boolean) {
-        // 뷰가 이미 있으면 권한을 다시 묻지 않는다 — 샘플마다 도는 경로라 canDraw()의
-        // AppOps 바인더 왕복이 접근성 처리와 같은 메인 스레드에 그대로 쌓인다.
-        //
-        // **"권한이 사라지면 시스템이 창을 걷는다"는 더는 사실이 아니다**(#56). 접근성
-        // 오버레이는 SYSTEM_ALERT_WINDOW에 묶이지 않아 권한을 꺼도 창이 남는다. 생략의 근거는
-        // 이제 비용뿐이고, 안내 중 권한이 꺼지면 [showGuide]가 조기 반환만 해 직전 안내창이
-        // 화면에 남는다. 게다가 그 유령 창의 중지 칩을 누르면 [GuideSession.awaitQuitConfirm]이
-        // 대기를 세우는데 확인쌍 렌더가 같은 게이트에 막혀, 재탭도 대기 플래그에 막히고
-        // **화면(칩)과 상태(확인 대기)가 갈라진다.** 반면 이 함수의 `view?.let` 패스트패스는
-        // 같은 유령 창에 계속 그린다 — 인접한 두 경로가 반대 정책이다.
-        // **알려진 공백이고 권한 정리(#212)가 함께 받는다.**
         view?.let {
             it.setReading(on)
             return
         }
-        if (!on || !canDraw()) return
+        if (!on) return
         createView()?.setReading(true)
     }
 
