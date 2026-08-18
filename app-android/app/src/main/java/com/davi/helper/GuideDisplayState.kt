@@ -153,11 +153,22 @@ class GuideDisplayState {
 
     /**
      * 종료 확인을 걷고 밀어 뒀던 안내를 되돌린다. 그릴 것이 남으면 돌려주고, 없으면 null이다
-     * (칩을 누른 시점에 안내가 없었던 경우 — 호출자가 오버레이를 걷는다).
+     * (호출자가 오버레이를 걷는다). null인 경우는 둘이다 — 칩을 누른 시점에 안내가 없었거나,
+     * 아래의 화면 대조에서 폐기됐거나.
+     *
+     * **밀어 둔 안내가 [currentSignature] 화면의 것이 아니면 폐기한다.** 확인 화면 자신은 화면에
+     * 소속되지 않지만([redisplay]) 되살아나는 것은 *조작* 안내라 그 규칙을 그대로 받는다 —
+     * 칩 → 홈 → × 순으로 누르면 이전 화면의 강조 사각형이 런처 위에 그려지고, `visible`이
+     * true라 [redisplay]가 걷지도 못한다("이전 화면의 안내를 새 화면 위에 그리지 않는다",
+     * PR #63 2차 리뷰 P1). 폐기해도 그 화면의 새 요청은 다음 샘플이 어차피 낸다.
      */
-    fun dismissQuitConfirm(): Content? {
+    fun dismissQuitConfirm(currentSignature: String?): Content? {
         val restored = stashed ?: return null
         stashed = null
+        if (restored.guide != null && guideSignature != currentSignature) {
+            reset()
+            return null
+        }
         guide = restored.guide
         stuckSuffixAllowed = restored.stuckSuffixAllowed
         visible = restored.guide != null

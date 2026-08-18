@@ -274,7 +274,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(null, "설정을 누르세요."),
-            state.dismissQuitConfirm(),
+            state.dismissQuitConfirm(sigA),
         )
     }
 
@@ -284,7 +284,7 @@ class GuideDisplayStateTest {
         state.show(sigA, null, "설정을 누르세요.")
         state.showQuitConfirm(quitText)
 
-        state.dismissQuitConfirm()
+        state.dismissQuitConfirm(sigA)
 
         assertEquals(
             GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck"),
@@ -300,7 +300,7 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.showQuitConfirm(quitText)
 
-        state.dismissQuitConfirm()
+        state.dismissQuitConfirm(sigA)
 
         assertEquals(GuideDisplayState.Content(null, capNotice), state.stuckContent(stuck))
     }
@@ -343,7 +343,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(null, "설정을 누르세요."),
-            state.dismissQuitConfirm(),
+            state.dismissQuitConfirm(sigA),
         )
     }
 
@@ -355,7 +355,38 @@ class GuideDisplayStateTest {
 
         state.reset()
 
-        assertNull(state.dismissQuitConfirm())
+        assertNull(state.dismissQuitConfirm(sigA))
+    }
+
+    /**
+     * 칩 → 홈 → × 순이면 되살릴 안내가 **다른 화면의 것**이다. 그대로 그리면 이전 화면의 강조가
+     * 런처 위에 뜨고, `visible`이 true라 재표시가 걷지도 못한다(PR #63 2차 리뷰 P1과 같은 규칙).
+     */
+    @Test
+    fun `화면이 바뀐 뒤의 종료 확인 취소는 옛 안내를 되살리지 않는다`() {
+        state.show(sigA, listOf(0, 0, 10, 10), "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        assertNull(state.dismissQuitConfirm(sigB))
+    }
+
+    /** 폐기했으면 기억도 남기지 않는다 — 원래 화면으로 돌아와도 되살아나면 안 된다. */
+    @Test
+    fun `폐기된 안내는 원래 화면으로 돌아와도 재표시되지 않는다`() {
+        state.show(sigA, null, "설정을 누르세요.")
+        state.showQuitConfirm(quitText)
+
+        state.dismissQuitConfirm(sigB)
+
+        assertNull(state.redisplay(sigA, true))
+    }
+
+    /** 되살릴 안내가 애초에 없었으면 화면이 달라도 폐기 판정에 걸리지 않는다(둘 다 null이다). */
+    @Test
+    fun `밀어 둔 안내가 없으면 화면이 달라도 그냥 없다`() {
+        state.showQuitConfirm(quitText)
+
+        assertNull(state.dismissQuitConfirm(sigB))
     }
 
     /** 새 안내는 자기 화면 서명으로 재표시된다 — 이전 서명을 끌고 가면 재표시가 어긋난다. */
