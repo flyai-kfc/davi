@@ -91,13 +91,18 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 ## MA-4 최종 확인 — 버킷 Now
 
 - 목적: 확정된 goal 문장을 보여주고 시작 여부를 받는다. 음성+텍스트 동시(TTS 병행, 와이어프레임 결정).
-- 구성: goal 문장(title 스타일) · `chip/confirm-pair`(lg: ×/○) · TTS 캡션.
+- 구성: goal 문장(title 스타일) · **`v2/button/pair`(캡슐 ×아니요/○네, 맞아요)** · TTS 캡션.
 - 동작: ○ → `GuideSession.start(goal)` → GD-1 (voice-goal ⑪⑫). × → MA-1 복귀(전체
   재시작 — 와이어프레임 확정).
 - 데이터: 서버 `ready` 응답의 `goal`.
-- 구현 연결: **현 구현(⑩ goalInput 채움 + 시작 탭)과 다르다** — 이 화면이 to-be이며
-  전환은 구현 이슈로. [미결] 확인 발화("네/아니오")로도 응답 가능하게 할지(voice-goal
-  §1 "음성 최종 확인" 없음과 연결).
+- 배치: **버튼쌍이 카드 바로 아래(86dp)에 있고 화면 아래는 비운다**(#196). 마이크·시니어
+  카드는 숨는다. PR #164가 마이크와 확인쌍을 한 바닥 슬롯에 묶었던 것을 뒤집은 결과다 —
+  마이크 자리에 버튼이 앉으면 "눌러 말하세요"의 자리와 겹쳐 확인 화면이 입력 자리로 보인다.
+- 구현 연결: 구현됨(#123·#196).
+  **확인쌍은 오버레이(GD-3·4)와 별개 컴포넌트다** — 시안이 `v2/button/pair`(캡슐 흰/빨강)와
+  `v2/confirm-pair`(r14 빨강/초록)로 나눠 두었다. 코드도 `view_davi_button_pair.xml`과
+  `view_davi_confirm_pair.xml`로 갈라져 있고, 대화 화면은 앞의 것만 쓴다.
+  [미결] 확인 발화("네/아니오")로도 응답 가능하게 할지(voice-goal §1 "음성 최종 확인" 없음과 연결).
 
 ## GD-1 화면 읽는 중 — 버킷 Now (오버레이)
 

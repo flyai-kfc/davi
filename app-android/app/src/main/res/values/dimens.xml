@@ -141,6 +141,12 @@
     <dimen name="davi_button_pair_radius">36dp</dimen>
     <dimen name="davi_button_pair_gap">14dp</dimen>
     <dimen name="davi_button_pair_stroke">2dp</dimen>
+    <!--
+      버튼쌍과 위 카드 사이. 시안 메인 7의 다비 카드 하단 308 -> 버튼쌍 380 = 72,
+      배율 1.2로 86dp다. **최종 확인에서 카드 weight가 0이라 열이 위에서부터 쌓이므로,
+      이 여백만 주면 화면 아래가 저절로 빈다** — 시안이 아래를 비우는 배치와 같아진다.
+    -->
+    <dimen name="davi_button_pair_margin_top">86dp</dimen>
 
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>

@@ -171,11 +171,11 @@ class ConversationActivity : AppCompatActivity() {
             cancelVoiceDialogue()
             setState(ConversationUiState.Home())
         }
-        binding.confirmPair.btnConfirmReject.setOnClickListener {
+        binding.buttonPair.btnPairReject.setOnClickListener {
             cancelVoiceDialogue()
             setState(ConversationUiState.Home())
         }
-        binding.confirmPair.btnConfirmAccept.setOnClickListener { onConfirmAccepted() }
+        binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
         binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
 
         // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
@@ -321,7 +321,7 @@ class ConversationActivity : AppCompatActivity() {
         binding.btnMic.imageAlpha =
             if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
         binding.btnStopGuide.isVisible(model.stopGuideVisible)
-        binding.confirmPair.root.isVisible(model.confirmVisible)
+        binding.buttonPair.root.isVisible(model.confirmVisible)
         binding.btnClose.isVisible(model.closeVisible)
 
         // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
