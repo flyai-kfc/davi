@@ -176,7 +176,21 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.Home())
         }
         binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
-        binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
+        // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
+        // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
+        // 뒤로가기를 모르는 사람을 위한 지름길이다.
+        binding.stackedPair.btnStackedSecondary.setOnClickListener { finish() }
+        binding.stackedPair.btnStackedPrimary.setOnClickListener {
+            setState(ConversationUiState.StopConfirm)
+        }
+        // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
+        binding.stopConfirmPair.btnConfirmReject.setOnClickListener {
+            setState(ConversationUiState.Home())
+        }
+        binding.stopConfirmPair.btnConfirmAccept.setOnClickListener {
+            GuideSession.stop()
+            setState(ConversationUiState.Home())
+        }
 
         // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
         // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
@@ -325,7 +339,12 @@ class ConversationActivity : AppCompatActivity() {
         // 없는 동안에도 활성과 똑같이 보였다(PR #173 리뷰 실측). 글리프만 흐리게 해 구분한다.
         binding.btnMic.imageAlpha =
             if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
-        binding.btnStopGuide.isVisible(model.stopGuideVisible)
+        // 메인 9·10(#197). 카드 안 지시문·세로 버튼쌍·하단 안내는 안내 중에만 뜬다.
+        binding.cardGuidingHint.isVisible(model.guidingVisible)
+        binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
+        binding.stackedPair.root.isVisible(model.guidingVisible)
+        binding.guidingBottom.isVisible(model.guidingVisible)
+        binding.stopConfirmScrim.isVisible(model.stopConfirmVisible)
         binding.buttonPair.root.isVisible(model.confirmVisible)
         // 확인 화면이 둘이라 ○의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라

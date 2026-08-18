@@ -124,6 +124,17 @@
     <string name="conversation_failed">무엇을 하려는지 잘 모르겠어요.\n처음부터 다시 할게요.</string>
     <!-- 안내 세션 중 홈. 마이크가 왜 잠겼는지가 화면에 없던 자리다(#29). -->
     <string name="conversation_guide_active">안내 중이에요.\n하려던 앱으로 돌아가 주세요.</string>
+    <!--
+      메인 9·10 문구(#197). **줄바꿈 위치까지 시안 그대로**이고 전부 가운데 정렬이다.
+      하단 안내는 장식이 아니라 "어떻게 안내로 돌아가는지" 알려주는 지시문이라 —
+      못 읽으면 사용자가 갇힌다 — 크기를 램프 최소가 아니라 본문(17sp)으로 잡았다.
+    -->
+    <string name="conversation_guiding_title">안내가 진행 중입니다</string>
+    <string name="conversation_guiding_hint">새로 물어보시려면\n먼저 안내를 종료해주세요</string>
+    <string name="conversation_guiding_bottom">계속 보시려면 뒤로가기를 눌러\n다비를 나가주세요</string>
+    <string name="conversation_guiding_resume">기존 안내 이어서하기</string>
+    <string name="conversation_guiding_stop">안내 종료</string>
+    <string name="conversation_stop_confirm">정말 안내를\n종료하시겠어요?</string>
     <string name="conversation_app_availability_warning">이 과정에 필요한 앱이 설치되어 있지 않을 수 있어요. 그래도 계속할까요?</string>
     <!--
       최종 확인 버튼쌍의 **보이는 글자**(#196). 아이콘 전용이던 확인쌍이 글자를 갖게 되면서

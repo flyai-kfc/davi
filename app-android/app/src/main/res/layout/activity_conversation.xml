@@ -142,14 +142,6 @@
             android:textAppearance="@style/TextAppearance.Davi.Body"
             android:textColor="@color/davi_text_secondary" />
 
-        <!-- 안내 세션이 도는 동안만 보이는 임시 중단 수단 — 오버레이 X 칩은 터치 계약 [미결] -->
-        <Button
-            android:id="@+id/btn_stop_guide"
-            style="@style/Widget.Davi.Button.Secondary"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_spacing_xl"
-            android:text="@string/btn_stop" />
 
         <!--
           질문 카드. **배경·여백이 컨테이너로 올라와 있다**(#142) — 응답 대기 점이 문구
@@ -237,6 +229,22 @@
                 android:scrollbars="vertical"
                 android:accessibilityLiveRegion="polite"
                 android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:fontFamily="@font/cafe24_ssurround"
+                app:fontFamily="@font/cafe24_ssurround" />
+
+            <!--
+              메인 9 카드 안 지시문(#197). "새로 물어보시려면 먼저 안내를 종료해주세요" —
+              **마이크가 잠긴 이유를 설명하는 자리**다. 위 문구가 상황을 알리고 이 줄이
+              무엇을 해야 하는지 말한다. 다른 상태에서는 숨는다.
+            -->
+            <TextView
+                android:id="@+id/card_guiding_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/davi_spacing_lg"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:textAppearance="@style/TextAppearance.Davi.Guiding"
                 android:fontFamily="@font/cafe24_ssurround"
                 app:fontFamily="@font/cafe24_ssurround" />
 
@@ -339,6 +347,30 @@
           (698dp, 인셋 뺀 실측)보다 크다. 대신 관계로 둔다 — 최종 확인에서는 카드 weight가
           0이라 열이 위에서부터 쌓이므로, 카드 뒤에 이 여백만 주면 아래가 저절로 빈다.
         -->
+        <!--
+          메인 9 세로 버튼쌍과 하단 안내(#197). **마이크 슬롯을 쓰지 않는다** —
+          이 화면에는 마이크가 없고 버튼이 카드 아래 열 안에 있다(메인 7과 같은 배치).
+
+          "기존 안내 이어서하기"는 **상태를 바꾸지 않는다** — 앱에서 나가기만 하고 안내는
+          그대로 돈다. 아래 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이다.
+        -->
+        <include
+            android:id="@+id/stacked_pair"
+            layout="@layout/view_davi_stacked_pair"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_stacked_pair_margin_top" />
+
+        <TextView
+            android:id="@+id/guiding_bottom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_guiding_bottom_margin_top"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/conversation_guiding_bottom"
+            android:textAppearance="@style/TextAppearance.Davi.GuidingBottom" />
+
         <include
             android:id="@+id/button_pair"
             layout="@layout/view_davi_button_pair"
@@ -392,4 +424,58 @@
         android:scaleType="fitCenter"
         android:contentDescription="@string/conversation_close_desc" />
     </FrameLayout>
+
+    <!--
+      메인 10 종료 확인 모달(#197). **루트 FrameLayout의 마지막 자식이라 모든 것 위에 뜬다** —
+      스크림이 인셋 층 밖에 있어 상태표시줄·내비게이션까지 덮는다(시안이 전면이다).
+
+      **스크림이 터치를 먹는다.** clickable을 켜서 뒤 화면이 눌리지 않게 한다 — 오버레이
+      스크림(GD-4)은 "대신 조작하지 않는다" 때문에 통과시키지만, 여기는 우리 앱 화면이고
+      답하기 전에 뒤를 누르면 안 되는 자리다.
+
+      확인쌍은 오버레이(GD-3·4)와 같은 `v2/chip/confirm-pair`라 기존 컴포넌트를 그대로 쓴다 —
+      메인 7의 캡슐쌍·메인 9의 세로쌍과는 다른 컴포넌트다.
+    -->
+    <FrameLayout
+        android:id="@+id/stop_confirm_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/davi_dialog_scrim"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/stop_confirm_dialog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginLeft="@dimen/davi_spacing_xl"
+            android:layout_marginRight="@dimen/davi_spacing_xl"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:background="@drawable/bg_davi_dialog"
+            android:paddingTop="@dimen/davi_dialog_padding_top"
+            android:paddingBottom="@dimen/davi_dialog_padding_top">
+
+            <TextView
+                android:id="@+id/stop_confirm_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:text="@string/conversation_stop_confirm"
+                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:fontFamily="@font/cafe24_ssurround"
+                app:fontFamily="@font/cafe24_ssurround" />
+
+            <include
+                android:id="@+id/stop_confirm_pair"
+                layout="@layout/view_davi_confirm_pair"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/davi_dialog_pair_margin_top" />
+        </LinearLayout>
+    </FrameLayout>
+
 </FrameLayout>

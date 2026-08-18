@@ -69,6 +69,30 @@
         <item name="android:textSize">@dimen/davi_type_body</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
+    <!--
+      메인 9 카드 제목(#197). 다비가 하는 말이라 Cafe24이고 크기는 시안대로 20sp다 —
+      다른 화면의 카드 문구(Subtitle 24sp)보다 작다. 이 화면은 카드 안에 문구가 둘이라
+      (제목 + 지시문) 제목이 24면 빡빡해진다.
+    -->
+    <style name="TextAppearance.Davi.BodyLg.Davi" parent="TextAppearance.Davi.BodyLg">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+    </style>
+    <!--
+      카드 안 지시문(#197). **17sp다** — 시안 15를 14로 스냅하지 않았다. 지시문이라 못
+      읽으면 사용자가 갇힌다. 근거는 davi_type_guiding 주석. 카드 안 다비의 말이라 Cafe24.
+    -->
+    <style name="TextAppearance.Davi.Guiding" parent="TextAppearance.Davi.Body">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+        <item name="android:textSize">@dimen/davi_type_guiding</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <!-- 하단 안내는 다비의 말이 아니라 조작 설명이라 Pretendard다(C1). 크기는 같은 17sp. -->
+    <style name="TextAppearance.Davi.GuidingBottom" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_guiding</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
     <style name="TextAppearance.Davi.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_caption</item>
@@ -117,6 +141,38 @@
 
       **높이는 wrap_content + minHeight다.** 고정 높이면 글자 배율 2.0x에서 라벨이 잘린다.
     -->
+    <!--
+      메인 9 세로 버튼쌍(#197). **`backgroundTint`를 꺼야 `android:background`가 먹는다** —
+      Material3 Button은 기본적으로 자기 tint로 칠하고 drawable을 무시한다(실기기에서
+      보조 버튼이 빨간 덩어리로 나왔다). inset·elevation·stateListAnimator도 함께 끈다.
+      메인 7 버튼쌍이 같은 이유로 같은 처리를 한다.
+
+      **라벨을 그림자 offset만큼 올린다** — 채움이 아래로 그만큼 짧아서, 안 하면 보이는
+      상자 안에서 글자가 처져 보인다. 위 패딩도 0으로 못 박아야 기본값에 안 좌우된다.
+    -->
+    <style name="Widget.Davi.Stacked" parent="Widget.Material3.Button">
+        <item name="android:minHeight">@dimen/davi_stacked_button_height</item>
+        <item name="android:textSize">@dimen/davi_type_body_lg</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">@font/pretendard</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">@dimen/davi_button_pair_shadow_offset_y</item>
+        <item name="backgroundTint">@null</item>
+    </style>
+    <style name="Widget.Davi.Stacked.Primary">
+        <item name="android:background">@drawable/bg_davi_stacked_primary</item>
+        <item name="android:textColor">@color/davi_button_on_primary</item>
+    </style>
+    <!-- 보조는 그림자가 없어 아래 패딩 보정도 필요 없다. -->
+    <style name="Widget.Davi.Stacked.Secondary">
+        <item name="android:background">@drawable/bg_davi_stacked_secondary</item>
+        <item name="android:textColor">@color/davi_button_primary</item>
+        <item name="android:paddingBottom">0dp</item>
+    </style>
     <style name="Widget.Davi.ButtonPair" parent="Widget.Material3.Button">
         <item name="android:minHeight">@dimen/davi_button_pair_height</item>
         <item name="android:textSize">@dimen/davi_type_button_pair</item>
