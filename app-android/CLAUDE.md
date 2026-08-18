@@ -93,6 +93,11 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **API 키를 앱에 넣지 않는다.** debug에만 서버 URL·개발 접근 토큰을 주입한다. release는
   개발 설정을 읽거나 포함하지 않는다. 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
   **되살리지 않는다**(§5-2).
+- **release 서명은 debug 설정이 아니다**(#221). 업로드 키스토어 경로·비밀번호는
+  `local.properties`에서 읽되 `debugSetting`이 아니라 `localSetting`으로 읽는다 — release가
+  정당하게 쓰는 값이라 `verifyReleaseConfiguration`이 막는 대상에 넣으면 안 된다.
+  **값이 없으면 서명 없이 그대로 빌드한다**(`app-release-unsigned.apk`). CI와 키 없는 팀원
+  PC에서 `assembleRelease`가 계속 돌아야 하기 때문이다. keystore·비밀번호는 커밋하지 않는다.
 - `RECORD_AUDIO`는 사용자가 `말로 입력`을 누를 때 런타임 요청한다. 원시 음성을 Davi 서버로
   직접 보내거나 저장하지 않는다. 인식된 텍스트와 이전 턴은 의미 정리를 위해 서버/Gemini로
   전송된다(SPEC §4 음성 목표 계약).

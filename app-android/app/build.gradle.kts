@@ -48,11 +48,16 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-fun debugSetting(name: String): String =
+fun localSetting(name: String): String =
     localProps.getProperty(name)?.trim().orEmpty().ifEmpty {
         // 일회성 자동 검증에서는 파일에 토큰을 쓰지 않도록 같은 이름의 환경변수를 허용한다.
         providers.environmentVariable(name).orNull?.trim().orEmpty()
     }
+
+// **debug 전용** 값. 읽는 곳은 localSetting과 같지만, release 빌드에 존재하면 안 되는 것들이라
+// verifyReleaseConfiguration이 따로 막는다(#57). release가 정당하게 쓰는 값(서명 키 등)은
+// localSetting을 그대로 쓴다 — 그 관문에 걸리면 안 되기 때문이다.
+fun debugSetting(name: String): String = localSetting(name)
 
 fun String.asBuildConfigString(): String = "\"" +
     replace("\\", "\\\\")
@@ -168,6 +173,33 @@ if (kakaoNativeAppKey.isNotEmpty() && !kakaoNativeAppKey.all { it.isLetterOrDigi
 // 서버 화이트리스트는 저장만 거를 뿐 전송 자체는 여기서만 막을 수 있다.
 val dogfoodOptIn = debugSetting("DAVI_DOGFOOD") == "true"
 
+// release 서명(업로드 키). **값이 없으면 서명하지 않고 그대로 빌드한다** — CI와 키를 갖지
+// 않은 팀원 PC에서 assembleRelease가 계속 돌아야 하고, 서명 키는 한 사람만 갖는다(#221).
+// 서명되지 않은 release는 기기 설치·Play 업로드가 안 될 뿐 빌드는 성공한다.
+//
+// keystore 파일과 비밀번호는 **저장소에 넣지 않는다.** local.properties(gitignore됨)에 적거나
+// 같은 이름의 환경변수로 준다. Windows 경로는 `\`가 .properties의 이스케이프 문자라
+// `C:/...`처럼 `/`로 쓴다.
+val releaseKeystorePath = localSetting("DAVI_RELEASE_KEYSTORE")
+val releaseKeystorePassword = localSetting("DAVI_RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = localSetting("DAVI_RELEASE_KEY_ALIAS").ifEmpty { "davi-upload" }
+// 키 비밀번호를 따로 두지 않은 keystore가 흔하다. 없으면 store 비밀번호를 쓴다.
+val releaseKeyPassword = localSetting("DAVI_RELEASE_KEY_PASSWORD").ifEmpty { releaseKeystorePassword }
+val releaseKeystoreFile = releaseKeystorePath.takeIf { it.isNotEmpty() }?.let { rootProject.file(it) }
+
+// 경로만 주고 비밀번호를 빠뜨리는 것은 설정 실수다 — 조용히 서명 없이 넘어가면 Play 업로드
+// 단계에서야 알게 되므로 여기서 멈춘다. "아무것도 안 준 것"과는 구분한다.
+if (releaseKeystoreFile != null) {
+    if (!releaseKeystoreFile.isFile) {
+        throw GradleException(
+            "DAVI_RELEASE_KEYSTORE 경로에 파일이 없습니다: $releaseKeystorePath",
+        )
+    }
+    if (releaseKeystorePassword.isEmpty()) {
+        throw GradleException("DAVI_RELEASE_KEYSTORE를 설정했으면 DAVI_RELEASE_KEYSTORE_PASSWORD도 필요합니다.")
+    }
+}
+
 val releaseServerUrl = "https://example.invalid"
 val generatedDebugNetworkSecurityDir =
     layout.buildDirectory.dir("generated/res/network-security/debug")
@@ -185,6 +217,18 @@ val generateDebugNetworkSecurityConfig =
 android {
     namespace = "com.davi.helper"
     compileSdk = 36
+
+    // 키가 있는 머신에서만 만든다. 없으면 아예 만들지 않아 release가 서명 없이 나간다.
+    signingConfigs {
+        if (releaseKeystoreFile != null) {
+            create("release") {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.davi.helper"
@@ -230,6 +274,9 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // 키가 없는 빌드는 서명되지 않은 채로 나온다. 기기 설치·Play 업로드가 안 될 뿐
+            // 빌드는 성공해야 한다 — CI가 이 경로로 assembleRelease를 돈다.
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
             buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
             // release는 속성을 읽지 않는다. 상수 false를 다시 못박아 debug 값이 새지 않게 한다.

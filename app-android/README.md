@@ -225,6 +225,40 @@ release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 �
 비교 실험 절차는 `DEVICE-E2E-RUN.md`, 경계는 `../SPEC.md` §3에 있다.
 **Gemini API 키는 앱에 넣지 않는다**(`../SPEC.md` §7).
 
+### release 서명 (#221)
+
+위 값들과 달리 **서명 키는 debug 전용 설정이 아니다.** release가 정당하게 쓰는 값이라
+release 관문에 걸리지 않는다.
+
+```properties
+# 업로드 키스토어. \ 는 .properties의 이스케이프 문자이므로 경로는 / 로 쓴다.
+DAVI_RELEASE_KEYSTORE=C:/path/to/davi-upload.jks
+DAVI_RELEASE_KEYSTORE_PASSWORD=<store 비밀번호>
+# 없으면 davi-upload. 키 비밀번호가 따로 없으면 store 비밀번호를 쓴다.
+DAVI_RELEASE_KEY_ALIAS=davi-upload
+DAVI_RELEASE_KEY_PASSWORD=<key 비밀번호>
+```
+
+**값이 없으면 서명하지 않고 그대로 빌드한다.** CI와 키를 갖지 않은 팀원 PC에서
+`assembleRelease`가 계속 돌아야 하기 때문이다 — 그 경우 산출물이
+`app-release-unsigned.apk`가 되고 기기 설치·Play 업로드만 안 된다. 키가 있으면
+`app-release.apk`와 `bundleRelease`의 `.aab`가 서명된 채로 나온다.
+
+경로만 주고 비밀번호를 빠뜨리면 **조용히 넘어가지 않고 빌드가 실패한다.** 설정 실수를
+Play 업로드 단계에서야 알게 되는 것을 막는다.
+
+**keystore 파일과 비밀번호는 저장소에 넣지 않는다.** `*.jks`·`*.keystore`는 gitignore돼
+있지만 워킹트리 밖에 두는 편이 안전하다. 업로드 키를 잃어도 Play App Signing을 쓰면 Google에
+재설정을 요청할 수 있다 — 앱 서명 키는 Google이 보관한다.
+
+서명된 release를 로컬에서 만들려면 **debug 설정을 지운 `local.properties`가 필요하다**
+(`verifyReleaseConfiguration`이 debug 값이 남아 있으면 막는다). 카카오 로그인을 실기기에서
+확인하려면 그 서명 인증서의 키 해시가 카카오 콘솔에 등록돼 있어야 한다:
+
+```bash
+keytool -exportcert -alias davi-upload -keystore <keystore> | openssl sha1 -binary | base64
+```
+
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
 Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
