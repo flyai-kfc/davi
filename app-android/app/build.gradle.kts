@@ -159,14 +159,31 @@ val disablePrivacyMaskingConfigured =
 val disablePrivacyMasking =
     disablePrivacyMaskingProperty.ifEmpty { disablePrivacyMaskingSetting } == "true"
 
-// 카카오 네이티브 앱 키(로그인). APK에서 추출 가능한 공개 전제 식별자라 비밀 키 규칙과는
-// 다르지만, 팀 카카오 앱이 확정되기 전엔 개발자별 테스트 앱 키를 쓸 수 있게 debug만
-// local.properties에서 읽는다. release 실키는 배포 이슈에서 확정한다(SERVER_URL과 같은 결).
+// 카카오 네이티브 앱 키(로그인). 빌드 타입마다 출처가 다르다.
 // 키가 비면 SDK init을 건너뛰고 로그인 버튼을 숨긴다 — 빌드·실행은 깨지지 않는다.
-val kakaoNativeAppKey = debugSetting("DAVI_KAKAO_NATIVE_APP_KEY")
-if (kakaoNativeAppKey.isNotEmpty() && !kakaoNativeAppKey.all { it.isLetterOrDigit() }) {
-    throw GradleException("DAVI_KAKAO_NATIVE_APP_KEY는 영숫자여야 합니다.")
+fun requireAlphanumericKakaoKey(source: String, value: String) {
+    if (value.isNotEmpty() && !value.all { it.isLetterOrDigit() }) {
+        throw GradleException("$source 카카오 네이티브 앱 키는 영숫자여야 합니다.")
+    }
 }
+
+// debug: 개발자별 테스트 앱 키를 쓸 수 있게 local.properties에서 읽는다. release로는 새지 않는다
+// (verifyReleaseConfiguration이 값이 있으면 release 빌드를 막는다).
+val debugKakaoNativeAppKey = debugSetting("DAVI_KAKAO_NATIVE_APP_KEY")
+requireAlphanumericKakaoKey("debug(DAVI_KAKAO_NATIVE_APP_KEY)", debugKakaoNativeAppKey)
+
+// release: 팀 카카오 앱 키를 저장소 상수로 둔다(#215). 네이티브 앱 키는 APK에서 추출 가능한
+// 공개 전제 식별자이고 등록된 패키지명·서명 해시와 함께여야만 동작하므로 비밀이 아니다 —
+// 저장소가 private이라 CI secret으로 옮길 이득이 없다.
+// debug와 같은 카카오 앱(콘솔 앱 ID 1547399)을 쓴다. 소유자가 개인 계정이어도 카카오는 앱
+// 소유자를 Play 개발자 계정과 대조하지 않고, 우리 로그인은 동의항목을 요청하지 않아(서버가
+// id·app_id만 읽는다) 비즈 앱 전환도 필요 없다 — 콘솔 접근은 팀원 초대로 연다.
+// 같은 앱이라 서버 DAVI_KAKAO_APP_ID는 그대로 맞는다.
+// 남은 관문은 서명 해시다. 서명 주체마다 지문이 달라 등록할 해시가 셋이고(debug·업로드 키·
+// Play 앱 서명 키), 어느 것이 어느 배포 경로에 쓰이는지는 README "카카오 키 해시" 절에 모아
+// 두었다 — 여기에 다시 적으면 두 곳이 어긋난다.
+val releaseKakaoNativeAppKey = "96ec16afc31462078e4d7daefa9cf0b2"
+requireAlphanumericKakaoKey("release(releaseKakaoNativeAppKey)", releaseKakaoNativeAppKey)
 
 // 도그푸딩 옵트인(#41 리뷰). true인 debug 빌드만 기기 해시를 계산·로그·전송한다.
 // 켜는 곳: 공기계(SM-S921N)용 빌드를 만드는 머신의 local.properties. 기본은 꺼짐 —
@@ -217,6 +234,15 @@ if (releaseKeystoreFile == null) {
 }
 
 val releaseServerUrl = "https://example.invalid"
+
+// 로그인 버튼은 "키가 있다"가 아니라 **"로그인이 끝까지 갈 수 있다"**에 건다. 카카오 인증에
+// 성공해도 세션을 교환할 상대가 없으면 매번 login_error_server로 끝나므로, 그 상태에서
+// 버튼을 띄우면 첫 내부 테스트에서 테스터가 가장 먼저 누르는 자리가 항상 실패한다.
+// RFC 2606이 .invalid를 절대 해석되지 않는 TLD로 예약했으니, placeholder 문자열과 비교하는
+// 대신 그 성질로 판정한다. #214가 실주소를 넣으면 조건이 저절로 참이 된다.
+val releaseServerConfigured =
+    !URI(releaseServerUrl).host.orEmpty().endsWith(".invalid")
+val releaseLoginEnabled = releaseKakaoNativeAppKey.isNotEmpty() && releaseServerConfigured
 val generatedDebugNetworkSecurityDir =
     layout.buildDirectory.dir("generated/res/network-security/debug")
 
@@ -259,6 +285,7 @@ android {
         buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
         buildConfigField("boolean", "DOGFOOD_OPT_IN", "false")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"\"")
+        buildConfigField("boolean", "LOGIN_ENABLED", "false")
         // 기본값은 모든 variant에서 마스킹 활성화다. debug만 아래에서 덮어쓴다(#203).
         buildConfigField("boolean", "PRIVACY_MASKING_DISABLED", "false")
         // 커스텀 scheme은 값이 무엇이든 Android가 정상 매칭한다(#168 리뷰 P1 — "죽은 scheme"은
@@ -276,15 +303,20 @@ android {
             buildConfigField(
                 "String",
                 "KAKAO_NATIVE_APP_KEY",
-                kakaoNativeAppKey.asBuildConfigString(),
+                debugKakaoNativeAppKey.asBuildConfigString(),
             )
             buildConfigField(
                 "boolean",
                 "PRIVACY_MASKING_DISABLED",
                 disablePrivacyMasking.toString(),
             )
-            if (kakaoNativeAppKey.isNotEmpty()) {
-                manifestPlaceholders["kakaoOauthScheme"] = "kakao$kakaoNativeAppKey"
+            buildConfigField(
+                "boolean",
+                "LOGIN_ENABLED",
+                debugKakaoNativeAppKey.isNotEmpty().toString(),
+            )
+            if (debugKakaoNativeAppKey.isNotEmpty()) {
+                manifestPlaceholders["kakaoOauthScheme"] = "kakao$debugKakaoNativeAppKey"
                 manifestPlaceholders["kakaoLoginEnabled"] = "true"
             }
         }
@@ -297,6 +329,20 @@ android {
             buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
             // release는 속성을 읽지 않는다. 상수 false를 다시 못박아 debug 값이 새지 않게 한다.
             buildConfigField("boolean", "PRIVACY_MASKING_DISABLED", "false")
+            // 키와 placeholder는 함께 켜야 한다. 키만 넣으면 버튼은 뜨지만 handler activity가
+            // 꺼진 채라 카카오톡·계정 웹에서 돌아오는 리다이렉트를 받을 진입점이 없다.
+            buildConfigField(
+                "String",
+                "KAKAO_NATIVE_APP_KEY",
+                releaseKakaoNativeAppKey.asBuildConfigString(),
+            )
+            // 진입점(scheme·handler activity)은 키와 함께 켜 둔다. 버튼만 releaseLoginEnabled로
+            // 늦추면 #214는 주소 한 줄만 바꾸면 되고, 켜는 순간 리다이렉트가 이미 받아진다.
+            buildConfigField("boolean", "LOGIN_ENABLED", releaseLoginEnabled.toString())
+            if (releaseKakaoNativeAppKey.isNotEmpty()) {
+                manifestPlaceholders["kakaoOauthScheme"] = "kakao$releaseKakaoNativeAppKey"
+                manifestPlaceholders["kakaoLoginEnabled"] = "true"
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -332,22 +378,23 @@ val verifyReleaseConfiguration by tasks.registering {
     description = "release 빌드에 debug 전용 설정이 존재하지 않는지 확인"
     inputs.property("debugServerConfigured", debugServerProperty.isNotEmpty())
     inputs.property("debugAccessTokenConfigured", debugAccessToken.isNotEmpty())
-    inputs.property("kakaoNativeAppKeyConfigured", kakaoNativeAppKey.isNotEmpty())
+    inputs.property("debugKakaoKeyConfigured", debugKakaoNativeAppKey.isNotEmpty())
     // release 산출물의 BuildConfig는 이미 상수 false지만, 우회 설정을 둔 채로 release를 만들면
     // 의도를 오인한 실행이다. 값이 false여도 "설정이 존재하는 것" 자체를 실패로 본다(#203).
     inputs.property("privacyMaskingConfigured", disablePrivacyMaskingConfigured)
     doLast {
         val debugServerConfigured = inputs.properties["debugServerConfigured"] as Boolean
         val debugAccessTokenConfigured = inputs.properties["debugAccessTokenConfigured"] as Boolean
-        val kakaoKeyConfigured = inputs.properties["kakaoNativeAppKeyConfigured"] as Boolean
+        val debugKakaoKeyConfigured = inputs.properties["debugKakaoKeyConfigured"] as Boolean
         val privacyMaskingConfigured = inputs.properties["privacyMaskingConfigured"] as Boolean
         // 위반을 모아서 한 번에 알린다. 먼저 걸린 하나만 던지면 그것만 고치고 다시 실패하며,
         // 남은 관문이 실제로 도는지도 확인할 수 없다.
         val violations = buildList {
-            if (debugServerConfigured || debugAccessTokenConfigured || kakaoKeyConfigured) {
+            if (debugServerConfigured || debugAccessTokenConfigured || debugKakaoKeyConfigured) {
                 add(
                     "DAVI_DEBUG_SERVER_URL·DAVI_DEBUG_ACCESS_TOKEN·" +
-                        "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요.",
+                        "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요 — release 카카오 키는 " +
+                        "이 경로가 아니라 releaseKakaoNativeAppKey 상수로 들어갑니다.",
                 )
             }
             if (privacyMaskingConfigured) {
