@@ -59,12 +59,27 @@ class UiTreeSerializerTest {
     }
 
     @Test
-    fun `스와이프 방향은 손가락이 움직이는 방향이다`() {
-        // 목록 아래를 더 보려면 손가락은 위로 올린다.
-        assertEquals(SwipeDirection.UP, UiTreeSerializer.Axis.VERTICAL.next)
-        assertEquals(SwipeDirection.DOWN, UiTreeSerializer.Axis.VERTICAL.prev)
-        assertEquals(SwipeDirection.LEFT, UiTreeSerializer.Axis.HORIZONTAL.next)
-        assertEquals(SwipeDirection.RIGHT, UiTreeSerializer.Axis.HORIZONTAL.prev)
+    fun `스와이프 방향은 화면이 이동하는 방향이다`() {
+        // 계약(C17)은 손가락이 아니라 "보러 가는 쪽"이다. 목록 아래를 더 보려면 next 는 down,
+        // 다음 페이지로 넘어가려면 right다. 손가락은 그 반대이며 그리는 경계에서만 뒤집는다.
+        assertEquals(SwipeDirection.DOWN, UiTreeSerializer.Axis.VERTICAL.next)
+        assertEquals(SwipeDirection.UP, UiTreeSerializer.Axis.VERTICAL.prev)
+        assertEquals(SwipeDirection.RIGHT, UiTreeSerializer.Axis.HORIZONTAL.next)
+        assertEquals(SwipeDirection.LEFT, UiTreeSerializer.Axis.HORIZONTAL.prev)
+    }
+
+    @Test
+    fun `입력 메타를 손가락으로 바꾸면 실제로 해야 하는 동작이 된다`() {
+        // 입력 메타(여기)와 손 모션(GestureMotion)이 서로 다른 기준을 쓰면 안내가 조용히
+        // 반대로 나간다. 두 자리를 한 테스트로 묶어 고정한다.
+        assertEquals(
+            SwipeDirection.UP,
+            GestureMotion.fingerDirectionFor(UiTreeSerializer.Axis.VERTICAL.next),
+        )
+        assertEquals(
+            SwipeDirection.LEFT,
+            GestureMotion.fingerDirectionFor(UiTreeSerializer.Axis.HORIZONTAL.next),
+        )
     }
 
     @Test

@@ -229,16 +229,21 @@ object UiTreeSerializer {
     }
 
     /**
-     * 스와이프 방향은 **손가락이 움직이는 방향**이다. "무엇이 보이게 되는지"가 아니다.
-     * 목록 아래를 더 보려면 손가락은 위로 올린다 -> 세로축의 next 는 up.
+     * 스와이프 방향은 **화면이 이동하는 방향**, 즉 사용자가 **보러 가는 쪽**이다(C17, SPEC §4).
+     * 손가락이 움직이는 방향이 아니다 — 목록 아래를 더 보려면 세로축의 next 는 down이고,
+     * 손가락은 그 반대로 올라간다.
+     *
+     * **서버로 나가는 입력 메타도 서버가 답으로 주는 [GuideAction.direction]과 같은 기준이어야
+     * 한다.** 한 프롬프트에 반대 규약 둘이 들어가면 모델이 기준을 섞어 #109를 재현한다.
+     * 손가락으로의 변환은 그리는 경계에서 한 번만 한다([GestureMotion.fingerDirectionFor]).
      */
     internal enum class Axis(
         val wire: ScrollAxis,
         val next: SwipeDirection,
         val prev: SwipeDirection,
     ) {
-        VERTICAL(ScrollAxis.VERTICAL, SwipeDirection.UP, SwipeDirection.DOWN),
-        HORIZONTAL(ScrollAxis.HORIZONTAL, SwipeDirection.LEFT, SwipeDirection.RIGHT),
+        VERTICAL(ScrollAxis.VERTICAL, SwipeDirection.DOWN, SwipeDirection.UP),
+        HORIZONTAL(ScrollAxis.HORIZONTAL, SwipeDirection.RIGHT, SwipeDirection.LEFT),
     }
 
     private class ScrollState(val forward: Boolean, val backward: Boolean, val axis: Axis)

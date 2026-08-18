@@ -34,7 +34,7 @@ class GuideDisplayState {
      *
      * [direction]은 방향 제스처 시연에 쓴다(#152). **손가락이 움직이는 방향이다** — 서버가 준
      * 값 그대로가 아니라, `GuideAccessibilityService`가 [GestureMotion.fingerDirectionFor]로
-     * 한 번 뒤집은 결과다(#109 — 서버가 내용 방향을 보낸다). 이 값을 새로 소비하는 곳
+     * 한 번 뒤집은 결과다(C17 — 서버 값은 보러 가는 방향이다). 이 값을 새로 소비하는 곳
      * (예: TTS 문구, 화살표)은 **다시 보정하지 않는다**(PR #159 리뷰 4번).
      *
      * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라

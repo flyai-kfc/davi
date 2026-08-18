@@ -11,24 +11,19 @@ import org.junit.Test
  * **이 파일의 1순위는 손이 사용자가 실제로 해야 하는 방향으로 움직이는 것이다.**
  * 눈으로는 "그럴듯하게 움직이니까" 지나치기 쉬운 종류의 결함이라 값으로 못박는다.
  *
- * 지금은 **서버가 계약과 달리 내용 방향을 보낸 실측**(#109) 때문에 앱이
- * [GestureMotion.fingerDirectionFor]로 한 번 뒤집는다. 그래서 이 파일에는 성격이 다른 두 묶음이
- * 있다 — **보정**이 제대로 도는지와, 보정 뒤의 **변위 계산**이 맞는지.
- *
- * **앞 묶음은 지금 "옳은 방향"이 아니라 "현재 동작"을 고정하고 있다.** 2026-08-17 재실측
- * (`gemini-3.6-flash`)에서 스크롤 안내 3건이 모두 계약대로 왔고 보정이 셋 다 반대로 그렸다
- * ([GestureMotion] KDoc). #109가 닫히면 앞 묶음을 **깨진 채로 두지 말고 항등으로 고쳐 쓴다.**
+ * 계약(C17)의 `direction`은 **보러 가는 방향**이라 손 모션은 그 반대를 그린다 —
+ * [GestureMotion.fingerDirectionFor]가 한 자리에서 뒤집는다. 그래서 이 파일에는 성격이 다른
+ * 두 묶음이 있다 — **변환**이 제대로 도는지와, 변환 뒤의 **변위 계산**이 맞는지.
  */
 class GestureMotionTest {
 
-    // --- 서버 값 보정 (#109 — 서버가 내용 방향을 보낸다) ----------------------------
+    // --- 서버 값 → 손가락 방향 (C17 — direction은 보러 가는 방향이다) -------------
 
     @Test
     fun `서버가 준 방향을 넷 모두 뒤집는다`() {
-        // 서버가 계약과 달리 "내용이 움직일 방향"을 보낸 실측 때문에 앱에서 보정한다(2026-08-14 결정).
-        // 조건부 보정으로 바꿨다가 실기기에서 모션이 통째로 반대가 되어 되돌렸다(2026-08-17).
-        // **되돌릴 신호는 이미 왔다** — 같은 날 gemini-3.6-flash 재실측에서 3건 모두 서버가 맞았다.
-        // 그래도 종결은 #109다(서버 계약 확정과 한 몸). 이 테스트는 그때 항등으로 고쳐 쓴다.
+        // 계약이 "보러 가는 쪽"이므로 실제 손가락 동작은 예외 없이 그 반대다(C17, SPEC §4).
+        // 화면 상태와 대조해 조건부로 가르는 안은 원리적으로 불가능해서 쓰지 않는다 —
+        // 세로 목록에서 up·down이 둘 다 적법하고, scrollable=false 화면엔 대조할 메타가 없다.
         assertEquals(SwipeDirection.DOWN, GestureMotion.fingerDirectionFor(SwipeDirection.UP))
         assertEquals(SwipeDirection.UP, GestureMotion.fingerDirectionFor(SwipeDirection.DOWN))
         assertEquals(SwipeDirection.RIGHT, GestureMotion.fingerDirectionFor(SwipeDirection.LEFT))

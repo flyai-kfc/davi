@@ -671,7 +671,7 @@ class GuideAccessibilityService : AccessibilityService() {
         } else {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
-        // 서버 방향 → 손가락 방향. **보정은 여기 한 곳에서만** 한다(#109). 아래로 흘러가는 값은
+        // 서버 방향(보러 가는 쪽) → 손가락 방향. **변환은 여기 한 곳에서만** 한다(C17). 아래로 흘러가는 값은
         // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
         val fingerDirection = action.direction?.let { GestureMotion.fingerDirectionFor(it) }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
