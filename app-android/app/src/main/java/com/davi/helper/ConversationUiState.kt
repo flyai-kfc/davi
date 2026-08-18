@@ -76,6 +76,12 @@ data class ConversationRenderModel(
      */
     val cardGlowVisible: Boolean = false,
     /**
+     * 시니어 카드가 발화 중인가(#176). 시안이 카드마다 발화/대기 그림자를 따로 잡았다 —
+     * 발화 쪽이 진하고 윗변에 유리 하이라이트가 얹힌다.
+     * **다비 쪽은 [cardGlowVisible]이 같은 역할을 한다** — 분홍 글로우가 함께 켜지므로.
+     */
+    val utteranceSpeaking: Boolean = false,
+    /**
      * 글로우가 음량에 반응하는가. 듣는 중에는 true, 홈 유도에서는 들을 마이크가 없어 false.
      * [glowVisible]이 false면 의미가 없다.
      */
@@ -129,6 +135,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         glowVisible = true,
         glowReactsToVoice = true,
         utteranceLabelVisible = true,
+        utteranceSpeaking = true,
     )
     // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).
     // 사용자 차례와 구분되는 신호가 그 부재이므로, 하단에 다른 모션을 넣으면 구분이 사라진다.

@@ -278,6 +278,21 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
+        // 글로우가 화자를 가리킨다 — 다비가 말하면 위, 사용자가 말하면 아래(2026-08-17).
+        // 둘은 상태가 배타적이라 동시에 켜지지 않는다(Speaking / Listening).
+        binding.glowUtterance.isVisible(model.utteranceSpeaking)
+        // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
+        // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
+        binding.cardQuestionContainer.setBackgroundResource(
+            if (model.cardGlowVisible) R.drawable.bg_davi_card_speaking else R.drawable.bg_davi_card,
+        )
+        binding.cardUtteranceContainer.setBackgroundResource(
+            if (model.utteranceSpeaking) {
+                R.drawable.bg_davi_card_utterance_speaking
+            } else {
+                R.drawable.bg_davi_card_utterance
+            },
+        )
         binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
@@ -290,6 +305,10 @@ class ConversationActivity : AppCompatActivity() {
             lastQuestionKey = questionKey
             binding.cardQuestion.scrollTo(0, 0)
         }
+        // **래퍼까지 끈다.** 안쪽 컨테이너만 끄면 빈 래퍼가 weight로 자리를 먹어 홈 제목이
+        // 위로 밀리고 그 자리가 빈 화면으로 남는다(2026-08-17 실기기). 다비 카드도 같은 이유로
+        // cardQuestionWrap을 함께 끈다.
+        binding.cardUtteranceWrap.isVisible(model.utteranceVisible)
         binding.cardUtteranceContainer.isVisible(model.utteranceVisible)
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)

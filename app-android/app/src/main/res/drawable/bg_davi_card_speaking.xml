@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  다비 발화 중 카드(#176). bg_davi_card와 구조가 같고 **그림자가 진해지고 유리
+  하이라이트가 얹힌다** — 시안 검정 10% y4 blur12 + INNER 흰색 95% y2 blur2.
+
+  분홍 글로우는 여기 없다. 그건 카드 뒤 CardGlowView가 그린다(#170) — 컬러 그림자는
+  drawable로 만들 수 없다.
+
+  **INNER_SHADOW를 근사한다.** Android drawable에는 안쪽 그림자가 없어 카드 윗변에
+  흰 띠를 얹는다. 좌우를 반경의 절반만큼 들여 둥근 모서리 밖으로 삐져나오지 않게 했다 —
+  시안의 하이라이트도 윗변 평평한 구간에 몰려 있다.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:top="@dimen/davi_card_shadow_offset_y_speaking"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_shadow_speaking" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <item android:bottom="@dimen/davi_card_shadow_offset_y_speaking">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/davi_card_glass_top"
+                android:centerColor="@color/davi_card_glass_mid"
+                android:endColor="@color/davi_card_glass_bottom"
+                android:type="linear" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <item android:bottom="@dimen/davi_card_shadow_offset_y_speaking">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_card_tint_davi" />
+            <stroke
+                android:width="@dimen/davi_card_border_width"
+                android:color="@color/davi_card_border" />
+            <corners android:radius="@dimen/davi_radius_xl" />
+        </shape>
+    </item>
+
+    <!-- 유리 하이라이트 — 윗변 안쪽 흰 띠 -->
+    <item
+        android:left="@dimen/davi_card_highlight_inset"
+        android:right="@dimen/davi_card_highlight_inset"
+        android:top="@dimen/davi_card_highlight_offset_y"
+        android:gravity="top"
+        android:height="@dimen/davi_card_highlight_height">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/davi_card_inner_highlight"
+                android:endColor="@android:color/transparent"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

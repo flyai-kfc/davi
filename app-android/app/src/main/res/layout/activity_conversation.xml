@@ -256,13 +256,41 @@
           굵어지면 글자 폭이 늘어 3줄 말줄임이 더 일찍 걸린다 — 배율 2.0x와 긴 문장에서
           함께 확인한다.
         -->
-        <LinearLayout
-            android:id="@+id/card_utterance_container"
+        <!--
+          시니어 카드와 그 뒤 글로우. **다비 카드와 같은 구조다** — 래퍼가 크기를 정하고
+          글로우가 사방 bleed만큼 넓게 깔린다.
+
+          **글로우가 화자를 가리킨다**(2026-08-17 결정). 다비가 말하면 위 카드가, 사용자가
+          말하면 아래 카드가 빛난다 — 켜고 끄는 신호가 아니라 **자리를 옮기는 신호**다.
+          시안은 시니어에 글로우를 안 주고 그림자만 5%p 진하게(7% -> 12%) 했는데, 실기기에서
+          그 차이가 눈에 안 띄어 사용자 차례에 아무 일도 안 일어나 보였다.
+          파도·마이크 글로우는 사용자 차례에만 뜨므로 이중 신호가 되고, 겹치지 않는다.
+        -->
+        <FrameLayout
+            android:id="@+id/card_utterance_wrap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="196"
             android:minHeight="@dimen/davi_card_min_height_senior"
             android:layout_marginTop="@dimen/davi_card_gap"
+            android:clipChildren="false">
+
+            <!-- 네 방향 마진을 따로 주는 근거는 glow_card 주석과 같다. -->
+            <com.davi.helper.CardGlowView
+                android:id="@+id/glow_utterance"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="@dimen/davi_glow_card_bleed"
+                android:layout_marginTop="@dimen/davi_glow_card_bleed"
+                android:layout_marginRight="@dimen/davi_glow_card_bleed"
+                android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
+                app:daviGlowBoostAlpha="128"
+                android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:id="@+id/card_utterance_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center"
             android:paddingLeft="@dimen/davi_card_padding_horizontal"
@@ -291,6 +319,7 @@
                 android:textAppearance="@style/TextAppearance.Davi.BodyLg"
                 android:textStyle="bold" />
         </LinearLayout>
+        </FrameLayout>
 
         <Space
             android:id="@+id/space_home_mid"

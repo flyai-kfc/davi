@@ -249,8 +249,23 @@
       끌어올리면 카드가 따라 올라가 X 위로 파고든다(실기기 실측). 두 값이 바뀌면 이것도 바뀐다.
     -->
     <dimen name="davi_badge_margin_top">72dp</dimen>
-    <!-- 카드 그림자를 아래로 내리는 거리. 시안 y3(대기). -->
+    <!--
+      카드 그림자를 아래로 내리는 거리. 시안은 대기가 두 카드 모두 y3이고, 발화가
+      다비 y4 · 시니어 y5로 갈린다 — 그래서 발화만 카드별로 둘이다.
+
+      **시안의 blur(대기 10 · 발화 12/14)는 구현되지 않았다.** drawable이 단색 도형을
+      아래로 민 근사라 흐림이 없다. 근거는 colors.xml의 그림자 주석에 있다.
+    -->
     <dimen name="davi_card_shadow_offset_y">3dp</dimen>
+    <dimen name="davi_card_shadow_offset_y_speaking">4dp</dimen>
+    <dimen name="davi_card_shadow_offset_y_speaking_senior">5dp</dimen>
+    <!--
+      유리 하이라이트(시안 INNER_SHADOW 흰 95% y2 blur2)의 근사.
+      좌우를 반경의 절반만큼 들여 둥근 모서리 밖으로 안 나가게 한다.
+    -->
+    <dimen name="davi_card_highlight_height">3dp</dimen>
+    <dimen name="davi_card_highlight_offset_y">2dp</dimen>
+    <dimen name="davi_card_highlight_inset">14dp</dimen>
     <!--
       다비 발화 중 카드 뒤 분홍 글로우. 시안 y18 · blur36 그대로다(CardGlowView).
       글로우가 뷰 밖으로 번질 자리가 필요해 카드보다 사방 blur만큼 넓게 잡는다.
