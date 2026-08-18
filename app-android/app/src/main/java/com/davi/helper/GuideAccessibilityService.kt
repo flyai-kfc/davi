@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 지금 구현된 것: 활성 화면 루트 선택 + 최소 직렬화 + 1차 마스킹 + 서버 호출·응답 로그(#4, #5, #8),
  * 스크롤 메타·페이지 dot(#22), 서버가 고른 대상의 강조와 안내문 표시 + 세션 시작·중지(#28).
- * TODO: 정체 감지, 오버레이 불가 화면의 헤드업 폴백.
  */
 class GuideAccessibilityService : AccessibilityService() {
 

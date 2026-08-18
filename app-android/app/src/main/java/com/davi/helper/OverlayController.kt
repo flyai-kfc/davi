@@ -3,7 +3,6 @@ package com.davi.helper
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -23,8 +22,13 @@ import android.view.WindowManager
  *   플래그가 없어 자기 영역의 터치를 받지만, 그 터치로 끝내는 것은 **우리 세션뿐**이다.
  * - `FLAG_NOT_FOCUSABLE` — 둘 다 준다. 키 입력·IME 포커스를 가로채면 아래 앱에 글자를 못 친다.
  *
- * 설정 앱(`com.android.settings`) 위에는 오버레이가 **아예 그려지지 않는다**(탭재킹 방지, 우회 불가).
- * 그 화면에서는 헤드업 알림으로 떨어져야 하지만 그건 다음 작업이다.
+ * **창 타입은 `TYPE_ACCESSIBILITY_OVERLAY`다**(#56). 설정 앱이 탭재킹 방지로 숨기는 것은
+ * `SYSTEM_ALERT_WINDOW` 계열이고 접근성 서비스가 띄우는 창은 그 대상이 아니다 — 설정 앱
+ * 위에서도 강조·안내창·칩이 그려지고 터치 계약도 그대로다(2026-08-18 SM-S921N 실측).
+ * 그래서 오버레이 불가 화면용 헤드업 폴백은 만들지 않는다.
+ *
+ * 이 타입을 쓰는 이상 **"안내만 한다"는 선택이 아니라 전제다** — 시스템이 가려 둔 자리에
+ * 그리는 것이므로 `performAction` 금지(루트 `CLAUDE.md`)가 그 조건이다.
  */
 class OverlayController(
     private val context: Context,
@@ -107,7 +111,11 @@ class OverlayController(
     fun setReading(on: Boolean) {
         // 뷰가 이미 있으면 권한을 다시 묻지 않는다 — 샘플마다 도는 경로라 canDraw()의
         // AppOps 바인더 왕복이 접근성 처리와 같은 메인 스레드에 그대로 쌓인다.
-        // 창이 붙어 있다는 것이 곧 권한이 있었다는 뜻이고, 권한이 사라지면 시스템이 창을 걷는다.
+        //
+        // **"권한이 사라지면 시스템이 창을 걷는다"는 더는 사실이 아니다**(#56). 접근성
+        // 오버레이는 SYSTEM_ALERT_WINDOW에 묶이지 않아 권한을 꺼도 창이 남는다. 생략의 근거는
+        // 이제 비용뿐이고, 안내 중 권한이 꺼지면 [showGuide]가 조기 반환만 해 직전 안내창이
+        // 화면에 남는다 — **알려진 공백이고 권한 정리(#212)가 함께 받는다.**
         view?.let {
             it.setReading(on)
             return
@@ -170,12 +178,9 @@ internal object OverlayWindowParams {
         width: Int = WindowManager.LayoutParams.MATCH_PARENT,
         height: Int = WindowManager.LayoutParams.MATCH_PARENT,
     ): WindowManager.LayoutParams {
-        @Suppress("DEPRECATION")
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-        }
+        // 접근성 오버레이는 설정 앱 위에서도 살아남는다(#56, 머리 주석). minSdk가 26이라
+        // 이전의 O 분기는 이미 죽은 코드였고 함께 걷었다.
+        val type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
 
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
