@@ -96,6 +96,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     // 그리지는 않지만 줄바꿈을 재려면 같은 글자여야 한다 — 그리는 쪽과 한 곳에서 만든다.
     private val instructionPaint = GuideBoxStyle.textPaint(context)
     private val instructionPadding = GuideBoxStyle.padding(context)
+    private val instructionPaddingV = GuideBoxStyle.paddingVertical(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
     private val controlRow = GuideBoxStyle.controlRow(context)
 
@@ -577,6 +578,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
                     padding = instructionPadding,
+                    paddingVertical = instructionPaddingV,
                     lineHeight = metrics.bottom - metrics.top,
                     measure = { text, maxWidth ->
                         instructionPaint.breakText(text, true, maxWidth, null)

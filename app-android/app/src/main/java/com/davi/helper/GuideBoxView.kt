@@ -30,16 +30,43 @@ class GuideBoxView @JvmOverloads constructor(
 
     private val textPaint = GuideBoxStyle.textPaint(context)
     private val padding = GuideBoxStyle.padding(context)
-    private val corner = resources.getDimension(R.dimen.davi_radius_md)
+    private val paddingVertical = GuideBoxStyle.paddingVertical(context)
+    private val corner = resources.getDimension(R.dimen.davi_overlay_window_radius)
 
-    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.davi_overlay_box)
-    }
+    /**
+     * 채움은 **세로 그라디언트**다(v2, #178) — 위 `#FDF6F8` 90% → 아래 `#FADCE6` 80%.
+     * 구 버전은 흰 단색이었다. 셰이더는 크기를 알아야 만들 수 있어 [onSizeChanged]에서 건다.
+     */
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fillTop = ContextCompat.getColor(context, R.color.davi_overlay_window_top)
+    private val fillBottom = ContextCompat.getColor(context, R.color.davi_overlay_window_bottom)
+
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = resources.getDimension(R.dimen.davi_button_stroke)
-        color = ContextCompat.getColor(context, R.color.davi_border)
+        strokeWidth = resources.getDimension(R.dimen.davi_overlay_window_stroke)
+        color = ContextCompat.getColor(context, R.color.davi_overlay_window_border)
     }
+
+    /**
+     * 창 아래 그림자(시안 DROP `#330D17` 30% y8 blur22).
+     *
+     * **소프트웨어 레이어가 필요하다** — `setShadowLayer`가 하드웨어 가속 캔버스에서 무시된다
+     * (`CardGlowView`와 같은 사정). 안내창은 문구가 바뀔 때만 다시 그리므로 비용이 프레임마다
+     * 들지 않는다.
+     */
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ContextCompat.getColor(context, R.color.davi_overlay_window_shadow)
+    }
+
+    /** 윗변 안쪽 흰 띠(시안 INNER `#FFFFFF` 95% y1 blur1)의 근사. */
+    private val innerHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = resources.getDimension(R.dimen.davi_overlay_window_stroke)
+        color = ContextCompat.getColor(context, R.color.davi_overlay_window_highlight)
+    }
+
+    private val shadowOffsetY = resources.getDimension(R.dimen.davi_overlay_window_shadow_y)
+    private val boxRect = RectF()
 
     init {
         // 안내창 영역의 터치를 여기서 끝낸다. 위 주석 참조 — 빼면 조용히 깨진다.
@@ -49,6 +76,18 @@ class GuideBoxView @JvmOverloads constructor(
         // 읽고 사용자가 아무 일도 일어나지 않는 영역에 포커스한다. 터치 처리에는 영향이 없다.
         // 누를 수 있는 것은 형제인 칩뿐이고, 칩은 라벨이 있어 그대로 노출된다(PR #133 리뷰).
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        // setShadowLayer가 하드웨어 가속에서 무시된다(위 shadowPaint 주석).
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (h <= 0) return
+        boxPaint.shader = android.graphics.LinearGradient(
+            0f, 0f, 0f, h.toFloat(), fillTop, fillBottom, android.graphics.Shader.TileMode.CLAMP,
+        )
+        // 그림자는 창 밖으로 못 번진다(창이 상자 크기다) — 아래로 민 만큼만 보인다.
+        shadowPaint.setShadowLayer(shadowOffsetY, 0f, shadowOffsetY / 2f, shadowPaint.color)
     }
 
     /**
@@ -99,18 +138,21 @@ class GuideBoxView @JvmOverloads constructor(
         // 채움은 창 전체, 테두리는 선 두께의 절반만큼 안으로. 창이 상자에 딱 맞게 잡혀 있어
         // 테두리를 가장자리에 걸치면 바깥 절반이 창 밖으로 잘린다.
         val half = borderPaint.strokeWidth / 2f
-        canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), corner, corner, boxPaint)
-        canvas.drawRoundRect(
-            RectF(half, half, width - half, height - half),
-            corner,
-            corner,
-            borderPaint,
-        )
+        boxRect.set(0f, 0f, width.toFloat(), height.toFloat())
+        canvas.drawRoundRect(boxRect, corner, corner, boxPaint)
+        boxRect.set(half, half, width - half, height - half)
+        canvas.drawRoundRect(boxRect, corner, corner, borderPaint)
+        // 윗변 안쪽 흰 띠 — 아래로 반 두께 내려 윗변에만 걸치게 한다.
+        boxRect.set(half, half + half, width - half, height - half)
+        canvas.drawRoundRect(boxRect, corner, corner, innerHighlightPaint)
 
+        // **가운데 정렬이다**(v2, #178) — textAlign이 CENTER라 x는 창의 중앙이다.
+        // 세로 시작점은 좌우(44)가 아니라 위아래 여백(18)을 쓴다.
         val metrics = textPaint.fontMetrics
-        var baseline = padding - metrics.top
+        var baseline = paddingVertical - metrics.top
+        val centerX = width / 2f
         lines.forEach { line ->
-            canvas.drawText(line, padding, baseline, textPaint)
+            canvas.drawText(line, centerX, baseline, textPaint)
             baseline += metrics.bottom - metrics.top
         }
     }

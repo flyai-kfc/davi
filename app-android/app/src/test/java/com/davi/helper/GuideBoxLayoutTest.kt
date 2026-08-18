@@ -31,6 +31,7 @@ class GuideBoxLayoutTest {
         target = target,
         margin = MARGIN,
         padding = PADDING,
+        paddingVertical = PADDING_V,
         lineHeight = LINE_HEIGHT,
         measure = measure,
         avoid = avoid,
@@ -366,6 +367,7 @@ class GuideBoxLayoutTest {
         const val CHAR_WIDTH = 10f
         const val MARGIN = 20f
         const val PADDING = 16f
+        const val PADDING_V = 16f
         const val LINE_HEIGHT = 30f
 
         /** 칩이 앉는 컨트롤 행 높이(#126). */

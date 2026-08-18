@@ -106,7 +106,30 @@
       지금 안내창은 davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)를 그대로 쓴다.
     -->
     <color name="davi_bg_mesh">#F9E4EC</color>
-    <color name="davi_overlay_window_bottom">#FADCE6</color>
+    <!--
+      안내창 채움(v2, #178). **세로 그라디언트 위 #FDF6F8 90% → 아래 #FADCE6 80%**다.
+      지금까지 아래쪽 색만 있어 쓸 수 없었고 흰 단색(davi_overlay_box)으로 그리고 있었다.
+
+      **앱 배경(davi_bg_mesh #F9E4EC)과 다른 값이다.** 안내창은 임의의 앱 위에 뜨므로
+      배경과 같이 움직이면 안 된다 — 시안이 둘을 분리한 이유다(2026-08-18 디자인 담당).
+    -->
+    <color name="davi_overlay_window_top">#E6FDF6F8</color>
+    <color name="davi_overlay_window_bottom">#CCFADCE6</color>
+    <!-- 안내창 테두리 흰색 85% · 그림자 두 겹(DROP #330D17 30% · INNER 흰 95%). -->
+    <color name="davi_overlay_window_border">#D9FFFFFF</color>
+    <color name="davi_overlay_window_shadow">#4D330D17</color>
+    <color name="davi_overlay_window_highlight">#F2FFFFFF</color>
+    <!--
+      안내창 문구. GD-1·2는 #3A1C22(분홍 계열 먹색), GD-3·4 확인창은 #1A1A1A다 —
+      시안이 확인 화면에서만 더 진하게 잡았다.
+    -->
+    <color name="davi_overlay_on_window">#3A1C22</color>
+    <!-- 종료 X — 창 모서리에 물린 곡면. 흰 96% 바탕에 빨강 선. -->
+    <color name="davi_overlay_close_face">#F5FFFFFF</color>
+    <!-- 확인쌍 그림자(#330D17 24%). 채움은 davi_button_primary / davi_button_affirm을 쓴다. -->
+    <color name="davi_overlay_confirm_shadow">#3D330D17</color>
+    <!-- GD-1 로딩 점. 세 점이 크기와 불투명도가 모두 다르다 — 진행 방향을 정지 상태로도 읽힌다. -->
+    <color name="davi_overlay_dot">@color/davi_button_primary</color>
     <color name="davi_wave_fade_start">#FFB3B3</color>
     <color name="davi_wave_fade_mid">#FF9A9A</color>
     <color name="davi_wave_fade_end">#FF5C70</color>
