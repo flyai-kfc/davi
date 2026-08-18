@@ -36,6 +36,23 @@ class ConversationUiStateTest {
         assertTrue(model.micVisible)
     }
 
+    /** 잠긴 마이크의 이유가 화면에 없으면 사용자는 눌리지 않는 버튼을 반복해 누른다(#29). */
+    @Test
+    fun `안내 세션 중 홈은 잠긴 이유를 문구로 말한다`() {
+        val model = renderModelOf(ConversationUiState.Home(), guideActive = true)
+        assertEquals(R.string.conversation_guide_active, model.statusRes)
+    }
+
+    /** 안내 중이라는 사실이 직전 시도의 오류보다 급하다 — 지금 할 일을 바꾸는 쪽이다. */
+    @Test
+    fun `안내 중이면 직전 오류 문구보다 안내 중 문구가 우선한다`() {
+        val model = renderModelOf(
+            ConversationUiState.Home(statusRes = R.string.voice_no_speech),
+            guideActive = true,
+        )
+        assertEquals(R.string.conversation_guide_active, model.statusRes)
+    }
+
     @Test
     fun `홈의 에러 문구는 그대로 전달된다`() {
         val model = renderModelOf(ConversationUiState.Home(statusRes = R.string.voice_no_speech))
@@ -225,5 +242,39 @@ class ConversationUiStateTest {
         val model = renderModelOf(ConversationUiState.Listening())
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
+    }
+
+    @Test
+    fun `시니어 카드 발화 표시는 듣는 중에만 켜진다`() {
+        // 이 값 하나가 배경 drawable과 카드 뒤 글로우를 **함께** 제어한다. 다른 상태로
+        // 새면 사용자 차례가 아닌데 아래 카드가 빛나 화자 표시가 뒤집힌다.
+        assertTrue(renderModelOf(ConversationUiState.Listening()).utteranceSpeaking)
+        assertFalse(renderModelOf(ConversationUiState.Home()).utteranceSpeaking)
+        assertFalse(
+            renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).utteranceSpeaking,
+        )
+        assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).utteranceSpeaking)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).utteranceSpeaking)
+        assertFalse(renderModelOf(ConversationUiState.Failed).utteranceSpeaking)
+    }
+
+    @Test
+    fun `두 카드의 글로우는 동시에 켜지지 않는다`() {
+        // 글로우는 켜고 끄는 신호가 아니라 **자리를 옮기는** 신호다(2026-08-17 결정).
+        // 둘이 함께 켜지면 누가 말하는지가 사라진다.
+        for (state in listOf(
+            ConversationUiState.Home(),
+            ConversationUiState.Listening(),
+            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Requesting("발화"),
+            ConversationUiState.Confirm("목표"),
+            ConversationUiState.Failed,
+        )) {
+            val model = renderModelOf(state)
+            assertFalse(
+                "$state 에서 두 카드가 함께 빛난다",
+                model.cardGlowVisible && model.utteranceSpeaking,
+            )
+        }
     }
 }

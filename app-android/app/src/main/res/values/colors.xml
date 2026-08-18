@@ -177,7 +177,28 @@
       진하게 한 결과이지 카드 값이 틀린 게 아니다.
     -->
     <color name="davi_card_border">#E6FFFFFF</color>
-    <!-- 대기 상태 그림자 — 시안 검정 8%(다비) / 7%(시니어). -->
+    <!--
+      카드 그림자. 시안이 발화/대기와 다비/시니어로 네 벌을 따로 잡았다.
+        다비   대기 검정 8% y3 blur10 · 발화 검정 10% y4 blur12
+        시니어 대기 검정 7% y3 blur10 · 발화 검정 12% y5 blur14
+
+      **blur는 구현되지 않았다.** layer-list로 단색 도형을 아래로 민 근사이고 대기 그림자도
+      같은 방식이다 — drawable에는 흐림이 없다. 값은 언젠가 9-patch를 굽거나 그림자 전용
+      뷰를 둘 때의 기준으로 남긴다.
+
+      **시니어도 발화하면 분홍 글로우가 켜진다**(2026-08-17 결정, #176 비범위에서 이동).
+      시안은 시니어에 글로우를 주지 않고 그림자만 5%p 진하게(7% -> 12%) 했는데, 실기기에서
+      그 차이가 눈에 띄지 않아 사용자 차례에 아무 일도 안 일어나 보였다. 그래서 글로우를
+      **켜고 끄는 신호가 아니라 자리를 옮기는 신호**로 바꿨다 — 다비가 말하면 위 카드가,
+      사용자가 말하면 아래 카드가 빛난다. 둘은 배타적이라 동시에 켜지지 않는다.
+    -->
     <color name="davi_card_shadow_idle">#14000000</color>
     <color name="davi_card_shadow_idle_senior">#12000000</color>
+    <color name="davi_card_shadow_speaking">#1A000000</color>
+    <color name="davi_card_shadow_speaking_senior">#1F000000</color>
+    <!--
+      카드 윗변의 유리 하이라이트(시안 INNER_SHADOW 흰색 95% y2 blur2).
+      **발화 중에만 있다.** 이게 빠지면 글라스 느낌이 안 산다.
+    -->
+    <color name="davi_card_inner_highlight">#F2FFFFFF</color>
 </resources>

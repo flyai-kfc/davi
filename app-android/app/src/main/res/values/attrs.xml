@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      카드 뒤 분홍 글로우(CardGlowView)의 뷰별 설정.
+      값 자체의 근거는 dimens.xml의 davi_glow_card_* 주석에 있다.
+    -->
+    <declare-styleable name="CardGlowView">
+        <!--
+          같은 자리에 한 겹 더 얹을 때 그 겹의 불투명도(0~255, 기본 0 = 한 겹).
+
+          **뷰별 속성인 것이 요점이다.** 이 보강은 글로우 토큰을 진하게 만드는 것이 아니라
+          **시니어 카드의 불투명 분홍 채움을 보정**하는 것이라 카드마다 조건이 다르다.
+          리소스에 두면 두 카드에 함께 걸려 #171에서 실기기 확인된 다비 글로우까지 바뀐다.
+        -->
+        <attr name="daviGlowBoostAlpha" format="integer" />
+    </declare-styleable>
+</resources>

@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
+import android.widget.Toast
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -48,6 +49,12 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 무엇이 보여야 하는지의 판정. 재표시·정체 접미사 규칙이 여기 있다(PR #63 리뷰 P1). */
     private val display = GuideDisplayState()
 
+    /**
+     * 오류를 언제 알릴지의 판정(#29). **연속으로 실패한 요청 수**를 원인 무관하게 센다.
+     * [stability]의 `failures`와 일부러 따로 두는 이유는 [ErrorNoticeGate] KDoc에 있다.
+     */
+    private val errorNotice = ErrorNoticeGate()
+
     /** 직전 샘플의 판정. null이면 세션 시작 후 첫 샘플 전이다([ReadingBorder.isReading]). */
     private var lastDecision: ScreenStabilityTracker.Decision? = null
 
@@ -68,6 +75,7 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            errorNotice.reset()
             lastDecision = null
             if (goal == null) {
                 mainHandler.removeCallbacks(sampleRunnable)
@@ -391,6 +399,9 @@ class GuideAccessibilityService : AccessibilityService() {
                                 "history=${session.recentInstructions.size}",
                         )
                         mainHandler.post {
+                            // 게이트는 결과를 통째로 받아 스스로 판정한다 — 분기에서 성공/실패를
+                            // 골라 넘기지 않는 이유는 [ErrorNoticeGate.record] KDoc에 있다.
+                            errorNotice.record(result)
                             logicalRequests.markHttpResponse(logicalRequest, 200)
                             applyAction(request, signature, result.response, session, logicalRequest)
                         }
@@ -406,7 +417,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = result.error.kind.name,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen()
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.HttpFailure -> {
@@ -418,7 +429,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             statusCode = result.statusCode,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen()
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.NetworkFailure -> {
@@ -429,7 +440,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = "NETWORK",
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen()
+                        retryThisScreen(signature, session.generation, result)
                     }
 
                     is NextStepResult.ParseFailure -> {
@@ -444,7 +455,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             serverRequestId = result.trace?.requestId,
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen()
+                        retryThisScreen(signature, session.generation, result)
                     }
                 }
             } finally {
@@ -469,11 +480,43 @@ class GuideAccessibilityService : AccessibilityService() {
     /**
      * 요청이 실패한 화면은 "안 보낸 것"으로 되돌려 다음 샘플이 다시 시도하게 한다.
      * 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬지만, 이제 화면이 그대로면 이벤트도 오지 않는다.
+     *
+     * 그리고 **두 번째 연속 실패부터** 오류를 사용자에게 알린다(#29). 실패 분기에서만 불리지만
+     * [result]를 그대로 넘겨 게이트가 판정하게 한다 — [ErrorNoticeGate.record] 참고.
+     *
+     * 첫 실패를 조용히 넘기는 이유는 백오프가 2초라서다 — 순간적인 끊김에도 안내가 2초간 오류
+     * 문구로 덮였다 돌아오면, 그 깜빡임이 어르신에게는 안내보다 먼저 눈에 들어온다.
+     *
+     * 오류는 기존 안내를 **덮는다**. 되살릴 것을 기억하지 않는 이유는 오류가 걷히는 순간
+     * 성공 응답이 새 안내를 그리기 때문이다 — 걷힌 뒤 옛 안내를 되살리면 오히려 낡은 지시가 뜬다.
+     *
+     * [signature]는 **요청을 보낸 시점의 화면**이다. 그 사이 화면이 바뀌고 오버레이가 한 번
+     * 걷히면(우리 앱 왕복 등) 재표시가 서명 불일치로 폐기해 백오프가 끝날 때까지 화면이 빈다.
+     * 수용한다 — 되살릴 대상은 **떠난 화면의** 오류이고, 새 화면의 요청은 백오프가 지나면
+     * 어차피 나간다. 그때 성공하면 안내가, 또 실패하면 오류가 새 서명으로 다시 뜬다
+     * (PR #189 리뷰 관찰).
      */
-    private fun retryThisScreen() {
+    private fun retryThisScreen(signature: String, generation: Long, result: NextStepResult) {
         mainHandler.post {
             stability.markFailed()
-            Log.i(TAG, "retry backoff=${stability.backoffMs()}ms")
+            val notify = errorNotice.record(result)
+            Log.i(
+                TAG,
+                "retry backoff=${stability.backoffMs()}ms " +
+                    "failed_requests=${errorNotice.failureCount()}",
+            )
+            val messageRes = GuideErrorCopy.messageRes(result)
+            if (messageRes == null || !notify) return@post
+            // 늦게 온 실패가 새 세션의 화면을 덮지 않게 한다(applyAction과 같은 세대 가드).
+            if (!GuideSession.isCurrent(generation)) return@post
+            // 확인 대기 중에는 아무것도 덮지 않는다 — 답할 자리가 사라진다(#153).
+            if (GuideSession.awaitingConfirm) return@post
+            // showError가 null이면 같은 오류가 이미 떠 있다. 다시 그리면 우리 창을 만져
+            // 스스로를 깨운다(#153에서 정체 알림이 실제로 그랬다).
+            display.showError(signature, getString(messageRes))?.let {
+                Log.i(TAG, "server error shown")
+                draw(it)
+            }
         }
     }
 
@@ -638,6 +681,13 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        // 안내를 받던 중이었다면 그 사실을 알린다(#29). **토스트인 이유**는 이 순간 사용자가
+        // 접근성 설정 화면 위에 있고 거기엔 오버레이가 안 그려지기 때문이다(기기 함정).
+        // 세션이 없었으면 알리지 않는다 — 안내 중이 아닐 때 서비스를 끄는 건 정상 조작이다.
+        if (GuideSession.isActive) {
+            Log.w(TAG, "service unbound during session")
+            Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+        }
         // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
         // 아무 일도 일어나지 않는 상태가 된다.
         mainHandler.removeCallbacks(sampleRunnable)

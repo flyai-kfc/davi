@@ -76,6 +76,12 @@ data class ConversationRenderModel(
      */
     val cardGlowVisible: Boolean = false,
     /**
+     * 시니어 카드가 발화 중인가(#176). 시안이 카드마다 발화/대기 그림자를 따로 잡았다 —
+     * 발화 쪽이 진하고 윗변에 유리 하이라이트가 얹힌다.
+     * **다비 쪽은 [cardGlowVisible]이 같은 역할을 한다** — 분홍 글로우가 함께 켜지므로.
+     */
+    val utteranceSpeaking: Boolean = false,
+    /**
      * 글로우가 음량에 반응하는가. 듣는 중에는 true, 홈 유도에서는 들을 마이크가 없어 false.
      * [glowVisible]이 false면 의미가 없다.
      */
@@ -94,7 +100,8 @@ data class ConversationRenderModel(
  * 마이크: active=누를 수 있는 상태(홈 idle, 질문 재생 중 barge-in) / deactive=누르지 못하는
  * 상태(듣는 중·응답 대기 — 둘의 시각 구분은 추후 웨이브폼 등으로).
  *
- * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠근다(#123).
+ * [guideActive]: 안내 세션이 도는 동안 홈은 "안내 중지"를 보이고 mic을 잠그며, **왜 잠겼는지를
+ * 상태 문구로 말한다**(#29 — 그 전에는 문구가 비어 있어 화면에 이유가 없었다).
  * #126이 오버레이에 X 칩을 세워 앱에 오지 않고도 끝낼 수 있게 됐지만, 사용자가 실수로 앱을
  * 다녀오는 경로가 남아 **중단 수단을 양쪽에 둔다**(2026-08-13 결정).
  *
@@ -106,7 +113,9 @@ data class ConversationRenderModel(
 fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
     is ConversationUiState.Home -> ConversationRenderModel(
         homeVisible = true,
-        statusRes = state.statusRes,
+        // 안내 중이면 그 사실이 직전 시도의 오류보다 급하다(#29) — 마이크가 잠긴 이유가
+        // 화면에 없으면 사용자는 눌리지 않는 버튼을 반복해서 누른다.
+        statusRes = if (guideActive) R.string.conversation_guide_active else state.statusRes,
         micVisible = true,
         micEnabled = !guideActive,
         stopGuideVisible = guideActive,
@@ -126,6 +135,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         glowVisible = true,
         glowReactsToVoice = true,
         utteranceLabelVisible = true,
+        utteranceSpeaking = true,
     )
     // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).
     // 사용자 차례와 구분되는 신호가 그 부재이므로, 하단에 다른 모션을 넣으면 구분이 사라진다.
