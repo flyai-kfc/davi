@@ -116,9 +116,10 @@ class ControlOverlay(
     /**
      * 읽는 중 점 셋을 켜고 끈다.
      *
-     * [LoadingDotsView.restart]를 여기서 부르지 않는다 — GONE에서 VISIBLE로 돌아올 때
-     * `MotionDriver.start()`가 다시 돌면서 경과 시간이 0으로 되돌아간다. 대화 화면은
-     * 뷰가 계속 붙어 있는 채로 상태만 바뀌어서 손으로 되돌려야 하지만, 여기는 아니다.
+     * [LoadingDotsView.restart]를 여기서 부르지 않는다 — GONE에서 VISIBLE로 돌아오는 것이
+     * 곧 구동 조건 전이라, `MotionDriver.start()`가 경과 시간을 0으로 되돌리고 지연 타이머도
+     * 다시 arm된다(#148 `onMotionLifecycleChanged`). 대화 화면은 뷰가 계속 붙어 있는 채로
+     * 상태만 바뀌어서 손으로 되돌려야 하지만, 여기는 아니다.
      */
     private fun applyReading(on: Boolean) {
         val dots = readingDots ?: return

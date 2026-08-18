@@ -32,13 +32,7 @@ abstract class MotionView @JvmOverloads constructor(
         invalidate()
     }
 
-    /**
-     * 모션이 꺼져 있는가. **지연이나 조건부 표시가 있는 뷰는 이 값을 보고 그 조건을 건너뛰어야
-     * 한다** — 꺼져 있으면 프레임이 한 번뿐이라, 그 하나를 "아직 때가 아니다"로 판정하면
-     * 다음 기회가 영영 오지 않아 아무것도 그려지지 않는다(PR #144 리뷰에서 실제로 겪었다).
-     */
-    protected val isMotionDisabled: Boolean
-        get() = driver.isMotionDisabled
+    private var motionRunning = false
 
     /**
      * 한 프레임분 상태를 갱신한다. 그리기는 하지 않는다 — 호출 뒤 [invalidate]가 따라온다.
@@ -48,13 +42,24 @@ abstract class MotionView @JvmOverloads constructor(
      */
     protected abstract fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float)
 
+    /**
+     * 구동 조건(부착·가시·창 가시)이 참↔거짓으로 **바뀔 때** 한 번씩 불린다. 지연 타이머처럼
+     * "다시 보이기 시작한 순간"에 되돌려야 하는 부수 상태가 여기 걸린다(#148).
+     *
+     * 기준이 driver의 실제 루프가 아니라 **조건**인 이유: 모션이 꺼져 있으면 루프는 돌지 않지만
+     * (정지 프레임 한 장) 부수 상태는 여전히 전이를 따라가야 한다 — 안 그러면 모션 끄기에서
+     * 지연이 영영 arm되지 않는다.
+     */
+    protected open fun onMotionLifecycleChanged(running: Boolean) {}
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         syncDriver()
     }
 
     override fun onDetachedFromWindow() {
-        driver.stop()
+        // syncDriver()를 못 쓴다 — 이 시점의 isAttachedToWindow는 아직 true라 조건이 안 걸린다.
+        setRunning(false)
         super.onDetachedFromWindow()
     }
 
@@ -69,9 +74,19 @@ abstract class MotionView @JvmOverloads constructor(
     }
 
     private fun syncDriver() {
-        val shouldRun = isAttachedToWindow &&
-            visibility == VISIBLE &&
-            windowVisibility == VISIBLE
+        setRunning(
+            isAttachedToWindow &&
+                visibility == VISIBLE &&
+                windowVisibility == VISIBLE,
+        )
+    }
+
+    private fun setRunning(shouldRun: Boolean) {
+        // driver 먼저 — 모션 끄기의 정지 프레임 한 장이 흐른 뒤에 전이 훅이 온다.
         if (shouldRun) driver.start() else driver.stop()
+        if (shouldRun != motionRunning) {
+            motionRunning = shouldRun
+            onMotionLifecycleChanged(shouldRun)
+        }
     }
 }
