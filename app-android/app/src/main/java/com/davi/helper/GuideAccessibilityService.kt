@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
+import android.os.PowerManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -54,8 +55,10 @@ class GuideAccessibilityService : AccessibilityService() {
      * 창 타입을 접근성 오버레이로 바꾸면서 우리 창이 키가드보다 **위** 층으로 올라갔다
      * (2026-08-18 SM-S921N `dumpsys window` 실측 — 우리 두 창이 #2·#3, `NavigationBar0` #5,
      * `Bouncer` #6, `NotificationShade` #9, `StatusBar` #10). 그대로 두면 잠금화면에 안내창과
-     * 중지 칩이 뜨고 **칩이 눌린다**(실측). 안내문에는 화면 label 인용이 들어가므로 잠긴 기기의
-     * 잠금화면에 노출되는 것 자체가 `SPEC.md` §2와 어긋난다.
+     * 중지 칩이 뜨고 **칩이 눌린다**(실측). 피해는 둘이다 — ① 잠긴 기기에서 남이 칩을 눌러
+     * 세션을 끝낼 수 있다 ② 안내문에는 화면 label 인용이 들어가는데 그것이 잠금화면에 뜬다.
+     * (`SPEC.md` §2를 근거로 들지 않는다 — 그 절은 화면 데이터의 **외부 전송**을 다루고 잠긴
+     * 기기에서의 기기 내 표시는 아직 저장소 어디에도 규칙이 없다. 원칙으로 올릴지는 docs 배치.)
      *
      * **잠금·인증 화면을 이유로 세션을 끝내지는 않는다** — 안내 도중 보안 인증이 뜨는 것은
      * 정상 흐름이고, 깨어나면 이어져야 한다. 그래서 기준은 키가드가 아니라 **화면 꺼짐**이고,
@@ -63,6 +66,12 @@ class GuideAccessibilityService : AccessibilityService() {
      * 되살리면 같은 문제로 돌아간다.
      */
     private var screenOff = false
+
+    /**
+     * 화면이 꺼진 동안 응답을 버렸는가. 버리기만 하면 그 화면은 `sentSignature`가 찍힌 채로
+     * 남아 **새 요청이 영영 안 나간다** — 재개할 때 [ScreenStability.markResumed]로 되돌린다.
+     */
+    private var droppedWhileScreenOff = false
 
     /**
      * 화면 꺼짐·잠금 해제를 듣는다. 접근성 이벤트로는 안 오는 신호다.
@@ -205,6 +214,9 @@ class GuideAccessibilityService : AccessibilityService() {
             null
         }
         GuideSession.addListener(sessionListener)
+        // 세 action이 **모두 protected broadcast**라 targetSdk 34+에서도 RECEIVER_* 플래그
+        // 없이 등록된다(system broadcast 전용 면제). **protected가 아닌 action을 하나라도
+        // 더하면 그 순간 연결 시점 SecurityException이 된다** — 더할 때 플래그도 함께 준다.
         registerReceiver(
             screenReceiver,
             IntentFilter().apply {
@@ -213,6 +225,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 addAction(Intent.ACTION_USER_PRESENT)
             },
         )
+        // 실제 전원 상태에서 시작한다. false로 두면 ① 화면이 꺼진 리그에서 debug E2E가 세션을
+        // 먼저 시작한 경합과 ② 재바인드 때 남은 true 잔재를 둘 다 놓친다(3차 리뷰).
+        screenOff = getSystemService(PowerManager::class.java)?.isInteractive == false
         // debug E2E 제어 receiver가 접근성 callback보다 먼저 세션을 시작한 경합도 복구한다.
         // 보통은 listener가 시작 이벤트를 받지만, 시스템의 Bound 표시는 callback보다 먼저 바뀔 수 있다.
         if (GuideSession.isActive) scheduleSample(SETTLE_MS)
@@ -259,13 +274,25 @@ class GuideAccessibilityService : AccessibilityService() {
         Log.i(TAG, "screen off, overlay cleared (session kept)")
     }
 
-    /** 잠금이 풀렸다(또는 키가드가 없다). 세션이 살아 있으면 다시 샘플링해 안내를 되살린다. */
+    /**
+     * 잠금이 풀렸다(또는 키가드가 없다). 세션이 살아 있으면 다시 샘플링해 안내를 되살린다.
+     *
+     * **정체 타이머를 여기서 다시 찍는다** — 꺼져 있던 구간은 정체가 아니다
+     * ([ScreenStability.markResumed]). 그 사이 응답을 버렸으면 그 화면을 다시 묻게 한다.
+     */
     private fun resumeAfterScreenOn() {
         if (!screenOff) return
         screenOff = false
-        updateReading()
-        if (GuideSession.isActive) scheduleSample(SETTLE_MS)
-        Log.i(TAG, "screen on, resuming (session active=${GuideSession.isActive})")
+        stability.markResumed(SystemClock.uptimeMillis(), requery = droppedWhileScreenOff)
+        val requeried = droppedWhileScreenOff
+        droppedWhileScreenOff = false
+        // 읽는 중 판정은 첫 샘플이 lastDecision을 채운 뒤에 한다. 여기서 먼저 부르면 null을
+        // "첫 샘플 전"으로 읽어 테두리가 한 프레임 깜빡인다(3차 리뷰).
+        if (GuideSession.isActive) scheduleSample(SETTLE_MS) else updateReading()
+        Log.i(
+            TAG,
+            "screen on, resuming (session active=${GuideSession.isActive} requery=$requeried)",
+        )
     }
 
     private fun scheduleSample(delayMs: Long) {
@@ -510,6 +537,16 @@ class GuideAccessibilityService : AccessibilityService() {
                             // 골라 넘기지 않는 이유는 [ErrorNoticeGate.record] KDoc에 있다.
                             errorNotice.record(result)
                             logicalRequests.markHttpResponse(logicalRequest, 200)
+                            // **꺼진 화면에는 그리지 않는다**(#56). 나가 있던 요청의 응답이
+                            // 여기로 돌아오면 기존 가드 셋이 전부 통과한다 — 세션은 일부러
+                            // 살려 두었고, 확인 대기도 아니며, 샘플러가 자고 있어 서명도 그대로다.
+                            // 그대로 그리면 잠금화면에 안내창과 중지 칩이 다시 붙고
+                            // `visible = true`가 서서 재개 후 redisplay까지 막힌다(3차 리뷰).
+                            if (screenOff) {
+                                droppedWhileScreenOff = true
+                                GuideTelemetry.responseDropped(logicalRequest, "screen_off")
+                                return@post
+                            }
                             applyAction(request, signature, result.response, session, logicalRequest)
                         }
                     }
@@ -614,6 +651,9 @@ class GuideAccessibilityService : AccessibilityService() {
             )
             val messageRes = GuideErrorCopy.messageRes(result)
             if (messageRes == null || !notify) return@post
+            // 성공 경로와 같은 이유로 꺼진 화면에는 그리지 않는다(#56). 위 markFailed()가
+            // 이미 sentSignature를 비웠으므로 재질의는 그것으로 보장된다.
+            if (screenOff) return@post
             // 늦게 온 실패가 새 세션의 화면을 덮지 않게 한다(applyAction과 같은 세대 가드).
             if (!GuideSession.isCurrent(generation)) return@post
             // 확인 대기 중에는 아무것도 덮지 않는다 — 답할 자리가 사라진다(#153).
@@ -804,6 +844,12 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        // **정리를 먼저 한다.** 아래 startActivity가 BAL로 던지면 정리 전체를 건너뛰어
+        // 유령 오버레이와 등록된 리시버가 남는다(3차 리뷰). 알림은 정리와 무관하다.
+        mainHandler.removeCallbacks(sampleRunnable)
+        runCatching { unregisterReceiver(screenReceiver) }
+            .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
+
         // 안내를 받던 중이었다면 그 사실을 알린다(#29·#190). 판정은 [serviceOffAction]에 있다.
         // **여기서 토스트를 띄우고 화면도 바꾸면 토스트가 사라진다** — 복귀를 넣은 뒤 실측에서
         // Toast.show()는 불렸는데 0.7·1.4·2.1초 캡처 어디에도 없었다(화면 전환이 삼킨다).
@@ -847,9 +893,6 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
         // 아무 일도 일어나지 않는 상태가 된다.
-        mainHandler.removeCallbacks(sampleRunnable)
-        runCatching { unregisterReceiver(screenReceiver) }
-            .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
         GuideSession.removeListener(sessionListener)
         GuideSession.stop()
         // 창을 걷지 않으면 서비스가 꺼진 뒤에도 유령 오버레이가 화면에 남는다.
