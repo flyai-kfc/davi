@@ -281,9 +281,15 @@ class GuideAccessibilityService : AccessibilityService() {
         // 문구는 남겼다가, 같은 화면으로 안정되면 되돌린다. 위 redisplay는 오버레이가 통째로
         // 지워진 경우를 맡고 여기는 그 안쪽 — 안내는 떠 있는데 강조만 틀린 경우다.
         if (decision == ScreenStabilityTracker.Decision.WAIT) {
-            display.hideTarget()?.let { draw(it) }
+            display.hideTarget()?.let {
+                Log.i(TAG, "hide target")
+                draw(it)
+            }
         } else {
-            display.restoreTarget(signature)?.let { draw(it) }
+            display.restoreTarget(signature)?.let {
+                Log.i(TAG, "restore target")
+                draw(it)
+            }
         }
         when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
