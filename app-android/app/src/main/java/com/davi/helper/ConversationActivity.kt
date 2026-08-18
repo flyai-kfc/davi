@@ -259,6 +259,22 @@ class ConversationActivity : AppCompatActivity() {
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
         binding.logo.isVisible(model.logoVisible)
+        // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
+        binding.stand.isVisible(model.standVisible)
+        // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
+        // 캐릭터 53으로 따로 잡았다(x1.2 환산). 겹침을 카드의 음수 위 마진으로 만드는
+        // 수법은 같고 값만 다르다.
+        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+            topMargin = resources.getDimensionPixelSize(
+                if (model.standVisible) R.dimen.davi_stand_overlap_negative
+                else R.dimen.davi_badge_overlap_negative,
+            )
+        }
+        // 실패 카드는 시안이 높이를 따로 잡았다(FIXED 200 -> 240dp). 다른 화면은 하한만 쓴다.
+        binding.cardQuestionContainer.minimumHeight = resources.getDimensionPixelSize(
+            if (model.standVisible) R.dimen.davi_failed_card_height
+            else R.dimen.davi_card_min_height_davi,
+        )
         // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
         val questionVisible = model.questionRes != null || model.questionText != null
         // **래퍼를 토글한다.** 래퍼가 세로 weight를 갖고 있어(카드 두 장이 남는 공간을
