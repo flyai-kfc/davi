@@ -132,9 +132,13 @@
         -->
         <ImageView
             android:id="@+id/stand"
-            android:layout_width="@dimen/davi_stand_width"
-            android:layout_height="@dimen/davi_stand_height"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/davi_stand_margin_top"
+            android:maxWidth="@dimen/davi_stand_width"
+            android:maxHeight="@dimen/davi_stand_height"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_davi_stand"
             android:importantForAccessibility="no" />
 

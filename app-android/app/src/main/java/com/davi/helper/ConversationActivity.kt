@@ -304,6 +304,12 @@ class ConversationActivity : AppCompatActivity() {
         binding.glowUtterance.isVisible(model.utteranceSpeaking)
         // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
         // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
+        // **문구 크기도 화면마다 다르다**(#208). 실패 문구는 시안 19sp이고 다른 화면 카드는
+        // 24sp다. 레이아웃에 고정하면 한쪽이 틀리므로 배경과 같은 자리에서 함께 간다.
+        binding.cardQuestion.setTextAppearance(
+            if (model.standVisible) R.style.TextAppearance_Davi_Failed
+            else R.style.TextAppearance_Davi_Subtitle_Davi,
+        )
         // 실패 카드만 불투명이다 — 카드가 캐릭터를 파고들어 글라스면 몸통이 비친다(#208).
         binding.cardQuestionContainer.setBackgroundResource(
             when {
