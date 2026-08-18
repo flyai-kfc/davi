@@ -377,7 +377,7 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). HANDOFF §3-15의 "CLI 빌드 불가"는 해결됐다(원인은 AF_UNIX 소켓 임시 폴더). Android Studio는 디버거·Layout Inspector용. |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). Gradle CLI가 loopback 오류로 죽는 PC가 있으나 스크립트가 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). 출시 전이라 교체 가능. |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정. 원래 근거는 litellm(3.11+)이었으나 그건 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`(3.11+)를 쓴다. |
