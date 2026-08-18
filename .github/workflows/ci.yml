@@ -295,7 +295,7 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 20); do
             if curl --fail --silent --max-time 1 http://127.0.0.1:8000/health \
-              | python -c 'import json,sys; data=json.load(sys.stdin); assert data == {"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":True}'; then
+              | python -c 'import json,sys; data=json.load(sys.stdin); assert data == {"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":True,"privacy_masking_disabled":False}'; then
               exit 0
             fi
             sleep 1

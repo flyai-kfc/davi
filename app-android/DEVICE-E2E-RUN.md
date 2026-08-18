@@ -81,6 +81,12 @@ DAVI_DISABLE_PRIVACY_MASKING=true .venv/bin/python -m uvicorn app.main:app --hos
 ./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey --disable-privacy-masking
 ```
 
+Windows PowerShell:
+
+```powershell
+.\scripts\run-device-e2e.ps1 -Scenario samsung-clock-create-alarm-full-journey -DisablePrivacyMasking
+```
+
 `--disable-privacy-masking`은 `-PdaviDisablePrivacyMasking=true`로 debug APK를 다시 설치한다.
 이 플래그 없이 실행하면 debug 기본값이 마스킹 적용이므로 **직전 우회 APK가 다시 덮인다** —
 비교군을 연속으로 돌릴 때도 매번 붙여야 한다.
