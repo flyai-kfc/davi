@@ -342,7 +342,7 @@ pytest
 | `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
 | `app/kakao_auth.py` | 카카오 access token 검증과 세션 JWT 발급·검증. 토큰 원문 비로그. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
-| `app/reasoning.py` | 계획→실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
+| `app/reasoning.py` | 실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
 | `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
@@ -393,6 +393,7 @@ pytest
   SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
 
 **껍데기** (호출하면 아무 일도 없거나 raise)
-- `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. 하위 태스크 분해 없음.
+- `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. **계획 단계가 무기한 연기돼
+  (`../SPEC.md` §3 비목표) 결과를 쓰지 않는다.** 걷어내는 것은 별건이다.
 - `reasoning._apply_guardrails` — 같은 삼성 런처 화면의 동일 scroll 세 번째 후보를
   `open_app_drawer`로 전환하는 좁은 반복 가드가 단일 지점에 있다(#36).
