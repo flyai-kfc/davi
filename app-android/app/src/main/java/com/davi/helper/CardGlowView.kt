@@ -9,11 +9,20 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.use
 import androidx.core.graphics.ColorUtils
 
 /**
- * 다비가 말하는 동안 카드 뒤에 깔리는 분홍 글로우(#170).
+ * 말하는 쪽 카드 뒤에 깔리는 분홍 글로우(#170·#176).
  * 시안 값은 `davi_glow_card`(#E0708F) · y18 · blur36이다.
+ *
+ * **두 카드가 함께 쓴다.** 다비가 말하면 위 카드, 사용자가 말하면 아래(시니어) 카드에
+ * 켜진다 — 있고 없음이 아니라 **자리가 화자를 가리킨다**(2026-08-17 결정). 두 상태는
+ * 배타적이라 동시에 켜지지 않는다.
+ *
+ * **보강 겹은 시니어 쪽에만 걸린다**(`daviGlowBoostAlpha`, attrs.xml). 시니어 카드가
+ * 불투명 분홍이라 분홍 글로우가 분홍 배경 위에서 묻히는 것을 보정하는 값이고,
+ * 흰 글라스인 다비 카드에는 필요 없다.
  *
  * **컬러 그림자를 `elevation`으로 만들 수 없다** — `setOutlineSpotShadowColor`가 API 28+인데
  * minSdk는 26이다. 인계문은 9-patch를 굽는 방안을 적었으나 여기서는
@@ -45,9 +54,19 @@ class CardGlowView @JvmOverloads constructor(
     private val offsetY = resources.getDimension(R.dimen.davi_glow_card_offset_y)
     private val blur = resources.getDimension(R.dimen.davi_glow_card_blur)
 
-    /** 보강 겹의 불투명도. 근거는 `davi_glow_card_boost_alpha` 주석에 있다. */
-    private val boostColor = resources.getInteger(R.integer.davi_glow_card_boost_alpha)
-        .let { if (it <= 0) null else ColorUtils.setAlphaComponent(glowColor, it) }
+    /**
+     * 보강 겹의 색(없으면 null). **리소스가 아니라 뷰 속성에서 읽는다** —
+     * 근거는 attrs.xml의 `daviGlowBoostAlpha` 주석에 있다.
+     */
+    private val boostColor = context.obtainStyledAttributes(
+        attrs,
+        R.styleable.CardGlowView,
+        defStyleAttr,
+        0,
+    ).use {
+        val alpha = it.getInt(R.styleable.CardGlowView_daviGlowBoostAlpha, 0)
+        if (alpha <= 0) null else ColorUtils.setAlphaComponent(glowColor, alpha)
+    }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
