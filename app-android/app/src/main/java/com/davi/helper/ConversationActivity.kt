@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -22,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
@@ -62,6 +64,9 @@ class ConversationActivity : AppCompatActivity() {
         setState(ConversationUiState.Home())
     }
 
+    /** 종료 확인 모달로 포커스를 한 번만 옮기기 위한 값. 렌더는 여러 번 돈다. */
+    private var stopConfirmAnnounced = false
+
     /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
     private var lastQuestionKey: Any? = null
 
@@ -72,7 +77,18 @@ class ConversationActivity : AppCompatActivity() {
     private var destroyed = false
 
     // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
-    private val sessionListener = GuideSession.Listener { runOnUiThread { render(uiState) } }
+    // 안내 세션은 **밖에서** 끝난다(사용자가 대상 앱에서 완료 · 권한 소실 · 다른 종료 경로).
+    // 그때 종료 확인이 떠 있으면 **끝낼 안내가 없는데 묻고 있는** 상태가 되므로 홈으로 내린다.
+    // 나머지 상태는 세션 유무로 그림만 달라지면 되니 다시 그리기만 한다.
+    private val sessionListener = GuideSession.Listener {
+        runOnUiThread {
+            if (uiState is ConversationUiState.StopConfirm && !GuideSession.isActive) {
+                setState(ConversationUiState.Home())
+            } else {
+                render(uiState)
+            }
+        }
+    }
 
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
@@ -176,7 +192,28 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.Home())
         }
         binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
-        binding.btnStopGuide.setOnClickListener { GuideSession.stop() }
+        // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
+        // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
+        // 뒤로가기를 모르는 사람을 위한 지름길이다.
+        binding.stackedPair.btnStackedSecondary.setOnClickListener { finish() }
+        binding.stackedPair.btnStackedPrimary.setOnClickListener {
+            setState(ConversationUiState.StopConfirm)
+        }
+        // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
+        // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
+        // o가 "이대로 안내 시작"인데 여기서는 x가 안내를 계속하고 o가 끝낸다. 화면 문구가
+        // 뜻을 부르는 시각 사용자와 달리 스크린리더 사용자는 이 값만 듣는다(#197 리뷰).
+        binding.stopConfirmPair.btnConfirmReject.contentDescription =
+            getString(R.string.conversation_stop_confirm_reject_desc)
+        binding.stopConfirmPair.btnConfirmAccept.contentDescription =
+            getString(R.string.conversation_stop_confirm_accept_desc)
+        binding.stopConfirmPair.btnConfirmReject.setOnClickListener {
+            setState(ConversationUiState.Home())
+        }
+        binding.stopConfirmPair.btnConfirmAccept.setOnClickListener {
+            GuideSession.stop()
+            setState(ConversationUiState.Home())
+        }
 
         // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
         // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
@@ -237,6 +274,12 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
     private fun setState(state: ConversationUiState) {
+        // **상태 전이를 남긴다**(#197 리뷰). 안내 중·종료 확인은 사용자가 눈으로만 확인할 수
+        // 있어 회귀가 나도 로그로 못 짚었다. **이름과 세션 유무뿐이다** — 발화·질문·goal은
+        // 여기에 오지 않는다(기존 금지 그대로).
+        if (state::class != uiState::class || state is ConversationUiState.Home) {
+            GuideTelemetry.screenState(state.javaClass.simpleName, GuideSession.isActive)
+        }
         uiState = state
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         autoReturnDelayMs(state)?.let { autoReturnHandler.postDelayed(autoReturnRunnable, it) }
@@ -253,8 +296,12 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        binding.spaceFlexTop.isVisible(model.homeVisible)
-        binding.spaceHomeMid.isVisible(model.homeVisible)
+        // **안내 중에도 유연 여백을 켠다**(#197). 남는 높이가 있으면 위아래로 나눠 먹어
+        // 내용이 가운데로 내려오고, 배율이 커져 남는 게 없으면 저절로 0이 된다 —
+        // 배율마다 다른 값을 두지 않고 한 구조로 양쪽을 만족시킨다.
+        // (1.0배율에서 아래가 177dp 비어 있었고, 2.0에서는 0이다.)
+        binding.spaceFlexTop.isVisible(model.homeVisible || model.guidingVisible)
+        binding.spaceHomeMid.isVisible(model.homeVisible || model.guidingVisible)
         binding.homeTitle.isVisible(model.homeVisible)
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
@@ -352,7 +399,58 @@ class ConversationActivity : AppCompatActivity() {
         // 없는 동안에도 활성과 똑같이 보였다(PR #173 리뷰 실측). 글리프만 흐리게 해 구분한다.
         binding.btnMic.imageAlpha =
             if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
-        binding.btnStopGuide.isVisible(model.stopGuideVisible)
+        // 메인 9·10(#197). 카드 안 지시문·세로 버튼쌍·하단 안내는 안내 중에만 뜬다.
+        // **안내 중에는 바닥 예약을 비운다**(#197). 그 85dp는 마이크 자리인데 이 화면에는
+        // 마이크가 없다 — 그대로 두면 열이 그만큼 일찍 끝나 하단 안내 둘째 줄이 잘린다
+        // (실기기: 34dp만 남아 두 줄에 필요한 53dp를 못 채웠다).
+        //
+        // **마이크 유무로 일반화하지 않았다.** 최종 확인·실패도 마이크가 없지만 그쪽은
+        // 이미 확인된 배치라, 근거 없이 건드리면 방금 맞춘 것이 틀어진다.
+        binding.cardColumn.updatePadding(
+            bottom = if (model.guidingVisible) 0
+            else resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve),
+        )
+        // 배지 위 여백도 이 화면만 얕다 — 세로로 쌓는 것이 많아 배율이 커지면 아래가
+        // 화면 밖으로 나간다. 위를 줄여 그 자리를 아래에 준다.
+        binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
+            topMargin = resources.getDimensionPixelSize(
+                if (model.guidingVisible) R.dimen.davi_badge_margin_top_guiding
+                else R.dimen.davi_badge_margin_top,
+            )
+        }
+        // 카드 위 패딩도 이 화면만 얕다 — 근거는 davi_card_padding_top_guiding 주석.
+        binding.cardQuestionContainer.updatePadding(
+            top = resources.getDimensionPixelSize(
+                if (model.guidingVisible) R.dimen.davi_card_padding_top_guiding
+                else R.dimen.davi_card_padding_top_davi,
+            ),
+        )
+        binding.cardGuidingHint.isVisible(model.guidingVisible)
+        binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
+        binding.stackedPair.root.isVisible(model.guidingVisible)
+        binding.guidingBottom.isVisible(model.guidingVisible)
+        binding.stopConfirmScrim.isVisible(model.stopConfirmVisible)
+        // **모달 중에는 뒤 화면을 스크린리더에서 뺀다.** 스크림은 시각 차단일 뿐이라
+        // 그것만으로는 TalkBack이 뒤의 "기존 안내 이어서하기"·"안내 종료"로 넘어간다 —
+        // 답하기 전에는 사라지지 않는 화면인데 뒤를 누를 수 있게 읽히면 안 된다.
+        // **인셋 층 전체를 뺀다.** 카드 열만 빼면 그 밖의 것(마이크·파도·X 버튼)이 남는다.
+        // 모달은 인셋 층 **밖**(루트의 마지막 자식)이라 함께 가려지지 않는다.
+        //
+        // **uiautomator로는 확인할 수 없다.** UiAutomation이 not-important 뷰까지 포함해
+        // 덤프하므로 제외한 뷰가 그대로 나온다 — 레이아웃에서 이미 제외한 mesh_background나
+        // logo도 덤프에 찍힌다(2026-08-18 실측). 실제 확인은 TalkBack을 켜야 한다.
+        binding.conversationInsets.importantForAccessibility =
+            if (model.stopConfirmVisible) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        if (model.stopConfirmVisible && !stopConfirmAnnounced) {
+            stopConfirmAnnounced = true
+            binding.stopConfirmText.requestFocus()
+            binding.stopConfirmText.sendAccessibilityEvent(
+                AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+            )
+        } else if (!model.stopConfirmVisible) {
+            stopConfirmAnnounced = false
+        }
         binding.buttonPair.root.isVisible(model.confirmVisible)
         // 확인 화면이 둘이라 ○의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라

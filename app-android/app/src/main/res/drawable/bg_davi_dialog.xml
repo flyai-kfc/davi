@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 10 종료 확인 다이얼로그 배경(#197). 시안 252x168 r20 · 흰 100% ·
+  그림자 `#000000 @30% y8 b24`.
+
+  **불투명 흰색이다** — 카드(글라스)와 다르다. 스크림 위에 뜨는 것이라 뒤가 비치면
+  문구가 안 읽힌다.
+
+  그림자는 blur 없는 근사다. 단색 도형을 y만큼 내리고 채움을 그만큼 위로 들인다 —
+  카드·버튼과 같은 사정이고, 시안의 blur 24는 layer-list로 만들 수 없다.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:top="@dimen/davi_dialog_shadow_offset_y"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_dialog_shadow" />
+            <corners android:radius="@dimen/davi_dialog_radius" />
+        </shape>
+    </item>
+    <item android:bottom="@dimen/davi_dialog_shadow_offset_y">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_button_on_primary" />
+            <corners android:radius="@dimen/davi_dialog_radius" />
+        </shape>
+    </item>
+</layer-list>

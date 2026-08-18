@@ -41,6 +41,15 @@ sealed interface ConversationUiState {
         val kind: ConfirmKind = ConfirmKind.GOAL,
     ) : ConversationUiState
 
+    /**
+     * 메인 10 안내 종료 확인. **안내 중 화면(메인 9) 위에 모달로 뜬다.**
+     *
+     * **"안내 중"은 상태가 아니다.** 그건 세션(`GuideSession`)이 들고 있고 화면은 그릴 때마다
+     * 물어본다 — 같은 사실을 두 군데가 기억하면 세션이 밖에서 끝났을 때 화면만 남는다.
+     * 반면 이 확인은 사용자가 버튼을 눌러 들어오고 ×로 나가는 **진짜 화면 상태**다.
+     */
+    data object StopConfirm : ConversationUiState
+
     /** 이해 실패. 5초 뒤 홈 복귀 타이머는 Activity가 담당한다. */
     data object Failed : ConversationUiState
 }
@@ -60,6 +69,10 @@ data class ConversationRenderModel(
      * 장식이라 스크린리더에서는 읽지 않는다(레이아웃에서 제외).
      */
     val standVisible: Boolean = false,
+    /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
+    val guidingVisible: Boolean = false,
+    /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
+    val stopConfirmVisible: Boolean = false,
     val questionRes: Int? = null,
     val questionText: String? = null,
     /**
@@ -77,7 +90,6 @@ data class ConversationRenderModel(
     val utteranceText: String = "",
     val micVisible: Boolean = false,
     val micEnabled: Boolean = false,
-    val stopGuideVisible: Boolean = false,
     val confirmVisible: Boolean = false,
     /**
      * 질문 카드가 남는 세로 공간을 나눠 갖는가(weight). 끄면 wrap_content + minHeight로 선다.
@@ -144,18 +156,28 @@ data class ConversationRenderModel(
  * 조건을 탄다.
  */
 fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): ConversationRenderModel = when (state) {
-    is ConversationUiState.Home -> ConversationRenderModel(
+    // **안내 중이면 홈이 아니라 메인 9다**(#197). 사용자가 안내를 받다가 다비 앱으로
+    // 돌아온 상태이고, 세 갈래 중 무엇을 하려는지 물어야 한다 —
+    // 기존 안내 계속(나가기) · 종료 · 새로 물어보기(먼저 종료해야 함).
+    //
+    // **상태로 두지 않고 여기서 가른다.** "안내 중"은 세션이 들고 있는 바깥 사실이라
+    // 화면 상태로 복제하면 세션이 밖에서 끝났을 때 화면만 남는다.
+    is ConversationUiState.Home -> if (guideActive) guidingModel() else ConversationRenderModel(
         homeVisible = true,
-        // 안내 중이면 그 사실이 직전 시도의 오류보다 급하다(#29) — 마이크가 잠긴 이유가
-        // 화면에 없으면 사용자는 눌리지 않는 버튼을 반복해서 누른다.
-        statusRes = if (guideActive) R.string.conversation_guide_active else state.statusRes,
+        statusRes = state.statusRes,
         micVisible = true,
-        micEnabled = !guideActive,
-        stopGuideVisible = guideActive,
+        micEnabled = true,
         // 홈 유도(임시) — 누를 수 있을 때만. 시안에 홈 전용 모션이 아직 없다(#132).
-        glowVisible = !guideActive,
+        glowVisible = true,
         glowReactsToVoice = false,
     )
+    // 메인 10 — 메인 9 위에 모달만 얹는다. 뒤 화면은 그대로 보인다(시안).
+    // **세션이 밖에서 끝나면 모달도 내린다**(#197 리뷰). 끝낼 안내가 없는데 "정말 종료할까요?"가
+    // 남으면, 이 PR이 "안내 중"을 상태로 두지 않은 이유(유령 화면)를 스스로 어긴다.
+    // 화면 상태는 Activity가 정리하고 여기서는 그리지 않는 것으로 먼저 막는다.
+    ConversationUiState.StopConfirm ->
+        if (guideActive) guidingModel().copy(stopConfirmVisible = true)
+        else ConversationRenderModel(homeVisible = true, micVisible = true, micEnabled = true, glowVisible = true)
     is ConversationUiState.Listening -> ConversationRenderModel(
         logoVisible = true,
         questionRes = if (state.question == null) R.string.conversation_prompt_initial else null,
@@ -230,9 +252,24 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
  * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
  * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
  */
+/**
+ * 메인 9 안내 중 화면(#197). **마이크·파도·글로우가 없다** — 안내가 도는 동안은 새 목표를
+ * 받지 않기 때문이고, 카드 안 지시문이 그 이유를 말한다("먼저 안내를 종료해주세요").
+ *
+ * 배지와 카드는 다른 화면과 같은 자리다. 카드 아래로 세로 버튼쌍과 하단 안내가 붙는다.
+ */
+private fun guidingModel() = ConversationRenderModel(
+    logoVisible = true,
+    questionRes = R.string.conversation_guiding_title,
+    guidingVisible = true,
+)
+
 fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     ConversationUiState.Failed -> FAILED_RETURN_DELAY_MS
     is ConversationUiState.Confirm -> CONFIRM_TIMEOUT_MS
+    // **종료 확인에는 타이머를 두지 않는다.** 뒤에서 안내가 계속 돌고 있으므로 방치돼도
+    // 사용자가 갇히지 않는다 — 나가면 그만이다. 최종 확인(Confirm)과 다른 점이다.
+    ConversationUiState.StopConfirm -> null
     else -> null
 }
 
