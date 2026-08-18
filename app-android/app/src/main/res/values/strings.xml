@@ -106,7 +106,9 @@
     <string name="conversation_failed">무엇을 하려는지 잘 모르겠어요.\n처음부터 다시 할게요.</string>
     <!-- 안내 세션 중 홈. 마이크가 왜 잠겼는지가 화면에 없던 자리다(#29). -->
     <string name="conversation_guide_active">안내 중이에요.\n하려던 앱으로 돌아가 주세요.</string>
+    <string name="conversation_app_availability_warning">이 과정에 필요한 앱이 설치되어 있지 않을 수 있어요. 그래도 계속할까요?</string>
     <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
+    <string name="conversation_confirm_continue_desc">계속해서 목표 확인</string>
     <string name="conversation_confirm_reject_desc">처음부터 다시</string>
     <string name="conversation_close_desc">대화 그만하기</string>
 </resources>
