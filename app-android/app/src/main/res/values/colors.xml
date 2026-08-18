@@ -312,4 +312,13 @@
     <color name="davi_home_bubble_bottom">#FBF3F6</color>
     <color name="davi_home_bubble_border">#E6FFFFFF</color>
     <color name="davi_home_title_accent">#F2001C</color>
+
+    <!--
+      ON-2 권한 화면(#236). 카드·버튼 채움은 기존 davi_surface(#F4F4F6)와 **정확히 같아**
+      새로 만들지 않았고, 테두리도 davi_border(#D9D9D9)와 같다.
+      새로 필요한 것은 카드 안 일러스트 슬롯의 회색 원 하나뿐이다.
+    -->
+    <color name="davi_onboarding_slot">#E0E0E3</color>
+    <!-- 버튼 그림자 #000000 30%. blur 없는 근사라 아래로 민 단색이다. -->
+    <color name="davi_onboarding_button_shadow">#4D000000</color>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-2 권한 카드(#236). 시안 `v2/card/guide` 252×188 r16 · 채움 `#F4F4F6` 100%.
+  **테두리도 그림자도 없다** — 다른 화면의 카드(글라스·그림자)와 다르다.
+
+  반지름은 환산하지 않는다(1:1, `01-tokens.md` §6-1).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/davi_onboarding_card_radius" />
+    <solid android:color="@color/davi_surface" />
+</shape>

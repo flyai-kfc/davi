@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-2 카드 안 일러스트 슬롯(#236). 시안 `⌀56 #E0E0E3` 회색 원.
+
+  **자리표시가 아니라 배경이다** — 시안에서는 이 원과 톱니바퀴가 컴포넌트로 묶여 있지 않아
+  카드를 옮기면 톱니가 안 따라왔다(디자인 담당 지적). 구현에서는 원을 배경으로 깔고
+  톱니를 그 자식으로 넣어 하나로 움직이게 한다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/davi_onboarding_slot" />
+</shape>

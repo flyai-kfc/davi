@@ -17,10 +17,18 @@
       설정 화면에는 "접근성", "다른 앱 위에 표시"라고 적혀 있어서, 앱에서 그 단어를 지우면
       사용자가 남의 화면에서 찾을 글자가 없어진다.
     -->
-    <string name="onboarding_title">다비 도우미 설정</string>
+    <!--
+      ON-2 권한 화면(#236, 시안 문구). 제목과 버튼 라벨은 시안 값으로 갈았다.
+      **onboarding_body는 새 레이아웃이 쓰지 않는다** — 이 화면에는 본문 문단이 없고
+      카드 안 「최초 1회만 하면 됩니다」가 그 자리를 대신한다. 지우지 않는 이유는
+      접근성 고지·동의 문구로 #227이 이 키를 받기로 되어 있어서다.
+    -->
+    <string name="onboarding_title">앱 권한 설정</string>
+    <string name="onboarding_permission_note">최초 1회만 하면 됩니다</string>
+    <string name="onboarding_permission_hint">두 가지가 모두 켜지면\n다음으로 넘어가요</string>
     <string name="onboarding_body">시작하려면 두 가지를 켜야 합니다.\n1) 화면을 읽어 안내하기 (접근성 서비스)\n2) 안내를 화면 위에 띄우기 (다른 앱 위에 표시)</string>
-    <string name="btn_open_accessibility">접근성 설정 열기</string>
-    <string name="btn_open_overlay">다른 앱 위에 표시 허용</string>
+    <string name="btn_open_accessibility">접근성 서비스 켜기</string>
+    <string name="btn_open_overlay">다른 앱 위에 그리기</string>
 
     <!-- 목표 입력 + 안내 시작·중지 -->
     <string name="goal_label">무엇을 하고 싶으신가요?</string>
