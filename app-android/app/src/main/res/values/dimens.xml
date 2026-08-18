@@ -11,6 +11,8 @@
     <dimen name="overlay_instruction_padding">16dp</dimen>
     <dimen name="overlay_instruction_margin">20dp</dimen>
     <!-- 강조 테두리 두께. 기존 raw 12px가 검증 기기(3x)에서 4dp — 시인성 보존값. -->
+    <!-- v2에서도 4로 같다(#178). **강조 사각형은 아직 v2가 아니다** — 반경은 davi_radius_sm을
+         그대로 쓰고 있고, 시안의 반경 10·사방 8 확장은 적용 전이다. -->
     <dimen name="davi_overlay_highlight_stroke">4dp</dimen>
     <!--
       강조 후광이 안쪽 선 바깥으로 번지는 거리(#147). 안쪽 선은 불투명을 유지하고 이 후광만
@@ -39,16 +41,100 @@
       확정 디자인이 모양을 다시 잡을 자리라 정합을 정밀하게 맞추지 않는다.
       radius는 기기 화면 코너 곡률의 근사치다.
     -->
+    <!--
+      v2 확정값(#178, 2026-08-18). 위 임시치를 대체한다 — 반경 24 -> 14, 두께 4 -> 5,
+      **후광은 없앤다**(시안에 테두리 후광이 없다. 12dp는 근거가 없던 값이다).
+      선 두께·반지름은 환산하지 않고 시안 1:1로 쓴다.
+    -->
     <dimen name="davi_overlay_reading_inset">4dp</dimen>
-    <dimen name="davi_overlay_reading_stroke">4dp</dimen>
-    <dimen name="davi_overlay_reading_glow">12dp</dimen>
-    <dimen name="davi_overlay_reading_radius">24dp</dimen>
+    <dimen name="davi_overlay_reading_stroke">5dp</dimen>
+    <dimen name="davi_overlay_reading_glow">0dp</dimen>
+    <dimen name="davi_overlay_reading_radius">14dp</dimen>
     <!--
       안내창 안에 칩이 앉도록 비워 두는 컨트롤 행(#126). 칩 높이(56) + 칩 아래 여백(16).
       칩과 안내문 사이 간격은 안내창 자체의 아래쪽 padding이 맡는다.
       **칩의 자리는 아직 임시다** — Figma overlay/window가 확정되면 이 값과 배치를 함께 본다.
     -->
     <dimen name="davi_overlay_control_row">72dp</dimen>
+
+    <!--
+      안내 오버레이 v2(#178). **시안 값을 1:1로 쓴다** — 선 두께·반지름은 환산하지 않는다
+      (`01-tokens.md` §6-1). 프레임 300 기준의 가로 절대치는 쓰지 않고 화면 폭을 따른다.
+
+      **지금까지 그리던 것은 구 버전 프레임이다**(안내 1·2·3 — 흰 단색·회색 테두리·사각 칩).
+      기준은 GD-1·2·3·4 넷이다.
+    -->
+    <!--
+      안내창: 반경 18 · 테두리 1.5 · 화면 하단에서 55dp — **시안 기준이고 아직 안 먹였다**
+      (davi_overlay_window_margin_bottom 주석 · #234). 지금 상하는 20이 잡는다.
+      여백 위18/오44/아18/왼44 — 좌우 44는 점과 종료 X가 앉는 자리다.
+    -->
+    <dimen name="davi_overlay_window_radius">18dp</dimen>
+    <dimen name="davi_overlay_window_stroke">1.5dp</dimen>
+    <!-- **아직 안 쓴다.** v2가 정한 하단 여백인데, 먹이면 안내창 자리가 모든 안내에서
+         함께 움직여 실기기 확인이 필요하다. 지금은 overlay_instruction_margin(20)이 상하를 잡는다. -->
+    <dimen name="davi_overlay_window_margin_bottom">55dp</dimen>
+    <!--
+      창과 화면 좌우 가장자리 사이. **상하(20)와 다른 값이다** — 시안 프레임 여백 16.
+      v2의 하단 55는 아직 안 쓴다(바로 위 davi_overlay_window_margin_bottom 주석).
+      하나로 묶었더니 창이 110dp나 좁아져 확인쌍이 접혔다(당시에는 라벨이 있었다)
+      (2026-08-18 실기기).
+    -->
+    <dimen name="davi_overlay_window_margin_h">16dp</dimen>
+    <!--
+      강조 상자와 안내창 사이 간격. **화면 가장자리 여백과 다른 뜻이라 자기 토큰을 준다** —
+      한동안 좌우 여백(16)을 빌려 쓰면서 이 간격이 20에서 16으로 조용히 줄어 있었다
+      (PR #229 리뷰 B). 값은 줄기 전인 20으로 되돌린 것이고, 시안에는 아직 근거가 없다.
+    -->
+    <dimen name="davi_overlay_window_target_gap">20dp</dimen>
+    <dimen name="davi_overlay_window_padding_v">18dp</dimen>
+    <dimen name="davi_overlay_window_padding_h">44dp</dimen>
+    <!--
+      종료 X의 **터치 대상**. 보이는 구역(davi_overlay_close_region, 44)에 최소 터치 크기
+      48을 맞춘 값이다. 68이었을 때는 아무 표시도 없는 본문 글자 위를 눌러도 종료 되묻기가
+      떴다(PR #229 리뷰). 4dp 넘치는 것은 최소 터치 크기를 지키기 위해 남긴 차이다.
+    -->
+    <dimen name="davi_overlay_close_size">48dp</dimen>
+    <!-- 종료 X 구역의 반지름. 창 오른쪽 위 **꼭짓점을 중심으로 한 1/4 원**이라
+         바깥 두 변은 창 변에 그대로 붙고 안쪽만 볼록하게 갈린다. 원을 창 위에
+         얹으면 "창에 원이 붙었다"로 읽혀서 구역 지정으로 바꿨다(2026-08-18). -->
+    <dimen name="davi_overlay_close_region">44dp</dimen>
+    <dimen name="davi_overlay_close_mark">15dp</dimen>
+    <!-- 시안 2.4는 실기기에서 가늘어 안 보였다 — 두 배로 올린다(2026-08-18). -->
+    <dimen name="davi_overlay_close_stroke">5dp</dimen>
+    <!--
+      ✕가 구역 한가운데(무게중심 0.42R)가 아니라 **대각선 위쪽**에 앉는다. 어긋나 보이는
+      것은 의도다(2026-08-18 디자인 담당 확인 — 앞서 "삐뚤다"고 본 것이 틀렸다).
+
+      **얹힌 원을 잘라낸 초승달이 아니다.** 그 방식은 시안 좌표를 그대로 쓰면 원이 거의
+      창 밖에 있어 실기기에서 잘리지 않고 삐져나왔다. 지금은 창 꼭짓점을 중심으로 한
+      1/4 원이라 나갈 수가 없다(davi_overlay_close_region).
+    -->
+    <!-- ✕ 중심을 창 오른쪽 위 꼭짓점에서 얼마나 들여놓을지(왼쪽으로 dx, 아래로 dy).
+         구역의 무게중심(0.42R)보다 바깥으로 밀어 대각선 위쪽에 앉힌다. -->
+    <dimen name="davi_overlay_close_mark_dx">20dp</dimen>
+    <dimen name="davi_overlay_close_mark_dy">17dp</dimen>
+    <!-- 안내창 점 셋. 대화 화면(20/13/15)보다 훨씬 작다 — 창이 작아 같은 크기로는
+         문구만큼 무겁게 보인다. 자리 높이는 지름 + 아래 여백 18이다. -->
+    <dimen name="davi_overlay_dot_size_max">9dp</dimen>
+    <dimen name="davi_overlay_dot_size_min">5dp</dimen>
+    <dimen name="davi_overlay_dot_spacing">7dp</dimen>
+    <!-- 점 셋이 앉을 자리(GD-1). 지름 9 + 아래 여백 18. 확인쌍과 같은 자리를 쓰지만 둘은
+         동시에 뜨지 않는다 — 읽는 중과 확인 대기는 배타적이다(ReadingBorder). -->
+    <dimen name="davi_overlay_dots_row">27dp</dimen>
+    <!-- 확인쌍: 높이 56 캡슐 · gap 12. 폭은 창을 따르고 높이·반경만 고정한다. -->
+    <dimen name="davi_overlay_confirm_height">56dp</dimen>
+    <!-- 캡슐(높이의 절반). 시안은 r14였지만 그 값으로는 세로로 선 상자처럼 보여
+         가로로 긴 캡슐로 바꿨다(2026-08-18, 디자인 담당 결정). -->
+    <dimen name="davi_overlay_confirm_radius">28dp</dimen>
+    <!-- 확인쌍이 창 안에서 좌우로 들어가는 폭. 본문 패딩(44)을 그대로 쓰면 버튼이
+         좁아져 세로로 서 보인다 — 확인쌍은 본문보다 넓게 눕힌다. -->
+    <dimen name="davi_overlay_confirm_inset">24dp</dimen>
+    <dimen name="davi_overlay_confirm_gap">12dp</dimen>
+    <dimen name="davi_overlay_confirm_shadow_y">3dp</dimen>
+    <!-- 안내 문구: GD-1 20sp · GD-2 18sp · 확인창 18sp. 전부 Pretendard Bold 가운데. -->
+    <dimen name="davi_overlay_text_reading">20sp</dimen>
+    <dimen name="davi_overlay_text_instruction">18sp</dimen>
 
     <!--
       디자인 토큰(크기). 원본은 Figma Foundations primitives — 이름은 code syntax와 1:1.

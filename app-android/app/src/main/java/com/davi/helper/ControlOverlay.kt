@@ -30,6 +30,7 @@ class ControlOverlay(
 
     private var root: View? = null
     private var box: GuideBoxView? = null
+    private var readingDots: LoadingDotsView? = null
     private var stopChip: View? = null
     private var confirmPair: View? = null
 
@@ -61,17 +62,29 @@ class ControlOverlay(
      * [confirm]이 있으면 컨트롤 행이 확인쌍이 된다(GD-3·GD-4). 안내창 자체는 같은 창이라
      * 확인으로 넘어갈 때 창을 다시 만들지 않는다.
      */
-    fun show(rect: Rect, lines: List<String>, confirm: GuideDisplayState.ConfirmKind? = null) {
+    fun show(
+        rect: Rect,
+        lines: List<String>,
+        confirm: GuideDisplayState.ConfirmKind? = null,
+        reading: Boolean = false,
+        reserved: Float = 0f,
+    ) {
         val current = root
         if (current == null) {
             if (create(rect) != null) {
+                box?.setReading(reading)
+                box?.setReservedHeight(reserved)
                 box?.setLines(lines)
                 applyMode(confirm)
+                applyReading(reading)
             }
             return
         }
+        box?.setReading(reading)
+        box?.setReservedHeight(reserved)
         box?.setLines(lines)
         applyMode(confirm)
+        applyReading(reading)
         if (isApplied(rect)) return
         runCatching {
             windowManager.updateViewLayout(current, params(rect))
@@ -89,6 +102,7 @@ class ControlOverlay(
         box = null
         stopChip = null
         confirmPair = null
+        readingDots = null
         kind = null
     }
 
@@ -97,11 +111,25 @@ class ControlOverlay(
      *
      * 확인쌍은 아이콘 전용이라 화면이 달라도 그림이 같다. **뜻은 다르므로**
      * `contentDescription`을 종류마다 갈아 끼운다 — 안 갈면 TalkBack이 종료 확인에서
-     * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨(×아직요/×아니요)은 v2 시안의 몫이다(#178).
+     * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨은 두지 않는다 — ×/○ 두 그림이면 서고, 글자를 얹으면 본문과 같은 말을 두 번 한다.
      */
+    /**
+     * 읽는 중 점 셋을 켜고 끈다.
+     *
+     * [LoadingDotsView.restart]를 여기서 부르지 않는다 — GONE에서 VISIBLE로 돌아올 때
+     * `MotionDriver.start()`가 다시 돌면서 경과 시간이 0으로 되돌아간다. 대화 화면은
+     * 뷰가 계속 붙어 있는 채로 상태만 바뀌어서 손으로 되돌려야 하지만, 여기는 아니다.
+     */
+    private fun applyReading(on: Boolean) {
+        val dots = readingDots ?: return
+        dots.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
     private fun applyMode(confirm: GuideDisplayState.ConfirmKind?) {
         kind = confirm
         stopChip?.visibility = if (confirm != null) View.GONE else View.VISIBLE
+        // 칩이 숨으면 창이 그리는 흰 면도 함께 숨는다 — 안 그러면 빈 곡면만 남는다.
+        box?.setCloseVisible(confirm == null)
         confirmPair?.visibility = if (confirm != null) View.VISIBLE else View.GONE
         val pair = confirmPair ?: return
         pair.findViewById<View>(R.id.btn_confirm_accept).contentDescription =
@@ -155,6 +183,7 @@ class ControlOverlay(
             root = created
             box = created.findViewById(R.id.guide_box)
             stopChip = created.findViewById(R.id.btn_stop_chip)
+            readingDots = created.findViewById(R.id.reading_dots)
             confirmPair = pair
             created
         }.onFailure { Log.e(TAG, "control overlay: addView 실패", it) }.getOrNull()

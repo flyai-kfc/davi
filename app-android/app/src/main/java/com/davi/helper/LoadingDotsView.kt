@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.use
 
 /**
  * 응답을 기다리는 동안 도는 점 3개(#142). 서버가 느릴 때 화면이 멈춘 것으로 보이지 않게 한다.
@@ -27,9 +28,33 @@ class LoadingDotsView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    private val dotSizeMax = resources.getDimension(R.dimen.davi_loading_dot_size_max)
-    private val dotSizeMin = resources.getDimension(R.dimen.davi_loading_dot_size_min)
-    private val dotSpacing = resources.getDimension(R.dimen.davi_loading_dot_spacing)
+    // 크기는 **뷰 속성에서 읽는다**(기본값은 메인 6 시안 실측치). 리소스를 직접 읽으면
+    // 대화 화면과 오버레이가 한 값을 나눠 쓰게 되어 한쪽을 줄이면 다른 쪽도 함께 줄어든다.
+    private val sizes = context.obtainStyledAttributes(
+        attrs,
+        R.styleable.LoadingDotsView,
+        defStyleAttr,
+        0,
+    ).use {
+        Triple(
+            it.getDimension(
+                R.styleable.LoadingDotsView_daviDotSizeMax,
+                resources.getDimension(R.dimen.davi_loading_dot_size_max),
+            ),
+            it.getDimension(
+                R.styleable.LoadingDotsView_daviDotSizeMin,
+                resources.getDimension(R.dimen.davi_loading_dot_size_min),
+            ),
+            it.getDimension(
+                R.styleable.LoadingDotsView_daviDotSpacing,
+                resources.getDimension(R.dimen.davi_loading_dot_spacing),
+            ),
+        )
+    }
+
+    private val dotSizeMax = sizes.first
+    private val dotSizeMin = sizes.second
+    private val dotSpacing = sizes.third
 
     private val periodSeconds =
         resources.getInteger(R.integer.davi_motion_dots_period_ms) / MILLIS_PER_SECOND

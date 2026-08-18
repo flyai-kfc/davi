@@ -102,11 +102,42 @@
 
       **더 이상 안내창 그라디언트의 위쪽을 겸하지 않는다.** Figma가 둘을 나눴고
       안드로이드 쪽 overlay/window/top은 건드리지 말라는 지시가 있다(2026-08-16 디자인 담당).
-      대응 토큰은 아직 안 만들었다 — 안내창을 v2로 바꾸는 화면 구현 이슈가 함께 받는다.
-      지금 안내창은 davi_overlay_box(#FFFFFF, GuideBoxView.kt:36)를 그대로 쓴다.
+      안내창 쪽 대응 토큰은 #178이 만들었다(davi_overlay_window_top / _bottom).
     -->
     <color name="davi_bg_mesh">#F9E4EC</color>
-    <color name="davi_overlay_window_bottom">#FADCE6</color>
+    <!--
+      안내창 채움(v2, #178). **세로 그라디언트 위 #FDF6F8 90% → 아래 #FADCE6 80%**다.
+      지금까지 아래쪽 색만 있어 쓸 수 없었고 흰 단색(davi_overlay_box)으로 그리고 있었다.
+
+      **불투명하게 바꿨다**(시안 90/80 → 100, 2026-08-18 실기기). 시안 값으로는 뒤 앱의
+      아이콘이 그대로 비쳐 글자가 안 읽혔다 — 안내창은 임의의 앱 위에 뜨므로 뒤가 무엇일지
+      정할 수 없고, 밝고 복잡한 화면 위에서 특히 나빴다.
+
+      **앱 배경(davi_bg_mesh #F9E4EC)과 다른 값이다.** 안내창은 임의의 앱 위에 뜨므로
+      배경과 같이 움직이면 안 된다 — 시안이 둘을 분리한 이유다(2026-08-18 디자인 담당).
+    -->
+    <color name="davi_overlay_window_top">#FFFDF6F8</color>
+    <color name="davi_overlay_window_bottom">#FFFADCE6</color>
+    <!--
+      안내창 테두리와 종료 X 곡면의 경계선. **흰색이 아니라 회색이다**(2026-08-18 실기기) —
+      시안 흰 85%로는 창의 겉면도, 흰 곡면과 창의 경계도 보이지 않았다. 채움이 밝은 분홍이라
+      흰 선이 그대로 묻힌다.
+    -->
+    <color name="davi_overlay_window_border">@color/davi_border</color>
+    <color name="davi_overlay_window_highlight">#F2FFFFFF</color>
+    <!--
+      안내창 문구. GD-1·2는 #3A1C22(분홍 계열 먹색), GD-3·4 확인창은 #1A1A1A다 —
+      시안이 확인 화면에서만 더 진하게 잡았다.
+    -->
+    <color name="davi_overlay_on_window">#3A1C22</color>
+    <!-- 종료 X — 창 모서리에 물린 곡면. 흰 96% 바탕에 빨강 선. -->
+    <color name="davi_overlay_close_face">#F5FFFFFF</color>
+    <!-- 종료 ✕ — 캐릭터 로고(`ic_davi_logo`)의 빨강 그대로. 본문 빨강(davi_button_primary,
+         #A50014)보다 밝아 흰 구역 위에서 "누르는 표시"로 먼저 눈에 든다.
+         흰 배경 대비 4.39:1 — **글자가 아니라 그래픽**이라 기준은 3:1이고 통과한다. -->
+    <color name="davi_overlay_close_mark">#F2001C</color>
+    <!-- 확인쌍 그림자(#330D17 24%). 채움은 davi_button_primary / davi_button_affirm을 쓴다. -->
+    <color name="davi_overlay_confirm_shadow">#3D330D17</color>
     <color name="davi_wave_fade_start">#FFB3B3</color>
     <color name="davi_wave_fade_mid">#FF9A9A</color>
     <color name="davi_wave_fade_end">#FF5C70</color>

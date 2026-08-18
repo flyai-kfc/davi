@@ -15,21 +15,73 @@ import androidx.core.content.res.ResourcesCompat
  */
 object GuideBoxStyle {
 
-    /** 안내문 글자. 흰 배경 + 진한 글자(#111 확정 디자인). */
-    fun textPaint(context: Context): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.davi_overlay_on_box)
-        textSize = context.resources.getDimension(R.dimen.text_overlay_instruction)
-        // Canvas 직접 그리기라 테마 fontFamily가 닿지 않는다 — 서체를 손으로 물린다(C1).
-        typeface = ResourcesCompat.getFont(context, R.font.pretendard)
+    /**
+     * 안내문 글자(v2, #178). **Pretendard Bold 18sp · `#3A1C22` · 가운데 정렬**이다.
+     *
+     * 구 버전은 22sp `#1A1A1A` 왼쪽 정렬이었다. 색이 순검정이 아닌 이유는 채움이 핑크
+     * 그라디언트라서다 — 시안이 분홍 계열 먹색으로 잡았다.
+     *
+     * **읽는 중(GD-1)만 20sp**다. 그쪽은 문구가 짧고 점과 함께 서므로 시안이 키웠다 —
+     * 크기를 바꾸는 것은 [readingTextPaint].
+     */
+    fun textPaint(context: Context): Paint = basePaint(context).apply {
+        textSize = context.resources.getDimension(R.dimen.davi_overlay_text_instruction)
     }
 
-    /** 상자 안쪽 여백. 줄바꿈 폭 계산과 그리기 시작점이 이 값을 공유한다. */
-    fun padding(context: Context): Float =
-        context.resources.getDimension(R.dimen.overlay_instruction_padding)
+    /** GD-1 "화면을 읽고 있어요" 전용. 위와 색·서체는 같고 크기만 20sp다. */
+    fun readingTextPaint(context: Context): Paint = basePaint(context).apply {
+        textSize = context.resources.getDimension(R.dimen.davi_overlay_text_reading)
+    }
 
-    /** 상자와 화면 가장자리 사이 여백. */
+    private fun basePaint(context: Context): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ContextCompat.getColor(context, R.color.davi_overlay_on_window)
+        textAlign = Paint.Align.CENTER
+        // Canvas 직접 그리기라 테마 fontFamily가 닿지 않는다 — 서체를 손으로 물린다(C1).
+        typeface = ResourcesCompat.getFont(context, R.font.pretendard_bold)
+    }
+
+    /**
+     * 상자 안쪽 여백. 줄바꿈 폭 계산과 그리기 시작점이 이 값을 공유한다.
+     *
+     * **좌우가 위아래보다 훨씬 넓다**(18 / 44) — 좌우 44는 로딩 점과 종료 X가 앉는 자리다.
+     * 여기서는 글자가 차지할 폭을 정하므로 좌우 값을 돌려준다.
+     */
+    fun padding(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_padding_h)
+
+    /** 상자 위아래 여백. 줄 높이 계산과 그리기 시작점이 쓴다. */
+    fun paddingVertical(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_padding_v)
+
+    /**
+     * 상자와 화면 **좌우** 가장자리 사이 여백.
+     *
+     * **상하 여백과 다른 값이다**(좌우 16 / 상하 20). 하나로 묶었더니 창이 좌우로 110dp
+     * 좁아져 확인쌍이 접혔다(2026-08-18 실기기). 반대로 이 값을 상하에도 쓰면 상하 여백이
+     * 20에서 16으로 조용히 줄어든다(PR #229 리뷰) — 그래서 [marginVertical]이 따로 있다.
+     */
     fun margin(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_margin_h)
+
+    /**
+     * 상자와 화면 **위아래** 가장자리 사이 여백.
+     *
+     * v2 시안이 정한 하단 55(`davi_overlay_window_margin_bottom`)는 **아직 안 쓴다** —
+     * 그 값을 먹이면 안내창이 앉는 자리가 모든 안내에서 함께 움직이는데 실기기로 확인하지
+     * 않았다. 지금은 구 값 20을 그대로 지킨다.
+     */
+    fun marginVertical(context: Context): Float =
         context.resources.getDimension(R.dimen.overlay_instruction_margin)
+
+    /**
+     * 강조 상자와 안내창 사이 간격.
+     *
+     * **화면 가장자리 여백과 다른 뜻이다.** 한동안 좌우 여백을 빌려 썼는데, 그러면 좌우를
+     * 조정할 때 이 간격이 딸려 움직인다 — 실제로 16으로 갈면서 20에서 조용히 줄었다
+     * (PR #229 리뷰 B). 값에 시안 근거는 아직 없고, 줄기 전 값을 지킨 것이다.
+     */
+    fun targetGap(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_target_gap)
 
     /**
      * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).
