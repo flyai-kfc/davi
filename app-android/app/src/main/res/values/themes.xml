@@ -121,6 +121,17 @@
         <item name="android:elevation">0dp</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
+        <!--
+          **채움이 아래로 그림자 offset만큼 짧으므로 글자도 그만큼 올린다.** 이게 없으면
+          라벨이 뷰(72dp) 기준으로 가운데 와서 보이는 캡슐(68dp) 안에서는 처져 보인다.
+          두 버튼에 함께 걸어야 라벨 높이가 서로 어긋나지 않는다.
+
+          **위쪽도 0으로 못 박는다.** 아래만 주면 Material3 Button의 기본 위 패딩이 남아
+          라벨이 오히려 더 내려간다(실기기 실측 +4.7dp). 위아래를 모두 지정해야 결과가
+          기본값에 좌우되지 않는다.
+        -->
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">@dimen/davi_button_pair_shadow_offset_y</item>
         <item name="backgroundTint">@null</item>
     </style>
     <style name="Widget.Davi.ButtonPair.Primary">

@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.content.Intent
 import android.view.View
+import android.widget.Button
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -65,7 +66,7 @@ class AppAvailabilityPreflightDeviceTest {
         )
 
         instrumentation.runOnMainSync {
-            current.findViewById<View>(R.id.btn_confirm_accept).performClick()
+            current.findViewById<View>(R.id.btn_pair_accept).performClick()
         }
         instrumentation.waitForIdleSync()
 
@@ -74,13 +75,14 @@ class AppAvailabilityPreflightDeviceTest {
             originalGoal,
             current.findViewById<TextView>(R.id.card_question).text.toString(),
         )
+        // 아이콘 전용이던 시절엔 contentDescription으로만 갈렸지만 이제 보이는 글자다(#196).
         assertEquals(
-            current.getString(R.string.conversation_confirm_accept_desc),
-            current.findViewById<View>(R.id.btn_confirm_accept).contentDescription.toString(),
+            current.getString(R.string.conversation_confirm_accept),
+            current.findViewById<Button>(R.id.btn_pair_accept).text.toString(),
         )
 
         instrumentation.runOnMainSync {
-            current.findViewById<View>(R.id.btn_confirm_accept).performClick()
+            current.findViewById<View>(R.id.btn_pair_accept).performClick()
         }
         instrumentation.waitForIdleSync()
 
@@ -94,7 +96,7 @@ class AppAvailabilityPreflightDeviceTest {
         showConfirm(current, "설치되지 않은 앱으로 문서 열기", ConfirmKind.APP_AVAILABILITY_WARNING)
 
         instrumentation.runOnMainSync {
-            current.findViewById<View>(R.id.btn_confirm_reject).performClick()
+            current.findViewById<View>(R.id.btn_pair_reject).performClick()
         }
         instrumentation.waitForIdleSync()
 
@@ -108,8 +110,8 @@ class AppAvailabilityPreflightDeviceTest {
         showConfirm(current, "설치되지 않은 앱으로 문서 열기", ConfirmKind.APP_AVAILABILITY_WARNING)
 
         instrumentation.runOnMainSync {
-            current.findViewById<View>(R.id.btn_confirm_accept).performClick()
-            current.findViewById<View>(R.id.btn_confirm_reject).performClick()
+            current.findViewById<View>(R.id.btn_pair_accept).performClick()
+            current.findViewById<View>(R.id.btn_pair_reject).performClick()
         }
         instrumentation.waitForIdleSync()
 

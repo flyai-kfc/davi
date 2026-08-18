@@ -142,6 +142,8 @@
     <dimen name="davi_button_pair_radius">36dp</dimen>
     <dimen name="davi_button_pair_gap">14dp</dimen>
     <dimen name="davi_button_pair_stroke">2dp</dimen>
+    <!-- 주 버튼 그림자를 아래로 내리는 거리. 시안 y3을 배율 1.2로 환산해 4dp. -->
+    <dimen name="davi_button_pair_shadow_offset_y">4dp</dimen>
     <!--
       버튼쌍과 위 카드 사이. 시안 메인 7의 다비 카드 하단 308 -> 버튼쌍 380 = 72,
       배율 1.2로 86dp다. **최종 확인에서 카드 weight가 0이라 열이 위에서부터 쌓이므로,
@@ -248,7 +250,15 @@
     <dimen name="davi_card_gap">48dp</dimen>
     <!--
       다비 카드 위 패딩이 배지 자리다. 배지가 카드를 36dp 파고드니 글자는 그보다
-      아래에서 시작해야 겹치지 않는다. 시안 60을 배지 스케일(×1.2)에 맞춰 72로 올린다.
+      아래에서 시작해야 겹치지 않는다.
+
+      **시안 값 60으로 되돌린다**(2026-08-18). 배지 스케일(×1.2)을 따라 72로 올렸었는데,
+      실기기에서 글자 덩어리가 카드 아래쪽에 앉아 보였다 — 위 72 / 아래 24로 벌어져
+      광학 중심이 48dp 내려간다. 60이면 배지 아래로 **24dp 여유**가 남아 겹치지 않고,
+      위아래가 60/24로 좁혀진다.
+
+      **패딩은 배지 스케일을 따라갈 이유가 없다.** 겹침을 막는 데 필요한 값은 배지가
+      파고드는 깊이(36dp)이지 배지 크기가 아니다.
     -->
     <dimen name="davi_card_padding_top_davi">72dp</dimen>
     <dimen name="davi_card_padding_bottom_davi">24dp</dimen>
@@ -293,7 +303,14 @@
     <dimen name="davi_card_shadow_offset_y_speaking_senior">5dp</dimen>
     <!--
       유리 하이라이트(시안 INNER_SHADOW 흰 95% y2 blur2)의 근사.
-      좌우를 반경의 절반만큼 들여 둥근 모서리 밖으로 안 나가게 한다.
+      **좌우 인셋은 반경의 절반이 아니다.** 필요한 값은 하이라이트 **윗변 높이에서** 카드
+      곡선이 안쪽으로 들어온 거리다 — 반경 28에 offsetY 2면
+
+        인셋 >= r - sqrt(r^2 - (r - offsetY)^2) = 28 - sqrt(784 - 676) = 17.6dp
+
+      14dp(반경의 절반)로 두었더니 그 지점의 경계가 17.6dp라 **하이라이트가 좌우로 3.6dp씩
+      삐져나왔다**(2026-08-18 실기기 실측: +2dp 줄에서 흰색이 14.0dp부터 시작). 18dp로 올린다.
+      아래로 갈수록 곡선이 물러나므로 윗변만 통과하면 나머지는 저절로 들어온다.
     -->
     <dimen name="davi_card_highlight_height">3dp</dimen>
     <dimen name="davi_card_highlight_offset_y">2dp</dimen>

@@ -11,16 +11,19 @@
   고정하면 버튼쌍이 카드보다 10dp 좁아 가장자리가 어긋난다 — 시안이 지키려는 것은 절대
   폭이 아니라 **가장자리 정렬**이므로 weight로 늘린다.
 
-  **높이는 wrap_content + minHeight이되 두 버튼이 같은 높이를 쓴다.** 고정하면 글자 배율
-  2.0x에서 라벨이 잘리고, 각자 wrap_content로 두면 **글자 길이가 달라 높이가 갈린다** —
-  "아니요"는 한 줄인데 "네, 맞아요"·"계속할래요"는 두 줄이 되어 확인쌍이 비대칭이 된다
-  (#200 리뷰). 자식에 match_parent를 주면 LinearLayout이 가장 높은 자식에 맞춰 다시 재므로
-  둘이 같아진다.
+  **높이는 긍정 버튼이 정하고 부정 버튼이 따라간다.**
 
-  **폭이 0dp가 아니라 wrap_content + weight인 것이 핵심이다.** 0dp+weight 자식은 LinearLayout이
-  1차 측정을 건너뛰고 weight 배분 뒤에 재는데, 그때 match_parent 높이는 아직 정해지지 않은
-  부모 높이(0)를 받는다 — 결과가 **버튼 높이 1dp 붕괴**였다(실기기 실측). wrap_content면
-  1차에서 실제 높이가 잡혀 maxHeight가 제대로 나오고, 폭은 weight가 그대로 늘려 준다.
+  각자 wrap_content면 글자 길이에 따라 높이가 갈린다 — 배율 2.0x에서 "아니요"는 한 줄인데
+  "네, 맞아요"·"계속할래요"는 두 줄이라 확인쌍이 비대칭이 된다(#200 리뷰).
+
+  **둘 다 match_parent로는 안 된다.** LinearLayout.measureHorizontal은 자식 높이가
+  match_parent면 maxHeight 계산에 그 자식의 높이가 아니라 **margin(0)** 을 넣는다. 그래서
+  두 버튼이 부모 높이에 기여하지 못하고 남은 Space의 1dp가 전체 높이가 된다 —
+  실기기에서 **버튼쌍이 1dp로 붕괴**했다.
+
+  그래서 **긍정 쪽만 wrap_content로 두어 높이를 정하게 하고**, 부정 쪽을 match_parent로
+  따라붙인다. 긍정 라벨("네, 맞아요"·"계속할래요")이 부정("아니요")보다 항상 길어 먼저
+  줄바꿈되므로 높이 기준이 된다 — **라벨을 바꿀 때 이 전제를 함께 본다.**
 
   왼쪽이 부정("아니요"), 오른쪽이 긍정("네, 맞아요")이다.
 -->
@@ -33,7 +36,7 @@
     <Button
         android:id="@+id/btn_pair_reject"
         style="@style/Widget.Davi.ButtonPair.Secondary"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:text="@string/conversation_confirm_reject" />
@@ -45,8 +48,8 @@
     <Button
         android:id="@+id/btn_pair_accept"
         style="@style/Widget.Davi.ButtonPair.Primary"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_weight="1"
         android:text="@string/conversation_confirm_accept" />
 </LinearLayout>
