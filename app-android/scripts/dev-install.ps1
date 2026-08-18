@@ -19,12 +19,13 @@
      settings put 만으로는 목록에 값이 들어가도 서비스가 바인딩되지 않는 경우가 있어
      (dumpsys 의 "Bound services:{}") 껐다 켜는 토글 사이클로 복구하고 결과를 검증한다.
 
-  3) 오버레이("다른 앱 위에 표시") 권한이 꺼져 있으면 안내가 그려지지 않는다
-     -> 설치 후 상태를 확인하고, 꺼져 있으면 해당 설정 화면을 띄운다.
-     appops set 은 제조사 정책에 막히는 경우가 있어 자동 허용은 하지 않는다.
+  3) 오버레이("다른 앱 위에 표시") 권한은 더 이상 쓰지 않는다 (#212)
+     창 타입이 TYPE_ACCESSIBILITY_OVERLAY 라 그 권한 없이 그려지고(#56),
+     남아 있던 유일한 쓰임인 안내 중 자동 복귀는 알림 탭이 대신한다.
+     -> 앱이 선언 자체를 안 하므로 확인할 것이 없다. 확인 코드도 함께 걷었다.
 
 .EXAMPLE
-  # 빌드 + 설치 + 접근성 복구 + 오버레이 확인
+  # 빌드 + 설치 + 접근성 복구
   ./scripts/dev-install.ps1
 
 .EXAMPLE
@@ -43,8 +44,6 @@ param(
     [switch]$SkipBuild,
     # 접근성 서비스를 자동으로 켜지 않는다.
     [switch]$SkipAccessibility,
-    # 오버레이 권한을 확인하지 않는다.
-    [switch]$SkipOverlayCheck,
     # 설치 후 logcat 버퍼를 비운다. 바로 로그를 볼 때 편하다.
     [switch]$ClearLog,
     # 아무것도 바꾸지 않고 상태만 출력하고 끝낸다. 다른 스위치는 무시된다.
@@ -282,18 +281,6 @@ function Test-ServiceBound {
     return 'unbound'
 }
 
-# 한 번도 설정된 적 없는 앱은 appops에 항목 자체가 없어 출력이 비어 온다.
-# 'deny' 문자열만 찾으면 그 상태를 허용으로 오독한다.
-function Get-OverlayState {
-    try {
-        $raw = (Invoke-AdbCapture @('shell', 'appops', 'get', $package, 'SYSTEM_ALERT_WINDOW') '오버레이 권한 조회') -join "`n"
-    }
-    catch { return 'unknown' }
-    if ($raw -match 'allow') { return 'allow' }
-    if ($raw -match 'deny|ignore') { return 'deny' }
-    return 'unset'
-}
-
 function Test-PackageInstalled {
     $lines = Invoke-AdbCapture @('shell', 'pm', 'list', 'packages', $package) '설치 패키지 조회'
     # pm list packages는 부분 일치라 com.davi.helper.e2edriver 같은 것도 걸린다. 정확히 비교한다.
@@ -313,7 +300,6 @@ if ($Status) {
         else { '기기      : 없음 — USB 연결과 adb 승인을 확인할 것' }
         '패키지    : 확인 불가(대상 기기 없음)'
         '접근성    : 확인 불가(대상 기기 없음)'
-        '오버레이  : 확인 불가(대상 기기 없음)'
         return
     }
 
@@ -328,7 +314,6 @@ if ($Status) {
     else {
         "패키지    : $package 설치되지 않음 — dev-install.ps1로 설치할 것"
         '접근성    : 확인 생략(미설치)'
-        '오버레이  : 확인 생략(미설치)'
         return
     }
 
@@ -345,13 +330,6 @@ if ($Status) {
             if ($listed) { '접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구' }
             else { '접근성    : 꺼져 있음 — -A11yOnly로 복구' }
         }
-    }
-
-    switch (Get-OverlayState) {
-        'allow' { '오버레이  : 허용' }
-        'deny' { '오버레이  : 거부됨 — 설정에서 "다른 앱 위에 표시"를 켤 것' }
-        'unset' { '오버레이  : 설정된 적 없음(미허용) — 설정에서 "다른 앱 위에 표시"를 켤 것' }
-        default { '오버레이  : 상태를 읽지 못함' }
     }
     return
 }
@@ -436,30 +414,6 @@ if (-not $SkipAccessibility) {
             try { Invoke-AdbChecked @('shell', 'am', 'start', '-a', 'android.settings.ACCESSIBILITY_SETTINGS') '접근성 설정 화면 열기' }
             catch { Write-Warning "설정 화면을 열지 못했다: $($_.Exception.Message)" }
         }
-    }
-}
-
-# --- 오버레이 권한 확인 ---------------------------------------------------------
-# 꺼져 있으면 안내가 그려지지 않는데, 앱은 조용히 아무것도 안 그린 것처럼 보인다.
-if (-not $SkipOverlayCheck) {
-    $overlay = Get-OverlayState
-    if ($overlay -eq 'allow') {
-        Write-Host '== 오버레이 권한 허용됨 ==' -ForegroundColor Cyan
-    }
-    else {
-        $reason = switch ($overlay) {
-            'deny' { '거부됨' }
-            'unset' { '설정된 적 없음' }
-            default { '상태를 읽지 못함' }
-        }
-        Write-Warning "오버레이 권한이 없다($reason). 열리는 목록에서 '다비 도우미'($package)를 찾아 켤 것."
-        # appops set 은 제조사 정책에 막히는 경우가 있어 자동 허용하지 않고 화면만 띄운다.
-        # One UI 8.5 실측: package: 딥링크를 무시하고 앱별 화면이 아니라 전체 목록을 연다.
-        # 그래도 목록까지는 데려다 주므로 설정 앱을 손으로 파고드는 것보다 낫다.
-        try {
-            Invoke-AdbChecked @('shell', 'am', 'start', '-a', 'android.settings.action.MANAGE_OVERLAY_PERMISSION', '-d', "package:$package") '오버레이 설정 화면 열기'
-        }
-        catch { Write-Warning "설정 화면을 열지 못했다: $($_.Exception.Message)" }
     }
 }
 
