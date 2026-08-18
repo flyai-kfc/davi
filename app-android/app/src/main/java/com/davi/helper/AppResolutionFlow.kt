@@ -100,11 +100,3 @@ internal class AppResolutionFlow(
         }
     }
 }
-
-internal fun AppResolutionResult.toSlotFillFailure(): SlotFillResult = when (this) {
-    is AppResolutionResult.Success -> error("success is handled before conversion")
-    is AppResolutionResult.ApiFailure -> SlotFillResult.ApiFailure(statusCode, error, trace)
-    is AppResolutionResult.HttpFailure -> SlotFillResult.HttpFailure(statusCode, trace)
-    is AppResolutionResult.NetworkFailure -> SlotFillResult.NetworkFailure(exception)
-    is AppResolutionResult.ParseFailure -> SlotFillResult.ParseFailure(exception, trace)
-}
