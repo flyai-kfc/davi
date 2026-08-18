@@ -24,6 +24,8 @@
     <string name="btn_voice_input">말로 입력</string>
     <string name="voice_idle">말로도 하고 싶은 일을 입력할 수 있어요.</string>
     <string name="voice_listening">듣고 있어요. 편하게 말씀해 주세요.</string>
+    <!-- 시니어 카드 위쪽 작은 레이블. 위 문장의 짧은 형태로, 카드 안에서 상태를 알린다. -->
+    <string name="voice_listening_label">듣고 있어요</string>
     <string name="voice_processing">하고 싶은 일을 정리하고 있어요.</string>
     <string name="voice_goal_ready">목표가 입력됐어요. 확인한 뒤 안내 시작을 눌러 주세요.</string>
     <string name="voice_no_speech">잘 듣지 못했어요. 말로 입력을 다시 눌러 주세요.</string>

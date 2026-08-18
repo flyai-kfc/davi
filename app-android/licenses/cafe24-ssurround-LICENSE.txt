@@ -1,0 +1,129 @@
+Cafe24 Ssurround
+Copyright (c) Cafe24 Corp.
+
+배포처: https://fonts.cafe24.com/
+버전: v2.0 (Cafe24Ssurround-v2.0.otf)
+라이선스: SIL Open Font License 1.1
+
+--------------------------------------------------------------------------------
+이 앱에는 카페24(주)가 제공한 '카페24 써라운드(Cafe24 Ssurround)'가
+적용되어 있습니다.
+--------------------------------------------------------------------------------
+
+카페24 폰트 이용 정책 (요지)
+
+아래는 공식 배포 ZIP에 동봉된 'License-Ssurround.pdf'의 요지다. 근거를 웹 FAQ가
+아니라 배포본 안의 문서로 두는 이유는, 웹 페이지는 개정되면 우리가 무엇을 보고
+판단했는지 남지 않기 때문이다. 이 PDF는 폰트 파일과 같은 ZIP에 들어 있어
+버전과 함께 고정된다.
+
+  - 개인·기업 모두 무료이며 자유롭게 수정·재배포할 수 있습니다. 사용범위 표는
+    CI/BI·문서·인쇄/출판·웹사이트·상품 제작·옥내외 광고·영상·이북/이러닝·임베딩
+    아홉 구분을 모두 "모든 범위"로 표기합니다.
+  - **임베딩 구분에 "어플리케이션 시스템 폰트 적용"이 명시돼 있고 "모든 범위"입니다.**
+    APK에 에셋으로 포함해 배포하는 것이 바로 이 항목이다 — 앞선 여덟 구분처럼
+    산출물에 폰트가 그려져 나가는 것이 아니라 **폰트 파일 자체가 배포물 안에
+    들어가는** 경우라, 이 한 줄이 없으면 근거가 되지 않는다.
+  - **본 저작권 안내와 라이선스 전문을 포함해서** 다른 소프트웨어와 번들하거나
+    재배포 또는 판매가 가능합니다. (전문을 넣기 어려우면 출처 표기를 권장하지만,
+    이 파일이 전문을 담고 있으므로 우리는 권장이 아니라 원칙 쪽을 지킨다.)
+  - 폰트 파일 자체를 유료로 판매하는 것은 금지됩니다. 앱을 유료로 판매하는 것은
+    무관하며, 앱의 본질이 폰트 파일을 내려받게 하여 그 값을 받는 형태여서는
+    안 됩니다. 이 앱은 해당하지 않습니다.
+  - **폰트가 쓰인 인쇄물·광고물(온라인 포함)의 이미지는 카페24의 프로모션에
+    활용될 수 있고, 원치 않으면 언제든 카페24에 요청할 수 있습니다.**
+    사용을 막는 조건이 아니라 사용자에게 열려 있는 선택지다 — 앱 스크린샷이
+    스토어·홍보물로 나가는 이상 해당될 수 있으므로 남겨 둔다.
+
+원문: 공식 배포 ZIP 내 License-Ssurround.pdf — 정책 문구 1쪽, 사용범위 표 2쪽
+  https://img.cafe24.com/csdstatic/freefonts/download/kr/Cafe24Ssurround-v2.0.zip
+최신 정책: https://fonts.cafe24.com/
+
+번들한 파일이 공식 배포본과 같은지는 해시로 확인한다(2026-08-17 확인).
+  Cafe24Ssurround-v2.0.otf
+  SHA-256 6729ca473ab04f145b5246fa66128c474749e06b62ae07e94eab7b7850cf0b23
+
+--------------------------------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+--------------------------------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical writer or
+other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components, in
+Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or in
+the appropriate machine-readable metadata fields within text or binary
+files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name
+as presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any Modified
+Version, except to acknowledge the contribution(s) of the Copyright
+Holder(s) and the Author(s) or with their explicit written permission.
+
+5) The Font Software, modified or unmodified, in part or in whole, must be
+distributed entirely under this license, and must not be distributed under
+any other license. The requirement for fonts to remain under this license
+does not apply to any document created using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are not
+met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER
+DEALINGS IN THE FONT SOFTWARE.

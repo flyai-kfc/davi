@@ -203,4 +203,27 @@ class ConversationUiStateTest {
         assertFalse(model.waveVisible)
         assertFalse(model.glowVisible)
     }
+
+    @Test
+    fun `듣고 있어요 레이블은 듣는 중에만 보인다`() {
+        // 시안(메인 2~5)에서 이 레이블은 **사용자 차례라는 신호**다. 다비가 말하거나
+        // 서버를 기다리는 동안 남아 있으면 "아직 내 차례"로 잘못 읽힌다.
+        assertTrue(renderModelOf(ConversationUiState.Listening()).utteranceLabelVisible)
+        assertFalse(renderModelOf(ConversationUiState.Home()).utteranceLabelVisible)
+        assertFalse(
+            renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).utteranceLabelVisible,
+        )
+        assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).utteranceLabelVisible)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).utteranceLabelVisible)
+        assertFalse(renderModelOf(ConversationUiState.Failed).utteranceLabelVisible)
+    }
+
+    @Test
+    fun `받아쓰기 전에도 발화 카드는 자리를 지킨다`() {
+        // 레이블만 뜨고 문장은 비어 있는 상태(메인 2·4)다. 카드가 접히면 마이크를 누른
+        // 직후 화면이 크게 흔들린다.
+        val model = renderModelOf(ConversationUiState.Listening())
+        assertTrue(model.utteranceVisible)
+        assertEquals("", model.utteranceText)
+    }
 }

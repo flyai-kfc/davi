@@ -181,6 +181,7 @@ class ConversationActivity : AppCompatActivity() {
         // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
         binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
 
+
         render(uiState)
     }
 
@@ -287,7 +288,9 @@ class ConversationActivity : AppCompatActivity() {
             lastQuestionKey = questionKey
             binding.cardQuestion.scrollTo(0, 0)
         }
+        binding.cardUtteranceContainer.isVisible(model.utteranceVisible)
         binding.cardUtterance.isVisible(model.utteranceVisible)
+        binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
         binding.cardUtterance.text = model.utteranceText
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
@@ -655,6 +658,7 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private companion object {
+
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
 
         /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
