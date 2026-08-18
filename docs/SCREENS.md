@@ -56,6 +56,12 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 - [미결] 카드의 "반복 애니메이션" 실물 미정(현재 일러스트 슬롯만).
 - 구현 연결: `OnboardingActivity`로 구현됨(#123). 권한 두 개가 갖춰지면 `ConversationActivity`로
   자동 진행하고, 밖에서 권한이 꺼지면 그쪽 `onResume`이 이 화면으로 되돌린다.
+- **되돌리는 경로가 둘이다**(#190). 앱으로 돌아왔을 때 판정하는 위 경로에 더해, **안내 중 접근성이
+  꺼지면 서비스가 스스로** 이 화면을 앞으로 가져온다(`ServiceOffAction.RETURN_TO_APP`). 사용자는
+  설정 앱에 있으므로 오버레이로는 알릴 수 없고, 서비스가 띄운 토스트는 화면 전환에 삼켜진다(실측) —
+  **왜 왔는지는 이 화면이 말한다**(`EXTRA_GUIDE_STOPPED` → `guide_service_off`).
+  오버레이 권한까지 꺼져 있으면 복귀 자체가 막히므로(`BAL_ALLOW_SAW_PERMISSION` 면제 없음)
+  그때만 서비스가 토스트로 알린다.
 
 ## MA-1 홈 — 버킷 Now
 
