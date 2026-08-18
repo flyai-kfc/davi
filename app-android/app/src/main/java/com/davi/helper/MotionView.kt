@@ -27,7 +27,7 @@ abstract class MotionView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
 
-    private val driver = MotionDriver(context) { elapsed, delta ->
+    private val driver = MotionDriver { elapsed, delta ->
         onMotionFrame(elapsed, delta)
         invalidate()
     }

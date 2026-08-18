@@ -1,7 +1,6 @@
 package com.davi.helper
 
-import android.content.Context
-import android.provider.Settings
+import android.animation.ValueAnimator
 import android.view.Choreographer
 
 /**
@@ -9,17 +8,17 @@ import android.view.Choreographer
  * (글자 등장·오버레이 강조·제스처 손동작 시연)도 이걸 쓴다.
  *
  * **`ValueAnimator`를 쓰지 않는다.** 무한 반복에서 시스템 애니메이션 배율이 0이면
- * `ValueAnimator`는 "즉시 끝"으로 동작해 반복이 이상해진다. 여기서는 배율을 **켜짐/꺼짐
- * 신호로만** 읽고, 프레임은 [Choreographer]에서 직접 받는다 — 꺼져 있으면 정지 프레임 한 장만
+ * `ValueAnimator`는 "즉시 끝"으로 동작해 반복이 이상해진다(#148에서 유지 확정 — 오버레이의
+ * 1회성 애니메이션과 달리 무한 반복에는 이 구동이 맞다). 모션 꺼짐은 [ValueAnimator.areAnimatorsEnabled]를
+ * **켜짐/꺼짐 신호로만** 읽고 — 배율 0과 절전 모드를 함께 반영하는 공식 API라 오버레이 계열과
+ * 판정이 같다 — 프레임은 [Choreographer]에서 직접 받는다. 꺼져 있으면 정지 프레임 한 장만
  * 그리고 루프를 돌지 않는다(디자인 캡션 "모션 끄기 시 정지 프레임").
  *
  * 시작·정지는 호출자의 생명주기 책임이다. 화면이 가려졌는데 돌고 있으면 배터리만 먹는다.
  */
 class MotionDriver(
-    context: Context,
     private val onFrame: (elapsedSeconds: Float, deltaSeconds: Float) -> Unit,
 ) {
-    private val appContext = context.applicationContext
     private val choreographer = Choreographer.getInstance()
 
     private var running = false
@@ -28,7 +27,7 @@ class MotionDriver(
 
     /** 모션이 꺼져 있으면 true. 호출자가 "움직이지 않는 그림"을 골라야 할 때 본다. */
     val isMotionDisabled: Boolean
-        get() = animatorDurationScale() == 0f
+        get() = !ValueAnimator.areAnimatorsEnabled()
 
     // 타입을 명시한다 — 콜백 본문이 자기 자신을 다시 거는 구조라, 추론에 맡기면 순환한다.
     private val frameCallback: Choreographer.FrameCallback = Choreographer.FrameCallback { frameNanos ->
@@ -68,19 +67,6 @@ class MotionDriver(
         running = false
         choreographer.removeFrameCallback(frameCallback)
     }
-
-    /**
-     * 시스템 "애니메이션 배율" 설정. 접근성·배터리 절약 목적으로 꺼 둔 사용자가 있다.
-     *
-     * 설정을 못 읽으면 켜진 것으로 본다 — 못 읽었다는 이유로 애니메이션을 없애면
-     * 멀쩡한 기기에서 화면이 죽어 보인다.
-     */
-    private fun animatorDurationScale(): Float =
-        Settings.Global.getFloat(
-            appContext.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        )
 
     private companion object {
         const val NANOS_PER_SECOND = 1_000_000_000f
