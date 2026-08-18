@@ -153,7 +153,7 @@ class GuideBoxLayoutTest {
         // 그러면 키보드를 조금 덮더라도 겹침이 가장 작은 자리가 낫다.
         val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = false)))
 
-        assertEquals(1120f, layout?.box?.top)
+        assertEquals(TARGET.bottom + TARGET_GAP, layout?.box?.top)
     }
 
     @Test
@@ -332,7 +332,7 @@ class GuideBoxLayoutTest {
         val withRow = compute(text, target = TARGET, avoid = listOf(band), controlHeight = CONTROL_ROW)
 
         assertEquals(1000f - TARGET_GAP - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
-        assertEquals(1120f, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
+        assertEquals(TARGET.bottom + TARGET_GAP, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
     }
 
     // --- 중앙 배치 (GD-4 종료 확인, #193) ----------------------------------------
@@ -392,8 +392,12 @@ class GuideBoxLayoutTest {
         /** 화면 위아래 가장자리와의 여백. 좌우(MARGIN)와 다른 값이다. */
         const val MARGIN_V = 24f
 
-        /** 강조 상자와 안내창 사이. **셋 다 다른 값이어야** 어느 하나를 빌려 써도 걸린다. */
-        const val TARGET_GAP = 20f
+        /**
+         * 강조 상자와 안내창 사이. **MARGIN(20) · MARGIN_V(24)와 달라야 한다** — 같은 값이면
+         * 대상 간격이 다시 화면 여백을 빌려 써도 테스트가 통과한다(PR #229 재리뷰에서
+         * 회귀를 넣어 30개 전부 통과하는 것이 확인됐다).
+         */
+        const val TARGET_GAP = 28f
         const val LINE_HEIGHT = 30f
 
         /** 칩이 앉는 컨트롤 행 높이(#126). */

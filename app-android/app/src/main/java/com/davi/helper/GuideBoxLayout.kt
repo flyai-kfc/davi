@@ -82,7 +82,7 @@ object GuideBoxLayout {
             (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - paddingVertical * 2 - controlHeight) / lineHeight)
                 .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // 중앙 배치는 자리를 흥정하지 않는다 — 회피를 안 보므로 축소 폴백이 할 일도 없다.
         if (centered) return primary.layout
         if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
@@ -99,7 +99,7 @@ object GuideBoxLayout {
         val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
         // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         val improves = compact.hardCoverage < primary.hardCoverage ||
@@ -124,7 +124,6 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         avoid: List<Avoid>,
-        margin: Float,
         marginVertical: Float,
         targetGap: Float,
         padding: Float,
