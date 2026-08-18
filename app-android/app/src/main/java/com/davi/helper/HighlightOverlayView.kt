@@ -445,26 +445,38 @@ class HighlightOverlayView(context: Context) : View(context) {
      */
     private fun boxBounds(): GuideBoxLayout.Bounds {
         val drawable = drawableBounds()
-        val (safeTop, safeBottom) = safeVerticalRange() ?: return drawable
-        return drawable.copy(
-            top = maxOf(drawable.top, safeTop),
-            bottom = minOf(drawable.bottom, safeBottom),
+        val safe = safeBounds() ?: return drawable
+        return GuideBoxLayout.Bounds(
+            left = maxOf(drawable.left, safe.left),
+            top = maxOf(drawable.top, safe.top),
+            right = minOf(drawable.right, safe.right),
+            bottom = minOf(drawable.bottom, safe.bottom),
         )
     }
 
     /**
-     * 화면 좌표에서 시스템 바를 뺀 세로 구간. 읽을 수 없으면 null이고 그때는 아무것도 빼지 않는다
+     * 화면 좌표에서 시스템 바를 뺀 범위. 읽을 수 없으면 null이고 그때는 아무것도 빼지 않는다
      * (지금 동작 그대로 — 검증 기기 밖에서 근거 없이 자리를 흔들지 않는다).
+     *
+     * **네 변을 다 자른다.** 세로만 자르던 첫 구현은 가로 화면에서 그대로 뚫렸다 — 안내 대상
+     * 앱은 우리 액티비티와 달리 세로 고정이 아니다(`AndroidManifest`의 `screenOrientation`은
+     * 우리 화면에만 걸려 있다). 2026-08-18 SM-S921N 실측: 가로(`ROTATION_90`)에서 내비게이션
+     * 바가 **오른쪽 변으로 가고** 안내창이 그 위를 덮어, 같은 좌표의 홈 버튼이 오버레이가
+     * 있을 때만 죽었다(없을 때 `LauncherActivity`, 있을 때 브라우저 그대로).
      */
-    private fun safeVerticalRange(): Pair<Float, Float>? {
+    private fun safeBounds(): GuideBoxLayout.Bounds? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val windowManager = context.getSystemService(WindowManager::class.java) ?: return null
         val metrics = windowManager.currentWindowMetrics
         val insets = WindowInsetsCompat
             .toWindowInsetsCompat(metrics.windowInsets)
             .getInsets(WindowInsetsCompat.Type.systemBars())
-        return (metrics.bounds.top + insets.top).toFloat() to
-            (metrics.bounds.bottom - insets.bottom).toFloat()
+        return GuideBoxLayout.Bounds(
+            left = (metrics.bounds.left + insets.left).toFloat(),
+            top = (metrics.bounds.top + insets.top).toFloat(),
+            right = (metrics.bounds.right - insets.right).toFloat(),
+            bottom = (metrics.bounds.bottom - insets.bottom).toFloat(),
+        )
     }
 
     private fun RectF.toLayoutBounds() = GuideBoxLayout.Bounds(left, top, right, bottom)
