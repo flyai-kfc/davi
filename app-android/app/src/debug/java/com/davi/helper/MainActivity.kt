@@ -115,7 +115,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnAccessibility.setOnClickListener { openAccessibilitySettings() }
-        binding.btnOverlay.setOnClickListener { openOverlaySettings() }
         binding.btnVoice.setOnClickListener { onVoiceInputTapped() }
         binding.btnStart.setOnClickListener { startGuide() }
         binding.btnStop.setOnClickListener { GuideSession.stop() }
@@ -487,15 +486,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    private fun openOverlaySettings() {
-        startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName"),
-            ),
-        )
     }
 
     private fun openAppSettings() {

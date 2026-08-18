@@ -40,15 +40,6 @@
             android:text="@string/btn_open_accessibility"
             android:textSize="@dimen/davi_type_body_lg" />
 
-        <Button
-            android:id="@+id/btn_overlay"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_spacing_md"
-            android:minHeight="@dimen/davi_size_touch_target"
-            android:text="@string/btn_open_overlay"
-            android:textSize="@dimen/davi_type_body_lg" />
-
         <TextView
             android:id="@+id/goal_label"
             android:layout_width="match_parent"

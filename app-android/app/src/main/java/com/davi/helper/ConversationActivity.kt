@@ -47,6 +47,16 @@ class ConversationActivity : AppCompatActivity() {
     private var textToSpeechHelper: TextToSpeechHelper? = null
     private var audioPermissionRequested = false
 
+    /**
+     * 이 인스턴스에서 알림 권한을 이미 물었는가(#212 · PR #240 리뷰).
+     *
+     * **영구 거부 상태에서는 요청이 화면 없이 즉시 거부된다** — 그래서 다시 물어도 보이지 않지만,
+     * `onResume`마다 부르는 것은 의미가 없어 인스턴스당 한 번으로 묶는다.
+     * `shouldShowRequestPermissionRationale`로 가르지 않는 이유도 그것이다: 그 값은 **한 번 거부**
+     * 에서만 true고 영구 거부에서는 다시 false라 "이미 거부했다"의 판정으로 쓸 수 없다.
+     */
+    private var notificationPermissionRequested = false
+
     private var uiState: ConversationUiState = ConversationUiState.Home()
 
     /** 누를 수 없는 동안의 마이크 글리프 불투명도(#172). 근거는 dimens.xml 주석. */
@@ -116,6 +126,15 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * 안내가 멈춘 것을 알릴 유일한 수단이 알림이라 한 번 묻는다(#212).
+     *
+     * **결과를 보지 않는다** — 거부해도 진행을 막지 않는다. 거부하면 그 갈래가 조용해질 뿐이고
+     * (지금도 그렇다), 사용자가 앱을 열면 [onResume]의 권한 재판정이 여전히 잡아낸다.
+     */
+    private val requestPostNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     private val requestRecordAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             audioPermissionRequested = true
@@ -158,6 +177,8 @@ class ConversationActivity : AppCompatActivity() {
         setContentView(binding.root)
         launchableAppIndex.start()
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
+        notificationPermissionRequested =
+            savedInstanceState?.getBoolean(NOTIFICATION_PERMISSION_REQUESTED) ?: false
 
         // 3버튼 내비게이션에서 시스템이 내비 바에 스크림을 깔아 배경을 가린다(PR #162 리뷰 실측:
         // y=2178부터 54dp가 흰 띠). 배경이 화면 끝까지 깔리려면 그 대비 강제를 꺼야 한다.
@@ -227,28 +248,49 @@ class ConversationActivity : AppCompatActivity() {
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
     override fun onResume() {
         super.onResume()
-        // 두 권한은 밖에서 꺼질 수 있다(설정 회수·앱 업데이트). 없는 채로 ○를 누르면
-        // GuideSession은 시작되는데 화면을 못 읽거나 오버레이가 안 그려져 사용자가 런처에
-        // 혼자 남는다 — 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
+        // 접근성은 밖에서 꺼질 수 있다(설정 회수·앱 업데이트). 없는 채로 ○를 누르면
+        // GuideSession은 시작되는데 화면을 못 읽어 사용자가 런처에 혼자 남는다 —
+        // 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
         //
         // 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다** — 토스트로 알린다(#29).
-        // 지시("다시 켜 주세요")의 대상은 곧 뜰 온보딩 화면의 두 버튼이다.
+        // 지시("다시 켜 주세요")의 대상은 곧 뜰 온보딩 화면의 버튼이다.
+        //
+        // **예전에는 오버레이 권한도 같이 봤다**(#212 이전). 그쪽만 회수되는 갈래가 있어서
+        // 여기서 세션을 끊어야 했는데 — 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
+        // 안내만 안 그려졌다 — 그 권한을 걷어내며 그 갈래 자체가 없어졌다.
         if (!canStartGuide()) {
-            // 세션을 여기서 끊는다. 접근성이 꺼진 경우는 onUnbind가 정리하지만,
-            // **오버레이만 회수되면** 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
-            // 안내만 안 그려진다 — 그대로 두면 세션은 도는데 중지 수단만 손이 닿지 않는다.
+            // 접근성 회수는 onUnbind도 정리하지만, 그 콜백보다 이 화면이 먼저 살아나는 경합이
+            // 있어 여기서도 끊는다. 두 번 불려도 GuideSession.stop()은 멱등이다.
             GuideSession.stop()
             Toast.makeText(this, R.string.guide_permission_lost, Toast.LENGTH_LONG).show()
             startActivity(Intent(this, OnboardingActivity::class.java))
             finish()
             return
         }
+        // **여기가 알림 권한을 묻는 자리다**(#212 · PR #240 리뷰). 온보딩에서 물으면 접근성이
+        // 이미 켜진 기기에서 그 화면이 같은 프레임에 finish()돼 대화상자가 함께 사라진다 —
+        // 하필 이 알림이 필요한 사람이 그 사람이다(알림은 "안내 중 접근성이 꺼졌을 때" 뜬다).
+        // 이 화면은 사라지지 않고, **모든 안내 세션이 여기서 시작하므로** 묻는 시점이 항상
+        // 세션보다 앞선다. 안내가 도는 중에는 사용자가 다른 앱에 있어 물을 화면 자체가 없다.
+        askPostNotificationsOnce()
         GuideSession.addListener(sessionListener)
         render(uiState)
     }
 
+    /** 인스턴스당 한 번만 묻는다. 판정 근거는 [notificationPermissionRequested]에 있다. */
+    private fun askPostNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (notificationPermissionRequested) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        notificationPermissionRequested = true
+        requestPostNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(AUDIO_PERMISSION_REQUESTED, audioPermissionRequested)
+        outState.putBoolean(NOTIFICATION_PERMISSION_REQUESTED, notificationPermissionRequested)
         super.onSaveInstanceState(outState)
     }
 
@@ -862,6 +904,7 @@ class ConversationActivity : AppCompatActivity() {
     private companion object {
 
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
+        const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
 
         /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
         const val OPAQUE_IMAGE_ALPHA = 255

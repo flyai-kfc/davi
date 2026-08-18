@@ -629,7 +629,6 @@
     <dimen name="davi_onboarding_button_stroke">1.5dp</dimen>
     <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
     <dimen name="davi_onboarding_button_margin_top">50dp</dimen>
-    <dimen name="davi_onboarding_button_gap">19dp</dimen>
     <dimen name="davi_onboarding_hint_margin_top">29dp</dimen>
     <!-- 글자는 환산하지 않는다(1:1). 카드 제목 20 · 버튼 라벨 18 · 본문과 안내 17. -->
     <dimen name="davi_type_onboarding_title">20sp</dimen>

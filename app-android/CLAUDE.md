@@ -18,6 +18,15 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `debug` 전용 비교 실험(#203)이며, `local.properties`의 `DAVI_DISABLE_PRIVACY_MASKING`이나
   일회성 `-PdaviDisablePrivacyMasking`(속성 우선)으로 켠다. release는 상수 `false`에
   `verifyReleaseConfiguration`으로 잠긴다. 절차·경계는 `DEVICE-E2E-RUN.md`와 `../SPEC.md` §3.
+- **특수 권한은 접근성 하나뿐이다**(#212). `SYSTEM_ALERT_WINDOW`는 선언하지 않는다 — 창 타입이
+  `TYPE_ACCESSIBILITY_OVERLAY`라 그리기에 필요 없고(#56), 남아 있던 유일한 쓰임인 **안내 중 자동
+  복귀**(`startActivity`가 기대던 BAL 면제)는 **알림 탭**이 대신한다. 2026-08-18 실측에서 그 권한
+  없이는 복귀가 **조용히 막히는 것**을 확인했다(로그는 나가는데 최상단이 설정 앱 그대로, BAL 차단
+  로그도 없음). **복귀를 되살리려면 그 권한이 다시 필요하고, 시니어가 설정 앱을 파고드는 온보딩
+  비용도 함께 돌아온다** — `ServiceOffAction` KDoc부터 읽을 것.
+  통지 수단이 알림 하나인 이유도 같은 자리에 있다: 우리가 백그라운드일 때 토스트는 억제되고
+  (#190 실측) 오버레이는 서비스와 함께 죽는다. `POST_NOTIFICATIONS`는 온보딩이 한 번 묻고,
+  거부해도 진행을 막지 않는다.
 - **세션 관리** — 사용자가 입력한 목표를 시작·중지한다. **세션이 없으면 화면을 아예 읽지 않는다**(직렬화 이전에 끊는다). 인메모리라 프로세스가 죽으면 함께 끝난다.
   **화면이 꺼져 있어도 읽지 않는다**(아래 오버레이 렌더링 참고).
 - **음성 목표 입력** — `SpeechRecognizer`는 온디바이스를 우선하고, 서버의 LLM 질문은 Android
@@ -92,7 +101,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
-- **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화·오버레이 권한 확인까지 끝난다. Android Studio를 열 필요가 없다.
+- **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
 - **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성·오버레이를 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다.
 - **Gradle CLI가 `Unable to establish loopback connection`으로 죽는 PC가 있다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓 임시 폴더이고, 스크립트가 흡수한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.

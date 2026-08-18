@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.ViewGroup
@@ -13,12 +12,15 @@ import androidx.core.view.updateLayoutParams
 import com.davi.helper.databinding.ActivityOnboardingBinding
 
 /**
- * 온보딩 — 접근성·오버레이 권한 안내 (#123). 릴리스 진입점.
- * 권한은 설정 화면에 다녀와야 켜지므로 onResume마다 판정해, 둘 다 있으면
- * 대화 화면으로 넘어가고 자신은 백스택에서 빠진다.
+ * 온보딩 — **접근성 권한 하나**를 켜게 안내한다(#123). 릴리스 진입점.
+ * 권한은 설정 화면에 다녀와야 켜지므로 onResume마다 판정해, 갖춰지면 대화 화면으로 넘어가고
+ * 자신은 백스택에서 빠진다.
  *
- * 안내 중 접근성이 꺼지면 서비스가 이 화면을 앞으로 가져오고([ServiceOffAction.RETURN_TO_APP]),
- * **왜 왔는지는 이 화면이 말한다**(#190) — 서비스에서 띄운 토스트는 화면 전환에 삼켜진다.
+ * `SYSTEM_ALERT_WINDOW`는 여기서 사라졌다(#212) — 창 타입이 그 권한을 타지 않고(#56), 남아 있던
+ * 유일한 쓰임인 자동 복귀는 알림 탭이 대신한다(`ServiceOffAction` KDoc).
+ *
+ * 안내 중 접근성이 꺼지면 서비스가 알림을 띄우고, 그 알림을 누르면 이 화면으로 온다.
+ * **왜 왔는지는 이 화면이 말한다**(#190, `EXTRA_GUIDE_STOPPED`).
  */
 class OnboardingActivity : AppCompatActivity() {
 
@@ -56,16 +58,15 @@ class OnboardingActivity : AppCompatActivity() {
         binding.btnAccessibility.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-        binding.btnOverlay.setOnClickListener {
-            startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName"),
-                ),
-            )
-        }
     }
 
+    /**
+     * **알림 권한은 여기서 묻지 않는다**(#212 · PR #240 리뷰). 접근성이 이미 켜진 기기에서는
+     * 아래 onResume이 같은 프레임에 finish()해 권한 대화상자가 함께 사라지는데, 하필 그 사람이
+     * 그 알림을 받아야 할 사람이다(알림은 "안내 중 접근성이 꺼졌을 때" 뜬다).
+     * 묻는 자리는 [ConversationActivity.onResume]이다 — 사라지지 않고, 모든 안내 세션이 거기서
+     * 시작한다.
+     */
     override fun onResume() {
         super.onResume()
         if (canStartGuide()) {
