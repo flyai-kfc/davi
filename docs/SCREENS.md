@@ -61,7 +61,8 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
   설정 앱에 있으므로 오버레이로는 알릴 수 없고, 서비스가 띄운 토스트는 화면 전환에 삼켜진다(실측) —
   **왜 왔는지는 이 화면이 말한다**(`EXTRA_GUIDE_STOPPED` → `guide_service_off`).
   오버레이 권한까지 꺼져 있으면 복귀 자체가 막히므로(백그라운드 activity 실행 금지의 면제가
-  **둘 다** 그 권한에서 나온다 — `BAL_ALLOW_SAW_PERMISSION` · `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`)
+  **둘 다** 그 권한에서 나온다 — `BAL_ALLOW_SAW_PERMISSION` · `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`.
+  **후자는 구 창 타입 기준 실측이고 #56 이후 인과가 끊겼다** — 결론은 전자만으로 선다)
   그때만 서비스가 토스트로 알린다. 이 복귀는 **온보딩을 task 루트로 만든다**(`CLEAR_TASK`) —
   살아 있는 `ConversationActivity` 위에 얹으면 되돌아올 때마다 대화 화면이 한 겹씩 쌓인다.
 
