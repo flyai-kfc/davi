@@ -54,8 +54,13 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
     }
 
     private fun scroll(decision: DisplayedDecision, step: Int) {
-        val direction = decision.action.direction
+        val serverDirection = decision.action.direction
             ?: throw GuidedScenarioFailure("scroll_direction_missing", step)
+        // 계약(C17)의 direction은 **보러 가는 방향**이고 여기서 재현할 것은 **손가락 동작**이다.
+        // 앱이 손 모션에서 하는 변환(GestureMotion.fingerDirectionFor)과 같은 뒤집기를 드라이버도
+        // 한다 — 안 하면 사용자가 안내대로 했을 때와 정반대로 쓸어 시나리오가 막다른 곳으로 간다.
+        // 전역 제스처(OPEN_APP_DRAWER)는 direction 필드가 없어 이 변환 대상이 아니다.
+        val direction = fingerDirectionFor(serverDirection)
         val values = decision.targetBounds
         if (values == null) {
             // 서버 계약은 대상 없는 scroll을 전역 제스처로 허용한다. 실제 사용자도 빈 화면 영역에서
@@ -65,6 +70,15 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
             swipe(targetBounds(decision, step), direction)
         }
     }
+
+    /** 서버가 준 "보러 가는 방향" → 실제로 재현할 손가락 방향(C17). */
+    private fun fingerDirectionFor(direction: GuidedSwipeDirection): GuidedSwipeDirection =
+        when (direction) {
+            GuidedSwipeDirection.UP -> GuidedSwipeDirection.DOWN
+            GuidedSwipeDirection.DOWN -> GuidedSwipeDirection.UP
+            GuidedSwipeDirection.LEFT -> GuidedSwipeDirection.RIGHT
+            GuidedSwipeDirection.RIGHT -> GuidedSwipeDirection.LEFT
+        }
 
     private fun swipeWholeScreen(direction: GuidedSwipeDirection) {
         val marginX = max(24, device.displayWidth / 8)
