@@ -131,7 +131,16 @@
 
     <!-- MA-1 홈 (docs/SCREENS.md). \n을 명시하는 이유는 제목이 28sp라 글꼴 배율 2.0에서
          한 줄에 안 들어가고, 없으면 어디서 끊길지 기기가 정하기 때문이다. -->
-    <string name="voice_home_title">누르고\n말해 주세요</string>
+    <!--
+      메인 1 홈(#231). 제목이 두 줄이고 **줄마다 색이 다르다**(둘째 줄 #F2001C) — 한
+      TextView에 넣으면 색을 가를 수 없어 뷰를 둘로 나눴다.
+      가운뎃점은 시안 그대로다(· 문구 ·).
+    -->
+    <string name="voice_home_title">어려운 건</string>
+    <string name="voice_home_title_accent">물어보세요</string>
+    <string name="voice_home_subtitle">· 하나씩 알려드릴게요 ·</string>
+    <string name="voice_home_bubble">무엇을 도와드릴까요?</string>
+    <string name="voice_home_caption">· 눌러서 말하기 ·</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
 
     <!-- 대화 화면 -->

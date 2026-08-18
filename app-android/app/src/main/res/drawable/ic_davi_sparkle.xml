@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 1 제목 옆 폭죽(#231). 획 3줄뿐이고 채움이 없다 — 시안 `#F2001C` · 굵기 4 · round cap.
+
+  **시안의 상자(60x57)는 쓰지 않는다.** 그 프레임은 만들 때 임의로 준 크기이고
+  `clipsContent = false`라 자식이 밖으로 나가도 그대로 그려진다 — 실제로 셋째 선이 y62까지
+  내려가고 round cap이 2를 더해 y64다. 그래서 **잉크 상자 43x32**를 viewport로 잡았다
+  (2026-08-18 디자인 담당 확인).
+
+  좌표는 시안의 폭죽 원점 기준 값에서 잉크 원점 (4, 32)를 뺀 것이다.
+
+    시안                          여기
+    x6  y34  M 0 20 L 5 0    →   (2,22) → (7,2)
+    x16 y42  M 0 18 L 14 0   →   (12,28) → (26,10)
+    x24 y52  M 0 10 L 21 0   →   (20,30) → (41,20)
+
+  크기는 x1.2, 굵기는 환산하지 않는다(선 두께 1:1, `01-tokens.md` §6-1).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="52dp"
+    android:height="38dp"
+    android:viewportWidth="43"
+    android:viewportHeight="32">
+    <path
+        android:pathData="M2,22 L7,2"
+        android:strokeColor="#F2001C"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M12,28 L26,10"
+        android:strokeColor="#F2001C"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M20,30 L41,20"
+        android:strokeColor="#F2001C"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+</vector>

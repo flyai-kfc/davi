@@ -302,4 +302,14 @@
       손의 좌상단 실루엣도 남는다.
     -->
     <color name="davi_overlay_hand_outline">#FFF2657E</color>
+
+    <!--
+      메인 1 홈(#231). 말풍선은 **불투명**이다 — 뒤에 캐릭터가 있어 유리 너머로 검은 몸통이
+      비치면 회색 얼룩이 생긴다. 값은 배경 위 흰 72% 글라스와 같아 보이도록 뽑았다.
+      제목 둘째 줄과 폭죽의 빨강은 로고(`ic_davi_logo`)의 `#F2001C`와 같은 값이다.
+    -->
+    <color name="davi_home_bubble_top">#FCF6F8</color>
+    <color name="davi_home_bubble_bottom">#FBF3F6</color>
+    <color name="davi_home_bubble_border">#E6FFFFFF</color>
+    <color name="davi_home_title_accent">#F2001C</color>
 </resources>

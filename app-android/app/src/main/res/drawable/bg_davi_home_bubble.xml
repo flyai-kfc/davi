@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 1 말풍선(#231). r24 · 테두리 `#FFFFFF` @90% 1.5.
+
+  **채움이 불투명이다**(`#FCF6F8` → `#FBF3F6`). 시안은 처음 배경 위 흰 72% 글라스였는데,
+  이 화면은 말풍선 뒤에 캐릭터가 있어 유리 너머로 검은 몸통이 비치며 회색 얼룩이 생긴다.
+  값은 배경 위 글라스와 **같아 보이도록** 뽑은 것이라 재질이 달라 보이지 않는다.
+  메인 8 카드가 같은 사정으로 불투명(`#FCFCFB` → `#F7F4F5` → `#F2EDF0`)이다.
+
+  규칙: **카드·말풍선 뒤에 캐릭터가 있으면 불투명으로 간다.**
+
+  반지름과 선 두께는 환산하지 않는다(`01-tokens.md` §6-1).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/davi_home_bubble_radius" />
+    <gradient
+        android:type="linear"
+        android:angle="270"
+        android:startColor="@color/davi_home_bubble_top"
+        android:endColor="@color/davi_home_bubble_bottom" />
+    <stroke
+        android:width="@dimen/davi_home_bubble_stroke"
+        android:color="@color/davi_home_bubble_border" />
+</shape>

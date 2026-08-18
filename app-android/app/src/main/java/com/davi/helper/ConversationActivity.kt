@@ -13,6 +13,7 @@ import android.speech.SpeechRecognizer
 import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -301,10 +302,34 @@ class ConversationActivity : AppCompatActivity() {
         // 배율마다 다른 값을 두지 않고 한 구조로 양쪽을 만족시킨다.
         // (1.0배율에서 아래가 177dp 비어 있었고, 2.0에서는 0이다.)
         binding.spaceFlexTop.isVisible(model.homeVisible || model.guidingVisible)
-        binding.spaceHomeMid.isVisible(model.homeVisible || model.guidingVisible)
+        // **홈에서는 아래 빈칸을 걷는다**(#231) — 남는 세로를 아래가 나눠 가지면 말풍선과
+        // 마이크 사이가 시안(48)과 무관하게 벌어진다. 홈은 마이크가 바닥에 못 박혀 있어
+        // 아래 여백(davi_home_control_reserve)이 그 자리를 대신한다.
+        binding.spaceHomeMid.isVisible(model.guidingVisible)
         binding.homeTitle.isVisible(model.homeVisible)
-        binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
-        model.statusRes?.let { binding.homeStatus.setText(it) }
+        binding.homeHead.isVisible(model.homeVisible)
+        binding.homeSubtitle.isVisible(model.homeVisible)
+        binding.homeCane.isVisible(model.homeVisible)
+        binding.homeBubble.isVisible(model.homeVisible)
+        binding.homeCaption.isVisible(model.homeVisible)
+        // **마이크와 글로우가 홈에서만 올라간다**(#231) — 아래에 캡션이 들어가기 때문이다.
+        // 둘을 함께 옮긴다. 글로우 여백은 마이크 기하에서 나온 값이라 혼자 두면
+        // 후광만 제자리에 남는다(davi_mic_margin_bottom 주석의 파생 관계).
+        binding.micSlot.updateLayoutParams<FrameLayout.LayoutParams> {
+            bottomMargin = resources.getDimensionPixelSize(
+                if (model.homeVisible) R.dimen.davi_home_mic_margin_bottom
+                else R.dimen.davi_mic_margin_bottom,
+            )
+        }
+        binding.glowMic.updateLayoutParams<FrameLayout.LayoutParams> {
+            bottomMargin = resources.getDimensionPixelSize(
+                if (model.homeVisible) R.dimen.davi_home_glow_margin_bottom
+                else R.dimen.davi_glow_mic_margin_bottom,
+            )
+        }
+        // **실패 문구는 말풍선이 받는다**(#231). 따로 두면 마이크와 겹치고, 애초에
+        // "잘 듣지 못했어요"는 다비가 하는 말이라 말풍선이 제자리다.
+        binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
         binding.logo.isVisible(model.logoVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
@@ -407,8 +432,13 @@ class ConversationActivity : AppCompatActivity() {
         // **마이크 유무로 일반화하지 않았다.** 최종 확인·실패도 마이크가 없지만 그쪽은
         // 이미 확인된 배치라, 근거 없이 건드리면 방금 맞춘 것이 틀어진다.
         binding.cardColumn.updatePadding(
-            bottom = if (model.guidingVisible) 0
-            else resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve),
+            bottom = when {
+                model.guidingVisible -> 0
+                // 홈만 마이크가 위로 올라가 있어 비울 자리도 그만큼 크다(#231).
+                model.homeVisible ->
+                    resources.getDimensionPixelSize(R.dimen.davi_home_control_reserve)
+                else -> resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve)
+            },
         )
         // 배지 위 여백도 이 화면만 얕다 — 세로로 쌓는 것이 많아 배율이 커지면 아래가
         // 화면 밖으로 나간다. 위를 줄여 그 자리를 아래에 준다.
