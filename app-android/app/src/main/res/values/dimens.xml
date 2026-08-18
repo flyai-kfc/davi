@@ -178,9 +178,22 @@
     -->
     <dimen name="davi_stacked_button_height">72dp</dimen>
     <dimen name="davi_stacked_button_radius">14dp</dimen>
-    <dimen name="davi_stacked_button_gap">35dp</dimen>
+    <!--
+      두 버튼 사이. **시안(29 -> 35dp)보다 좁다** — 아래 하단 안내와 같은 사정이다.
+      배율 2.0에서 라벨이 두 줄로 늘면 버튼이 커지고 그만큼 아래가 밀린다.
+      버튼끼리는 테두리·채움으로 이미 갈리므로 간격이 조금 좁아도 붙어 보이지 않는다.
+    -->
+    <dimen name="davi_stacked_button_gap">24dp</dimen>
     <dimen name="davi_stacked_pair_margin_top">53dp</dimen>
-    <dimen name="davi_guiding_bottom_margin_top">53dp</dimen>
+    <!--
+      주 버튼과 하단 안내 사이. **시안(44 -> 53dp)보다 좁다.** 배율 2.0에서 하단 안내가
+      세 줄로 늘면서 화면 밖으로 나갔고(실측 셋째 줄 "다비를 나가주세요"가 잘렸다),
+      이 자리를 줄여 그 줄을 들여왔다.
+
+      **하단 안내는 장식이 아니라 "어떻게 안내로 돌아가는지" 알려주는 지시문이다** —
+      잘리면 사용자가 나가는 법을 모른다. 간격이 시안보다 좁은 것보다 그쪽이 나쁘다.
+    -->
+    <dimen name="davi_guiding_bottom_margin_top">20dp</dimen>
     <!--
       메인 10 다이얼로그. 252x168 r20 -> 폭은 카드 폭 규칙(좌우 여백 24dp)을 따르고
       높이·반지름만 환산한다. 확인쌍은 오버레이(GD-3·4)와 같은 v2/chip/confirm-pair라
@@ -205,6 +218,12 @@
       36보다 얕으면 배지가 글자를 덮는다 — 그래서 임의로 더 줄일 수 없다.
     -->
     <dimen name="davi_card_padding_top_guiding">44dp</dimen>
+    <!--
+      안내 중 화면의 배지 위 여백. **다른 화면(72dp)보다 얕다** — 이 화면은 세로로 쌓는
+      것이 많아(카드 + 버튼 둘 + 하단 안내) 배율이 커지면 아래가 화면 밖으로 나간다.
+      위를 줄여 그 자리를 아래에 준다. X 버튼이 없는 화면이라 위가 비어도 허전하지 않다.
+    -->
+    <dimen name="davi_badge_margin_top_guiding">24dp</dimen>
 
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>

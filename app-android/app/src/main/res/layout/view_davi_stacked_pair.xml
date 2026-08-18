@@ -9,6 +9,10 @@
   **보조가 위, 주가 아래다.** 위가 "하던 것 계속", 아래가 "끝내기"라 파괴적인 쪽이
   아래에 온다.
 
+  **높이는 고정이 아니라 하한이다.** 시안 72dp를 그대로 박으면 배율 2.0에서 라벨이 두 줄이
+  되면서 아래가 잘린다(실기기: "기존 안내 이어서하기"의 둘째 줄이 사라졌다). minHeight는
+  스타일이 들고 있으므로 여기서는 wrap_content로 두면 된다.
+
   폭은 절대치를 쓰지 않고 부모(카드 폭)를 따른다 — 시안의 252가 카드 폭과 같은데
   코드의 카드는 312dp라, 절대치로 두면 가장자리가 어긋난다(메인 7에서 겪은 자리).
 -->
@@ -21,14 +25,14 @@
         android:id="@+id/btn_stacked_secondary"
         style="@style/Widget.Davi.Stacked.Secondary"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/davi_stacked_button_height"
+        android:layout_height="wrap_content"
         android:text="@string/conversation_guiding_resume" />
 
     <Button
         android:id="@+id/btn_stacked_primary"
         style="@style/Widget.Davi.Stacked.Primary"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/davi_stacked_button_height"
+        android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/davi_stacked_button_gap"
         android:text="@string/conversation_guiding_stop" />
 </LinearLayout>

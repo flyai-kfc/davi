@@ -268,8 +268,12 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        binding.spaceFlexTop.isVisible(model.homeVisible)
-        binding.spaceHomeMid.isVisible(model.homeVisible)
+        // **안내 중에도 유연 여백을 켠다**(#197). 남는 높이가 있으면 위아래로 나눠 먹어
+        // 내용이 가운데로 내려오고, 배율이 커져 남는 게 없으면 저절로 0이 된다 —
+        // 배율마다 다른 값을 두지 않고 한 구조로 양쪽을 만족시킨다.
+        // (1.0배율에서 아래가 177dp 비어 있었고, 2.0에서는 0이다.)
+        binding.spaceFlexTop.isVisible(model.homeVisible || model.guidingVisible)
+        binding.spaceHomeMid.isVisible(model.homeVisible || model.guidingVisible)
         binding.homeTitle.isVisible(model.homeVisible)
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
@@ -351,6 +355,14 @@ class ConversationActivity : AppCompatActivity() {
             bottom = if (model.guidingVisible) 0
             else resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve),
         )
+        // 배지 위 여백도 이 화면만 얕다 — 세로로 쌓는 것이 많아 배율이 커지면 아래가
+        // 화면 밖으로 나간다. 위를 줄여 그 자리를 아래에 준다.
+        binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
+            topMargin = resources.getDimensionPixelSize(
+                if (model.guidingVisible) R.dimen.davi_badge_margin_top_guiding
+                else R.dimen.davi_badge_margin_top,
+            )
+        }
         // 카드 위 패딩도 이 화면만 얕다 — 근거는 davi_card_padding_top_guiding 주석.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
