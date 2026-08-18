@@ -8,6 +8,12 @@
     <color name="davi_button_primary">#A50014</color>
     <color name="davi_button_on_primary">#FFFFFF</color>
     <color name="davi_button_kakao">#FEE500</color>
+    <!--
+      카카오 버튼 라벨색. Figma semantic 변수가 아직 없어 카카오 공식 디자인 가이드 값
+      (검정 85%)을 그대로 쓴다 — 브랜드 색이라 Figma 쪽도 이 값을 따라야 한다(E3).
+      Foundations 변수가 생기면 별칭으로 바꾼다.
+    -->
+    <color name="davi_button_on_kakao">#D9000000</color>
     <color name="davi_surface_secondary">#FFE1E1</color>
     <color name="davi_text_primary">#1A1A1A</color>
     <!--

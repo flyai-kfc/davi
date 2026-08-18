@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-1 로그인 (docs/SCREENS.md): 로고 · 앱명·태그라인 · button/oauth-kakao · 스킵.
+  Figma 디자인 확정 전의 최소 구현 — 전부 기존 토큰만 써서 확정 시 갈아입히기 쉽게 둔다.
+  폼형 화면이라 글자 확대 대비 루트 스크롤 컨벤션을 유지한다.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/login_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/davi_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="@dimen/davi_spacing_xl">
+
+        <ImageView
+            android:id="@+id/login_logo"
+            android:layout_width="@dimen/davi_logo_size"
+            android:layout_height="@dimen/davi_logo_size"
+            android:layout_marginTop="@dimen/davi_spacing_xl"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_davi_logo" />
+
+        <TextView
+            android:id="@+id/login_app_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_lg"
+            android:text="@string/app_name"
+            android:textAppearance="@style/TextAppearance.Davi.Title" />
+
+        <TextView
+            android:id="@+id/login_tagline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_sm"
+            android:text="@string/login_tagline"
+            android:textAppearance="@style/TextAppearance.Davi.BodyLg"
+            android:textColor="@color/davi_text_secondary" />
+
+        <!-- 글자 확대 시 스크롤로 자연히 접히는 가변 여백 — 버튼을 아래쪽에 묶는다. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/login_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/davi_spacing_md"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/login_in_progress"
+            android:textAppearance="@style/TextAppearance.Davi.Body"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_kakao_login"
+            style="@style/Widget.Davi.Button.Kakao"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_kakao_login" />
+
+        <Button
+            android:id="@+id/btn_login_skip"
+            style="@style/Widget.Davi.Button.Secondary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_spacing_md"
+            android:text="@string/btn_login_skip" />
+    </LinearLayout>
+</ScrollView>

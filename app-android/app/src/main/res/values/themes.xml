@@ -100,4 +100,10 @@
         <item name="backgroundTint">@null</item>
         <item name="android:textColor">@color/davi_text_primary</item>
     </style>
+    <!-- button/oauth-kakao (docs/SCREENS.md ON-1). 심벌 아이콘은 Figma 확정 시 공식 리소스로. -->
+    <style name="Widget.Davi.Button.Kakao">
+        <item name="android:background">@drawable/bg_davi_button_kakao</item>
+        <item name="backgroundTint">@null</item>
+        <item name="android:textColor">@color/davi_button_on_kakao</item>
+    </style>
 </resources>
