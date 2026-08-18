@@ -30,6 +30,7 @@ class GuideBoxLayoutTest {
         canvas = canvas,
         target = target,
         margin = MARGIN,
+        marginVertical = MARGIN_V,
         padding = PADDING,
         paddingVertical = PADDING_V,
         lineHeight = LINE_HEIGHT,
@@ -38,6 +39,17 @@ class GuideBoxLayoutTest {
         controlHeight = controlHeight,
         centered = centered,
     )
+
+    @Test
+    fun `아래에 비워 둔 높이가 상자 높이에 그대로 들어간다`() {
+        // 읽는 중 점 셋(27)처럼 컨트롤 행(90)이 아닌 값도 그대로 반영돼야 한다 —
+        // 참/거짓으로 다루면 값이 셋이 되는 순간 계산과 그리기가 갈린다(PR #229 리뷰).
+        val dots = 27f
+        val layout = compute("가나다", controlHeight = dots)
+
+        assertEquals(boxHeight(1, dots), layout!!.box.bottom - layout.box.top, 0.01f)
+        assertEquals(2000f - MARGIN_V - boxHeight(1, dots), layout.box.top, 0.01f)
+    }
 
     @Test
     fun `안내문이 없으면 그릴 것도 없다`() {
@@ -98,7 +110,7 @@ class GuideBoxLayoutTest {
     fun `위아래 모두 안 되면 화면 아래에 붙인다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 1990f))
 
-        assertEquals(2000f - MARGIN - boxHeight(1), layout?.box?.top)
+        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -106,7 +118,7 @@ class GuideBoxLayoutTest {
         // 서버가 화면에 없는 대상을 골라도 안내는 떠야 한다.
         val layout = compute("가나다", target = null)
 
-        assertEquals(2000f - MARGIN - boxHeight(1), layout?.box?.top)
+        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -123,7 +135,7 @@ class GuideBoxLayoutTest {
             avoid = listOf(dialog),
         )
 
-        assertEquals(103f + MARGIN, layout?.box?.top)
+        assertEquals(103f + MARGIN_V, layout?.box?.top)
     }
 
     @Test
@@ -131,7 +143,7 @@ class GuideBoxLayoutTest {
         val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = true)))
 
         // 키보드를 건드리지 않는 자리 중 첫 번째(대상 위).
-        assertEquals(918f, layout?.box?.top)
+        assertEquals(1000f - MARGIN - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -198,8 +210,8 @@ class GuideBoxLayoutTest {
 
         val layout = compute("가나다", canvas = screen, avoid = listOf(field, keyboard))
 
-        // 입력칸(900~960)을 덮는 화면 위(900)가 아니라 키보드를 조금 무는 화면 아래(1918).
-        assertEquals(1918f, layout?.box?.top)
+        // 입력칸(900~960)을 덮는 화면 위가 아니라 키보드를 조금 무는 화면 아래.
+        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -318,7 +330,7 @@ class GuideBoxLayoutTest {
         val plain = compute(text, target = TARGET, avoid = listOf(band))
         val withRow = compute(text, target = TARGET, avoid = listOf(band), controlHeight = CONTROL_ROW)
 
-        assertEquals(918f, plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
+        assertEquals(1000f - MARGIN - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
         assertEquals(1120f, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
     }
 
@@ -358,7 +370,12 @@ class GuideBoxLayoutTest {
         assertEquals(short.top, layout!!.box.top, 0.01f)
     }
 
-    private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
+    /**
+     * **세로 여백은 PADDING_V다.** 예전에는 둘이 같은 값이라 가로·세로를 뒤바꿔도 전부
+     * 통과했고, 실기기에서야 "글자가 창 밖으로 잘린" 부류가 잡혔다(PR #229 리뷰).
+     */
+    private fun boxHeight(lines: Int, reserved: Float = 0f) =
+        lines * LINE_HEIGHT + PADDING_V * 2 + reserved
 
     private fun keyboard(hard: Boolean) =
         GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 1150f, 1000f, 2000f), hard = hard)
@@ -367,7 +384,12 @@ class GuideBoxLayoutTest {
         const val CHAR_WIDTH = 10f
         const val MARGIN = 20f
         const val PADDING = 16f
-        const val PADDING_V = 16f
+
+        /** **가로와 다른 값이어야 한다** — 같으면 둘을 뒤바꿔도 테스트가 통과한다. */
+        const val PADDING_V = 18f
+
+        /** 화면 위아래 가장자리와의 여백. 좌우(MARGIN)와 다른 값이다. */
+        const val MARGIN_V = 24f
         const val LINE_HEIGHT = 30f
 
         /** 칩이 앉는 컨트롤 행 높이(#126). */

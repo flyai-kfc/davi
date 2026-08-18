@@ -54,6 +54,7 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         margin: Float,
+        marginVertical: Float,
         padding: Float,
         paddingVertical: Float,
         lineHeight: Float,
@@ -80,7 +81,7 @@ object GuideBoxLayout {
             (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - paddingVertical * 2 - controlHeight) / lineHeight)
                 .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, margin, marginVertical, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // 중앙 배치는 자리를 흥정하지 않는다 — 회피를 안 보므로 축소 폴백이 할 일도 없다.
         if (centered) return primary.layout
         if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
@@ -97,7 +98,7 @@ object GuideBoxLayout {
         val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, margin, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, margin, marginVertical, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
         // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         val improves = compact.hardCoverage < primary.hardCoverage ||
@@ -123,6 +124,7 @@ object GuideBoxLayout {
         target: Bounds?,
         avoid: List<Avoid>,
         margin: Float,
+        marginVertical: Float,
         padding: Float,
         paddingVertical: Float,
         lineHeight: Float,
@@ -137,7 +139,7 @@ object GuideBoxLayout {
         val top = if (centered) {
             centeredTop(height, canvas)
         } else {
-            topFor(height, left, right, canvas, target, avoid, margin)
+            topFor(height, left, right, canvas, target, avoid, margin, marginVertical)
         }
         val box = Bounds(left, top, right, top + height)
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
@@ -183,9 +185,10 @@ object GuideBoxLayout {
         target: Bounds?,
         avoid: List<Avoid>,
         margin: Float,
+        marginVertical: Float,
     ): Float {
-        val candidates = candidateTops(height, canvas, target, margin)
-        if (candidates.isEmpty()) return bottomAnchored(height, canvas, margin)
+        val candidates = candidateTops(height, canvas, target, margin, marginVertical)
+        if (candidates.isEmpty()) return bottomAnchored(height, canvas, marginVertical)
 
         // 대상은 언제나 절대 회피다 — 무엇을 누를지 안 보이면 안내가 성립하지 않는다.
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
@@ -203,14 +206,18 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         margin: Float,
+        marginVertical: Float,
     ): List<Float> {
         val tops = mutableListOf<Float>()
+        // 대상과의 간격은 **좌우 여백을 쓴다** — 강조 상자와 안내창 사이의 거리이지
+        // 화면 가장자리와의 거리가 아니다.
         if (target != null) {
             tops += target.top - margin - height
             tops += target.bottom + margin
         }
-        tops += canvas.bottom - margin - height
-        tops += canvas.top + margin
+        // 화면 위아래 가장자리와의 거리라 세로 여백을 쓴다.
+        tops += canvas.bottom - marginVertical - height
+        tops += canvas.top + marginVertical
         return tops.filter { it >= canvas.top && it + height <= canvas.bottom }.distinct()
     }
 
@@ -231,8 +238,8 @@ object GuideBoxLayout {
     }
 
     /** 어느 자리도 온전히 들어가지 않을 때. 상자가 화면보다 크면 위쪽을 살린다. */
-    private fun bottomAnchored(height: Float, canvas: Bounds, margin: Float): Float =
-        (canvas.bottom - margin - height).coerceAtLeast(canvas.top)
+    private fun bottomAnchored(height: Float, canvas: Bounds, marginVertical: Float): Float =
+        (canvas.bottom - marginVertical - height).coerceAtLeast(canvas.top)
 
     /**
      * 세로 중앙(GD-4). 상자가 화면보다 크면 [bottomAnchored]와 같은 이유로 위쪽을 살린다 —

@@ -54,8 +54,11 @@ class HighlightOverlayView(context: Context) : View(context) {
          * @param reading 이 창이 GD-1 "읽는 중"인가. 글자 크기가 달라서(20 / 18) 받는 쪽도
          * 알아야 한다. **판정은 여기 한 곳에서만 한다** — 그리는 쪽이 따로 판정하면 접은
          * 폭과 그린 폭이 어긋나고, 화면만 봐서는 어느 쪽이 틀렸는지 알 수 없다.
+         *
+         * @param reserved 상자 아래에 비워 둔 높이(확인쌍 또는 점 셋의 자리). **계산이 쓴 값을
+         * 그대로 넘긴다** — 참/거짓으로 넘겼더니 값이 셋이 된 순간 두 쪽이 갈렸다(PR #229 리뷰).
          */
-        fun onGuideBox(box: Rect?, lines: List<String>, reading: Boolean)
+        fun onGuideBox(box: Rect?, lines: List<String>, reading: Boolean, reserved: Float)
     }
 
     var guideBoxListener: GuideBoxListener? = null
@@ -103,6 +106,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPadding = GuideBoxStyle.padding(context)
     private val instructionPaddingV = GuideBoxStyle.paddingVertical(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
+    private val instructionMarginV = GuideBoxStyle.marginVertical(context)
     private val controlRow = GuideBoxStyle.controlRow(context)
     private val dotsRow = resources.getDimension(R.dimen.davi_overlay_dots_row)
 
@@ -353,10 +357,14 @@ class HighlightOverlayView(context: Context) : View(context) {
         val margin = readingInset + (readingStroke + readingGlow) / 2f
         readingRect.set(margin, margin, width - margin, height - margin)
         // 색을 먼저 넣는다 — setColor가 alpha까지 덮으므로 순서가 뒤집히면 투명도가 사라진다.
-        readingGlowPaint.color = color
-        readingGlowPaint.strokeWidth = frame.glowStroke
-        readingGlowPaint.alpha = frame.glowAlpha
-        canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingGlowPaint)
+        // **두께가 0이면 후광 자체를 건너뛴다.** 안 건너뛰면 코어와 같은 자리에 alpha 20~50
+        // 한 겹이 더 깔려, 값이 0인데도 테두리가 의도보다 진해진다(PR #229 리뷰).
+        if (readingGlow > 0f) {
+            readingGlowPaint.color = color
+            readingGlowPaint.strokeWidth = frame.glowStroke
+            readingGlowPaint.alpha = frame.glowAlpha
+            canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingGlowPaint)
+        }
         readingCorePaint.color = color
         readingCorePaint.strokeWidth = frame.coreStroke
         readingCorePaint.alpha = frame.coreAlpha
@@ -583,6 +591,19 @@ class HighlightOverlayView(context: Context) : View(context) {
         }
     }
 
+    /**
+     * 상자 아래에 비워 둘 높이. **계산과 그리기가 이 함수 하나를 본다** — 두 곳이 각자
+     * 조건을 세면 값이 셋이 되는 순간 갈린다(PR #229 리뷰).
+     *
+     * 확인쌍은 컨트롤 행, 읽는 중(GD-1)은 문구 아래 점 셋의 자리다. 조작 안내는 종료 X가
+     * 모서리로 가서 아무것도 비우지 않는다(v2, #178).
+     */
+    private fun reservedHeight(): Float = when {
+        confirmKind != null -> controlRow
+        readingWindow -> dotsRow
+        else -> 0f
+    }
+
     private fun relayout() {
         getLocationOnScreen(locationOnScreen)
         layoutOriginX = locationOnScreen[0]
@@ -602,6 +623,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     canvas = boxBounds(),
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
+                    marginVertical = instructionMarginV,
                     padding = instructionPadding,
                     paddingVertical = instructionPaddingV,
                     lineHeight = metrics.bottom - metrics.top,
@@ -612,12 +634,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     // **종료 X가 모서리로 갔으므로 조작 안내에서는 칩 자리를 비우지 않는다**
                     // (v2, #178). 그대로 두면 글자 아래에 72dp가 빈 채로 남는다. 확인쌍은
                     // 여전히 창 아래에 앉으므로 확인 화면에서만 비운다.
-                    controlHeight = when {
-                        confirmKind != null -> controlRow
-                        // 읽는 중에는 문구 아래에 점 셋이 앉는다(GD-1).
-                        readingWindow -> dotsRow
-                        else -> 0f
-                    },
+                    controlHeight = reservedHeight(),
                     centered = confirmKind == GuideDisplayState.ConfirmKind.QUIT,
                 )
             },
@@ -632,7 +649,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         layout = next
         val listener = guideBoxListener ?: return
         if (next == null) {
-            listener.onGuideBox(null, emptyList(), false)
+            listener.onGuideBox(null, emptyList(), false, 0f)
             return
         }
         // 화면 좌표 그대로 넘긴다 — 창 원점 보정은 이 뷰의 캔버스에만 필요하다(onDraw의 translate).
@@ -648,6 +665,7 @@ class HighlightOverlayView(context: Context) : View(context) {
             ),
             next.lines,
             readingWindow,
+            reservedHeight(),
         )
     }
 

@@ -56,11 +56,22 @@ object GuideBoxStyle {
     /**
      * 상자와 화면 **좌우** 가장자리 사이 여백.
      *
-     * **하단 여백과 다른 값이다**(좌우 16 / 하단 55). 하나로 묶었더니 창이 좌우로 110dp
-     * 좁아져 확인쌍 라벨이 두 줄로 접혔다(2026-08-18 실기기).
+     * **상하 여백과 다른 값이다**(좌우 16 / 상하 20). 하나로 묶었더니 창이 좌우로 110dp
+     * 좁아져 확인쌍이 접혔다(2026-08-18 실기기). 반대로 이 값을 상하에도 쓰면 상하 여백이
+     * 20에서 16으로 조용히 줄어든다(PR #229 리뷰) — 그래서 [marginVertical]이 따로 있다.
      */
     fun margin(context: Context): Float =
         context.resources.getDimension(R.dimen.davi_overlay_window_margin_h)
+
+    /**
+     * 상자와 화면 **위아래** 가장자리 사이 여백.
+     *
+     * v2 시안이 정한 하단 55(`davi_overlay_window_margin_bottom`)는 **아직 안 쓴다** —
+     * 그 값을 먹이면 안내창이 앉는 자리가 모든 안내에서 함께 움직이는데 실기기로 확인하지
+     * 않았다. 지금은 구 값 20을 그대로 지킨다.
+     */
+    fun marginVertical(context: Context): Float =
+        context.resources.getDimension(R.dimen.overlay_instruction_margin)
 
     /**
      * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).

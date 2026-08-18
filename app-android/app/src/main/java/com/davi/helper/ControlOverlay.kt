@@ -67,11 +67,13 @@ class ControlOverlay(
         lines: List<String>,
         confirm: GuideDisplayState.ConfirmKind? = null,
         reading: Boolean = false,
+        reserved: Float = 0f,
     ) {
         val current = root
         if (current == null) {
             if (create(rect) != null) {
                 box?.setReading(reading)
+                box?.setReservedHeight(reserved)
                 box?.setLines(lines)
                 applyMode(confirm)
                 applyReading(reading)
@@ -79,6 +81,7 @@ class ControlOverlay(
             return
         }
         box?.setReading(reading)
+        box?.setReservedHeight(reserved)
         box?.setLines(lines)
         applyMode(confirm)
         applyReading(reading)
@@ -111,12 +114,14 @@ class ControlOverlay(
      * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨은 두지 않는다 — ×/○ 두 그림이면 서고, 글자를 얹으면 본문과 같은 말을 두 번 한다.
      */
     /**
-     * 읽는 중 점 셋을 켜고 끈다. **켤 때마다 [LoadingDotsView.restart]를 부른다** — 안 되돌리면
-     * 두 번째 기다림부터 점이 지연 없이 곧장 튀어나온다.
+     * 읽는 중 점 셋을 켜고 끈다.
+     *
+     * [LoadingDotsView.restart]를 여기서 부르지 않는다 — GONE에서 VISIBLE로 돌아올 때
+     * `MotionDriver.start()`가 다시 돌면서 경과 시간이 0으로 되돌아간다. 대화 화면은
+     * 뷰가 계속 붙어 있는 채로 상태만 바뀌어서 손으로 되돌려야 하지만, 여기는 아니다.
      */
     private fun applyReading(on: Boolean) {
         val dots = readingDots ?: return
-        if (on && dots.visibility != View.VISIBLE) dots.restart()
         dots.visibility = if (on) View.VISIBLE else View.GONE
     }
 
@@ -125,8 +130,6 @@ class ControlOverlay(
         stopChip?.visibility = if (confirm != null) View.GONE else View.VISIBLE
         // 칩이 숨으면 창이 그리는 흰 면도 함께 숨는다 — 안 그러면 빈 곡면만 남는다.
         box?.setCloseVisible(confirm == null)
-        // 계산 쪽(HighlightOverlayView)과 같은 조건이어야 한다 — 갈리면 글자가 잘린다.
-        box?.setControlReserved(confirm != null)
         confirmPair?.visibility = if (confirm != null) View.VISIBLE else View.GONE
         val pair = confirmPair ?: return
         pair.findViewById<View>(R.id.btn_confirm_accept).contentDescription =

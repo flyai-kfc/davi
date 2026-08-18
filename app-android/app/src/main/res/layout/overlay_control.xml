@@ -25,6 +25,9 @@
       [GuideBoxView]가 창의 일부로 그리고(모서리에 물려 잘린다), 여기 있는 것은 그 자리를
       받는 **터치 대상과 X 글리프뿐**이다. 배경을 주면 창 위에 원이 하나 더 얹혀 글자를 덮는다.
 
+      배경은 투명이지만 **눌림 리플은 foreground로 남긴다** — 면을 창이 그리므로 배경을
+      쓸 수 없는데, 리플까지 없으면 누른 게 먹었는지 알 방법이 없다(PR #229 리뷰).
+
       android.widget.Button을 온전한 이름으로 쓴다 — 짧은 이름은 Material 인플레이터가
       MaterialButton으로 바꿔치기하고 backgroundTint가 커스텀 배경을 덮는다(#123 실측).
     -->
@@ -34,6 +37,7 @@
         android:layout_height="@dimen/davi_overlay_close_size"
         android:layout_gravity="top|end"
         android:background="@android:color/transparent"
+        android:foreground="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/overlay_stop_chip" />
 
     <!--

@@ -46,7 +46,6 @@ class GuideBoxView @JvmOverloads constructor(
     }
     private val padding = GuideBoxStyle.padding(context)
     private val paddingVertical = GuideBoxStyle.paddingVertical(context)
-    private val controlRow = GuideBoxStyle.controlRow(context)
     private val corner = resources.getDimension(R.dimen.davi_overlay_window_radius)
 
     /**
@@ -63,17 +62,6 @@ class GuideBoxView @JvmOverloads constructor(
         color = ContextCompat.getColor(context, R.color.davi_overlay_window_border)
     }
 
-    /**
-     * 창 아래 그림자(시안 DROP `#330D17` 30% y8 blur22).
-     *
-     * **소프트웨어 레이어가 필요하다** — `setShadowLayer`가 하드웨어 가속 캔버스에서 무시된다
-     * (`CardGlowView`와 같은 사정). 안내창은 문구가 바뀔 때만 다시 그리므로 비용이 프레임마다
-     * 들지 않는다.
-     */
-    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.davi_overlay_window_shadow)
-    }
-
     /** 윗변 안쪽 흰 띠(시안 INNER `#FFFFFF` 95% y1 blur1)의 근사. */
     private val innerHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -81,7 +69,6 @@ class GuideBoxView @JvmOverloads constructor(
         color = ContextCompat.getColor(context, R.color.davi_overlay_window_highlight)
     }
 
-    private val shadowOffsetY = resources.getDimension(R.dimen.davi_overlay_window_shadow_y)
     private val boxRect = RectF()
     private val boxPath = android.graphics.Path()
     private val closePath = android.graphics.Path()
@@ -96,7 +83,6 @@ class GuideBoxView @JvmOverloads constructor(
      *
      * X 글리프와 터치 대상은 `overlay_control.xml`이 같은 자리에 얹는다 — 여기서는 면만 그린다.
      */
-    private val closeSize = resources.getDimension(R.dimen.davi_overlay_close_size)
     private val closeRegion = resources.getDimension(R.dimen.davi_overlay_close_region)
     private val closeMark = resources.getDimension(R.dimen.davi_overlay_close_mark)
     private val closeMarkDx = resources.getDimension(R.dimen.davi_overlay_close_mark_dx)
@@ -121,17 +107,17 @@ class GuideBoxView @JvmOverloads constructor(
     private var closeVisible = false
 
     /**
-     * 아래 컨트롤 행(확인쌍)이 자리를 잡고 있는가.
+     * 상자 아래에 비워 둔 높이. 확인쌍이면 컨트롤 행, 읽는 중이면 점 셋의 자리다.
      *
-     * **계산 쪽과 반드시 같아야 한다.** 창 높이는 [HighlightOverlayView]가 이 값을 반영해
-     * 잡는데, 여기서만 다르게 보면 글자가 창 밖으로 밀려 잘린다(2026-08-18 실기기 —
-     * 조작 안내에서 칩 자리를 걷었는데 그리기 쪽이 계속 72dp를 빼고 있었다).
+     * **값을 그대로 받는다 — 참/거짓이 아니다.** 참/거짓으로 받으면 그리기 쪽이 "72냐 0이냐"
+     * 두 값만 표현할 수 있어서, 계산 쪽이 셋째 값(점 셋 27)을 쓰기 시작한 순간 조용히
+     * 갈렸다(PR #229 리뷰). 계산이 쓴 값을 그대로 흘려보내면 갈릴 수가 없다.
      */
-    private var controlReserved = false
+    private var reservedHeight = 0f
 
-    fun setControlReserved(on: Boolean) {
-        if (controlReserved == on) return
-        controlReserved = on
+    fun setReservedHeight(px: Float) {
+        if (reservedHeight == px) return
+        reservedHeight = px
         invalidate()
     }
 
@@ -150,8 +136,6 @@ class GuideBoxView @JvmOverloads constructor(
         // 읽고 사용자가 아무 일도 일어나지 않는 영역에 포커스한다. 터치 처리에는 영향이 없다.
         // 누를 수 있는 것은 형제인 칩뿐이고, 칩은 라벨이 있어 그대로 노출된다(PR #133 리뷰).
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        // setShadowLayer가 하드웨어 가속에서 무시된다(위 shadowPaint 주석).
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -160,8 +144,6 @@ class GuideBoxView @JvmOverloads constructor(
         boxPaint.shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h.toFloat(), fillTop, fillBottom, android.graphics.Shader.TileMode.CLAMP,
         )
-        // 그림자는 창 밖으로 못 번진다(창이 상자 크기다) — 아래로 민 만큼만 보인다.
-        shadowPaint.setShadowLayer(shadowOffsetY, 0f, shadowOffsetY / 2f, shadowPaint.color)
     }
 
     /**
@@ -262,7 +244,7 @@ class GuideBoxView @JvmOverloads constructor(
         val metrics = textPaint.fontMetrics
         val lineHeight = metrics.bottom - metrics.top
         val blockHeight = lines.size * lineHeight
-        val available = height - if (controlReserved) controlRow else 0f
+        val available = height - reservedHeight
         var baseline = (available - blockHeight) / 2f - metrics.top
         val centerX = width / 2f
         lines.forEach { line ->
