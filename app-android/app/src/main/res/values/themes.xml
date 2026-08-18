@@ -133,6 +133,43 @@
         <item name="android:textSize">@dimen/davi_type_guiding</item>
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
+    <!--
+      ON-2 권한 화면(#236). 카드 제목·본문과 버튼 라벨은 다비가 하는 말이라 Cafe24다(C1).
+      **안내 문구만 Pretendard**다 — 시안이 그렇게 잡았다(다비의 말이 아니라 규칙 설명).
+      두 네임스페이스를 함께 주는 이유는 AppCompatTextView가 app:fontFamily를 먼저 읽어서다.
+    -->
+    <style name="TextAppearance.Davi.OnboardingTitle" parent="TextAppearance.Davi.Title.Davi">
+        <item name="android:textSize">@dimen/davi_type_onboarding_title</item>
+    </style>
+    <style name="TextAppearance.Davi.OnboardingBody" parent="TextAppearance.Davi.OnboardingTitle">
+        <item name="android:textSize">@dimen/davi_type_onboarding_body</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <style name="TextAppearance.Davi.OnboardingHint" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_onboarding_body</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <!--
+      권한 버튼. 채움·테두리·그림자는 배경 드로어블이 갖고 여기는 글자와 여백만 잡는다.
+      Material3 Button이 android:background를 무시하므로 backgroundTint를 끈다(다른 화면과 같다).
+    -->
+    <style name="Widget.Davi.OnboardingButton" parent="Widget.Material3.Button">
+        <item name="android:background">@drawable/bg_davi_onboarding_button</item>
+        <item name="backgroundTint">@null</item>
+        <item name="android:textSize">@dimen/davi_type_onboarding_button</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+        <item name="android:textColor">@color/davi_text_primary</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <!-- 채움이 그림자 offset만큼 짧아 라벨도 그만큼 올린다(다른 버튼들과 같은 사정). -->
+        <item name="android:paddingBottom">@dimen/davi_onboarding_button_shadow_y</item>
+    </style>
     <style name="TextAppearance.Davi.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="android:textSize">@dimen/davi_type_caption</item>

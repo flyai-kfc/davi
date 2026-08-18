@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-2 권한 카드의 톱니바퀴(#236). 원본 `assets/ic_davi_gear.svg`(40×40, path 하나).
+
+  **`android:fillType="evenOdd"`가 반드시 있어야 한다** — path 하나에 바깥 톱니와 가운데
+  구멍이 함께 들어 있어서, 없으면 가운데가 메워져 원판이 된다(디자인 담당 지적).
+
+  색은 `#383838`로 `davi_text_secondary`와 같은 값이다. 하드코딩하지 않고 tint로 뺀다 —
+  나중에 색만 바꿀 때 path를 건드리지 않아도 된다.
+
+  기본 크기는 시안 39를 x1.2로 환산한 값이고, 쓰는 쪽이 dimens로 다시 준다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="47dp"
+    android:height="47dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40"
+    android:tint="@color/davi_text_secondary">
+    <path
+        android:pathData="M34.12,15.75L39.26,15.81V23.45L34.12,23.51L32.62,27.13L36.21,30.81L30.81,36.21L27.13,32.62L23.51,34.12L23.45,39.26H15.81L15.75,34.12L12.13,32.62L8.45,36.21L3.05,30.81L6.64,27.13L5.14,23.51L0,23.45V15.81L5.14,15.75L6.64,12.13L3.05,8.45L8.45,3.05L12.13,6.64L15.75,5.14L15.81,0H23.45L23.51,5.14L27.13,6.64L30.81,3.05L36.21,8.45L32.62,12.13L34.12,15.75ZM27.13,19.63C27.13,23.7722 23.7722,27.13 19.63,27.13C15.4877,27.13 12.13,23.7722 12.13,19.63C12.13,15.4877 15.4877,12.13 19.63,12.13C23.7722,12.13 27.13,15.4877 27.13,19.63Z"
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd" />
+</vector>

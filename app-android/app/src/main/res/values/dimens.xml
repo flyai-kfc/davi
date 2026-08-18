@@ -599,4 +599,32 @@
     -->
     <dimen name="davi_home_sparkle_margin_end">16dp</dimen>
     <dimen name="davi_home_sparkle_margin_top">29dp</dimen>
+      ON-2 권한 화면(#236). 시안 프레임 300×620 · **크기 x1.2 · 반지름과 선 두께와 글자는 1:1**.
+
+      카드 높이는 시안이 188 고정이고 내용(56+8+28+8+24=124)보다 크다 — 오토레이아웃 정렬이
+      CENTER라 위아래로 32씩 남는다. 그래서 **높이를 고정하고 내용을 세로 가운데** 둔다.
+      최소 여백(20/16)이 아니라 실측 자리(32)가 맞는 값이다.
+
+      버튼 폭 240은 카드 252보다 12 좁다. 컴포넌트 기본값일 가능성이 크지만 **실측 그대로
+      쓴다** — 카드 폭으로 늘리면 근거 없는 값이 된다(#236에 확인 대기로 남겼다).
+    -->
+    <dimen name="davi_onboarding_card_margin_h">29dp</dimen>
+    <dimen name="davi_onboarding_card_margin_top">67dp</dimen>
+    <dimen name="davi_onboarding_card_height">226dp</dimen>
+    <dimen name="davi_onboarding_card_radius">16dp</dimen>
+    <dimen name="davi_onboarding_card_padding_h">19dp</dimen>
+    <dimen name="davi_onboarding_card_gap">10dp</dimen>
+    <dimen name="davi_onboarding_slot_size">67dp</dimen>
+    <dimen name="davi_onboarding_icon_size">47dp</dimen>
+    <dimen name="davi_onboarding_button_width">288dp</dimen>
+    <dimen name="davi_onboarding_button_height">72dp</dimen>
+    <dimen name="davi_onboarding_button_stroke">1.5dp</dimen>
+    <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
+    <dimen name="davi_onboarding_button_margin_top">50dp</dimen>
+    <dimen name="davi_onboarding_button_gap">19dp</dimen>
+    <dimen name="davi_onboarding_hint_margin_top">29dp</dimen>
+    <!-- 글자는 환산하지 않는다(1:1). 카드 제목 20 · 버튼 라벨 18 · 본문과 안내 17. -->
+    <dimen name="davi_type_onboarding_title">20sp</dimen>
+    <dimen name="davi_type_onboarding_button">18sp</dimen>
+    <dimen name="davi_type_onboarding_body">17sp</dimen>
 </resources>
