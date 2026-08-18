@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  오버레이 확인쌍 왼쪽(×) 배경(v2, #178). 시안 `v2/confirm-pair` 112×56 r14 · `#A50014`.
+
+  **메인 10의 확인쌍과 다른 값이다** — 저쪽은 88×56 r12에 `#C62828`이고 아이콘만이다.
+  같은 컴포넌트로 보이지만 시안이 둘을 따로 잡았다.
+
+  그림자는 blur 없는 근사다(단색 도형을 아래로 민다) — 카드·버튼과 같은 사정이다.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed">
+    <item>
+        <layer-list>
+            <item
+                android:top="@dimen/davi_overlay_confirm_shadow_y"
+                android:bottom="0dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_overlay_confirm_shadow" />
+                    <corners android:radius="@dimen/davi_overlay_confirm_radius" />
+                </shape>
+            </item>
+            <item android:bottom="@dimen/davi_overlay_confirm_shadow_y">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_button_primary" />
+                    <corners android:radius="@dimen/davi_overlay_confirm_radius" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

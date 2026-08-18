@@ -18,28 +18,25 @@
         android:layout_height="match_parent" />
 
     <!--
-      android.widget.Button을 온전한 이름으로 쓴다. 짧은 이름 <Button>은 Material 테마의
-      인플레이터가 MaterialButton으로 바꿔치기하고, 그러면 backgroundTint가 커스텀 배경을
-      덮는다(#123 실기기 실측 — themes.xml 주석). 여기는 Activity가 아니라 그 인플레이터가
-      없지만, 이름으로 못박아 두면 나중에 붙어도 안 깨진다.
+      종료 X(v2, #178). 구 버전의 사각 "X 그만 볼래요" 칩을 대체한다.
+
+      **창 우상단 모서리에 물린 곡면이다.** 창 밖에 떠 있는 별개 요소가 아니라 모서리가
+      안으로 파이고 그 자리에 앉는 모양이라, 창 안 오른쪽 위에 배치하고 안내창의 좌우
+      여백(44)이 그만큼 비워 준다.
+
+      android.widget.Button을 온전한 이름으로 쓴다 — 짧은 이름은 Material 인플레이터가
+      MaterialButton으로 바꿔치기하고 backgroundTint가 커스텀 배경을 덮는다(#123 실측).
     -->
-    <android.widget.Button
+    <android.widget.ImageButton
         android:id="@+id/btn_stop_chip"
-        android:layout_width="wrap_content"
-        android:layout_height="@dimen/davi_size_touch_target"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="@dimen/overlay_instruction_padding"
-        android:layout_marginBottom="@dimen/overlay_instruction_padding"
-        android:background="@drawable/bg_davi_chip_danger"
-        android:drawableStart="@drawable/ic_davi_x"
-        android:drawablePadding="@dimen/davi_spacing_sm"
-        android:paddingStart="@dimen/davi_button_padding_h"
-        android:paddingEnd="@dimen/davi_button_padding_h"
-        android:stateListAnimator="@null"
-        android:text="@string/overlay_stop_chip"
-        android:textAllCaps="false"
-        android:textColor="@color/davi_button_on_primary"
-        android:textSize="@dimen/davi_type_body" />
+        android:layout_width="@dimen/davi_overlay_close_size"
+        android:layout_height="@dimen/davi_overlay_close_size"
+        android:layout_gravity="top|end"
+        android:background="@drawable/bg_davi_overlay_close"
+        android:src="@drawable/ic_davi_x"
+        android:scaleType="centerInside"
+        android:padding="@dimen/davi_spacing_xl"
+        android:contentDescription="@string/overlay_stop_chip" />
 
     <!--
       완료 확인(GD-3)의 ×아직요/○됐어요. contentDescription은 이 레이아웃이 대화 화면용으로
@@ -48,7 +45,7 @@
     -->
     <include
         android:id="@+id/confirm_pair"
-        layout="@layout/view_davi_confirm_pair"
+        layout="@layout/view_davi_overlay_confirm_pair"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"

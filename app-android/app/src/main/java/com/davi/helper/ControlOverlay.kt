@@ -104,6 +104,20 @@ class ControlOverlay(
         stopChip?.visibility = if (confirm != null) View.GONE else View.VISIBLE
         confirmPair?.visibility = if (confirm != null) View.VISIBLE else View.GONE
         val pair = confirmPair ?: return
+        // **라벨이 화면마다 다르다**(v2, #178) — GD-3 「아직요/됐어요」, GD-4 「아니요/종료할래요」.
+        // 지금까지 아이콘 전용이라 뜻을 본문 문구가 대신 불렀다.
+        pair.findViewById<android.widget.Button>(R.id.btn_confirm_accept).setText(
+            when (confirm) {
+                GuideDisplayState.ConfirmKind.QUIT -> R.string.overlay_quit_accept
+                else -> R.string.overlay_confirm_accept
+            },
+        )
+        pair.findViewById<android.widget.Button>(R.id.btn_confirm_reject).setText(
+            when (confirm) {
+                GuideDisplayState.ConfirmKind.QUIT -> R.string.overlay_quit_reject
+                else -> R.string.overlay_confirm_reject
+            },
+        )
         pair.findViewById<View>(R.id.btn_confirm_accept).contentDescription =
             context.getString(
                 when (confirm) {
