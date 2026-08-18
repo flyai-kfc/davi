@@ -144,6 +144,26 @@ class ScreenStabilityTracker(
         stuckReported = false
     }
 
+    /**
+     * 화면이 다시 켜졌다. **꺼져 있던 구간은 정체가 아니다** — 사용자가 볼 수도 조작할 수도
+     * 없었다. 그대로 두면 [sentAtMs]가 그 구간을 세서 잠금 해제 첫 샘플이 곧바로
+     * [Decision.STUCK]이 되고, 사용자는 되살아난 안내와 "한 번 더 해 주세요"를 같은 프레임에
+     * 본다(PR #216 3차 리뷰). 타이머만 지금으로 다시 찍는다.
+     *
+     * [stuckReported]를 함께 내리는 것은 **반대 방향도 닫기 위해서다** — 꺼지기 전에 이미
+     * 정체가 떴다면 [stuckContent]는 접미사를 붙인 사본만 돌려주고 원본에 되쓰지 않아,
+     * 복원된 안내는 접미사 없는 원문이다. 다시 셀 수 있어야 그 화면에서 정체가 또 뜬다.
+     *
+     * [requery]면 그 화면을 **보낸 적 없는 것으로** 되돌린다. 꺼진 동안 도착한 응답을 버렸을 때
+     * 쓴다 — 버리기만 하면 [sentSignature]가 남아 같은 화면에 새 요청이 영영 안 나간다.
+     * **실패가 아니므로 백오프는 건드리지 않는다**([markFailed]와 다른 점이다).
+     */
+    fun markResumed(nowMs: Long, requery: Boolean) {
+        sentAtMs = nowMs
+        stuckReported = false
+        if (requery) sentSignature = null
+    }
+
     /** 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다. */
     fun backoffMs(): Long {
         if (failures <= 0) return 0L

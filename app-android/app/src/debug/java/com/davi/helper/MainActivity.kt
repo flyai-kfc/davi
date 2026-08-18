@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -9,7 +8,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.speech.SpeechRecognizer
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -460,7 +458,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshUi() {
-        val ready = hasAccessibilityPermission() && Settings.canDrawOverlays(this)
+        // 권한 기준은 한 곳에서만 판정한다([GuidePermissions]) — 갈리면 이 화면은 통과시키고
+        // 안내는 조용히 실패한다.
+        val ready = canStartGuide()
         val active = GuideSession.isActive
         val voiceBusy = voiceSession.stage != VoiceDialogueSession.Stage.IDLE
 
@@ -484,17 +484,6 @@ class MainActivity : AppCompatActivity() {
             this,
             Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
-
-    private fun hasAccessibilityPermission(): Boolean {
-        val manager = getSystemService(AccessibilityManager::class.java) ?: return false
-        return manager
-            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            .any {
-                val info = it.resolveInfo.serviceInfo
-                info.packageName == packageName &&
-                    info.name == GuideAccessibilityService::class.java.name
-            }
-    }
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
