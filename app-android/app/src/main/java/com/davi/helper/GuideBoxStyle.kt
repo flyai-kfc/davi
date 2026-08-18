@@ -53,9 +53,14 @@ object GuideBoxStyle {
     fun paddingVertical(context: Context): Float =
         context.resources.getDimension(R.dimen.davi_overlay_window_padding_v)
 
-    /** 상자와 화면 가장자리 사이 여백. 하단은 시안 46 -> 55dp. */
+    /**
+     * 상자와 화면 **좌우** 가장자리 사이 여백.
+     *
+     * **하단 여백과 다른 값이다**(좌우 16 / 하단 55). 하나로 묶었더니 창이 좌우로 110dp
+     * 좁아져 확인쌍 라벨이 두 줄로 접혔다(2026-08-18 실기기).
+     */
     fun margin(context: Context): Float =
-        context.resources.getDimension(R.dimen.davi_overlay_window_margin_bottom)
+        context.resources.getDimension(R.dimen.davi_overlay_window_margin_h)
 
     /**
      * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).

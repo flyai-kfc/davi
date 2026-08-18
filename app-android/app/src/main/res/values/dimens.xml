@@ -77,17 +77,64 @@
     <dimen name="davi_overlay_window_radius">18dp</dimen>
     <dimen name="davi_overlay_window_stroke">1.5dp</dimen>
     <dimen name="davi_overlay_window_margin_bottom">55dp</dimen>
+    <!--
+      창과 화면 좌우 가장자리 사이. **하단(55)과 다른 값이다** — 시안 프레임 여백 16.
+      하나로 묶었더니 창이 110dp나 좁아져 확인쌍 라벨("종료할래요")이 두 줄로 접혔다
+      (2026-08-18 실기기).
+    -->
+    <dimen name="davi_overlay_window_margin_h">16dp</dimen>
     <dimen name="davi_overlay_window_padding_v">18dp</dimen>
     <dimen name="davi_overlay_window_padding_h">44dp</dimen>
     <dimen name="davi_overlay_window_gap">10dp</dimen>
     <dimen name="davi_overlay_window_shadow_y">8dp</dimen>
     <!-- 종료 X — 창 우상단 모서리에 물린 곡면. 창 밖에 뜬 별개 요소가 아니다. -->
     <dimen name="davi_overlay_close_size">68dp</dimen>
-    <dimen name="davi_overlay_close_mark">12dp</dimen>
-    <dimen name="davi_overlay_close_stroke">2.4dp</dimen>
+    <!-- 종료 X 구역의 반지름. 창 오른쪽 위 **꼭짓점을 중심으로 한 1/4 원**이라
+         바깥 두 변은 창 변에 그대로 붙고 안쪽만 볼록하게 갈린다. 원을 창 위에
+         얹으면 "창에 원이 붙었다"로 읽혀서 구역 지정으로 바꿨다(2026-08-18). -->
+    <dimen name="davi_overlay_close_region">44dp</dimen>
+    <dimen name="davi_overlay_close_mark">15dp</dimen>
+    <!-- 시안 2.4는 실기기에서 가늘어 안 보였다 — 두 배로 올린다(2026-08-18). -->
+    <dimen name="davi_overlay_close_stroke">5dp</dimen>
+    <!--
+      원 중심은 창 오른쪽 가장자리에서 10 · 위에서 4다(시안 창 기준 258,4 / 창 폭 268).
+      반지름 34라 오른쪽으로 24 · 위로 30 나가고 **창이 잘라내 좌하단 호만 남는다.**
+      불린 연산이 아니라 클리핑이다 — 파낸 홈이 아니라 얹힌 원의 잘린 조각이다.
+    -->
+    <!--
+      ✕는 원 중심이 아니라 **잘리고 남은 초승달의 한가운데**에 놓인다 — 원 중심에서
+      (−12, +14). 중심에 놓으면 잘려 나간다. 시안이 어긋나 보이는 것은 의도다
+      (2026-08-18 디자인 담당 확인 — 앞서 "삐뚤다"고 본 것이 틀렸다).
+    -->
+    <!-- ✕ 중심을 창 오른쪽 위 꼭짓점에서 얼마나 들여놓을지(왼쪽으로 dx, 아래로 dy).
+         구역의 무게중심(0.42R)보다 바깥으로 밀어 대각선 위쪽에 앉힌다. -->
+    <dimen name="davi_overlay_close_mark_dx">20dp</dimen>
+    <dimen name="davi_overlay_close_mark_dy">17dp</dimen>
+    <!--
+      위 값들에서 나오는 패딩. 68 터치 대상이 창 오른쪽 위에 붙으므로 상자 안 좌표로
+      옮기면 ✕ 중심이 (46, 18)이다 — 12 글리프 기준 좌 40 / 상 12 / 우 16 / 하 44.
+      **터치 대상은 68을 그대로 둔다** — 글리프가 작아도 누를 자리는 넓어야 한다.
+    -->
+    <dimen name="davi_overlay_close_pad_start">40dp</dimen>
+    <dimen name="davi_overlay_close_pad_top">12dp</dimen>
+    <dimen name="davi_overlay_close_pad_end">16dp</dimen>
+    <dimen name="davi_overlay_close_pad_bottom">44dp</dimen>
     <!-- 확인쌍: 전체 236×56 · 각 112×56 · r14 · gap 12. 폭은 창을 따르고 높이·반경만 고정. -->
+    <!-- 읽는 중 점 셋이 앉을 자리(GD-1). 점 지름 20 + 아래 여백 18. 확인쌍과 같은 자리를
+         쓰지만 둘은 동시에 뜨지 않는다 — 읽는 중과 확인 대기는 배타적이다(ReadingBorder). -->
+    <!-- 안내창 점 셋. 대화 화면(20/13/15)보다 훨씬 작다 — 창이 작아 같은 크기로는
+         문구만큼 무겁게 보인다. 자리 높이는 지름 + 아래 여백 18이다. -->
+    <dimen name="davi_overlay_dot_size_max">9dp</dimen>
+    <dimen name="davi_overlay_dot_size_min">5dp</dimen>
+    <dimen name="davi_overlay_dot_spacing">7dp</dimen>
+    <dimen name="davi_overlay_dots_row">27dp</dimen>
     <dimen name="davi_overlay_confirm_height">56dp</dimen>
-    <dimen name="davi_overlay_confirm_radius">14dp</dimen>
+    <!-- 캡슐(높이의 절반). 시안은 r14였지만 그 값으로는 세로로 선 상자처럼 보여
+         가로로 긴 캡슐로 바꿨다(2026-08-18, 디자인 담당 결정). -->
+    <dimen name="davi_overlay_confirm_radius">28dp</dimen>
+    <!-- 확인쌍이 창 안에서 좌우로 들어가는 폭. 본문 패딩(44)을 그대로 쓰면 버튼이
+         좁아져 세로로 서 보인다 — 확인쌍은 본문보다 넓게 눕힌다. -->
+    <dimen name="davi_overlay_confirm_inset">24dp</dimen>
     <dimen name="davi_overlay_confirm_gap">12dp</dimen>
     <dimen name="davi_overlay_confirm_shadow_y">3dp</dimen>
     <!--

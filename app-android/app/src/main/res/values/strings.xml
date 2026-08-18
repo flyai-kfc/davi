@@ -81,10 +81,6 @@
       대신 불렀다("아직이면 ×, 다 됐으면 ○"). 라벨이 생기면 그 설명이 중복이 되므로
       본문 문구도 함께 줄일 자리다 — 문구 확정은 #29.
     -->
-    <string name="overlay_confirm_accept">됐어요</string>
-    <string name="overlay_confirm_reject">아직요</string>
-    <string name="overlay_quit_accept">종료할래요</string>
-    <string name="overlay_quit_reject">아니요</string>
     <string name="overlay_confirm_accept_desc">네, 다 됐어요</string>
     <string name="overlay_confirm_reject_desc">아니요, 아직이에요</string>
 
@@ -102,16 +98,24 @@
         안 그려진다(기기 함정).
       guide_permission_lost — 온보딩으로 되돌리며 **화면이 바뀌는** 순간이라 안내창은 함께 사라진다.
     -->
+    <!--
+      GD-1 화면 읽는 중(#127). **첫 안내가 오기 전의 빈 시간을 이 창이 채운다** —
+      테두리만 돌면 "뭐가 되고 있는 건지" 알 수 없다는 지적(2026-08-18).
+      점 셋은 아직 없다 — 로딩 애니메이션으로 따로 붙인다.
+    -->
+    <string name="overlay_reading">화면을 읽고 있어요</string>
     <string name="guide_service_off">안내 기능이 꺼져서 안내를 멈췄어요.</string>
     <string name="guide_permission_lost">권한이 꺼져 있어요.\n다시 켜 주세요.</string>
 
     <!--
       종료 확인(GD-4, #193). 중지 칩이 띄우는 되묻기다.
       '종료'가 아니라 칩과 같은 '그만 보다'로 쓴다 — 한 가지를 두 이름으로 부르지 않는다.
-      확인쌍 아이콘은 완료 확인과 같지만 뜻이 달라 라벨을 따로 둔다 — 한 벌로 쓰면
+      확인쌍은 ×/○ 아이콘만 쓰고 눌러야 할 것을 본문이 따로 이르지 않는다 —
+      그림이 이미 뜻을 세우고, 겹쳐 적으면 같은 말을 두 번 한다.
+      아이콘은 완료 확인과 같지만 뜻이 달라 `contentDescription`을 따로 둔다 — 한 벌로 쓰면
       TalkBack이 종료 확인에서 "네, 다 됐어요"를 읽는다. 확정은 W8/#29.
     -->
-    <string name="overlay_quit_confirm">안내를 그만 볼까요?\n계속 보려면 ×, 그만 보려면 ○를 눌러 주세요.</string>
+    <string name="overlay_quit_confirm">안내를 그만 볼래요?</string>
     <string name="overlay_quit_accept_desc">네, 그만 볼래요</string>
     <string name="overlay_quit_reject_desc">아니요, 계속 볼래요</string>
     <string name="mode_family">가족이 대신 설정</string>

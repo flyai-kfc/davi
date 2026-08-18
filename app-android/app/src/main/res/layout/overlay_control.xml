@@ -8,6 +8,7 @@
   칩 셋이 한 행에 들어가면 좁은 화면에서 겹치기 때문이다.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/control_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -20,9 +21,9 @@
     <!--
       종료 X(v2, #178). 구 버전의 사각 "X 그만 볼래요" 칩을 대체한다.
 
-      **창 우상단 모서리에 물린 곡면이다.** 창 밖에 떠 있는 별개 요소가 아니라 모서리가
-      안으로 파이고 그 자리에 앉는 모양이라, 창 안 오른쪽 위에 배치하고 안내창의 좌우
-      여백(44)이 그만큼 비워 준다.
+      **창의 오른쪽 위 일부가 X 영역이다.** 창 위에 얹은 별개 원이 아니다 — 흰 곡면은
+      [GuideBoxView]가 창의 일부로 그리고(모서리에 물려 잘린다), 여기 있는 것은 그 자리를
+      받는 **터치 대상과 X 글리프뿐**이다. 배경을 주면 창 위에 원이 하나 더 얹혀 글자를 덮는다.
 
       android.widget.Button을 온전한 이름으로 쓴다 — 짧은 이름은 Material 인플레이터가
       MaterialButton으로 바꿔치기하고 backgroundTint가 커스텀 배경을 덮는다(#123 실측).
@@ -32,10 +33,7 @@
         android:layout_width="@dimen/davi_overlay_close_size"
         android:layout_height="@dimen/davi_overlay_close_size"
         android:layout_gravity="top|end"
-        android:background="@drawable/bg_davi_overlay_close"
-        android:src="@drawable/ic_davi_x"
-        android:scaleType="centerInside"
-        android:padding="@dimen/davi_spacing_xl"
+        android:background="@android:color/transparent"
         android:contentDescription="@string/overlay_stop_chip" />
 
     <!--
@@ -43,13 +41,37 @@
       쓰이는 값을 갖고 있으므로 ControlOverlay가 오버레이 문구로 덮는다 — 그대로 두면
       TalkBack이 "이대로 안내 시작"을 읽는다.
     -->
+    <!--
+      **폭은 match_parent여야 한다.** wrap_content로 두면 안의 버튼이 `0dp + weight`라
+      폭이 거의 0으로 접히고 56dp 높이만 남아 세로 막대처럼 보인다(2026-08-18 실기기).
+    -->
     <include
         android:id="@+id/confirm_pair"
         layout="@layout/view_davi_overlay_confirm_pair"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/davi_overlay_confirm_inset"
+        android:layout_marginEnd="@dimen/davi_overlay_confirm_inset"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="@dimen/overlay_instruction_padding"
         android:visibility="gone" />
+
+    <!--
+      읽는 중 점 셋(GD-1). 대화 화면 "잠시만요"와 **같은 뷰·같은 리듬**이다 — 두 곳이
+      따로 뛰면 같은 기다림이 다른 일처럼 보인다. 문구 아래에 놓는 것도 메인 6 시안과 같다.
+
+      확인쌍과 같은 자리(창 바닥)를 쓰지만 겹치지 않는다 — 읽는 중과 확인 대기는
+      배타적이다(ReadingBorder.isReading).
+    -->
+    <com.davi.helper.LoadingDotsView
+        android:id="@+id/reading_dots"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/davi_overlay_window_padding_v"
+        android:visibility="gone"
+        app:daviDotSizeMax="@dimen/davi_overlay_dot_size_max"
+        app:daviDotSizeMin="@dimen/davi_overlay_dot_size_min"
+        app:daviDotSpacing="@dimen/davi_overlay_dot_spacing" />
 
 </FrameLayout>

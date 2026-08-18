@@ -136,8 +136,8 @@ class OverlayController(
     private fun createView(): HighlightOverlayView? {
         val created = HighlightOverlayView(context)
         // addView 전에 물린다 — 창 크기가 처음 잡힐 때(onSizeChanged) 도는 첫 계산도 놓치지 않는다.
-        created.guideBoxListener = HighlightOverlayView.GuideBoxListener { rect, lines ->
-            if (rect == null) control.hide() else control.show(rect, lines, confirmKind)
+        created.guideBoxListener = HighlightOverlayView.GuideBoxListener { rect, lines, reading ->
+            if (rect == null) control.hide() else control.show(rect, lines, confirmKind, reading)
         }
         return runCatching {
             windowManager.addView(created, OverlayWindowParams.create(touchable = false))

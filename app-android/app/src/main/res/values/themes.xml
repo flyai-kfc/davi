@@ -171,24 +171,6 @@
       **라벨을 그림자 offset만큼 올린다** — 채움이 아래로 그만큼 짧아서, 안 하면 보이는
       상자 안에서 글자가 처져 보인다. 위 패딩도 0으로 못 박아야 기본값에 안 좌우된다.
     -->
-    <!--
-      오버레이 확인쌍 버튼(#178). Pretendard Bold 18 흰 글자.
-      Material3 Button이 android:background를 무시하므로 backgroundTint를 끈다(메인 7·9와 같다).
-      채움이 그림자 offset만큼 짧아 라벨도 그만큼 올린다.
-    -->
-    <style name="Widget.Davi.OverlayConfirm" parent="Widget.Material3.Button">
-        <item name="android:textSize">@dimen/davi_overlay_text_instruction</item>
-        <item name="android:textStyle">bold</item>
-        <item name="android:fontFamily">@font/pretendard</item>
-        <item name="android:textColor">@color/davi_button_on_primary</item>
-        <item name="android:stateListAnimator">@null</item>
-        <item name="android:elevation">0dp</item>
-        <item name="android:insetTop">0dp</item>
-        <item name="android:insetBottom">0dp</item>
-        <item name="android:paddingTop">0dp</item>
-        <item name="android:paddingBottom">@dimen/davi_overlay_confirm_shadow_y</item>
-        <item name="backgroundTint">@null</item>
-    </style>
     <style name="Widget.Davi.Stacked" parent="Widget.Material3.Button">
         <item name="android:minHeight">@dimen/davi_stacked_button_height</item>
         <item name="android:textSize">@dimen/davi_type_body_lg</item>

@@ -4,6 +4,17 @@
       카드 뒤 분홍 글로우(CardGlowView)의 뷰별 설정.
       값 자체의 근거는 dimens.xml의 davi_glow_card_* 주석에 있다.
     -->
+    <!--
+      점 셋의 크기. 기본값은 대화 화면 "잠시만요"의 시안 실측치(20/13/15)이고, 오버레이
+      안내창은 창이 작아 훨씬 작게 준다. **뷰가 리소스를 직접 읽으면 두 곳이 한 값을
+      나눠 쓰게 되어 한쪽을 줄이면 다른 쪽이 함께 줄어든다.**
+    -->
+    <declare-styleable name="LoadingDotsView">
+        <attr name="daviDotSizeMax" format="dimension" />
+        <attr name="daviDotSizeMin" format="dimension" />
+        <attr name="daviDotSpacing" format="dimension" />
+    </declare-styleable>
+
     <declare-styleable name="CardGlowView">
         <!--
           같은 자리에 한 겹 더 얹을 때 그 겹의 불투명도(0~255, 기본 0 = 한 겹).
