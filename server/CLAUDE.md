@@ -9,7 +9,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   적용 여부는 `masking.MaskingPolicy`가 값으로 들고 `reasoning.next_step()`이 주입받는다.
   우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 개발 토큰 없음**에서만
   기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
-- **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 §5-4 전례 회피).
+- **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 HANDOFF §5-4 전례 회피).
 - **모델 호출** — `gemini-3.5-flash-lite`. `DAVI_MODEL` 환경변수로 교체 가능(`Settings.davi_model`).
 - **완료 검증** — `expected_result`/`evidence`를 써내게 하고 비교해 조기 종료 방지.
 - **음성 목표 정리** — 고정 슬롯·문자열 조건 없이 LLM 구조화 출력으로 질문 필요/goal 준비를 판정.

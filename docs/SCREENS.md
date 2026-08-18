@@ -337,6 +337,7 @@ logo · icon/*(Lucide, 브랜드 제외)
    - [미결] **말투가 갈린다.** 대부분 해요체인데 합니다체가 섞여 있다 —
      `onboarding_body`("시작하려면 두 가지를 켜야 합니다"), `accessibility_service_description`,
      #224의 `conversation_guiding_title`("안내가 진행 중입니다").
+     (`guide_hint`도 합니다체지만 debug 백업 화면 전용이라 뺐다 — #232가 `src/debug`로 옮긴다.)
      **`onboarding_body`는 사용자가 가장 먼저 보는 화면이다** — 이상값 하나를 고치는 문제가
      아니라 온보딩·시스템 설명까지 통일할지, 그 둘을 예외로 둘지의 문제다.
    - [미결] **버튼을 이름으로 부르는 문구가 다시 생겼다.** #189가 "라벨이 바뀌면 문구가 조용히
