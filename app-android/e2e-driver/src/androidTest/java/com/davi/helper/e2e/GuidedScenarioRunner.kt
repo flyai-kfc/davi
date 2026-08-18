@@ -117,17 +117,25 @@ private object GuideControl {
         start: GuidedScenarioStart,
     ) {
         if (start == GuidedScenarioStart.DAVI_TO_ANDROID_HOME) {
+            // 진입점이 로그인(ON-1)으로 바뀌며 Onboarding은 exported=false가 됐다.
+            // 외부 앱인 드라이버는 공개 런처인 LoginActivity로만 들어갈 수 있다.
             context.startActivity(
                 Intent()
                     .setComponent(
                         ComponentName(
                             GuideE2eContract.DAVI_PACKAGE,
-                            "${GuideE2eContract.DAVI_PACKAGE}.OnboardingActivity",
+                            "${GuideE2eContract.DAVI_PACKAGE}.LoginActivity",
                         ),
                     )
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             )
-            // 권한이 준비된 실제 앱 진입점은 Onboarding을 지나 최신 Conversation 화면으로 온다.
+            // 로그인은 E2E 관심사가 아니다 — 화면이 뜨면 "로그인 없이 시작"으로 지나간다.
+            // 기기에 이미 결정(세션·스킵)이 있으면 화면 없이 통과하므로 버튼이 안 뜰 수 있다.
+            device.wait(
+                Until.findObject(By.res(GuideE2eContract.DAVI_PACKAGE, LOGIN_SKIP_RESOURCE)),
+                LOGIN_SCREEN_TIMEOUT_MS,
+            )?.click()
+            // 권한이 준비된 실제 앱 진입점은 로그인·Onboarding을 지나 최신 Conversation 화면으로 온다.
             if (!device.wait(
                     Until.hasObject(By.res(GuideE2eContract.DAVI_PACKAGE, DAVI_MIC_RESOURCE)),
                     APP_START_TIMEOUT_MS,
@@ -176,6 +184,8 @@ private object GuideControl {
     }
 
     private const val DAVI_MIC_RESOURCE = "btn_mic"
+    private const val LOGIN_SKIP_RESOURCE = "btn_login_skip"
     private const val APP_START_TIMEOUT_MS = 10_000L
+    private const val LOGIN_SCREEN_TIMEOUT_MS = 3_000L
     private const val HOME_TIMEOUT_MS = 10_000L
 }
