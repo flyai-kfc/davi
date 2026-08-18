@@ -22,13 +22,16 @@
       **onboarding_body는 새 레이아웃이 쓰지 않는다** — 이 화면에는 본문 문단이 없고
       카드 안 「최초 1회만 하면 됩니다」가 그 자리를 대신한다. 지우지 않는 이유는
       접근성 고지·동의 문구로 #227이 이 키를 받기로 되어 있어서다.
+      **지금 이 키를 실제로 쓰는 것은 debug 백업 화면뿐이다** — 그래서 문구도 거기 기준이다.
+
+      **켜야 할 특수 권한이 하나로 줄었다**(#212). `SYSTEM_ALERT_WINDOW`를 걷어내면서
+      「다른 앱 위에 그리기」 버튼과 그 라벨이 함께 빠졌고, hint도 "두 가지"를 말하지 않는다.
     -->
     <string name="onboarding_title">앱 권한 설정</string>
     <string name="onboarding_permission_note">최초 1회만 하면 됩니다</string>
-    <string name="onboarding_permission_hint">두 가지가 모두 켜지면\n다음으로 넘어가요</string>
-    <string name="onboarding_body">시작하려면 두 가지를 켜야 합니다.\n1) 화면을 읽어 안내하기 (접근성 서비스)\n2) 안내를 화면 위에 띄우기 (다른 앱 위에 표시)</string>
+    <string name="onboarding_permission_hint">권한이 켜지면\n다음으로 넘어가요</string>
+    <string name="onboarding_body">시작하려면 한 가지를 켜야 합니다.\n화면을 읽어 안내하기 (접근성 서비스)</string>
     <string name="btn_open_accessibility">접근성 서비스 켜기</string>
-    <string name="btn_open_overlay">다른 앱 위에 그리기</string>
 
     <!-- 목표 입력 + 안내 시작·중지 -->
     <string name="goal_label">무엇을 하고 싶으신가요?</string>
@@ -105,12 +108,13 @@
     <string name="guide_error_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
     <string name="guide_error_server">안내에 잠시 문제가 생겼어요.\n곧 다시 안내해 드릴게요.</string>
     <!--
-      안내창을 못 쓰는 두 순간이라 토스트다(#29).
-      guide_service_off — **두 경로가 함께 쓴다.** ① 복귀 화면(RETURN_TO_APP, 권한 있음)이
-        온보딩에서 왜 왔는지 말할 때 ② 복귀가 막힌 갈래(NOTICE_ONLY, 권한 없음)의 토스트.
-        어느 쪽이든 안내창은 못 쓴다 — ①은 unbind 중이라 접근성 오버레이 창이 서비스와 함께
-        죽고, ②는 권한이 없어 그리기가 게이트에서 막힌다. **설정 앱이라서가 아니다** —
-        접근성 오버레이는 설정 앱 위에도 그려진다(#56).
+      안내창을 못 쓰는 순간의 문구다(#29).
+      guide_service_off — **두 자리가 함께 쓴다**(#212). ① 안내 중 접근성이 꺼졌을 때의 **알림**
+        ② 그 알림을 눌러 온보딩에 도착했을 때 왜 왔는지 말하는 토스트. 어느 쪽이든 안내창은
+        못 쓴다 — unbind 중이라 접근성 오버레이 창이 서비스와 함께 죽는다. **설정 앱이라서가
+        아니다**: 접근성 오버레이는 설정 앱 위에도 그려진다(#56).
+      notification_channel_guide_status — 시스템 설정의 알림 채널 목록에 뜨는 이름이라
+        문장이 아니라 라벨이다.
       guide_permission_lost — 온보딩으로 되돌리며 **화면이 바뀌는** 순간이라 안내창은 함께 사라진다.
     -->
     <!--
@@ -121,6 +125,7 @@
     <string name="overlay_reading">화면을 읽고 있어요</string>
     <string name="guide_service_off">안내 기능이 꺼져서 안내를 멈췄어요.</string>
     <string name="guide_permission_lost">권한이 꺼져 있어요.\n다시 켜 주세요.</string>
+    <string name="notification_channel_guide_status">안내 상태</string>
 
     <!--
       종료 확인(GD-4, #193). 중지 칩이 띄우는 되묻기다.
