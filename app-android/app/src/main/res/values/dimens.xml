@@ -296,12 +296,21 @@
     <dimen name="davi_card_shadow_offset_y_speaking_senior">5dp</dimen>
     <!--
       유리 하이라이트(시안 INNER_SHADOW 흰 95% y2 blur2)의 근사.
-      좌우를 반경의 절반만큼 들여 둥근 모서리 밖으로 안 나가게 한다.
+      **발화 중인 두 drawable만 쓴다**(bg_davi_card_speaking · bg_davi_card_utterance_speaking).
+      대기 변형에는 하이라이트가 없다.
+
+      **좌우 인셋은 반경의 절반이 아니다.** 필요한 값은 하이라이트 **윗변 높이에서** 카드
+      곡선이 안쪽으로 들어온 거리다 — 반경 28에 offsetY 2면
+
+        인셋 >= r - sqrt(r^2 - (r - offsetY)^2) = 28 - sqrt(784 - 676) = 17.6dp
+
+      14dp(반경의 절반)로 두었더니 그 지점의 경계가 17.6dp라 **하이라이트가 좌우로 3.6dp씩
+      삐져나왔다**(2026-08-18 실기기 실측: +2dp 줄에서 흰색이 14.0dp부터 시작). 18dp로 올린다.
+      아래로 갈수록 곡선이 물러나므로 윗변만 통과하면 나머지는 저절로 들어온다.
     -->
     <dimen name="davi_card_highlight_height">3dp</dimen>
     <dimen name="davi_card_highlight_offset_y">2dp</dimen>
-    <dimen name="davi_card_highlight_inset">14dp</dimen>
-    <!-- 모서리를 넘던 문제와 18dp 계산은 후속 PR #205에서 다룬다. -->
+    <dimen name="davi_card_highlight_inset">18dp</dimen>
     <!--
       다비 발화 중 카드 뒤 분홍 글로우. 시안 y18 · blur36 그대로다(CardGlowView).
       글로우가 뷰 밖으로 번질 자리가 필요해 카드보다 사방 blur만큼 넓게 잡는다.
