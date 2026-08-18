@@ -34,6 +34,12 @@ class ControlOverlay(
     private var confirmPair: View? = null
 
     /**
+     * 지금 컨트롤 행에 앉아 있는 확인의 종류. 확인쌍 리스너가 이 값을 실어 콜백에 넘긴다 —
+     * 서비스가 같은 상태를 따로 들면 두 벌이 어긋난다.
+     */
+    private var kind: GuideDisplayState.ConfirmKind? = null
+
+    /**
      * 직전에 창에 실제로 넣은 자리. 같은 자리면 [show]가 `updateViewLayout`을 건너뛴다.
      *
      * 아끼려는 것은 CPU가 아니라 **우리가 우리를 깨우는 일**이다 — 창을 건드릴 때마다
@@ -52,10 +58,10 @@ class ControlOverlay(
     /**
      * 안내창을 [rect] 자리에 [lines]로 띄운다. 창이 없으면 만들고, 있으면 옮긴다.
      *
-     * [confirm]이면 컨트롤 행이 확인쌍이 된다(GD-3). 안내창 자체는 같은 창이라 확인으로
-     * 넘어갈 때 창을 다시 만들지 않는다.
+     * [confirm]이 있으면 컨트롤 행이 확인쌍이 된다(GD-3·GD-4). 안내창 자체는 같은 창이라
+     * 확인으로 넘어갈 때 창을 다시 만들지 않는다.
      */
-    fun show(rect: Rect, lines: List<String>, confirm: Boolean = false) {
+    fun show(rect: Rect, lines: List<String>, confirm: GuideDisplayState.ConfirmKind? = null) {
         val current = root
         if (current == null) {
             if (create(rect) != null) {
@@ -83,12 +89,35 @@ class ControlOverlay(
         box = null
         stopChip = null
         confirmPair = null
+        kind = null
     }
 
-    /** 컨트롤 행에 무엇을 앉힐지. 둘이 함께 보이지 않게 한쪽만 켠다. */
-    private fun applyMode(confirm: Boolean) {
-        stopChip?.visibility = if (confirm) View.GONE else View.VISIBLE
-        confirmPair?.visibility = if (confirm) View.VISIBLE else View.GONE
+    /**
+     * 컨트롤 행에 무엇을 앉힐지. 둘이 함께 보이지 않게 한쪽만 켠다.
+     *
+     * 확인쌍은 아이콘 전용이라 화면이 달라도 그림이 같다. **뜻은 다르므로**
+     * `contentDescription`을 종류마다 갈아 끼운다 — 안 갈면 TalkBack이 종료 확인에서
+     * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨(×아직요/×아니요)은 v2 시안의 몫이다(#178).
+     */
+    private fun applyMode(confirm: GuideDisplayState.ConfirmKind?) {
+        kind = confirm
+        stopChip?.visibility = if (confirm != null) View.GONE else View.VISIBLE
+        confirmPair?.visibility = if (confirm != null) View.VISIBLE else View.GONE
+        val pair = confirmPair ?: return
+        pair.findViewById<View>(R.id.btn_confirm_accept).contentDescription =
+            context.getString(
+                when (confirm) {
+                    GuideDisplayState.ConfirmKind.QUIT -> R.string.overlay_quit_accept_desc
+                    else -> R.string.overlay_confirm_accept_desc
+                },
+            )
+        pair.findViewById<View>(R.id.btn_confirm_reject).contentDescription =
+            context.getString(
+                when (confirm) {
+                    GuideDisplayState.ConfirmKind.QUIT -> R.string.overlay_quit_reject_desc
+                    else -> R.string.overlay_confirm_reject_desc
+                },
+            )
     }
 
     private fun isApplied(rect: Rect) =
@@ -106,18 +135,18 @@ class ControlOverlay(
         // 서비스 Context에는 테마가 없다. 테마 속성을 참조하는 리소스가 하나라도 끼면 inflate가 터진다.
         val themed = ContextThemeWrapper(context, R.style.Theme_Davi)
         val created = LayoutInflater.from(themed).inflate(R.layout.overlay_control, null)
-        created.findViewById<View>(R.id.btn_stop_chip).setOnClickListener { callbacks.onStop() }
+        created.findViewById<View>(R.id.btn_stop_chip)
+            .setOnClickListener { callbacks.onStopRequested() }
 
         val pair = created.findViewById<View>(R.id.confirm_pair)
-        // 확인쌍은 대화 화면과 공유하는 컴포넌트라 라벨이 그 화면 문구다. 오버레이에서는 뜻이
-        // 달라 여기서 덮는다 — 안 덮으면 TalkBack이 "이대로 안내 시작"을 읽는다.
-        pair.findViewById<View>(R.id.btn_confirm_accept).apply {
-            contentDescription = context.getString(R.string.overlay_confirm_accept_desc)
-            setOnClickListener { callbacks.onConfirmAccept() }
+        // 확인쌍은 대화 화면과 공유하는 컴포넌트라 XML 라벨이 그 화면 문구다. 오버레이에서는 뜻이
+        // 달라 [applyMode]가 덮는다 — 안 덮으면 TalkBack이 "이대로 안내 시작"을 읽는다.
+        // 응답에 [kind]를 실어 보낸다. 확인쌍이 떠 있는 동안의 종류는 이 창이 알고 있는 값이다.
+        pair.findViewById<View>(R.id.btn_confirm_accept).setOnClickListener {
+            kind?.let(callbacks::onConfirmAccept)
         }
-        pair.findViewById<View>(R.id.btn_confirm_reject).apply {
-            contentDescription = context.getString(R.string.overlay_confirm_reject_desc)
-            setOnClickListener { callbacks.onConfirmReject() }
+        pair.findViewById<View>(R.id.btn_confirm_reject).setOnClickListener {
+            kind?.let(callbacks::onConfirmReject)
         }
 
         return runCatching {

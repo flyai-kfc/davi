@@ -192,7 +192,43 @@ object GuideSession {
         return true
     }
 
-    /** 사용자가 "됐어요"를 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다. */
+    /**
+     * 중지 칩을 눌렀다. **여기서 끝내지 않는다** — 종료 확인(GD-4)을 띄우기 위해 확인 대기로
+     * 들어간다(#193). 대기에 들어갔으면 true, 아니면 호출자는 아무것도 그리지 않는다.
+     *
+     * [awaitConfirm]과 달리 **화면 서명을 세우지 않는다.** 이 화면은 어느 화면에 속한 것이
+     * 아니고, ×가 [pendingConfirmSignature]를 부정 이력으로 옮기면 완료 판정의 done 억제가
+     * 엉뚱한 화면에서 걸린다.
+     *
+     * 세션이 없으면 무시한다 — 세션이 끝나는 경로가 조작 창을 걷지만, 그 사이에 들어온
+     * 클릭까지 막지는 못한다. 이미 대기 중이어도 무시한다(현재로선 GD-3 중 칩이 숨겨져
+     * 도달할 수 없지만, 대기를 겹쳐 세우면 ○ 한 번에 안 끝나는 실패가 된다).
+     */
+    @Synchronized
+    fun awaitQuitConfirm(): Boolean {
+        if (!isActive || awaitingConfirm) return false
+        awaitingConfirm = true
+        return true
+    }
+
+    /**
+     * 종료 확인의 ×("계속 볼래요"). 대기만 내리고 **아무것도 기억하지 않는다.**
+     *
+     * [confirmRejected]와 달리 [rejectedSignature]·[unverifiedDones]를 건드리지 않는다 —
+     * 종료를 되물은 것과 완료 판정 쿼터는 무관하다. 직전 안내를 되살리는 것은 표시 상태의
+     * 몫이다([GuideDisplayState.dismissQuitConfirm]).
+     */
+    @Synchronized
+    fun quitRejected() {
+        consumeConfirm()
+    }
+
+    /**
+     * 사용자가 확인의 ○을 눌렀다. 세션을 끝내는 정상 경로다. 앱을 앞으로 가져오지 않는다.
+     *
+     * **완료 확인과 종료 확인이 공유한다** — "다 됐어요"든 "그만 볼래요"든 하는 일이
+     * 대기 해제 + 종료로 같다.
+     */
     fun confirmAccepted() {
         if (!consumeConfirm()) return
         // stop() -> update()가 남은 확인 상태까지 비운다. 리스너를 부르므로 잠금 밖에서.

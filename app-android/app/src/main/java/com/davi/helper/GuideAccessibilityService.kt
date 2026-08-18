@@ -97,28 +97,56 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay = OverlayController(
             this,
             object : OverlayController.Callbacks {
-                override fun onStop() {
-                    Log.i(TAG, "session stopped by chip")
-                    GuideSession.stop()
+                override fun onStopRequested() {
+                    // 칩은 끝내지 않고 되묻는다(GD-4, #193). 종료는 그 화면의 ○뿐이다.
+                    if (!GuideSession.awaitQuitConfirm()) return
+                    Log.i(TAG, "stop chip, asking user")
+                    draw(display.showQuitConfirm(getString(R.string.overlay_quit_confirm)))
+                    // 확인 대기로 들어갔으니 읽는 중은 여기서 끈다(CONFIRM_CONFIDENT와 같은 이유).
+                    updateReading()
                 }
 
-                override fun onConfirmAccept() {
+                override fun onConfirmAccept(kind: GuideDisplayState.ConfirmKind) {
                     // 앱을 앞으로 가져오지 않는다 — 방금 끝낸 작업 화면에 그대로 남는 것이
-                    // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정).
-                    Log.i(TAG, "confirm accepted, session done")
+                    // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정). 종료 확인의 ○도 같은 자리다.
+                    Log.i(TAG, "confirm accepted ($kind), session done")
                     GuideSession.confirmAccepted()
                 }
 
-                override fun onConfirmReject() {
-                    Log.i(TAG, "confirm rejected, continuing")
-                    GuideSession.confirmRejected()
-                    // 확인 화면을 **버린다**(onCleared가 아니라 reset). 기억만 해 두면 다음 샘플의
-                    // redisplay가 같은 화면이라는 이유로 확인쌍을 곧바로 되살린다 — 사용자가 방금
-                    // 아니라고 답한 질문이 다시 뜨는 셈이다.
-                    overlay?.clear()
-                    display.reset()
-                    // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다(RETRY와 같은 경로).
-                    stability.markFailed()
+                override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
+                    Log.i(TAG, "confirm rejected ($kind), continuing")
+                    when (kind) {
+                        // 종료 확인의 ×는 **되돌리기**다. 되살릴 안내가 있으면 그대로 그리고
+                        // 서버에 다시 묻지 않는다.
+                        //
+                        // 없으면(그 사이 화면이 바뀌어 표시 상태가 폐기했으면) **다시 묻는다.**
+                        // 안 그러면 그 화면은 `markSent`로 남아 재질의가 없고, 사용자는 빈
+                        // 오버레이만 보게 된다 — 화면이 또 바뀔 때까지 안내가 영영 안 온다
+                        // (2026-08-18 실기기 실측: 확인 중 도착한 응답이 폐기된 화면에서 재현).
+                        // 완료 확인의 × 가 하는 것과 같은 처리다.
+                        GuideDisplayState.ConfirmKind.QUIT -> {
+                            GuideSession.quitRejected()
+                            val restored = display.dismissQuitConfirm(stability.currentSignature())
+                            if (restored != null) {
+                                draw(restored)
+                            } else {
+                                overlay?.clear()
+                                stability.markFailed()
+                            }
+                        }
+
+                        // 완료 확인의 ×는 **버리기**다. 기억만 해 두면 다음 샘플의 redisplay가
+                        // 같은 화면이라는 이유로 확인쌍을 곧바로 되살린다 — 사용자가 방금
+                        // 아니라고 답한 질문이 다시 뜨는 셈이다.
+                        GuideDisplayState.ConfirmKind.DONE -> {
+                            GuideSession.confirmRejected()
+                            overlay?.clear()
+                            display.reset()
+                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
+                            // (RETRY와 같은 경로).
+                            stability.markFailed()
+                        }
+                    }
                     updateReading()
                 }
             },
@@ -299,7 +327,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 screenReadable = !rootUnavailable,
                 decision = lastDecision,
                 requestInFlight = requestInFlight.get(),
-                // 확인 대기 중에는 같은 자리를 성공 tone 테두리가 쓴다(#139).
+                // 확인 대기 중에는 어느 종류든 읽는 중 표시를 끈다. 완료 확인(GD-3)은 같은
+                // 자리를 성공 tone 테두리가 쓰고(#139), 종료 확인(GD-4)은 그 자리를 아무도
+                // 안 쓴다 — 스크림은 다른 자리고 테두리가 없다(#193).
                 awaitingConfirm = GuideSession.awaitingConfirm,
             ),
         )
@@ -544,6 +574,22 @@ class GuideAccessibilityService : AccessibilityService() {
         // 전송은 성공했으니 백오프는 푼다. 화면이 바뀌었는지는 그다음 문제다.
         stability.markSucceeded()
 
+        // 확인 대기 중에 도착한 응답은 답할 자리를 덮는다(오류 경로와 같은 규칙, #153).
+        //
+        // GD-3까지는 이 가드가 필요 없었다 — 확인 대기를 **여는 것이 이 함수 자신**이라 응답
+        // 도착 시점에 대기 중인 경우가 없었다. GD-4는 그 전제를 깬다(#193): 중지 칩은 요청이
+        // 나가 있는 동안에도 눌리고(읽는 중 테두리가 도는 그 몇 초가 오히려 그만두고 싶어지는
+        // 구간이다), 그 응답이 확인 화면을 덮으면 `awaitingConfirm`만 true로 남아 세션이 갇힌다 —
+        // 요청은 막히고, 확인쌍이 사라져 답할 수도 없고, 칩 재탭은 그 플래그에 막힌다.
+        //
+        // **`markFailed()`는 부르지 않는다.** 그 함수가 `sentSignature`를 비워 재질의를 만드는데,
+        // "×는 서버에 다시 묻지 않는다"는 이 화면의 계약과 어긋난다. 화면이 그대로면 ×로 돌아온 뒤
+        // 재질의가 없는 것이 맞고, 화면이 바뀌었으면 다음 샘플이 새 서명으로 알아서 묻는다.
+        if (GuideSession.awaitingConfirm) {
+            GuideTelemetry.responseDropped(logicalRequest, "awaiting_confirm")
+            return
+        }
+
         // 세대만 보면 같은 세션 안에서 A 화면의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
         // 버리면 다음 샘플이 B를 새로 물어본다.
         val current = stability.currentSignature()
@@ -681,12 +727,42 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        // 안내를 받던 중이었다면 그 사실을 알린다(#29). **토스트인 이유**는 이 순간 사용자가
-        // 접근성 설정 화면 위에 있고 거기엔 오버레이가 안 그려지기 때문이다(기기 함정).
-        // 세션이 없었으면 알리지 않는다 — 안내 중이 아닐 때 서비스를 끄는 건 정상 조작이다.
-        if (GuideSession.isActive) {
-            Log.w(TAG, "service unbound during session")
-            Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+        // 안내를 받던 중이었다면 그 사실을 알린다(#29·#190). 판정은 [serviceOffAction]에 있다.
+        // **여기서 토스트를 띄우고 화면도 바꾸면 토스트가 사라진다** — 복귀를 넣은 뒤 실측에서
+        // Toast.show()는 불렸는데 0.7·1.4·2.1초 캡처 어디에도 없었다(화면 전환이 삼킨다).
+        // 그래서 복귀 경로는 **복귀한 화면이 말하게** 하고, 여기서는 복귀가 막힌 경우만 띄운다.
+        when (serviceOffAction(GuideSession.isActive, hasGuideOverlayPermission())) {
+            ServiceOffAction.RETURN_TO_APP -> {
+                // CLEAR_TASK가 **꼭 필요하다**(PR #198 리뷰). 세션 중에는 우리 task에
+                // ConversationActivity가 살아 있다 — 그쪽 onPause는 대화만 접고 finish()하지
+                // 않는다. NEW_TASK만 주면 그 위에 온보딩이 얹히고, 사용자가 권한을 다시 켜면
+                // OnboardingActivity.onResume이 startActivity(Conversation) + finish()를 해서
+                // 대화 화면이 두 겹이 된다. 껐다 켤 때마다 한 겹씩 쌓이고 뒤로 키에 옛 인스턴스가 나온다.
+                //
+                // 온보딩을 task 루트로 만들면 그 겹침이 닫히고, "돌아가서 다시 켜고 처음부터"라는
+                // 이 경로의 뜻과도 맞는다. **전제는 위의 onPause 동작이다** — 그쪽이 스스로
+                // finish()하게 바뀌면 이 플래그의 근거도 다시 봐야 한다.
+                Log.w(TAG, "service unbound during session, returning to app")
+                startActivity(
+                    android.content.Intent(this, OnboardingActivity::class.java)
+                        .addFlags(
+                            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                        )
+                        .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
+                )
+            }
+
+            ServiceOffAction.NOTICE_ONLY -> {
+                // 오버레이 권한이 없어 복귀가 막힌다(BAL 면제 없음). 설정 앱 위라 안내창도 못 쓴다.
+                // **이 토스트는 지금 안 보인다** — 알림 권한을 아직 요청하지 않아 백그라운드
+                // 토스트가 억제된다(#56이 그 권한을 들여오면 살아난다, [ServiceOffAction.NOTICE_ONLY]).
+                // 그래도 호출은 남긴다. 지우면 권한이 생겨도 이 자리만 조용히 비어 있게 된다.
+                Log.w(TAG, "service unbound during session, cannot return")
+                Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()
+            }
+
+            ServiceOffAction.SILENT -> Unit
         }
         // 서비스가 내려가면 안내할 수단이 없다. 세션을 남겨두면 화면에는 "안내 중"인데
         // 아무 일도 일어나지 않는 상태가 된다.
