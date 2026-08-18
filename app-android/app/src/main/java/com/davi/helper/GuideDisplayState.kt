@@ -67,6 +67,28 @@ class GuideDisplayState {
     }
 
     /**
+     * [signature] 화면에 안내 중 서버 오류를 표시한다(#29). 기존 안내를 **덮는다** — 오류가
+     * 걷히면 다음 성공 응답의 [show]가 다시 덮으므로 되살릴 것을 따로 기억하지 않는다.
+     *
+     * STUCK 접미사를 붙이지 않는 이유는 상한 안내와 같다. 서버가 안 되어 화면이 그대로인
+     * 것이지 사용자가 조작을 놓친 게 아니라서 "한 번 더 해 주세요"는 틀린 지시다.
+     *
+     * **같은 화면에 같은 오류가 이미 떠 있으면 null을 돌려준다.** 재시도는 백오프로 계속
+     * 도는데 그때마다 같은 내용을 다시 그리면 조작 오버레이가 자기 창을 만져 스스로를
+     * 깨운다(#153에서 정체 알림이 실제로 그랬다 — [ControlOverlay]의 `appliedX` 주석).
+     * 오버레이가 지워졌다면([onCleared]) `visible`이 false라 다시 그린다.
+     */
+    fun showError(signature: String, text: String): Content? {
+        if (visible && guideSignature == signature && guide?.text == text) return null
+        val content = Content(bounds = null, text = text)
+        guide = content
+        guideSignature = signature
+        stuckSuffixAllowed = false
+        visible = true
+        return content
+    }
+
+    /**
      * [signature] 화면에 완료 확인을 표시한다(GD-3, #139). 문구는 확신 있음/없음 두 갈래를
      * 호출자가 고른다 — 여기서는 확인쌍을 띄운다는 것만 안다.
      *

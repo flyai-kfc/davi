@@ -36,6 +36,23 @@ class ConversationUiStateTest {
         assertTrue(model.micVisible)
     }
 
+    /** 잠긴 마이크의 이유가 화면에 없으면 사용자는 눌리지 않는 버튼을 반복해 누른다(#29). */
+    @Test
+    fun `안내 세션 중 홈은 잠긴 이유를 문구로 말한다`() {
+        val model = renderModelOf(ConversationUiState.Home(), guideActive = true)
+        assertEquals(R.string.conversation_guide_active, model.statusRes)
+    }
+
+    /** 안내 중이라는 사실이 직전 시도의 오류보다 급하다 — 지금 할 일을 바꾸는 쪽이다. */
+    @Test
+    fun `안내 중이면 직전 오류 문구보다 안내 중 문구가 우선한다`() {
+        val model = renderModelOf(
+            ConversationUiState.Home(statusRes = R.string.voice_no_speech),
+            guideActive = true,
+        )
+        assertEquals(R.string.conversation_guide_active, model.statusRes)
+    }
+
     @Test
     fun `홈의 에러 문구는 그대로 전달된다`() {
         val model = renderModelOf(ConversationUiState.Home(statusRes = R.string.voice_no_speech))

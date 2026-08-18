@@ -2,9 +2,14 @@
     <string name="app_name">다비 도우미</string>
     <string name="accessibility_service_description">화면을 읽어 다음에 무엇을 누르면 되는지 화면 위에 표시해 드립니다. 화면 내용은 개인정보를 가린 뒤에만 사용됩니다.</string>
 
-    <!-- 온보딩 (두 모드: 가족 대신 설정 / 시니어 본인) -->
+    <!--
+      온보딩 (두 모드: 가족 대신 설정 / 시니어 본인).
+      본문은 쉬운 말로 쓰되 **괄호로 시스템 이름을 병기한다**(#29) — 버튼을 누르면 나가는
+      설정 화면에는 "접근성", "다른 앱 위에 표시"라고 적혀 있어서, 앱에서 그 단어를 지우면
+      사용자가 남의 화면에서 찾을 글자가 없어진다.
+    -->
     <string name="onboarding_title">다비 도우미 설정</string>
-    <string name="onboarding_body">시작하려면 두 가지 권한이 필요합니다.\n1) 접근성 — 화면을 읽어 안내하기 위함\n2) 다른 앱 위에 표시 — 안내를 화면 위에 띄우기 위함</string>
+    <string name="onboarding_body">시작하려면 두 가지를 켜야 합니다.\n1) 화면을 읽어 안내하기 (접근성 서비스)\n2) 안내를 화면 위에 띄우기 (다른 앱 위에 표시)</string>
     <string name="btn_open_accessibility">접근성 설정 열기</string>
     <string name="btn_open_overlay">다른 앱 위에 표시 허용</string>
 
@@ -18,47 +23,89 @@
     <!-- 시니어 카드 위쪽 작은 레이블. 위 문장의 짧은 형태로, 카드 안에서 상태를 알린다. -->
     <string name="voice_listening_label">듣고 있어요</string>
     <string name="voice_processing">하고 싶은 일을 정리하고 있어요.</string>
+    <!-- 릴리스에서는 도달하지 않는다(when 소진용). 실제 표시는 개발판 글자 입력 화면뿐이다. -->
     <string name="voice_goal_ready">목표가 입력됐어요. 확인한 뒤 안내 시작을 눌러 주세요.</string>
-    <string name="voice_no_speech">잘 듣지 못했어요. 말로 입력을 다시 눌러 주세요.</string>
-    <string name="voice_recognizer_unavailable">이 기기에서는 음성 인식을 사용할 수 없어요. 글자로 입력해 주세요.</string>
-    <string name="voice_recognition_error">음성 인식 중 문제가 생겼어요. 잠시 후 다시 해 주세요.</string>
+    <string name="voice_no_speech">잘 듣지 못했어요.\n마이크를 다시 눌러 주세요.</string>
+    <!--
+      기기가 음성 인식을 지원하지 않는 경우. 릴리스에는 글자 입력칸이 없어 **할 수 있는 일이
+      없다** — 폴백을 만들지 않기로 했으므로(#29) 해결책을 암시하지 않고 쓸 수 없다고 못 박는다.
+      "다시 해 보라"는 여지를 남기면 사용자가 홈에서 마이크만 누르며 갇힌다.
+      개발판 글자 입력 화면에서는 이 말이 틀리지만 팀 내부 화면이라 키를 나누지 않는다.
+    -->
+    <string name="voice_recognizer_unavailable">이 휴대폰은 음성 인식 기능이 없어요.\n다비 도우미를 쓸 수 없어요.</string>
+    <!-- voice_no_speech와 원인이 다르다(사용자 무발화 vs 인식 엔진 오류). 같은 문장이 되지 않게 한다. -->
+    <string name="voice_recognition_error">음성 인식에 문제가 생겼어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="voice_permission_denied">말로 입력하려면 마이크 권한이 필요해요.</string>
-    <string name="voice_permission_open_settings">앱 설정에서 마이크 권한을 허용해 주세요.</string>
-    <string name="voice_network_error">서버에 연결하지 못했어요. 네트워크를 확인해 주세요.</string>
-    <string name="voice_server_busy">지금은 요청이 많아요. 잠시 후 다시 해 주세요.</string>
-    <string name="voice_server_error">목표를 정리하지 못했어요. 글자로 입력하거나 다시 시도해 주세요.</string>
+    <string name="voice_permission_open_settings">휴대폰 설정에서 \'다비 도우미\'를 찾아 마이크를 켜 주세요.</string>
+    <string name="voice_network_error">인터넷 연결이 원활하지 않아요.\n연결을 확인하고 다시 해 주세요.</string>
+    <string name="voice_server_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 해 주세요.</string>
+    <string name="voice_server_error">하려는 일을 정리하지 못했어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="voice_dialogue_limit">목표를 충분히 정리하지 못했어요. 입력칸에 조금 더 구체적으로 적어 주세요.</string>
     <string name="btn_start">안내 시작</string>
     <string name="btn_stop">안내 중지</string>
     <string name="guide_hint">시작을 누른 뒤 하려던 앱으로 이동하면 화면 위에 안내가 뜹니다.</string>
-    <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 보세요.</string>
-    <!-- 안내창 X 칩(#126). 이 라벨을 바꾸면 아래 guide_done_unconfirmed의 인용도 함께 고친다. -->
+    <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 주세요.</string>
+    <!--
+      안내창 X 칩(#126). 아이콘 only로 바뀔 예정이며, 그때 이 문자열은 지우지 말고
+      contentDescription으로 자리만 옮긴다 — 지우면 아이콘의 뜻이 코드 어디에도 안 남는다.
+      아래 문구들은 이 라벨을 **이름으로 인용하지 않는다**(기호 ×로 가리킨다, #29) —
+      라벨이 바뀔 때마다 문구가 조용히 거짓이 되는 것을 두 번 겪었다.
+    -->
     <string name="overlay_stop_chip">그만 볼래요</string>
     <!--
-      미검증 done 상한(#55). 안내창에서 바로 끝낼 수 있게 되어 앱 버튼 대신 칩을 가리킨다(#126).
-      칩이 어디 있는지는 쓰지 않는다 — 자리가 아직 임시다. 최종 문구는 #29에서 함께 확정한다.
+      미검증 done 상한(#55). PR #153 뒤로 이 자리는 **사용자가 이미 ×아직이에요를 누른 화면**이라
+      "다 끝났나요?"로 되묻지 않는다 — 같은 질문 반복을 막는 것이 #139의 결정이었다.
+      되묻는 대신 계속 안내한다고 알리고 끝내는 방법만 남긴다.
     -->
-    <string name="guide_done_unconfirmed">다 되었는지 확인하지 못했어요.\n끝났다면 \'그만 볼래요\'를 눌러 주세요.</string>
+    <string name="guide_done_unconfirmed">다 되셨는지 확인하지 못해 안내를 이어갈게요.\n그만 보시려면 ×를 눌러 주세요.</string>
     <!--
       완료 확인(GD-3, #139). 검증된 완료와 미검증 상한이 같은 화면을 쓰고 **문구만 갈린다**.
-      확인쌍이 아이콘뿐이라 무엇을 누르라는지 문구에 담는다 — 임시값이고 확정은 W8/#29.
+      확인쌍이 아이콘뿐이라 무엇을 누르라는지 문구에 담되, **화면 배치 순서대로**(×가 왼쪽,
+      ○가 오른쪽) 부른다 — 반대로 쓰면 눈이 좌우를 되짚는다.
+      확신 있는 쪽도 단정하지 않는다("다 됐어요!") — 성공 오탐을 묻는 자리다.
     -->
-    <string name="overlay_confirm_confident">다 됐어요! 해결되셨나요?\n됐으면 ○, 아직이면 ×를 눌러 주세요.</string>
-    <string name="overlay_confirm_unsure">다 된 것 같은데 확실하지 않아요.\n됐으면 ○, 아직이면 ×를 눌러 주세요.</string>
+    <string name="overlay_confirm_confident">해결되셨나요?\n아직이면 ×, 다 됐으면 ○를 눌러 주세요.</string>
+    <string name="overlay_confirm_unsure">다 된 것 같은데 확실하지 않아요.\n아직이면 ×, 다 됐으면 ○를 눌러 주세요.</string>
     <!-- 확인쌍 라벨. 대화 화면의 같은 컴포넌트와 뜻이 달라 오버레이 전용으로 둔다. -->
     <string name="overlay_confirm_accept_desc">네, 다 됐어요</string>
     <string name="overlay_confirm_reject_desc">아니요, 아직이에요</string>
+
+    <!--
+      안내 중 서버 오류(#29). 앱이 알아서 재시도하므로 **사용자에게 행동을 시키지 않는다**.
+      기존 안내를 덮고, 성공하면 새 안내가 다시 덮는다. 원인 4종(AUTH·SERVER·PARSE·
+      BAD_REQUEST)은 사용자가 할 일이 같아 한 문구로 묶는다.
+    -->
+    <string name="guide_error_network">인터넷 연결이 원활하지 않아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
+    <string name="guide_error_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
+    <string name="guide_error_server">안내에 잠시 문제가 생겼어요.\n곧 다시 안내해 드릴게요.</string>
+    <!--
+      안내창을 못 쓰는 두 순간이라 토스트다(#29).
+      guide_service_off — 접근성이 꺼지는 순간 사용자는 설정 앱 위에 있고 거기엔 오버레이가
+        안 그려진다(기기 함정).
+      guide_permission_lost — 온보딩으로 되돌리며 **화면이 바뀌는** 순간이라 안내창은 함께 사라진다.
+    -->
+    <string name="guide_service_off">안내 기능이 꺼져서 안내를 멈췄어요.</string>
+    <string name="guide_permission_lost">권한이 꺼져 있어요.\n다시 켜 주세요.</string>
+
     <string name="mode_family">가족이 대신 설정</string>
     <string name="mode_self">직접 설정</string>
 
-    <!-- MA-1 홈 (docs/SCREENS.md). 문구 확정은 W8 — 여기는 디자인 확정값. -->
-    <string name="voice_home_title">누르고\n물어보세요</string>
+    <!-- MA-1 홈 (docs/SCREENS.md). \n을 명시하는 이유는 제목이 28sp라 글꼴 배율 2.0에서
+         한 줄에 안 들어가고, 없으면 어디서 끊길지 기기가 정하기 때문이다. -->
+    <string name="voice_home_title">누르고\n말해 주세요</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
 
-    <!-- 대화 화면 (임시 와이어프레임 문구 — 확정은 W8/#29) -->
+    <!-- 대화 화면 -->
     <string name="conversation_prompt_initial">무엇을 도와드릴까요?</string>
     <string name="conversation_requesting">잠시만요</string>
-    <string name="conversation_failed">응답을 이해하지 못했어요.\n처음으로 돌아갈게요.</string>
+    <!--
+      되묻기 왕복 상한 초과, 또는 서버가 READY라면서 goal을 비워 보낸 경우.
+      **말은 들렸는데 목표가 안 잡힌** 상태다 — "못 들었다"고 하면 사용자가 같은 말을 더 크게
+      반복해 같은 실패로 되돌아온다(#29).
+    -->
+    <string name="conversation_failed">무엇을 하려는지 잘 모르겠어요.\n처음부터 다시 할게요.</string>
+    <!-- 안내 세션 중 홈. 마이크가 왜 잠겼는지가 화면에 없던 자리다(#29). -->
+    <string name="conversation_guide_active">안내 중이에요.\n하려던 앱으로 돌아가 주세요.</string>
     <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
     <string name="conversation_confirm_reject_desc">처음부터 다시</string>
     <string name="conversation_close_desc">대화 그만하기</string>

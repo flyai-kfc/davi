@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -192,13 +193,14 @@ class ConversationActivity : AppCompatActivity() {
         // GuideSession은 시작되는데 화면을 못 읽거나 오버레이가 안 그려져 사용자가 런처에
         // 혼자 남는다 — 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
         //
-        // #29(상태·오류 문구) 참고: 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다**.
-        // 권한 소실을 사용자에게 알리려면 토스트·헤드업처럼 화면 전환에 살아남는 수단이어야 한다.
+        // 이 복귀는 화면을 바꾸므로 **안내창으로는 알릴 수 없다** — 토스트로 알린다(#29).
+        // 지시("다시 켜 주세요")의 대상은 곧 뜰 온보딩 화면의 두 버튼이다.
         if (!canStartGuide()) {
             // 세션을 여기서 끊는다. 접근성이 꺼진 경우는 onUnbind가 정리하지만,
             // **오버레이만 회수되면** 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
             // 안내만 안 그려진다 — 그대로 두면 세션은 도는데 중지 수단만 손이 닿지 않는다.
             GuideSession.stop()
+            Toast.makeText(this, R.string.guide_permission_lost, Toast.LENGTH_LONG).show()
             startActivity(Intent(this, OnboardingActivity::class.java))
             finish()
             return
@@ -566,9 +568,11 @@ class ConversationActivity : AppCompatActivity() {
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
             -> R.string.voice_no_speech
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> R.string.voice_permission_denied
-            SpeechRecognizerHelper.ERROR_UNAVAILABLE,
-            SpeechRecognizerHelper.ERROR_START_FAILED,
-            -> R.string.voice_recognizer_unavailable
+            // ERROR_UNAVAILABLE만 "이 기기는 못 쓴다"로 보낸다(#29 리뷰). ERROR_START_FAILED는
+            // createRecognizer/startListening의 RuntimeException — 바인딩 순간 실패나 폴백 실패라
+            // 일시적이다. 재시도 여지를 지운 종료 선언을 그쪽에 쓰면 멀쩡한 기기의 어르신이
+            // 한 번 삐끗한 것으로 앱을 접는다(릴리스엔 되돌릴 글자 입력칸도 없다).
+            SpeechRecognizerHelper.ERROR_UNAVAILABLE -> R.string.voice_recognizer_unavailable
             else -> R.string.voice_recognition_error
         }
         setState(ConversationUiState.Home(statusRes = message))
@@ -627,15 +631,18 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 오류를 가르는 기준은 [bucketOf] 하나를 안내창(`GuideErrorCopy`)과 공유한다 — 같은 원인이
+     * 두 화면에서 다른 말로 나오지 않게 하려는 것이다(#29). 문구만 화면마다 다르다.
+     *
+     * `Success` 가지는 when 소진용이고 호출부는 실패 분기뿐이다 — 릴리스에서 `voice_goal_ready`는
+     * 도달하지 않는다(실제 표시는 개발판 글자 입력 화면).
+     */
     private fun errorMessageFor(result: SlotFillResult): Int = when (result) {
-        is SlotFillResult.ApiFailure -> when (result.error.kind) {
-            ApiErrorKind.QUOTA -> R.string.voice_server_busy
-            ApiErrorKind.NETWORK -> R.string.voice_network_error
-            ApiErrorKind.AUTH,
-            ApiErrorKind.SERVER,
-            ApiErrorKind.PARSE,
-            ApiErrorKind.BAD_REQUEST,
-            -> R.string.voice_server_error
+        is SlotFillResult.ApiFailure -> when (bucketOf(result.error.kind)) {
+            ApiErrorBucket.BUSY -> R.string.voice_server_busy
+            ApiErrorBucket.NETWORK -> R.string.voice_network_error
+            ApiErrorBucket.SERVER -> R.string.voice_server_error
         }
         is SlotFillResult.NetworkFailure -> R.string.voice_network_error
         is SlotFillResult.HttpFailure,

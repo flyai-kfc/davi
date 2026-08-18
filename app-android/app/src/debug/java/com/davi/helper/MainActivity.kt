@@ -374,9 +374,8 @@ class MainActivity : AppCompatActivity() {
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
             -> R.string.voice_no_speech
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> R.string.voice_permission_denied
-            SpeechRecognizerHelper.ERROR_UNAVAILABLE,
-            SpeechRecognizerHelper.ERROR_START_FAILED,
-            -> R.string.voice_recognizer_unavailable
+            // 릴리스와 같은 이유로 가른다(#29 리뷰) — ERROR_START_FAILED는 일시적 실패다.
+            SpeechRecognizerHelper.ERROR_UNAVAILABLE -> R.string.voice_recognizer_unavailable
             else -> R.string.voice_recognition_error
         }
         setVoiceStatus(message)
