@@ -76,15 +76,16 @@ SCROLLABLE_NOT_OBSERVED = (
 #
 # 관측되지 않은 것(`None`)에는 계속 침묵한다. 없는 값을 "끝"으로 단정하면 낡은 앱의 침묵이
 # 관측 사실로 둔갑한다(C10이 `has_scrollable_element`에서 세 상태를 나눈 것과 같은 이유).
+# 요소 id는 **괄호가 실제로 적힌 경우에만** 가리킨다. 페이지 줄만으로 끝이 나는 화면
+# (런처처럼 scrollable 노드가 0개)에는 괄호가 없어서, 무조건 "괄호 안 요소"라고 쓰면
+# 프롬프트에 없는 것을 가리키는 지시가 된다(#218 리뷰 3의 여파).
 SCROLL_END_INSTRUCTION = (
-    "이미 끝에 도달한 방향으로는 다시 스크롤을 안내하지 마세요. "
-    "그 방향으로는 더 보여줄 내용이 없으니 다른 행동을 고르세요."
+    "이미 끝에 도달했다고 적힌 방향으로는 다시 스크롤을 안내하지 마세요. "
+    "방향 뒤에 괄호가 있으면 그 끝을 관측한 요소의 id이며, 끝은 그 요소 기준입니다. "
+    "더 보여줄 내용이 없으니 다른 행동을 고르세요."
 )
-SCROLL_ALL_ENDS_REACHED = (
-    "스크롤: 관측된 스크롤 요소가 양쪽 끝에 도달했습니다(스크롤로는 더 보여줄 내용이 없습니다)"
-)
-PAGE_LAST = "지금이 마지막 쪽이라 right(다음 쪽)으로 더 넘길 곳이 없습니다"
-PAGE_FIRST = "지금이 첫 쪽이라 left(이전 쪽)로 더 돌아갈 곳이 없습니다"
+PAGE_LAST = "지금이 마지막 쪽이라 다음 쪽으로 더 넘길 곳이 없습니다"
+PAGE_FIRST = "지금이 첫 쪽이라 이전 쪽으로 더 돌아갈 곳이 없습니다"
 PAGE_ONLY_ONE = "쪽이 하나뿐이라 좌우로 넘길 곳이 없습니다"
 IME_VISIBLE = "입력기: 화면에 키보드가 표시되어 있습니다"
 IME_NOT_VISIBLE = "입력기: 화면에 키보드가 표시되어 있지 않습니다"
@@ -191,11 +192,6 @@ def _scroll_context(req: NextStepRequest) -> str:
     context = f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
 
     open_directions, ended_directions = _scroll_reach(req.screen)
-    if ended_directions and not open_directions:
-        # 끝에 닿아도 반대 방향 action은 남아 있어 `has_scrollable_element`는 계속 true다.
-        # 양쪽이 다 끝인 화면에서 "스크롤 가능한 요소가 관측되었습니다"만 있으면 모델은
-        # 계속 넘겨도 된다고 읽는다.
-        return f"{context}{SCROLL_ALL_ENDS_REACHED}\n"
     if open_directions:
         context += f"스크롤: 지금 더 갈 수 있는 방향은 {_join(open_directions)}입니다\n"
     if ended_directions:
@@ -203,17 +199,21 @@ def _scroll_context(req: NextStepRequest) -> str:
     return context
 
 
-def _scroll_reach(screen: Screen) -> tuple[list[str], list[str]]:
-    """화면 전체의 스크롤 여유를 방향별로 합친다.
+def _scroll_reach(screen: Screen) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """스크롤 여유를 **방향별로 모으되 요소 id를 함께 남긴다.**
 
     한 요소의 `can_scroll_forward`는 그 요소의 `next_swipe_direction` 쪽 여유다. 요소마다
-    축이 달라(세로 목록 + 가로 탭) 값 하나로는 못 말하므로 **방향 어휘로 합친다**(C17).
-    한 방향이라도 갈 수 있는 요소가 있으면 그 방향은 끝이 아니다 — 안 보이는 컨테이너가
-    `false`를 들고 있다고 실제로 넘어가는 목록을 "끝"으로 만들지 않는다.
+    축이 달라(세로 목록 + 가로 탭) 값 하나로는 못 말하므로 방향 어휘로 묶는다(C17).
+
+    **방향 어휘만으로 합치면 안 된다.** 화면 단위로 합쳐 여유가 있는 쪽을 끝에서 빼면,
+    세로 목록 A가 끝이어도 같은 화면의 작은 세로 캐러셀 B에 여유가 있는 것만으로 A의 끝이
+    지워진다(#218 리뷰). 반대로 요소를 안 적고 끝만 말하면 안 보이는 컨테이너의 `false`가
+    실제로 넘어가는 목록을 "끝"으로 만든다. **요소 id를 같이 적으면 둘 다 말할 수 있다** —
+    요소 줄의 `node_id`와 같은 값이라 모델이 어느 목록의 끝인지 짚을 수 있다.
     """
 
-    open_directions: set[str] = set()
-    ended_directions: set[str] = set()
+    open_directions: dict[str, list[str]] = {}
+    ended_directions: dict[str, list[str]] = {}
     for element in screen.elements:
         pairs = (
             (element.can_scroll_forward, element.next_swipe_direction),
@@ -223,19 +223,18 @@ def _scroll_reach(screen: Screen) -> tuple[list[str], list[str]]:
             if can_scroll is None or direction is None:
                 continue
             target = open_directions if can_scroll else ended_directions
-            target.add(direction.value)
-    ended_directions -= open_directions
+            target.setdefault(direction.value, []).append(element.node_id)
     return _ordered(open_directions), _ordered(ended_directions)
 
 
-def _ordered(directions: set[str]) -> list[str]:
+def _ordered(directions: dict[str, list[str]]) -> dict[str, list[str]]:
     """프롬프트가 요소 순서에 따라 흔들리지 않게 방향 어휘 순서로 고정한다."""
 
-    return [d.value for d in SwipeDirection if d.value in directions]
+    return {d.value: directions[d.value] for d in SwipeDirection if d.value in directions}
 
 
-def _join(directions: list[str]) -> str:
-    return ", ".join(directions)
+def _join(directions: dict[str, list[str]]) -> str:
+    return ", ".join(f"{d}({', '.join(ids)})" for d, ids in directions.items())
 
 
 def _end_instruction(req: NextStepRequest) -> str:

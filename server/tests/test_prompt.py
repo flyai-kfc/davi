@@ -8,7 +8,6 @@ from app.prompt import (
     PAGE_FIRST,
     PAGE_LAST,
     PAGE_ONLY_ONE,
-    SCROLL_ALL_ENDS_REACHED,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
@@ -381,47 +380,40 @@ def test_prompt_states_which_direction_has_reached_its_end():
         )
     )
 
-    assert "down 방향은 이미 끝에 도달했습니다" in prompt
-    assert "지금 더 갈 수 있는 방향은 up입니다" in prompt
+    assert "down(n1) 방향은 이미 끝에 도달했습니다" in prompt
+    assert "지금 더 갈 수 있는 방향은 up(n1)입니다" in prompt
     assert SCROLL_END_INSTRUCTION in prompt
 
 
-def test_prompt_says_scrolling_shows_nothing_more_when_both_ends_are_reached():
-    """양쪽 끝에서도 `has_scrollable_element`는 true다 — 그 줄만 있으면 계속 넘기라고 읽힌다."""
+def test_end_of_one_list_survives_another_scrollable_on_the_same_screen():
+    """같은 방향에 여유가 있는 다른 요소가 주 목록의 "끝"을 지우면 안 된다(#218 리뷰).
 
-    prompt = build_prompt(
-        _request(
-            has_scrollable_element=True,
-            elements=[_scrollable_list(forward=False, backward=False)],
-        )
-    )
-
-    assert SCROLL_ALL_ENDS_REACHED in prompt
-    assert SCROLL_END_INSTRUCTION in prompt
-    assert "더 갈 수 있는 방향" not in prompt
-
-
-def test_one_element_with_room_keeps_that_direction_open():
-    """안 보이는 컨테이너의 false가 실제로 넘어가는 목록을 "끝"으로 만들면 안 된다."""
+    방향 어휘만으로 화면 단위 합산을 하면 세로 목록 n1이 끝이어도 세로 캐러셀 n2의 여유가
+    down을 통째로 "열림"으로 만들어 끝 문장도 지시문도 함께 사라졌다. 요소 id를 같이 적어
+    두 사실을 모두 말한다.
+    """
 
     prompt = build_prompt(
         _request(
             has_scrollable_element=True,
             elements=[
-                _scrollable_list(forward=False, backward=False),
+                _scrollable_list(forward=False, backward=True),
                 UiElement(
                     node_id="n2",
+                    label="추천 카드",
                     can_scroll_forward=True,
+                    can_scroll_backward=False,
                     scroll_axis=ScrollAxis.VERTICAL,
                     next_swipe_direction=SwipeDirection.DOWN,
+                    prev_swipe_direction=SwipeDirection.UP,
                 ),
             ],
         )
     )
 
-    assert "지금 더 갈 수 있는 방향은 down입니다" in prompt
-    assert "down 방향은 이미 끝" not in prompt
-    assert SCROLL_ALL_ENDS_REACHED not in prompt
+    assert "지금 더 갈 수 있는 방향은 up(n1), down(n2)입니다" in prompt
+    assert "up(n2), down(n1) 방향은 이미 끝에 도달했습니다" in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
 
 
 def test_prompt_concludes_that_the_last_page_cannot_be_turned_further():
@@ -438,6 +430,10 @@ def test_prompt_concludes_that_the_last_page_cannot_be_turned_further():
 
     assert PAGE_LAST in prompt
     assert SCROLL_END_INSTRUCTION in prompt
+    # 이 경로엔 스크롤 요소가 없어 방향 줄도 그 뒤 괄호도 없다 — 지시문이 요소 id를 단정하면
+    # 프롬프트에 없는 것을 가리킨다. 그래서 괄호는 조건으로만 말한다.
+    assert "방향은 이미 끝에 도달했습니다" not in prompt
+    assert "괄호가 있으면" in SCROLL_END_INSTRUCTION
 
 
 def test_prompt_concludes_the_first_and_only_page_boundaries():
@@ -476,7 +472,9 @@ def test_end_state_does_not_tell_the_model_where_to_go_instead():
     문구 규칙이 값을 끌어당겨 원래 맞던 방향을 틀리게 만든 전례가 있다(C17 · #109).
     """
 
-    assert "끝에 도달한 방향" in SCROLL_END_INSTRUCTION
+    assert "끝에 도달했다고 적힌 방향" in SCROLL_END_INSTRUCTION
     assert "다른 행동" in SCROLL_END_INSTRUCTION
-    for wrong in ("반대", "up", "down", "left", "right"):
-        assert wrong not in SCROLL_END_INSTRUCTION
+    # 페이지 문장도 같은 경로다 — 상수만 보던 테스트가 이쪽을 지나쳤다(#218 리뷰).
+    for sentence in (SCROLL_END_INSTRUCTION, PAGE_LAST, PAGE_FIRST, PAGE_ONLY_ONE):
+        for wrong in ("반대", "up", "down", "left", "right"):
+            assert wrong not in sentence
