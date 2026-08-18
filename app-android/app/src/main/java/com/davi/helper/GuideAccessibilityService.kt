@@ -687,10 +687,22 @@ class GuideAccessibilityService : AccessibilityService() {
         // 그래서 복귀 경로는 **복귀한 화면이 말하게** 하고, 여기서는 복귀가 막힌 경우만 띄운다.
         when (serviceOffAction(GuideSession.isActive, hasGuideOverlayPermission())) {
             ServiceOffAction.RETURN_TO_APP -> {
+                // CLEAR_TASK가 **꼭 필요하다**(PR #198 리뷰). 세션 중에는 우리 task에
+                // ConversationActivity가 살아 있다 — 그쪽 onPause는 대화만 접고 finish()하지
+                // 않는다. NEW_TASK만 주면 그 위에 온보딩이 얹히고, 사용자가 권한을 다시 켜면
+                // OnboardingActivity.onResume이 startActivity(Conversation) + finish()를 해서
+                // 대화 화면이 두 겹이 된다. 껐다 켤 때마다 한 겹씩 쌓이고 뒤로 키에 옛 인스턴스가 나온다.
+                //
+                // 온보딩을 task 루트로 만들면 그 겹침이 닫히고, "돌아가서 다시 켜고 처음부터"라는
+                // 이 경로의 뜻과도 맞는다. **전제는 위의 onPause 동작이다** — 그쪽이 스스로
+                // finish()하게 바뀌면 이 플래그의 근거도 다시 봐야 한다.
                 Log.w(TAG, "service unbound during session, returning to app")
                 startActivity(
                     android.content.Intent(this, OnboardingActivity::class.java)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .addFlags(
+                            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                        )
                         .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
                 )
             }
