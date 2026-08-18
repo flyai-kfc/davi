@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 7 최종 확인의 **보조** 버튼 배경(× "아니요"). 시안 `v2/button/pair` 좌측.
+  **테두리만이 아니라 흰 채움 + 빨강 테두리**다 — 배경이 분홍이라 채움이 없으면 글자가
+  배경 위에 떠 대비가 흔들린다.
+
+  시안 테두리는 INSIDE 정렬인데 Android <stroke>는 경계선 중앙 정렬이라 절반이 밖으로
+  나간다 — davi_card_border_width와 같은 사정이고 같은 이유로 보정하지 않는다.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_button_on_primary" />
+            <stroke
+                android:width="@dimen/davi_button_pair_stroke"
+                android:color="@color/davi_button_primary" />
+            <corners android:radius="@dimen/davi_button_pair_radius" />
+        </shape>
+    </item>
+</ripple>

@@ -106,6 +106,13 @@
     <string name="conversation_failed">무엇을 하려는지 잘 모르겠어요.\n처음부터 다시 할게요.</string>
     <!-- 안내 세션 중 홈. 마이크가 왜 잠겼는지가 화면에 없던 자리다(#29). -->
     <string name="conversation_guide_active">안내 중이에요.\n하려던 앱으로 돌아가 주세요.</string>
+    <!--
+      메인 7 최종 확인 버튼쌍의 라벨(#196). 아이콘 전용이던 확인쌍이 글자를 갖게 되면서
+      contentDescription이 아니라 **보이는 글자**가 됐다 — 아래 *_desc 둘은 오버레이
+      확인쌍(GD-3·4)이 계속 쓴다.
+    -->
+    <string name="conversation_confirm_reject">아니요</string>
+    <string name="conversation_confirm_accept">네, 맞아요</string>
     <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
     <string name="conversation_confirm_reject_desc">처음부터 다시</string>
     <string name="conversation_close_desc">대화 그만하기</string>

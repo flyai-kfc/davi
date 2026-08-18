@@ -46,6 +46,12 @@
     <dimen name="davi_type_body_lg">20sp</dimen>
     <dimen name="davi_type_body">17sp</dimen>
     <dimen name="davi_type_caption">14sp</dimen>
+    <!--
+      메인 7 버튼 라벨 전용 18sp(#196). **램프(28·24·20·17·14) 밖이다** — 시안이 이 자리를
+      18로 잡았고 GD-3·4 확인쌍도 18이라 두 확인 화면이 같은 크기로 맞는다.
+      D2를 넓히지 않고 여기만 두는 이유는 확인 버튼이라는 한 역할에만 쓰이기 때문이다.
+    -->
+    <dimen name="davi_type_button_pair">18sp</dimen>
     <dimen name="davi_spacing_xs">4dp</dimen>
     <dimen name="davi_spacing_sm">8dp</dimen>
     <dimen name="davi_spacing_md">12dp</dimen>
@@ -117,6 +123,25 @@
     <dimen name="davi_card_border_width">1.5dp</dimen>
     <dimen name="davi_button_padding_h">20dp</dimen>
     <dimen name="davi_button_elevation">2dp</dimen>
+    <!--
+      메인 7 최종 확인의 캡슐 버튼쌍(#196). 시안 `v2/button/pair` — 오버레이의
+      `v2/chip/confirm-pair`와 **별개 컴포넌트**다(캡슐 vs r14, 흰/빨강 vs 빨강/초록).
+
+      **기하는 배율 1.2로 환산한다** — 시안 프레임 300을 검증 기기 폭 360dp로 옮긴 비율이다.
+        높이   60 -> 72dp      반지름 30 -> 36dp      간격 12 -> 14dp
+
+      **반지름은 높이의 절반이라 완전 캡슐이다.** 글자 배율이 커져 버튼이 세로로 늘면
+      캡슐이 아니라 둥근 사각형이 된다 — 시안 의도는 캡슐이지만 잘리는 것보다 낫다.
+
+      **테두리는 환산하지 않는다.** 시안 2를 2.4dp로 올리지 않고 2dp로 둔다 — 선 굵기는
+      시인성 값이라 기하와 함께 스케일하지 않는 것이 이 저장소의 방침이다
+      (davi_mic_button_stroke 주석 참고).
+    -->
+    <dimen name="davi_button_pair_height">72dp</dimen>
+    <dimen name="davi_button_pair_radius">36dp</dimen>
+    <dimen name="davi_button_pair_gap">14dp</dimen>
+    <dimen name="davi_button_pair_stroke">2dp</dimen>
+
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>
     <dimen name="davi_logo_size">72dp</dimen>

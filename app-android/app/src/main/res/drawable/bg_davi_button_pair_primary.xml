@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  메인 7 최종 확인의 **주** 버튼 배경(○ "네, 맞아요"). 시안 `v2/button/pair` 우측.
+  채움 #A50014 · 완전 캡슐. 눌림은 state layer(검정 12%) ripple — E2.
+
+  **시안의 색 있는 그림자(#59000D @28% y3 blur8)는 넣지 않는다.** elevation으로는 안 되고
+  (setOutlineSpotShadowColor가 API 28+, minSdk 26), CardGlowView의 setShadowLayer 기법을
+  쓰려면 버튼마다 뷰를 하나씩 더 얹고 음수 마진으로 감싸야 한다. 버튼이 단색이라 그림자
+  없이도 형태가 분명해 이번에는 이탈로 기록한다(#196).
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_button_primary" />
+            <corners android:radius="@dimen/davi_button_pair_radius" />
+        </shape>
+    </item>
+</ripple>
