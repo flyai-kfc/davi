@@ -297,6 +297,29 @@
       끌어올리면 카드가 따라 올라가 X 위로 파고든다(실기기 실측). 두 값이 바뀌면 이것도 바뀐다.
     -->
     <dimen name="davi_badge_margin_top">72dp</dimen>
+
+    <!--
+      메인 8 실패 화면(#208). **이 화면만 배지 대신 전신 캐릭터가 위를 차지한다.**
+
+      기하는 시안 x1.2로 환산한다(인계문 §2).
+        캐릭터  254x259 -> 305x311dp    상단 51 -> 61dp
+        겹침    44 -> 53dp              카드가 캐릭터 하단을 파고든다
+        카드    FIXED 200 -> 240dp      최소 176은 그대로 넘는다
+
+      **절대 y로 옮기지 않는다.** 시안에서 이 화면의 카드만 y266인데 다른 화면은
+      y108~134다 — 캐릭터가 위를 차지해 내려온 것이라, 좌표로 박으면 다른 화면과 어긋난다.
+      배지가 카드를 파고드는 기존 규칙과 같은 성격이고 값만 다르다.
+    -->
+    <dimen name="davi_stand_width">305dp</dimen>
+    <dimen name="davi_stand_height">311dp</dimen>
+    <dimen name="davi_stand_margin_top">61dp</dimen>
+    <dimen name="davi_stand_overlap_negative">-53dp</dimen>
+    <dimen name="davi_failed_card_height">240dp</dimen>
+    <!--
+      실패 문구 전용 19sp. **램프(28·24·20·17·14) 밖이지만 스냅하지 않는다**(인계문 §3) —
+      메인 9의 15·13을 17로 올린 것은 너무 작아서였고, 19는 두 줄 문구에 맞춘 값이다.
+    -->
+    <dimen name="davi_type_failed">19sp</dimen>
     <!--
       카드 그림자를 아래로 내리는 거리. 시안은 대기가 두 카드 모두 y3이고, 발화가
       다비 y4 · 시니어 y5로 갈린다 — 그래서 발화만 카드별로 둘이다.

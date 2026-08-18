@@ -259,6 +259,22 @@ class ConversationActivity : AppCompatActivity() {
         binding.homeStatus.isVisible(model.homeVisible && model.statusRes != null)
         model.statusRes?.let { binding.homeStatus.setText(it) }
         binding.logo.isVisible(model.logoVisible)
+        // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
+        binding.stand.isVisible(model.standVisible)
+        // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
+        // 캐릭터 53으로 따로 잡았다(x1.2 환산). 겹침을 카드의 음수 위 마진으로 만드는
+        // 수법은 같고 값만 다르다.
+        binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+            topMargin = resources.getDimensionPixelSize(
+                if (model.standVisible) R.dimen.davi_stand_overlap_negative
+                else R.dimen.davi_badge_overlap_negative,
+            )
+        }
+        // 실패 카드는 시안이 높이를 따로 잡았다(FIXED 200 -> 240dp). 다른 화면은 하한만 쓴다.
+        binding.cardQuestionContainer.minimumHeight = resources.getDimensionPixelSize(
+            if (model.standVisible) R.dimen.davi_failed_card_height
+            else R.dimen.davi_card_min_height_davi,
+        )
         // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
         val questionVisible = model.questionRes != null || model.questionText != null
         // **래퍼를 토글한다.** 래퍼가 세로 weight를 갖고 있어(카드 두 장이 남는 공간을
@@ -288,8 +304,19 @@ class ConversationActivity : AppCompatActivity() {
         binding.glowUtterance.isVisible(model.utteranceSpeaking)
         // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
         // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
+        // **문구 크기도 화면마다 다르다**(#208). 실패 문구는 시안 19sp이고 다른 화면 카드는
+        // 24sp다. 레이아웃에 고정하면 한쪽이 틀리므로 배경과 같은 자리에서 함께 간다.
+        binding.cardQuestion.setTextAppearance(
+            if (model.standVisible) R.style.TextAppearance_Davi_Failed
+            else R.style.TextAppearance_Davi_Subtitle_Davi,
+        )
+        // 실패 카드만 불투명이다 — 카드가 캐릭터를 파고들어 글라스면 몸통이 비친다(#208).
         binding.cardQuestionContainer.setBackgroundResource(
-            if (model.cardGlowVisible) R.drawable.bg_davi_card_speaking else R.drawable.bg_davi_card,
+            when {
+                model.standVisible -> R.drawable.bg_davi_card_failed
+                model.cardGlowVisible -> R.drawable.bg_davi_card_speaking
+                else -> R.drawable.bg_davi_card
+            },
         )
         binding.cardUtteranceContainer.setBackgroundResource(
             if (model.utteranceSpeaking) {
