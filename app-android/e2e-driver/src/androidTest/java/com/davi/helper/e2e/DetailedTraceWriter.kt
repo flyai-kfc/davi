@@ -76,7 +76,16 @@ internal class DetailedTraceWriter private constructor(private val file: File?) 
         const val FILE_NAME = "davi-e2e-private-trace.jsonl"
         private const val TRACE_TAG = "DaviE2e"
 
-        fun create(context: Context): DetailedTraceWriter {
+        /**
+         * @param handlesPersonalData 시나리오가 화면에 개인정보를 띄우면 인자와 무관하게 끈다(#134).
+         *   상세 trace는 화면 label을 그대로 담으므로, 입력한 수신자 번호가 이후 모든 snapshot에
+         *   남는다. 켜는 방향으로는 작동하지 않는다.
+         */
+        fun create(context: Context, handlesPersonalData: Boolean = false): DetailedTraceWriter {
+            if (handlesPersonalData) {
+                Log.i(TRACE_TAG, "private_trace=disabled_personal_data")
+                return DetailedTraceWriter(null)
+            }
             val enabled = InstrumentationRegistry.getArguments()
                 .getString("davi.detailedReport")
                 ?.toBooleanStrictOrNull() ?: true
