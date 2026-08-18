@@ -48,9 +48,15 @@ class ActionType(StrEnum):
 
 
 class SwipeDirection(StrEnum):
-    """손가락을 움직이는 방향. '무엇이 보이게 되는지'가 아니라 **동작** 기준이다.
+    """**화면이 이동하는 방향** — 사용자가 보러 가는 쪽이다(C17, 2026-08-17 재정의).
 
-    예: 목록을 아래로 더 보려면 손가락은 위로 쓸어올린다 -> UP.
+    예: 목록의 아래 내용을 보려면 DOWN, 다음 페이지로 넘어가려면 RIGHT.
+    **손가락이 움직이는 방향은 그 반대**이고, 변환은 앱이 화면에 그릴 때 한 번 한다
+    (`GestureMotion.fingerDirectionFor`).
+
+    **이 docstring은 스키마에 실리지 않는다.** 모델에게 가는 문구는 `GuideAction.direction`의
+    description과 `prompt.SCROLL_DIRECTION_INSTRUCTION`이다 — 기준을 바꾸면 셋을 함께 고친다
+    (#109가 정확히 여기만 고쳐져 있어서 생긴 문제다).
     """
 
     UP = "up"
@@ -162,31 +168,33 @@ class GuideAction(BaseModel):
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
     # 않아서**다 — `gemini_schema.build_response_schema`가 싣는 것은 필드 description뿐이라
-    # "동작 기준"이 모델에게 도달하지 않았다(#109 원인, `../CLAUDE.md`의 "Gemini 구조화 출력
-    # 함정"). `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
+    # 기준이 모델에게 도달하지 않았다(#109 원인, `../CLAUDE.md`의 "Gemini 구조화 출력 함정").
+    # `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
     direction: SwipeDirection | None = Field(
         default=None,
         description=(
-            "scroll일 때 손가락을 움직일 방향. 화면 내용이 움직일 방향이 아니다. "
-            "예: 목록에서 아래쪽 내용을 보려면 손가락을 위로 쓸어올리므로 up. 그 외에는 생략한다."
+            "scroll일 때 화면이 이동할 방향, 즉 사용자가 보러 가는 쪽. "
+            "아래 내용을 보려면 down, 위로 되돌아가려면 up, "
+            "다음 페이지로 넘어가려면 right, 이전 페이지로 돌아가려면 left. 그 외에는 생략한다."
         ),
     )
     target_node_id: str | None = Field(
         default=None,
         description="동작 대상 요소의 node_id. 대상이 없는 동작이면 생략한다.",
     )
-    # 방향 표현이 `direction`과 어긋나면 앱이 화면에 그리는 방향과 읽히는 문장이 반대가 된다
-    # (#159 실측). 그래서 문구 규칙도 필드 설명에 함께 둔다.
+    # 문장은 `direction`과 **같은 말**로 쓴다. 손가락 동작은 앱이 그림으로 보여주므로 문장까지
+    # 손가락으로 쓰면 시니어가 읽는 말이 부자연스러워진다(C17).
     instruction: str = Field(
         description=(
-            "시니어에게 보여줄 한국어 안내 한 줄. scroll이면 방향 표현을 direction과 같은 "
-            "손가락 기준으로 쓴다."
+            "시니어에게 보여줄 한국어 안내 한 줄. scroll이면 direction과 같은 말로 쓴다 — "
+            "화면이 어디로 가는지로 쓰고(예: '아래쪽으로 스크롤해 주세요') "
+            "손가락을 어느 쪽으로 움직이라고 쓰지 않는다."
         )
     )
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:
-        """scroll은 앱이 안내할 수 있는 손가락 방향을 반드시 가져야 한다(C3)."""
+        """scroll은 앱이 안내할 수 있는 방향을 반드시 가져야 한다(C3)."""
         if self.action_type is ActionType.SCROLL and self.direction is None:
             raise ValueError("scroll action에는 direction이 필요하다")
         return self
