@@ -276,6 +276,15 @@ class GuideAccessibilityService : AccessibilityService() {
             Log.i(TAG, "redisplay guide")
             draw(it)
         }
+
+        // 화면이 흔들리는 동안에는 강조가 **이미 사라진 대상**을 가리킨다(#225). 자리만 내리고
+        // 문구는 남겼다가, 같은 화면으로 안정되면 되돌린다. 위 redisplay는 오버레이가 통째로
+        // 지워진 경우를 맡고 여기는 그 안쪽 — 안내는 떠 있는데 강조만 틀린 경우다.
+        if (decision == ScreenStabilityTracker.Decision.WAIT) {
+            display.hideTarget()?.let { draw(it) }
+        } else {
+            display.restoreTarget(signature)?.let { draw(it) }
+        }
         when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
                 // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).

@@ -62,6 +62,15 @@ class GuideDisplayState {
     /** 오버레이에 실제로 떠 있는가. root=null 청소가 지우면 내용은 남기고 이것만 내린다. */
     private var visible = false
 
+    /**
+     * 강조·손 모션만 내려간 상태인가(#225). 안내창 문구는 그대로 떠 있다.
+     *
+     * [visible]과 따로 두는 이유는 **되살리는 경로가 다르기 때문**이다. 오버레이가 통째로
+     * 지워진 것은 [redisplay]가 회복하지만, 강조만 내린 것은 [visible]이 true라 그 경로에
+     * 걸리지 않는다.
+     */
+    private var targetHidden = false
+
     /** [showQuitConfirm]이 밀어 둔 직전 안내. ×를 누르면 여기서 되돌아온다. */
     private var stashed: Stash? = null
 
@@ -79,7 +88,7 @@ class GuideDisplayState {
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = true
-        visible = true
+        markVisible()
         return content
     }
 
@@ -89,7 +98,7 @@ class GuideDisplayState {
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
-        visible = true
+        markVisible()
         return content
     }
 
@@ -111,7 +120,7 @@ class GuideDisplayState {
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
-        visible = true
+        markVisible()
         return content
     }
 
@@ -130,7 +139,7 @@ class GuideDisplayState {
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
-        visible = true
+        markVisible()
         return content
     }
 
@@ -154,7 +163,7 @@ class GuideDisplayState {
         val content = Content(bounds = null, text = text, confirm = ConfirmKind.QUIT)
         guide = content
         stuckSuffixAllowed = false
-        visible = true
+        markVisible()
         return content
     }
 
@@ -178,13 +187,57 @@ class GuideDisplayState {
         }
         guide = restored.guide
         stuckSuffixAllowed = restored.stuckSuffixAllowed
-        visible = restored.guide != null
+        markVisible(restored.guide != null)
         return restored.guide
+    }
+
+    /**
+     * 표시 여부를 바꿀 때 [targetHidden]도 함께 되돌린다. 강조를 숨긴 상태는 **지금 떠 있는
+     * 그 안내**에만 매인다 — 안내가 새로 뜨거나 통째로 걷히면 숨김도 같이 풀려야 한다.
+     * 두 필드가 갈라지면 강조가 영영 안 돌아오는 화면이 생긴다.
+     */
+    private fun markVisible(on: Boolean = true) {
+        visible = on
+        targetHidden = false
+    }
+
+    /**
+     * 화면이 흔들리는 동안(WAIT) **강조와 손 모션만** 내린다(#225). 그릴 내용을 돌려주고,
+     * 내릴 것이 없거나 이미 내렸으면 null이다 — 샘플마다 같은 내용을 다시 그리면 조작
+     * 오버레이가 자기 창을 만져 스스로를 깨운다([showError]의 같은 주의).
+     *
+     * **문구는 남긴다.** 화면이 바뀌면 틀리는 것은 강조의 *자리*지 문장이 아니고, 잠깐
+     * 흔들렸을 뿐인 화면에서 안내가 통째로 깜빡이면 읽던 사람이 놓친다.
+     *
+     * 확인 화면은 가리킬 대상이 없어([Content.bounds]가 null) 여기서 할 일이 없다.
+     */
+    fun hideTarget(): Content? {
+        val current = guide ?: return null
+        if (!visible || targetHidden) return null
+        if (current.bounds == null && current.direction == null) return null
+        targetHidden = true
+        return current.copy(bounds = null, direction = null)
+    }
+
+    /**
+     * 화면이 안정된 뒤 [hideTarget]이 내렸던 강조를 되돌린다. **같은 화면일 때만이다** —
+     * 다른 화면으로 갔으면 그 화면의 새 안내가 나오므로 되살릴 이유가 없고, 되살리면
+     * [redisplay]가 막는 것과 같은 사고("이전 화면의 강조를 새 화면 위에")가 난다.
+     *
+     * 다른 화면이면 숨김을 **푼 것으로 치지 않는다.** 새 안내가 오면 [markVisible]이 되돌리고,
+     * 그때까지는 문구만 남는 편이 없는 대상을 가리키는 것보다 낫다.
+     */
+    fun restoreTarget(currentSignature: String): Content? {
+        if (!targetHidden) return null
+        val current = guide ?: return null
+        if (guideSignature != currentSignature) return null
+        targetHidden = false
+        return current
     }
 
     /** 오버레이가 지워졌다(우리 앱이 앞에 오는 등 root=null 청소). 내용은 기억해 둔다. */
     fun onCleared() {
-        visible = false
+        markVisible(false)
     }
 
     /** 세션이 끝나거나 바뀌었다. 이전 세션의 안내를 재표시하면 안 된다. */
@@ -192,7 +245,7 @@ class GuideDisplayState {
         guide = null
         guideSignature = null
         stuckSuffixAllowed = true
-        visible = false
+        markVisible(false)
         // 밀어 둔 안내도 세션에 매인다. 남기면 다음 세션의 종료 확인에서 ×를 눌렀을 때
         // 이전 세션의 안내가 되살아난다.
         stashed = null
@@ -223,7 +276,7 @@ class GuideDisplayState {
             reset()
             return null
         }
-        visible = true
+        markVisible()
         return current
     }
 
@@ -233,7 +286,7 @@ class GuideDisplayState {
      */
     fun stuckContent(suffix: String): Content? {
         val current = guide ?: return null
-        visible = true
+        markVisible()
         return if (stuckSuffixAllowed) {
             Content(current.bounds, "${current.text}\n$suffix", current.actionType, current.direction)
         } else {

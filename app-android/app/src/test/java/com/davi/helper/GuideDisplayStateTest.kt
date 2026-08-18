@@ -19,6 +19,7 @@ class GuideDisplayStateTest {
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
+    private val scrollText = "아래쪽으로 스크롤해 주세요"
     private val confirmText = "다 됐어요! 해결되셨나요?"
     private val errorText = "인터넷 연결이 원활하지 않아요."
     private val otherErrorText = "지금은 이용하는 분이 많아요."
@@ -440,5 +441,77 @@ class GuideDisplayStateTest {
             GuideDisplayState.Content(null, capNotice),
             sync(sigA, 400),
         )
+    }
+
+    // ── 흔들리는 동안 강조 내리기(#225) ──────────────────────────────
+
+    /** 화면이 바뀌면 틀리는 것은 강조의 자리지 문장이 아니다. 손 모션도 자리에 딸린다. */
+    @Test
+    fun `흔들리는 동안 강조와 손 모션만 내리고 문구는 남는다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), scrollText, ActionType.SCROLL, SwipeDirection.DOWN)
+
+        assertEquals(
+            GuideDisplayState.Content(null, scrollText, ActionType.SCROLL, null),
+            state.hideTarget(),
+        )
+    }
+
+    /** 샘플마다 같은 내용을 다시 그리면 조작 오버레이가 자기 창을 만져 스스로를 깨운다. */
+    @Test
+    fun `이미 내린 강조는 다시 내리지 않는다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.hideTarget()
+
+        assertNull(state.hideTarget())
+    }
+
+    /** 잠깐 흔들렸을 뿐 같은 화면이면 강조가 그대로 돌아온다. */
+    @Test
+    fun `같은 화면으로 안정되면 강조가 돌아온다`() {
+        val shown = state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.hideTarget()
+
+        assertEquals(shown, state.restoreTarget(sigA))
+        assertNull(state.restoreTarget(sigA))
+    }
+
+    /** 되살리면 이전 화면의 강조가 새 화면 위에 그려진다(redisplay의 2차 리뷰 P1과 같은 계급). */
+    @Test
+    fun `다른 화면에서는 강조를 되살리지 않는다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.hideTarget()
+
+        assertNull(state.restoreTarget(sigB))
+    }
+
+    /** 확인 화면은 가리킬 대상이 없다 — 내릴 것도 없다. */
+    @Test
+    fun `확인 화면에는 내릴 강조가 없다`() {
+        state.showConfirm(sigA, confirmText)
+
+        assertNull(state.hideTarget())
+    }
+
+    /** 숨김이 안 풀리면 새 안내의 강조가 첫 흔들림에서 사라진 뒤 영영 안 돌아온다. */
+    @Test
+    fun `새 안내가 뜨면 숨김이 풀린다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.hideTarget()
+
+        val next = state.show(sigA, listOf(5, 6, 7, 8), "다음을 누르세요")
+
+        assertNull(state.restoreTarget(sigA))
+        assertEquals(listOf(5, 6, 7, 8), next.bounds)
+    }
+
+    /** 통째로 지워졌다 되살아나는 경로(PR #63 리뷰 P1)가 숨김 상태를 남기지 않는다. */
+    @Test
+    fun `오버레이가 지워졌다 되살아나면 숨김이 남지 않는다`() {
+        val shown = state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.hideTarget()
+        state.onCleared()
+
+        assertEquals(shown, state.redisplay(sigA, screenStable = true))
+        assertNull(state.restoreTarget(sigA))
     }
 }
