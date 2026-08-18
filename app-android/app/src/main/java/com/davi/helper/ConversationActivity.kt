@@ -329,6 +329,12 @@ class ConversationActivity : AppCompatActivity() {
         }
         // **실패 문구는 말풍선이 받는다**(#231). 따로 두면 마이크와 겹치고, 애초에
         // "잘 듣지 못했어요"는 다비가 하는 말이라 말풍선이 제자리다.
+        //
+        // **여기 들어올 문구의 길이에는 상한이 있다.** 홈은 아래 빈칸을 걷어서(space_home_mid)
+        // 남는 세로를 **위 여백 하나로만** 흡수한다. 지금 가장 긴 문구
+        // (voice_permission_open_settings)가 글꼴 배율 2.0에서 세 줄까지 들어가는 것을
+        // 실기기로 확인했다(PR #235). 이보다 긴 문구를 넣으면 그때는 잘리고, 그때 접어야
+        // 하는 것은 안내 문구가 아니라 캐릭터다.
         binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
         binding.logo.isVisible(model.logoVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.

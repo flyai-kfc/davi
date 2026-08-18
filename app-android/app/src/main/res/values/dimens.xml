@@ -546,10 +546,10 @@
       폭 221은 빈 자리를 포함한 상자이고 높이가 배율과 정확히 맞아, 높이를 따르고 폭은
       비율대로 둔다.
 
-      **가로 여백은 열이 이미 무는 24dp를 뺀 나머지다.** 말풍선은 카드와 같은 폭(시안 좌우 24
-      → 29dp)이어야 하는데, 열이 paddingLeft/Right로 24dp를 이미 물고 있어 여기서 29를 그대로
-      더하면 실제 여백이 53dp가 된다(360dp 폭에서 말풍선이 시안보다 48dp 좁아진다, PR #235 리뷰).
-      폭죽에서 같은 뺄셈을 한 것과 같다.
+      **가로 여백을 따로 주지 않는다.** 말풍선은 카드와 같은 폭이어야 하는데, 카드는 열
+      패딩(davi_spacing_xl 24dp)만 받고 자기 margin이 없다 — 여기에 값을 주면 말풍선만 카드보다
+      안쪽으로 들어간다(PR #235 리뷰). 시안 비례 28.8을 카드가 이미 버린 것도 같은 자리다
+      (davi_card_min_height_davi 위 2026-08-16 결정: D2 간격 그리드 밖이라 24로 간다).
     -->
     <!-- 제목 34 · 하단 캡션 16. 글자는 환산하지 않는다(1:1). 부제 14와 말풍선 20은
          기존 davi_type_caption · davi_type_body_lg와 같은 값이라 새로 만들지 않는다. -->
@@ -559,7 +559,6 @@
     <!-- 캐릭터 위 여백. 시안에는 없는 값이다 — 실기기에서 부제에 너무 붙어 보여
          내렸다(2026-08-18 디자인 담당). -->
     <dimen name="davi_home_cane_margin_top">18dp</dimen>
-    <dimen name="davi_home_bubble_margin_h">5dp</dimen>
     <dimen name="davi_home_bubble_min_height">86dp</dimen>
     <dimen name="davi_home_bubble_radius">24dp</dimen>
     <dimen name="davi_home_bubble_stroke">1.5dp</dimen>

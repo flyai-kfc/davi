@@ -228,15 +228,14 @@
             android:importantForAccessibility="no" />
 
         <!--
-          말풍선(#231). 정적 문구라 아래 질문 카드(서버 되묻기)와 **다른 뷰**다 — 같은 뷰를
+          말풍선(#231). **가로 여백을 주지 않는다** — 열 패딩(24dp)만 받아 카드와 같은 폭이 된다.
+          정적 문구라 아래 질문 카드(서버 되묻기)와 **다른 뷰**다 — 같은 뷰를
           나눠 쓰면 상태 전환에서 문구가 갈린다. 채움이 불투명인 이유는 배경 드로어블 주석 참고.
         -->
         <FrameLayout
             android:id="@+id/home_bubble"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/davi_home_bubble_margin_h"
-            android:layout_marginEnd="@dimen/davi_home_bubble_margin_h"
             android:layout_marginTop="@dimen/davi_home_bubble_overlap"
             android:layout_marginBottom="@dimen/davi_home_bubble_margin_bottom"
             android:minHeight="@dimen/davi_home_bubble_min_height"
