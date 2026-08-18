@@ -64,24 +64,33 @@ object GuideBoxStyle {
         context.resources.getDimension(R.dimen.davi_overlay_window_margin_h)
 
     /**
-     * 상자와 화면 **위아래** 가장자리 사이 여백.
+     * 상자와 화면 **윗변** 사이 여백.
      *
-     * v2 시안이 정한 하단 55(`davi_overlay_window_margin_bottom`)는 **아직 안 쓴다** —
-     * 그 값을 먹이면 안내창이 앉는 자리가 모든 안내에서 함께 움직이는데 실기기로 확인하지
-     * 않았다. 지금은 구 값 20을 그대로 지킨다.
+     * **아랫변과 다른 값이다**(위 20 / 아래 55). 시안은 창 하단만 정했고(세 화면이 574를
+     * 공유한다) 위쪽 근거가 없어, 위는 구 값 20을 그대로 지킨다. 하나로 묶으면 둘 중 하나가
+     * 근거 없는 값이 된다.
      */
-    fun marginVertical(context: Context): Float =
+    fun marginTop(context: Context): Float =
         context.resources.getDimension(R.dimen.overlay_instruction_margin)
 
     /**
-     * 강조 상자와 안내창 사이 간격.
+     * 상자와 화면 **아랫변** 사이 여백(v2, #234).
      *
-     * **화면 가장자리 여백과 다른 뜻이다.** 한동안 좌우 여백을 빌려 썼는데, 그러면 좌우를
-     * 조정할 때 이 간격이 딸려 움직인다 — 실제로 16으로 갈면서 20에서 조용히 줄었다
-     * (PR #229 리뷰 B). 값에 시안 근거는 아직 없고, 줄기 전 값을 지킨 것이다.
+     * 시안 근거가 있다 — GD-1·2·3 세 화면이 창 하단 574를 공유하고 프레임 620에서 46이다.
      */
-    fun targetGap(context: Context): Float =
-        context.resources.getDimension(R.dimen.davi_overlay_window_target_gap)
+    fun marginBottom(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_margin_bottom)
+
+    /**
+     * **겹침 회피 여백**(#234). 대상이 안내창 자리와 겹칠 때 대상 위나 아래로 이만큼 떨어진다.
+     *
+     * **"대상과 안내창 사이 간격"이 아니다** — 시안에 그런 개념이 없다(Figma 담당자 확인).
+     * 안내창은 하단 고정이고 강조는 대상을 따라가므로, 둘이 멀리 떨어진 것은 간격이 아니라
+     * 각자 자기 자리에 있는 것이다. 시안이 그린 것은 대상이 위쪽인 경우뿐이라 겹치는 경우의
+     * 답이 없고, 값 20에는 아직 근거가 없다.
+     */
+    fun avoidGap(context: Context): Float =
+        context.resources.getDimension(R.dimen.davi_overlay_window_avoid_gap)
 
     /**
      * 상자 안에 칩을 앉히려고 비워 두는 컨트롤 행의 높이(#126).

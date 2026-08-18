@@ -54,8 +54,9 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         margin: Float,
-        marginVertical: Float,
-        targetGap: Float,
+        marginTop: Float,
+        marginBottom: Float,
+        avoidGap: Float,
         padding: Float,
         paddingVertical: Float,
         lineHeight: Float,
@@ -82,7 +83,7 @@ object GuideBoxLayout {
             (((canvas.bottom - canvas.top) * MAX_HEIGHT_RATIO - paddingVertical * 2 - controlHeight) / lineHeight)
                 .toInt().coerceAtLeast(1)
         val primary = attempt(primaryLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, marginTop, marginBottom, avoidGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // 중앙 배치는 자리를 흥정하지 않는다 — 회피를 안 보므로 축소 폴백이 할 일도 없다.
         if (centered) return primary.layout
         if (primary.hardCoverage == 0f && primary.softCoverage == 0f) return primary.layout
@@ -99,7 +100,7 @@ object GuideBoxLayout {
         val compactLines = COMPACT_MAX_LINES.coerceAtMost(primaryLines)
         if (compactLines == primaryLines) return primary.layout
         val compact = attempt(compactLines, wrapped, textWidth, left, right,
-            canvas, target, avoid, marginVertical, targetGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
+            canvas, target, avoid, marginTop, marginBottom, avoidGap, padding, paddingVertical, lineHeight, measure, controlHeight, centered)
         // (hard, soft) 사전식으로 엄격히 개선될 때만 채택한다.
         // 동률이면 큰 상자를 유지한다 — 글줄을 공짜로 버리지 않는다.
         val improves = compact.hardCoverage < primary.hardCoverage ||
@@ -124,8 +125,9 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         avoid: List<Avoid>,
-        marginVertical: Float,
-        targetGap: Float,
+        marginTop: Float,
+        marginBottom: Float,
+        avoidGap: Float,
         padding: Float,
         paddingVertical: Float,
         lineHeight: Float,
@@ -140,7 +142,7 @@ object GuideBoxLayout {
         val top = if (centered) {
             centeredTop(height, canvas)
         } else {
-            topFor(height, left, right, canvas, target, avoid, marginVertical, targetGap)
+            topFor(height, left, right, canvas, target, avoid, marginTop, marginBottom, avoidGap)
         }
         val box = Bounds(left, top, right, top + height)
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
@@ -185,11 +187,12 @@ object GuideBoxLayout {
         canvas: Bounds,
         target: Bounds?,
         avoid: List<Avoid>,
-        marginVertical: Float,
-        targetGap: Float,
+        marginTop: Float,
+        marginBottom: Float,
+        avoidGap: Float,
     ): Float {
-        val candidates = candidateTops(height, canvas, target, marginVertical, targetGap)
-        if (candidates.isEmpty()) return bottomAnchored(height, canvas, marginVertical)
+        val candidates = candidateTops(height, canvas, target, marginTop, marginBottom, avoidGap)
+        if (candidates.isEmpty()) return bottomAnchored(height, canvas, marginBottom)
 
         // 대상은 언제나 절대 회피다 — 무엇을 누를지 안 보이면 안내가 성립하지 않는다.
         val hard = avoid.filter { it.hard }.map { it.bounds } + listOfNotNull(target)
@@ -206,20 +209,21 @@ object GuideBoxLayout {
         height: Float,
         canvas: Bounds,
         target: Bounds?,
-        marginVertical: Float,
-        targetGap: Float,
+        marginTop: Float,
+        marginBottom: Float,
+        avoidGap: Float,
     ): List<Float> {
         val tops = mutableListOf<Float>()
-        // 대상과의 간격은 **자기 값을 쓴다** — 강조 상자와 안내창 사이의 거리이지
-        // 화면 가장자리와의 거리가 아니다. 좌우 여백을 빌려 쓰면 좌우를 조정할 때
-        // 이 간격이 딸려 움직인다(PR #229 리뷰 B).
+        // 대상을 피해 앉는 자리. **화면 가장자리 여백과 다른 값이다** — 여기는 대상과의
+        // 겹침을 피하는 거리이고, 아래 둘은 화면 끝과의 거리다(#234).
         if (target != null) {
-            tops += target.top - targetGap - height
-            tops += target.bottom + targetGap
+            tops += target.top - avoidGap - height
+            tops += target.bottom + avoidGap
         }
-        // 화면 위아래 가장자리와의 거리라 세로 여백을 쓴다.
-        tops += canvas.bottom - marginVertical - height
-        tops += canvas.top + marginVertical
+        // 화면 아랫변·윗변. **위아래가 다른 값이다**(위 20 / 아래 55) — 시안이 창 하단만
+        // 정했고 위쪽 근거가 없다.
+        tops += canvas.bottom - marginBottom - height
+        tops += canvas.top + marginTop
         return tops.filter { it >= canvas.top && it + height <= canvas.bottom }.distinct()
     }
 
@@ -240,8 +244,8 @@ object GuideBoxLayout {
     }
 
     /** 어느 자리도 온전히 들어가지 않을 때. 상자가 화면보다 크면 위쪽을 살린다. */
-    private fun bottomAnchored(height: Float, canvas: Bounds, marginVertical: Float): Float =
-        (canvas.bottom - marginVertical - height).coerceAtLeast(canvas.top)
+    private fun bottomAnchored(height: Float, canvas: Bounds, marginBottom: Float): Float =
+        (canvas.bottom - marginBottom - height).coerceAtLeast(canvas.top)
 
     /**
      * 세로 중앙(GD-4). 상자가 화면보다 크면 [bottomAnchored]와 같은 이유로 위쪽을 살린다 —

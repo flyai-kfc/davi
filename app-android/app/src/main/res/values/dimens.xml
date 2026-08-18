@@ -11,9 +11,18 @@
     <dimen name="overlay_instruction_padding">16dp</dimen>
     <dimen name="overlay_instruction_margin">20dp</dimen>
     <!-- 강조 테두리 두께. 기존 raw 12px가 검증 기기(3x)에서 4dp — 시인성 보존값. -->
-    <!-- v2에서도 4로 같다(#178). **강조 사각형은 아직 v2가 아니다** — 반경은 davi_radius_sm을
-         그대로 쓰고 있고, 시안의 반경 10·사방 8 확장은 적용 전이다. -->
+    <!-- v2에서도 4로 같다(#178·#234). 반경·확장은 davi_overlay_target_* 참고. -->
     <dimen name="davi_overlay_highlight_stroke">4dp</dimen>
+    <!--
+      강조 사각형(v2 시안, #234). 대상 bounds에서 **사방 8 확장 · 반경 10**이다.
+
+      **둘 다 환산하지 않는다(1:1).** 반경 10은 규칙 그대로이고, 사방 확장 8도 시안 값을
+      그대로 쓴다(2026-08-18 디자인 담당 결정). 확장을 크기로 보면 x1.2(9.6)이지만,
+      **강조는 시안 프레임이 아니라 실제 대상 bounds에서 재는 거리**라 환산 대상이 아니다 —
+      대상은 시안이 그린 것이 아니라 그때그때 화면에서 온다.
+    -->
+    <dimen name="davi_overlay_target_expand">8dp</dimen>
+    <dimen name="davi_overlay_target_radius">10dp</dimen>
     <!--
       강조 후광이 안쪽 선 바깥으로 번지는 거리(#147). 안쪽 선은 불투명을 유지하고 이 후광만
       숨 쉰다 — 근거는 HighlightMotion.
@@ -65,28 +74,38 @@
       기준은 GD-1·2·3·4 넷이다.
     -->
     <!--
-      안내창: 반경 18 · 테두리 1.5 · 화면 하단에서 55dp — **시안 기준이고 아직 안 먹였다**
-      (davi_overlay_window_margin_bottom 주석 · #234). 지금 상하는 20이 잡는다.
+      안내창: 반경 18 · 테두리 1.5 · 화면 하단에서 55dp(#234에서 적용). 위쪽은 20이다.
       여백 위18/오44/아18/왼44 — 좌우 44는 점과 종료 X가 앉는 자리다.
     -->
     <dimen name="davi_overlay_window_radius">18dp</dimen>
     <dimen name="davi_overlay_window_stroke">1.5dp</dimen>
-    <!-- **아직 안 쓴다.** v2가 정한 하단 여백인데, 먹이면 안내창 자리가 모든 안내에서
-         함께 움직여 실기기 확인이 필요하다. 지금은 overlay_instruction_margin(20)이 상하를 잡는다. -->
+    <!--
+      창과 화면 **아랫변** 사이(#234). 시안 근거가 있다 — GD-1·2·3 세 화면이 창 하단 574를
+      공유하고 프레임 620에서 46이다(46 × 1.2 = 55.2).
+
+      **위쪽은 이 값이 아니다.** 시안에 위쪽 근거가 없어 구 값 20(overlay_instruction_margin)을
+      그대로 지킨다. 상하를 한 값으로 묶으면 둘 중 하나가 근거 없는 값이 된다.
+    -->
     <dimen name="davi_overlay_window_margin_bottom">55dp</dimen>
     <!--
-      창과 화면 좌우 가장자리 사이. **상하(20)와 다른 값이다** — 시안 프레임 여백 16.
-      v2의 하단 55는 아직 안 쓴다(바로 위 davi_overlay_window_margin_bottom 주석).
+      창과 화면 좌우 가장자리 사이. **위(20)·아래(55)와 모두 다른 값이다** — 시안 프레임 여백 16.
       하나로 묶었더니 창이 110dp나 좁아져 확인쌍이 접혔다(당시에는 라벨이 있었다)
       (2026-08-18 실기기).
     -->
     <dimen name="davi_overlay_window_margin_h">16dp</dimen>
     <!--
-      강조 상자와 안내창 사이 간격. **화면 가장자리 여백과 다른 뜻이라 자기 토큰을 준다** —
-      한동안 좌우 여백(16)을 빌려 쓰면서 이 간격이 20에서 16으로 조용히 줄어 있었다
-      (PR #229 리뷰 B). 값은 줄기 전인 20으로 되돌린 것이고, 시안에는 아직 근거가 없다.
+      **겹침 회피 여백**(#234). 대상이 안내창이 앉을 자리와 겹칠 때, 대상 위나 아래로 이만큼
+      떨어져 앉는다.
+
+      **"대상과 안내창 사이 간격"이 아니다.** 시안에는 그런 개념이 없다(2026-08-18 Figma 담당자
+      확인) — 안내창은 하단 고정이고 강조는 대상을 따라가므로, 둘이 멀리 떨어져 있는 것은
+      간격이 아니라 각자 자기 자리에 있는 것이다. 시안이 그린 것은 대상이 위쪽인 경우 하나뿐이라
+      **대상이 아래쪽이라 겹치는 경우의 답이 없다.**
+
+      값 20에는 시안 근거가 없다 — 좌우 여백(16)을 빌려 쓰다 조용히 줄어든 것을 되돌린
+      값이다(PR #229 리뷰 B). 실기기에서 네 경우(대상 위/아래 · 화면 위/아래)를 보고 정한다.
     -->
-    <dimen name="davi_overlay_window_target_gap">20dp</dimen>
+    <dimen name="davi_overlay_window_avoid_gap">20dp</dimen>
     <dimen name="davi_overlay_window_padding_v">18dp</dimen>
     <dimen name="davi_overlay_window_padding_h">44dp</dimen>
     <!--

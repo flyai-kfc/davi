@@ -81,7 +81,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     // 색·크기 전부 디자인 토큰(colors.xml·dimens.xml)에서 온다 — 하드코딩·px 계산 금지(#100).
     // 검증 기기(3x 밀도)에서 기존 raw px(12/24)와 dp 토큰(4dp/8dp)이 같은 픽셀값이라 시인성은 보존된다.
     private val highlightStroke = resources.getDimension(R.dimen.davi_overlay_highlight_stroke)
-    private val highlightCorner = resources.getDimension(R.dimen.davi_radius_sm)
+    private val highlightCorner = resources.getDimension(R.dimen.davi_overlay_target_radius)
+    private val highlightExpand = resources.getDimension(R.dimen.davi_overlay_target_expand)
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -106,8 +107,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPadding = GuideBoxStyle.padding(context)
     private val instructionPaddingV = GuideBoxStyle.paddingVertical(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
-    private val instructionMarginV = GuideBoxStyle.marginVertical(context)
-    private val instructionTargetGap = GuideBoxStyle.targetGap(context)
+    private val instructionMarginTop = GuideBoxStyle.marginTop(context)
+    private val instructionMarginBottom = GuideBoxStyle.marginBottom(context)
+    private val instructionAvoidGap = GuideBoxStyle.avoidGap(context)
     private val controlRow = GuideBoxStyle.controlRow(context)
     private val dotsRow = resources.getDimension(R.dimen.davi_overlay_dots_row)
 
@@ -554,11 +556,15 @@ class HighlightOverlayView(context: Context) : View(context) {
             // 화면 가장자리에 붙은 대상(런처 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려
             // 찌그러져 보였다(실기기 실측, #147). 선은 대상에 붙어야 하고, 후광은 화면 밖으로
             // 나가면 캔버스가 알아서 자른다 — 그게 자연스럽다.
-            val half = frame.coreStroke / 2f
-            val left = (target.left - half).coerceAtLeast(bounds.left)
-            val top = (target.top - half).coerceAtLeast(bounds.top)
-            val right = (target.right + half).coerceAtMost(bounds.right)
-            val bottom = (target.bottom + half).coerceAtMost(bounds.bottom)
+            // **사방으로 확장한 뒤 선 두께의 절반을 더 물린다**(v2, #234). 시안이 대상
+            // bounds에서 8 떨어뜨려 그렸다 — 아이콘에 딱 붙이면 무엇을 가리키는지 도리어
+            // 덜 보인다. 여기에 선 두께 절반을 더하는 것은 테두리가 대상을 덮지 않게 하려던
+            // 기존 이유 그대로다.
+            val out = highlightExpand + frame.coreStroke / 2f
+            val left = (target.left - out).coerceAtLeast(bounds.left)
+            val top = (target.top - out).coerceAtLeast(bounds.top)
+            val right = (target.right + out).coerceAtMost(bounds.right)
+            val bottom = (target.bottom + out).coerceAtMost(bounds.bottom)
 
             // 후광은 겹을 쌓아 번지게 한다 — 굵은 선 하나로는 이중 테두리로 보인다(실기기 실측).
             // 바깥으로 갈수록 빠르게 옅어져 마이크 뒤 글로우와 같은 인상을 준다(#147).
@@ -626,8 +632,9 @@ class HighlightOverlayView(context: Context) : View(context) {
                     canvas = boxBounds(),
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
-                    marginVertical = instructionMarginV,
-                    targetGap = instructionTargetGap,
+                    marginTop = instructionMarginTop,
+                    marginBottom = instructionMarginBottom,
+                    avoidGap = instructionAvoidGap,
                     padding = instructionPadding,
                     paddingVertical = instructionPaddingV,
                     lineHeight = metrics.bottom - metrics.top,
