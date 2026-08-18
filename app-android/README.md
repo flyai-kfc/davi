@@ -244,20 +244,57 @@ DAVI_RELEASE_KEY_PASSWORD=<key 비밀번호>
 `app-release-unsigned.apk`가 되고 기기 설치·Play 업로드만 안 된다. 키가 있으면
 `app-release.apk`와 `bundleRelease`의 `.aab`가 서명된 채로 나온다.
 
-경로만 주고 비밀번호를 빠뜨리면 **조용히 넘어가지 않고 빌드가 실패한다.** 설정 실수를
-Play 업로드 단계에서야 알게 되는 것을 막는다.
+**어느 한쪽만 준 설정은 조용히 넘어가지 않고 빌드가 실패한다.** 경로를 주고 비밀번호를
+빠뜨린 경우도, 반대로 비밀번호·alias는 넣고 경로를 빠뜨린 경우도 같다. 뒤쪽이 특히
+`DAVI_RELEASE_KEYSTORE` 이름을 오타 냈을 때의 모습인데, 막지 않으면 나머지를 제대로 넣고도
+서명 없는 APK가 나가고 그 사실을 Play 업로드 단계에서야 알게 된다.
 
 **keystore 파일과 비밀번호는 저장소에 넣지 않는다.** `*.jks`·`*.keystore`는 gitignore돼
 있지만 워킹트리 밖에 두는 편이 안전하다. 업로드 키를 잃어도 Play App Signing을 쓰면 Google에
 재설정을 요청할 수 있다 — 앱 서명 키는 Google이 보관한다.
 
 서명된 release를 로컬에서 만들려면 **debug 설정을 지운 `local.properties`가 필요하다**
-(`verifyReleaseConfiguration`이 debug 값이 남아 있으면 막는다). 카카오 로그인을 실기기에서
-확인하려면 그 서명 인증서의 키 해시가 카카오 콘솔에 등록돼 있어야 한다:
+(`verifyReleaseConfiguration`이 debug 값이 남아 있으면 막는다).
 
-```bash
-keytool -exportcert -alias davi-upload -keystore <keystore> | openssl sha1 -binary | base64
+#### 카카오 키 해시 — 서명 인증서마다 다르다
+
+카카오는 로그인 요청에 실린 **서명 인증서의 지문**을 콘솔 등록 목록과 대조한다. 서명한 키가
+다르면 지문도 다르므로, **우리 앱은 서명 주체가 셋이고 등록할 키 해시도 셋이다.**
+
+| 빌드 | 서명하는 키 | 그 빌드를 만나는 곳 |
+|---|---|---|
+| debug | 각자 PC의 `~/.android/debug.keystore` | 개발 중 실기기 |
+| release, 직접 설치 | 업로드 키(`davi-upload.jks`) | `adb install`로 넣는 서명 검증 |
+| release, Play 배포 | **Google의 앱 서명 키** | 내부 테스트·프로덕션 |
+
+**셋 다 등록한다.** Play가 AAB를 받아 재서명하므로 마지막 것은 업로드 키 해시와 다르고,
+**첫 업로드 전에는 존재하지도 않는다.** 그래서 로그인이 실패하면 **어느 경로로 설치한
+앱인지부터** 확인한다 — 빠진 해시만 그 경로에서 실패한다.
+
+앞의 둘은 keystore에서 직접 계산한다. `-rfc`는 인증서를 **텍스트(PEM)로** 내보내므로
+Windows PowerShell이 파이프에서 바이너리를 깨뜨리는 함정을 피하고 `openssl`도 필요 없다.
+
+```powershell
+$kt = "$env:JAVA_HOME\bin\keytool.exe"
+$pem = & $kt -exportcert -rfc -alias davi-upload -keystore C:/path/to/davi-upload.jks -storepass '<store 비밀번호>'
+$der = [Convert]::FromBase64String((($pem | Where-Object { $_ -notmatch '-----' }) -join ''))
+[Convert]::ToBase64String([Security.Cryptography.SHA1]::Create().ComputeHash($der))
 ```
+
+debug 키는 `-alias androiddebugkey -keystore $env:USERPROFILE/.android/debug.keystore
+-storepass android`로 같은 명령을 돌린다. **`keytool -list -v`로 SHA-1을 읽는 방법은 쓰지
+않는다** — 한국어 로케일 JDK에서 `IllegalFormatConversionException`으로 죽는다(실측).
+
+Play 앱 서명 키는 keystore가 우리에게 없다. 첫 AAB 업로드 뒤 **Play Console → 설정 → 앱
+무결성**에 뜨는 SHA-1 지문을 복사해 같은 형식으로 바꾼다.
+
+```powershell
+$sha1 = 'A1:B2:...'   # Play Console에서 복사한 SHA-1
+[Convert]::ToBase64String(($sha1 -split ':' | ForEach-Object { [Convert]::ToByte($_,16) }))
+```
+
+Git Bash·macOS·Linux에서는 `keytool -exportcert -alias <alias> -keystore <keystore> | openssl
+sha1 -binary | base64` 한 줄로도 같은 값이 나온다.
 
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
 Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는

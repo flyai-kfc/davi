@@ -182,14 +182,30 @@ val dogfoodOptIn = debugSetting("DAVI_DOGFOOD") == "true"
 // `C:/...`처럼 `/`로 쓴다.
 val releaseKeystorePath = localSetting("DAVI_RELEASE_KEYSTORE")
 val releaseKeystorePassword = localSetting("DAVI_RELEASE_KEYSTORE_PASSWORD")
-val releaseKeyAlias = localSetting("DAVI_RELEASE_KEY_ALIAS").ifEmpty { "davi-upload" }
+val releaseKeyAliasSetting = localSetting("DAVI_RELEASE_KEY_ALIAS")
+val releaseKeyPasswordSetting = localSetting("DAVI_RELEASE_KEY_PASSWORD")
+val releaseKeyAlias = releaseKeyAliasSetting.ifEmpty { "davi-upload" }
 // 키 비밀번호를 따로 두지 않은 keystore가 흔하다. 없으면 store 비밀번호를 쓴다.
-val releaseKeyPassword = localSetting("DAVI_RELEASE_KEY_PASSWORD").ifEmpty { releaseKeystorePassword }
+val releaseKeyPassword = releaseKeyPasswordSetting.ifEmpty { releaseKeystorePassword }
 val releaseKeystoreFile = releaseKeystorePath.takeIf { it.isNotEmpty() }?.let { rootProject.file(it) }
 
-// 경로만 주고 비밀번호를 빠뜨리는 것은 설정 실수다 — 조용히 서명 없이 넘어가면 Play 업로드
-// 단계에서야 알게 되므로 여기서 멈춘다. "아무것도 안 준 것"과는 구분한다.
-if (releaseKeystoreFile != null) {
+// 서명 설정을 반쯤 준 것은 설정 실수다 — 조용히 서명 없이 넘어가면 Play 업로드 단계에서야
+// 알게 되므로 여기서 멈춘다. "아무것도 안 준 것"(CI·키 없는 팀원 PC)과는 구분한다.
+if (releaseKeystoreFile == null) {
+    // 반대 방향의 같은 실수다. DAVI_RELEASE_KEYSTORE 이름을 오타 내면 나머지를 제대로 넣고도
+    // 이 블록이 통째로 꺼진 채 app-release-unsigned.apk가 나간다.
+    val orphaned = listOf(
+        "DAVI_RELEASE_KEYSTORE_PASSWORD" to releaseKeystorePassword,
+        "DAVI_RELEASE_KEY_ALIAS" to releaseKeyAliasSetting,
+        "DAVI_RELEASE_KEY_PASSWORD" to releaseKeyPasswordSetting,
+    ).filter { it.second.isNotEmpty() }.map { it.first }
+    if (orphaned.isNotEmpty()) {
+        throw GradleException(
+            "${orphaned.joinToString("·")}를 설정했으면 keystore 경로도 필요합니다. " +
+                "DAVI_RELEASE_KEYSTORE 이름을 확인하세요 — 비워 두면 서명 없이 빌드됩니다.",
+        )
+    }
+} else {
     if (!releaseKeystoreFile.isFile) {
         throw GradleException(
             "DAVI_RELEASE_KEYSTORE 경로에 파일이 없습니다: $releaseKeystorePath",
