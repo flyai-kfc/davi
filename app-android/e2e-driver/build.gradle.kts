@@ -39,6 +39,9 @@ kotlin {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // 전송 차단·수신자 격리 판정부는 기기 없이 도는 JVM 테스트로 CI에서 매번 확인한다(#134).
+    // 기존 하드 경계 테스트는 androidTest에 있어 실기기 instrumentation 때만 돌았다.
+    testImplementation(libs.junit)
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)

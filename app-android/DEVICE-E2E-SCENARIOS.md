@@ -63,6 +63,66 @@ override val hardBoundaries = listOf(
 )
 ```
 
+### 문자 전송처럼 되돌릴 수 없는 동작 (#134)
+
+**label 일치만으로는 부족하다.** 모델이 고른 대상의 label이 "전송"이 아니어도 그 대상의 **좌표가
+전송 버튼 위**일 수 있고, 삼성 NumberPicker의 선택된 칸처럼 **label이 빈 문자열로 직렬화**되는
+요소도 실측으로 확인됐다. 그래서 문자 앱에는 좌표까지 보는 경계를 쓴다.
+
+```kotlin
+override val hardBoundaries = listOf(MessagingSendGuard.sendControlBoundary())
+```
+
+`MessagingSendGuard.sendControlBoundary()`는 실행기가 실제로 누를 좌표(대상 bounds의 중심)가 전송
+컨트롤 사각형 + 여백 안에 들어가면 막는다. 판정 규칙은 `MessagingSendSafety`에 순수 함수로 있고
+CI의 JVM 테스트가 매번 확인한다.
+
+| 실패 코드 | 언제 |
+|---|---|
+| `sms_send_target_blocked` | 모델이 전송 컨트롤을 직접 가리켰다 |
+| `sms_send_proximity_blocked` | 누를 좌표가 전송 컨트롤 위(또는 여백 안)다 |
+| `sms_send_target_unverifiable` | 전송 컨트롤이 있는데 대상 좌표·화면을 확인하지 못했다 |
+
+마지막 코드가 중요하다 — **"확인하지 못했다"를 "안전하다"로 읽지 않는다.**
+
+**시나리오가 직접 좌표를 누를 때**(준비·정리)도 같은 규칙을 쓴다. `device.click(x, y)`를 그대로
+부르지 말고 살아 있는 화면을 스캔하는 가드를 통한다.
+
+```kotlin
+MessagingSendGuard.tapOrFail(device, x = 774, y = 2112, step = null)
+```
+
+### 개인정보를 띄우는 시나리오
+
+수신자 번호는 **입력한 순간부터 이후 모든 화면 snapshot의 label에 남는다.** 시나리오 코드가 번호를
+로그에 안 찍는 것만으로는 상세 보고서 유출을 막을 수 없다.
+
+```kotlin
+override val handlesPersonalData = true
+```
+
+`true`면 실행기가 `davi.detailedReport` 인자와 무관하게 상세 trace를 끈다. 켜는 방향으로는
+작동하지 않는다.
+
+수신자는 **코드에 넣지 않고** 전용 인자로 받는다. 기본값이 없어 설정하지 않으면 시나리오가 서고,
+값은 `SmsTestRecipient` 타입 밖으로 문자열로 새지 않는다(`toString()`이 원문을 돌려주지 않는다).
+
+```kotlin
+private val recipient = SmsTestRecipients.require()   // -e davi.smsTestRecipient <시험자 회선>
+
+override fun textFor(state: State, step: Int, decision: DisplayedDecision): String? =
+    recipient.valueForInput()   // 원문이 나오는 유일한 자리
+```
+
+수신자는 **앱 `PrivacyMasker`가 실제로 가리는 국내 휴대폰 형식**(`01X-XXXX-XXXX`)만 받는다.
+자릿수 검증이 아니라 유출 경로를 막는 조건이다 — 번호는 입력한 순간부터 화면 label에 남고,
+1차 마스킹이 그 형식을 못 알아보면 **원문 그대로 서버를 거쳐 모델까지 나간다.** 상세 보고서를
+꺼도 이 경로는 막히지 않는다. `+82`·유선·인터넷 전화는 거부하며, 넓히려면 앱 마스킹 계약부터
+바꾼다(`PrivacyMasker.kt`와 `SmsTestRecipient`를 함께 본다).
+
+시험자가 통제하는 회선인지는 코드가 알 수 없다. 기계적으로 확인 가능한 것(형식·긴급번호)만
+막으므로, **전용 테스트 회선을 쓰는 것은 운영 규칙으로 지킨다.**
+
 runner는 공통 설정 경계를 항상 먼저 평가한 뒤 시나리오 경계를 등록 순서대로 평가하며, 첫 failure
 code로 테스트를 종료한다. `done`은 손동작이 아니라 세션 종료 신호이므로 경계를 평가하지 않고 독립
 목표 상태와 `verified`에 따라 성공 또는 `done_before_goal`·`done_unverified`로 종료한다.
@@ -147,6 +207,10 @@ python -m unittest discover -s scripts/tests -p 'test_*.py'
 - [ ] Gemini action/target을 정답 selector로 덮어쓰지 않는다.
 - [ ] 전용 기기에서 회복 가능한 화면·대상 이탈은 비종료 코드로 기록하고 속행한다.
 - [ ] 설정 앱 및 기기 밖 부작용만 `hardBoundaries`로 실행 전에 차단한다.
+- [ ] 문자 전송 시나리오는 label이 아니라 **좌표까지** 보는 경계를 쓴다(`MessagingSendGuard`).
+- [ ] 시나리오가 직접 누르는 좌표도 `MessagingSendGuard.tapOrFail`을 통한다 — 생 `device.click` 금지.
+- [ ] 개인정보를 띄우면 `handlesPersonalData = true`로 상세 trace를 끈다.
+- [ ] 수신자·계정 같은 값은 코드에 넣지 않고 인자로 받으며, 원문이 `toString()`으로 새지 않는다.
 - [ ] full-journey가 Davi → 홈 → 모든 경유 package를 같은 세션에서 검증한다.
 - [ ] 완료를 외부 앱 상태로 독립 검증한다.
 - [ ] 성공·실패·준비 실패 모두 테스트 데이터를 정리한다.
