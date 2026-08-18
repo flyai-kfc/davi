@@ -513,6 +513,95 @@ class GuideSessionTest {
         assertTrue(GuideSession.isActive)
     }
 
+    // --- 종료 확인 (#193 GD-4) ---------------------------------------------------
+    //
+    // 중지 칩도 세션을 직접 끝내지 않는다. 종료 진입점을 ○ 응답 하나로 모은다.
+
+    @Test
+    fun `중지 칩은 세션을 끝내지 않고 확인을 기다린다`() {
+        GuideSession.start("카메라 열기")
+
+        assertTrue(GuideSession.awaitQuitConfirm())
+
+        assertTrue(GuideSession.isActive)
+        assertTrue(GuideSession.awaitingConfirm)
+    }
+
+    @Test
+    fun `종료 확인의 됐어요는 세션을 끝낸다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.awaitQuitConfirm()
+
+        GuideSession.confirmAccepted()
+
+        assertFalse(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    @Test
+    fun `종료 확인의 취소는 세션을 유지하고 대기를 푼다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.awaitQuitConfirm()
+
+        GuideSession.quitRejected()
+
+        assertTrue(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    /**
+     * 부정 이력을 남기지 않는다. 남기면 그 화면의 done이 확인 없이 조용히 넘어간다 —
+     * 사용자는 종료를 되물었을 뿐 "아직 안 됐다"고 답한 적이 없다.
+     */
+    @Test
+    fun `종료 확인은 부정 이력을 남기지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+
+        GuideSession.awaitQuitConfirm()
+        GuideSession.quitRejected()
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
+            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+        )
+    }
+
+    /** 미검증 카운터도 건드리지 않는다. 0으로 되돌리면 재질의 예산이 공짜로 늘어난다. */
+    @Test
+    fun `종료 확인은 미검증 카운터를 되돌리지 않는다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
+            GuideSession.onDone(generation, verified = false, screenSignature = SIGNATURE)
+        }
+
+        GuideSession.awaitQuitConfirm()
+        GuideSession.quitRejected()
+
+        // 카운터가 살아 있으면 다음 미검증 done이 상한에 닿는다.
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, verified = false, screenSignature = SIGNATURE),
+        )
+    }
+
+    /** 세션이 없으면 되물을 것도 없다 — 창이 걷히는 사이에 들어온 클릭을 막는다. */
+    @Test
+    fun `세션이 없으면 종료 확인으로 들어가지 않는다`() {
+        assertFalse(GuideSession.awaitQuitConfirm())
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    /** 대기를 겹쳐 세우면 ○ 한 번에 안 끝나는 실패가 된다. */
+    @Test
+    fun `이미 확인 대기 중이면 종료 확인으로 겹쳐 들어가지 않는다`() {
+        GuideSession.start("카메라 열기")
+        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+
+        assertFalse(GuideSession.awaitQuitConfirm())
+    }
+
     @Test
     fun `리스너를 떼면 더 이상 받지 않는다`() {
         val seen = mutableListOf<String?>()

@@ -12,19 +12,34 @@ package com.davi.helper
 class GuideDisplayState {
 
     /**
+     * 확인 화면의 종류. 둘은 **같은 상태 기계**이고 계기·문구·크롬만 다르다 — ○가 세션을
+     * 끝내고 ×가 세션을 잇는 뼈대가 같아서 한 축으로 가른다(#193).
+     *
+     * **동시에 뜨지 않는다.** [DONE] 표시 중에는 컨트롤 행이 확인쌍이라 중지 칩이 없고,
+     * 따라서 [QUIT]로 들어갈 입구가 닫힌다. 확인 상태를 겹쳐 쌓을 필요가 없는 근거다.
+     */
+    enum class ConfirmKind {
+        /** 완료 확인(GD-3). 서버 `done`이 띄운다. 성공 tone 테두리 + 하단 고정. */
+        DONE,
+
+        /** 종료 확인(GD-4). 중지 칩이 띄운다. 전면 스크림 + 화면 세로 중앙. */
+        QUIT,
+    }
+
+    /**
      * 오버레이에 그릴 내용. [bounds]는 `[left, top, right, bottom]`, 강조가 없으면 null.
      *
      * [actionType]은 안내창이 무엇을 피해야 하는지를 가른다 — 타이핑 안내면 키보드가 곧
      * 조작 대상이라 절대 가리면 안 된다(#38 5번). 우리가 만든 안내(정체·상한)는 null이다.
      *
-     * [confirm]이면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다(GD-3). 무엇을 그릴지의 판정이라
+     * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      */
     data class Content(
         val bounds: List<Int>?,
         val text: String,
         val actionType: ActionType? = null,
-        val confirm: Boolean = false,
+        val confirm: ConfirmKind? = null,
     )
 
     private var guide: Content? = null
@@ -40,6 +55,11 @@ class GuideDisplayState {
 
     /** 오버레이에 실제로 떠 있는가. root=null 청소가 지우면 내용은 남기고 이것만 내린다. */
     private var visible = false
+
+    /** [showQuitConfirm]이 밀어 둔 직전 안내. ×를 누르면 여기서 되돌아온다. */
+    private var stashed: Stash? = null
+
+    private data class Stash(val guide: Content?, val stuckSuffixAllowed: Boolean)
 
     /** [signature] 화면에 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
     fun show(
@@ -99,12 +119,60 @@ class GuideDisplayState {
      * 사용자가 어디로 가든 답할 자리가 따라가고, ○/×를 눌러야 사라진다.
      */
     fun showConfirm(signature: String, text: String): Content {
-        val content = Content(bounds = null, text = text, confirm = true)
+        val content = Content(bounds = null, text = text, confirm = ConfirmKind.DONE)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
         visible = true
         return content
+    }
+
+    /**
+     * 종료 확인(GD-4, #193)을 띄운다. 중지 칩이 부른다.
+     *
+     * **직전 안내를 밀어 두고 덮는다.** ×("계속 볼래요")가 그 안내로 **돌아가야** 하기
+     * 때문이다 — 완료 확인의 ×와 갈리는 지점이다(그쪽은 같은 질문 반복을 막으려 버린다).
+     * 밀어 두지 않으면 확인 대기 동안 막혀 있던 요청이 풀리면서 **새 모델 호출**이 나간다.
+     *
+     * **[guideSignature]는 건드리지 않는다.** 확인 화면은 화면에 소속되지 않아 폐기 판정에
+     * 걸리지 않으므로([redisplay]) 새 서명을 세울 이유가 없다. 밀어 둔 안내가 돌아올 때
+     * 자기 화면 서명을 그대로 되찾는 편이 맞다.
+     */
+    fun showQuitConfirm(text: String): Content {
+        // 중첩되지 않는다 — 이미 종료 확인 중이면 칩이 없어 다시 올 길이 없고, 그래도 온다면
+        // 밀어 둔 것을 확인 화면으로 덮어써 되돌아갈 안내를 잃는다.
+        if (guide?.confirm != ConfirmKind.QUIT) {
+            stashed = Stash(guide, stuckSuffixAllowed)
+        }
+        val content = Content(bounds = null, text = text, confirm = ConfirmKind.QUIT)
+        guide = content
+        stuckSuffixAllowed = false
+        visible = true
+        return content
+    }
+
+    /**
+     * 종료 확인을 걷고 밀어 뒀던 안내를 되돌린다. 그릴 것이 남으면 돌려주고, 없으면 null이다
+     * (호출자가 오버레이를 걷는다). null인 경우는 둘이다 — 칩을 누른 시점에 안내가 없었거나,
+     * 아래의 화면 대조에서 폐기됐거나.
+     *
+     * **밀어 둔 안내가 [currentSignature] 화면의 것이 아니면 폐기한다.** 확인 화면 자신은 화면에
+     * 소속되지 않지만([redisplay]) 되살아나는 것은 *조작* 안내라 그 규칙을 그대로 받는다 —
+     * 칩 → 홈 → × 순으로 누르면 이전 화면의 강조 사각형이 런처 위에 그려지고, `visible`이
+     * true라 [redisplay]가 걷지도 못한다("이전 화면의 안내를 새 화면 위에 그리지 않는다",
+     * PR #63 2차 리뷰 P1). 폐기해도 그 화면의 새 요청은 다음 샘플이 어차피 낸다.
+     */
+    fun dismissQuitConfirm(currentSignature: String?): Content? {
+        val restored = stashed ?: return null
+        stashed = null
+        if (restored.guide != null && guideSignature != currentSignature) {
+            reset()
+            return null
+        }
+        guide = restored.guide
+        stuckSuffixAllowed = restored.stuckSuffixAllowed
+        visible = restored.guide != null
+        return restored.guide
     }
 
     /** 오버레이가 지워졌다(우리 앱이 앞에 오는 등 root=null 청소). 내용은 기억해 둔다. */
@@ -118,6 +186,9 @@ class GuideDisplayState {
         guideSignature = null
         stuckSuffixAllowed = true
         visible = false
+        // 밀어 둔 안내도 세션에 매인다. 남기면 다음 세션의 종료 확인에서 ×를 눌렀을 때
+        // 이전 세션의 안내가 되살아난다.
+        stashed = null
     }
 
     /**
@@ -126,9 +197,9 @@ class GuideDisplayState {
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      *
-     * **확인 화면(GD-3)은 그 폐기에서 빠진다.** 폐기 규칙이 막으려는 것은 *조작* 안내가 엉뚱한
-     * 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가 null) 문구도
-     * 화면과 무관하다("다 됐어요? 해결되셨나요?"). 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
+     * **확인 화면은 그 폐기에서 빠진다**(GD-3·GD-4 둘 다). 폐기 규칙이 막으려는 것은 *조작*
+     * 안내가 엉뚱한 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가
+     * null) 문구도 화면과 무관하다. 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
      * 홈을 누른 것만으로 답할 자리가 사라지고, 대기 중에는 요청도 안 나가 세션이 갇힌다
      * (2026-08-16 SM-S921N 실측: 셰이드 왕복 한 번에 확인이 버려지고 셰이드 화면에 대고 요청이
      * 2회 나갔다 — PR #153 리뷰 P1). **답하기 전에는 사라지지 않는 것이 이 화면의 계약이다.**
@@ -141,7 +212,7 @@ class GuideDisplayState {
         if (!screenStable) return null
         val current = guide ?: return null
         if (visible) return null
-        if (!current.confirm && guideSignature != currentSignature) {
+        if (current.confirm == null && guideSignature != currentSignature) {
             reset()
             return null
         }

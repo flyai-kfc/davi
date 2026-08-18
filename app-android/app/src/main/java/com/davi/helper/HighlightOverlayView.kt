@@ -6,9 +6,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
 import android.view.View
+import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -106,14 +109,22 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     private val readingColor = ContextCompat.getColor(context, R.color.davi_overlay_reading)
     private val confirmColor = ContextCompat.getColor(context, R.color.davi_overlay_confirm)
+    private val scrimColor = ContextCompat.getColor(context, R.color.davi_overlay_scrim)
 
     /** 서비스가 요청한 상태. 실제 표시는 onset 지연 뒤라 [readingVisible]과 다를 수 있다. */
     private var reading = false
     private var readingVisible = false
     private var readingPhase = ReadingBorder.STATIC_PHASE
 
-    /** 완료 확인 대기(GD-3). 읽는 중과 **동시에 켜지지 않는다** — [ReadingBorder.isReading] 참고. */
-    private var confirmFrame = false
+    /**
+     * 확인 대기 중이면 그 종류. 읽는 중과 **동시에 켜지지 않는다** — [ReadingBorder.isReading] 참고.
+     *
+     * 종류마다 크롬이 다르고 **배타적이다**(v2 시안) — 완료 확인(GD-3)은 성공 tone 테두리,
+     * 종료 확인(GD-4)은 전면 스크림이다. 한 화면에 둘을 겹치지 않는다.
+     */
+    private var confirmKind: GuideDisplayState.ConfirmKind? = null
+
+    private val confirmFrame get() = confirmKind == GuideDisplayState.ConfirmKind.DONE
 
     private val readingOnset = Runnable {
         readingVisible = true
@@ -152,16 +163,19 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 완료 확인 테두리(GD-3)를 켜고 끈다. 읽는 중 테두리와 **같은 자리·같은 두께**이고 색만
-     * 다르다 — 서버 판단이 아니라 사용자 답을 기다리는 중임을 화면 전체로 알린다.
+     * 확인 화면의 크롬을 켜고 끈다(없으면 null).
+     *
+     * 완료 확인(GD-3)은 화면 가장자리 테두리다 — 읽는 중 테두리와 **같은 자리·같은 두께**이고
+     * 색만 다르다. 서버 판단이 아니라 사용자 답을 기다리는 중임을 화면 전체로 알린다.
+     * 종료 확인(GD-4)은 전면 스크림이다 — 테두리는 켜지 않는다.
      *
      * **브리딩하지 않는다.** 숨 쉬는 것은 "지금 처리 중"의 표현이고 확인은 멈춰 선 상태다.
      * 그래서 [syncBreathing]의 조건에도 넣지 않는다 — 확인 중에 강조도 읽는 중도 없으면
      * 애니메이터는 멈춰 있는 것이 맞다. 지연(onset)도 없다: 답할 자리라 곧바로 보여야 한다.
      */
-    fun setConfirmFrame(on: Boolean) {
-        if (on == confirmFrame) return
-        confirmFrame = on
+    fun setConfirmChrome(kind: GuideDisplayState.ConfirmKind?) {
+        if (kind == confirmKind) return
+        confirmKind = kind
         invalidate()
     }
 
@@ -257,6 +271,13 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        // 스크림(GD-4)도 테두리와 같은 이유로 translate 앞이다 — 뷰가 차지한 범위를 덮는다.
+        // 그 범위가 곧 화면 전체는 아니다: 이 창은 상태표시줄 아래에서 시작해서(`[0,103]` 실측)
+        // 상태표시줄은 안 덮인다. 시안은 전면이라 그 차이는 #178에서 본다.
+        // **터치는 막지 않는다.** 이 창이 FLAG_NOT_TOUCHABLE이고, 뒤집으면 "대신 조작하지
+        // 않는다"(SPEC §2)와 부딪친다. 막을 이유도 없다 — 이 화면은 ○/× 말고는 사라지지
+        // 않으므로 아래 앱을 만져도 답할 자리가 남는다.
+        if (confirmKind == GuideDisplayState.ConfirmKind.QUIT) canvas.drawColor(scrimColor)
         // 읽는 중 테두리는 **뷰 로컬 좌표**라 아래 translate 앞에서 그린다. 창이 밀려 놓이는
         // 기기에서도 뷰가 실제로 차지한 사각형을 따라가야 잘리지 않는다.
         drawReadingBorder(canvas)
@@ -341,7 +362,9 @@ class HighlightOverlayView(context: Context) : View(context) {
                 val metrics = instructionPaint.fontMetrics
                 GuideBoxLayout.compute(
                     instruction = instruction,
-                    canvas = drawableBounds(),
+                    // 강조 클램프와 달리 **시스템 바를 뺀** 범위다(#169) — 안내창이 내비게이션
+                    // 바를 덮으면 그 밴드의 탭까지 조작 오버레이가 흡수한다.
+                    canvas = boxBounds(),
                     target = if (hasTarget) target.toLayoutBounds() else null,
                     margin = instructionMargin,
                     padding = instructionPadding,
@@ -351,6 +374,7 @@ class HighlightOverlayView(context: Context) : View(context) {
                     },
                     avoid = avoid,
                     controlHeight = controlRow,
+                    centered = confirmKind == GuideDisplayState.ConfirmKind.QUIT,
                 )
             },
         )
@@ -382,7 +406,12 @@ class HighlightOverlayView(context: Context) : View(context) {
         )
     }
 
-    /** 선 두께를 물린 뒤 실제로 그릴 수 있는 화면 범위. 화면 좌표계다. */
+    /**
+     * 선 두께를 물린 뒤 실제로 **그릴 수 있는** 화면 범위. 화면 좌표계다.
+     *
+     * 시스템 바를 뺀 범위가 아니다 — 강조 대상이 내비게이션 바 버튼일 수 있고, 그때 아랫변이
+     * 잘리면 안 된다. 안내창이 앉을 범위는 [boxBounds]가 따로 준다.
+     */
     private fun drawableBounds(): GuideBoxLayout.Bounds {
         val half = highlightStroke / 2f
         return GuideBoxLayout.Bounds(
@@ -390,6 +419,63 @@ class HighlightOverlayView(context: Context) : View(context) {
             top = locationOnScreen[1] + half,
             right = locationOnScreen[0] + width - half,
             bottom = locationOnScreen[1] + height - half,
+        )
+    }
+
+    /**
+     * 안내창이 앉을 수 있는 범위 — [drawableBounds]에서 **시스템 바 인셋을 뺀다**(#169).
+     *
+     * 안 빼면 `bottomAnchored`가 안내창을 내비게이션 바 안으로 밀어 넣는다. 그 자체는 시각
+     * 문제로 보이지만, 안내창 사각형이 곧 **조작 오버레이 창의 터치 영역**이라(#126) 겹친
+     * 밴드의 탭을 우리 창이 흡수한다 — 실측에서 내비바 162px 중 상단 88px의 뒤로·홈·최근 앱이
+     * 죽었다(2026-08-17 SM-S921N, `dumpsys`의 z-order상 우리 창이 `NavigationBar0` 위).
+     * 시니어 대상 앱에서 시스템 버튼 절반이 안 눌리는 자리다.
+     *
+     * **상수로 박지 않는다.** 하단 인셋이 3버튼 162px / 제스처 51px로 3배 차이라(같은 실측)
+     * 런타임에 읽어야 한다. 앱 화면은 이미 같은 처리를 한다(`ConversationActivity`, #78 패턴) —
+     * 오버레이만 빠져 있었다.
+     *
+     * 인셋은 **창이 아니라 디스플레이**에서 읽는다. 이 창은 `FLAG_LAYOUT_NO_LIMITS`라
+     * `getRootWindowInsets()`가 `top=0 bottom=0`을 준다(2026-08-17 실측) — 시스템이 "이 창은
+     * 인셋에 안 눌린다"고 답하는 것이라, 그걸 믿으면 아무것도 안 빼게 된다.
+     * `currentWindowMetrics`는 창 flags와 무관하게 화면 기준 인셋을 준다.
+     *
+     * 인셋은 화면 기준이고 이 창은 이미 상태표시줄 아래에서 시작할 수 있다. 두 번 빼지 않도록
+     * **화면 좌표에서 겹치는 만큼만** 자른다.
+     */
+    private fun boxBounds(): GuideBoxLayout.Bounds {
+        val drawable = drawableBounds()
+        val safe = safeBounds() ?: return drawable
+        return GuideBoxLayout.Bounds(
+            left = maxOf(drawable.left, safe.left),
+            top = maxOf(drawable.top, safe.top),
+            right = minOf(drawable.right, safe.right),
+            bottom = minOf(drawable.bottom, safe.bottom),
+        )
+    }
+
+    /**
+     * 화면 좌표에서 시스템 바를 뺀 범위. 읽을 수 없으면 null이고 그때는 아무것도 빼지 않는다
+     * (지금 동작 그대로 — 검증 기기 밖에서 근거 없이 자리를 흔들지 않는다).
+     *
+     * **네 변을 다 자른다.** 세로만 자르던 첫 구현은 가로 화면에서 그대로 뚫렸다 — 안내 대상
+     * 앱은 우리 액티비티와 달리 세로 고정이 아니다(`AndroidManifest`의 `screenOrientation`은
+     * 우리 화면에만 걸려 있다). 2026-08-18 SM-S921N 실측: 가로(`ROTATION_90`)에서 내비게이션
+     * 바가 **오른쪽 변으로 가고** 안내창이 그 위를 덮어, 같은 좌표의 홈 버튼이 오버레이가
+     * 있을 때만 죽었다(없을 때 `LauncherActivity`, 있을 때 브라우저 그대로).
+     */
+    private fun safeBounds(): GuideBoxLayout.Bounds? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val windowManager = context.getSystemService(WindowManager::class.java) ?: return null
+        val metrics = windowManager.currentWindowMetrics
+        val insets = WindowInsetsCompat
+            .toWindowInsetsCompat(metrics.windowInsets)
+            .getInsets(WindowInsetsCompat.Type.systemBars())
+        return GuideBoxLayout.Bounds(
+            left = (metrics.bounds.left + insets.left).toFloat(),
+            top = (metrics.bounds.top + insets.top).toFloat(),
+            right = (metrics.bounds.right - insets.right).toFloat(),
+            bottom = (metrics.bounds.bottom - insets.bottom).toFloat(),
         )
     }
 

@@ -24,6 +24,7 @@ class GuideBoxLayoutTest {
         canvas: GuideBoxLayout.Bounds = GuideBoxLayout.Bounds(0f, 0f, 1000f, 2000f),
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
         controlHeight: Float = 0f,
+        centered: Boolean = false,
     ) = GuideBoxLayout.compute(
         instruction = instruction,
         canvas = canvas,
@@ -34,6 +35,7 @@ class GuideBoxLayoutTest {
         measure = measure,
         avoid = avoid,
         controlHeight = controlHeight,
+        centered = centered,
     )
 
     @Test
@@ -317,6 +319,42 @@ class GuideBoxLayoutTest {
 
         assertEquals(918f, plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
         assertEquals(1120f, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
+    }
+
+    // --- 중앙 배치 (GD-4 종료 확인, #193) ----------------------------------------
+
+    @Test
+    fun `중앙 배치는 상자를 화면 세로 중앙에 놓는다`() {
+        val layout = compute("안내를 그만 볼까요?", controlHeight = CONTROL_ROW, centered = true)
+
+        val height = layout!!.box.bottom - layout.box.top
+        assertEquals((2000f - height) / 2f, layout.box.top, 0.01f)
+    }
+
+    /** 스크림 위 모달이라 가릴 대상이 없다 — 대상·회피가 자리를 흔들면 안 된다. */
+    @Test
+    fun `중앙 배치는 대상과 회피를 보지 않는다`() {
+        val text = "안내를 그만 볼까요?"
+
+        val plain = compute(text, centered = true)
+        val crowded = compute(
+            text,
+            target = TARGET,
+            avoid = listOf(keyboard(hard = true)),
+            centered = true,
+        )
+
+        assertEquals(plain!!.box.top, crowded!!.box.top, 0.01f)
+    }
+
+    /** 상자가 화면보다 크면 위쪽을 살린다 — 아래로 넘치면 확인쌍이 화면 밖으로 나간다. */
+    @Test
+    fun `중앙 배치도 상자가 화면보다 크면 위를 살린다`() {
+        val short = GuideBoxLayout.Bounds(0f, 0f, 1000f, 40f)
+
+        val layout = compute("안내를 그만 볼까요?", canvas = short, centered = true)
+
+        assertEquals(short.top, layout!!.box.top, 0.01f)
     }
 
     private fun boxHeight(lines: Int) = lines * LINE_HEIGHT + PADDING * 2
