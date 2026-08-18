@@ -283,14 +283,25 @@ class GuideDisplayState {
     /**
      * 정체(STUCK)를 알릴 내용. 일반 안내에는 [suffix]를 덧붙이고, 상한 안내는 원문 그대로
      * 유지한다 — 덮어쓰지도, 잃지도 않는다.
+     *
+     * 덧붙인 문구는 [guide]에 저장하고, 강조는 [currentSignature]가 안내의 화면과 같을 때만
+     * 돌려준다. 둘 다 이 클래스의 다른 경로가 세운 규칙을 여기서도 지키려는 것이다.
      */
-    fun stuckContent(suffix: String): Content? {
+    fun stuckContent(suffix: String, currentSignature: String): Content? {
         val current = guide ?: return null
-        markVisible()
-        return if (stuckSuffixAllowed) {
-            Content(current.bounds, "${current.text}\n$suffix", current.actionType, current.direction)
-        } else {
-            current
+        val text = if (stuckSuffixAllowed) "${current.text}\n$suffix" else current.text
+        val updated = current.copy(text = text)
+        // **접미사를 상태에 남긴다.** 반환만 하면 뒤이은 [hideTarget]·[restoreTarget]이 접미사 없는
+        // 원본을 그려 정체 문구가 사라지고, `stuckReported`가 true라 다시 붙지도 않는다(#226 리뷰).
+        guide = updated
+        stuckSuffixAllowed = false
+        visible = true
+        if (guideSignature == currentSignature) {
+            targetHidden = false
+            return updated
         }
+        // 다른 화면이면 [restoreTarget]과 같은 규칙을 따른다 — 문구만 남기고 강조는 그리지 않는다.
+        // 여기서 숨김을 풀면 restoreTarget이 막은 "이전 화면의 강조를 새 화면 위에"가 되살아난다.
+        return updated.copy(bounds = null, direction = null)
     }
 }

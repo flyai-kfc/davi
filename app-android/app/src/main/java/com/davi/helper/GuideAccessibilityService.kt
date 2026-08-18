@@ -333,7 +333,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 다시 그리면서 우리 창을 만져 스스로를 깨우기 때문이다(ControlOverlay 참고).
                 if (!GuideSession.awaitingConfirm) {
                     Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                    showStuckNotice()
+                    showStuckNotice(signature)
                 }
                 scheduleSample(POLL_MS)
             }
@@ -350,8 +350,8 @@ class GuideAccessibilityService : AccessibilityService() {
      *
      * 최종 문구는 안내 상태 표시(#29)에서 다시 정한다.
      */
-    private fun showStuckNotice() {
-        display.stuckContent(getString(R.string.guide_stuck))?.let { draw(it) }
+    private fun showStuckNotice(signature: String) {
+        display.stuckContent(getString(R.string.guide_stuck), signature)?.let { draw(it) }
     }
 
     /**
