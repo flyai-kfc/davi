@@ -55,6 +55,25 @@
         <item name="android:fontFamily">@font/cafe24_ssurround</item>
         <item name="fontFamily">@font/cafe24_ssurround</item>
     </style>
+    <!--
+      메인 1 홈 제목(#231). 34sp로 **다른 화면 제목(28)보다 크다** — 이 화면만 문구가
+      주인공이고 아래에 카드가 없다. 두 줄이 색만 다르므로 강조 줄은 색을 덮어 쓴다.
+    -->
+    <style name="TextAppearance.Davi.HomeTitle" parent="TextAppearance.Davi.Title.Davi">
+        <item name="android:textSize">@dimen/davi_type_home_title</item>
+    </style>
+    <!--
+      홈의 두 캡션. 다비가 하는 말이라 Cafe24다(C1). 부제 14 · 하단 16으로 크기만 다르다.
+      **두 네임스페이스를 함께 준다** — AppCompatTextView가 app:fontFamily를 먼저 읽어서
+      한쪽만 주면 테마 글꼴이 이긴다.
+    -->
+    <style name="TextAppearance.Davi.HomeSubtitle" parent="TextAppearance.Davi.Caption">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+    </style>
+    <style name="TextAppearance.Davi.HomeCaption" parent="TextAppearance.Davi.HomeSubtitle">
+        <item name="android:textSize">@dimen/davi_type_home_caption</item>
+    </style>
     <style name="TextAppearance.Davi.Subtitle.Davi" parent="TextAppearance.Davi.Subtitle">
         <item name="android:fontFamily">@font/cafe24_ssurround</item>
         <item name="fontFamily">@font/cafe24_ssurround</item>
