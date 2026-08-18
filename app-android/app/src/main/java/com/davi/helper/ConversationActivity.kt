@@ -272,8 +272,13 @@ class ConversationActivity : AppCompatActivity() {
         //
         // 끄면 wrap_content + minHeight가 살아 카드가 내용 높이(하한 176dp)로 선다.
         // 시안 메인 7·8의 카드 높이 200은 그 화면들을 다시 짤 때 함께 본다.
+        // **최종 확인에서도 weight를 준다**(#200 리뷰). 버튼쌍이 열 안으로 들어오면서
+        // 잘림 규칙을 함께 받게 됐는데, 카드가 wrap_content면 긴 goal에서 카드가 먼저
+        // 커져 버튼을 화면 밖으로 밀어낸다 — 확인 화면에서 ×/○를 못 누르면 빠져나갈
+        // 길이 없다. weight를 주면 카드가 **남는 공간만** 갖고, 모자라면 카드가 줄어
+        // 버튼이 보장된다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
         binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
-            weight = if (model.utteranceVisible) CARD_WEIGHT_DAVI else 0f
+            weight = if (model.cardQuestionFlexible) CARD_WEIGHT_DAVI else 0f
         }
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
