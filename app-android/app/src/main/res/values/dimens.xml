@@ -197,6 +197,14 @@
       스냅하지 않았다. 지시문이라 못 읽으면 사용자가 갇힌다. Figma 반영 대기.
     -->
     <dimen name="davi_type_guiding">17sp</dimen>
+    <!--
+      메인 9 카드 위 패딩. **다른 화면(72dp)보다 얕다** — 이 화면은 문구가 둘이라 위가
+      깊으면 카드 안이 아래로 몰린다. 시안도 제목이 배지 바로 아래에서 시작한다.
+
+      값은 **배지가 카드를 파고든 깊이(davi_badge_overlap_negative 36dp) + 숨 여백 8dp**다.
+      36보다 얕으면 배지가 글자를 덮는다 — 그래서 임의로 더 줄일 수 없다.
+    -->
+    <dimen name="davi_card_padding_top_guiding">44dp</dimen>
 
     <!-- chip/confirm-pair (임시 디자인 실측 — 확정 시 재검토) -->
     <dimen name="davi_confirm_chip_width">96dp</dimen>

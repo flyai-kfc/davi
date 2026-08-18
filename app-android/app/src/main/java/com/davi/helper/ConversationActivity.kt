@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
@@ -340,6 +341,23 @@ class ConversationActivity : AppCompatActivity() {
         binding.btnMic.imageAlpha =
             if (model.micEnabled) OPAQUE_IMAGE_ALPHA else micDisabledImageAlpha
         // 메인 9·10(#197). 카드 안 지시문·세로 버튼쌍·하단 안내는 안내 중에만 뜬다.
+        // **안내 중에는 바닥 예약을 비운다**(#197). 그 85dp는 마이크 자리인데 이 화면에는
+        // 마이크가 없다 — 그대로 두면 열이 그만큼 일찍 끝나 하단 안내 둘째 줄이 잘린다
+        // (실기기: 34dp만 남아 두 줄에 필요한 53dp를 못 채웠다).
+        //
+        // **마이크 유무로 일반화하지 않았다.** 최종 확인·실패도 마이크가 없지만 그쪽은
+        // 이미 확인된 배치라, 근거 없이 건드리면 방금 맞춘 것이 틀어진다.
+        binding.cardColumn.updatePadding(
+            bottom = if (model.guidingVisible) 0
+            else resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve),
+        )
+        // 카드 위 패딩도 이 화면만 얕다 — 근거는 davi_card_padding_top_guiding 주석.
+        binding.cardQuestionContainer.updatePadding(
+            top = resources.getDimensionPixelSize(
+                if (model.guidingVisible) R.dimen.davi_card_padding_top_guiding
+                else R.dimen.davi_card_padding_top_davi,
+            ),
+        )
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
         binding.stackedPair.root.isVisible(model.guidingVisible)
