@@ -487,7 +487,7 @@
                 android:gravity="center"
                 android:lineSpacingMultiplier="1.3"
                 android:text="@string/conversation_stop_confirm"
-                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:textAppearance="@style/TextAppearance.Davi.Dialog"
                 android:fontFamily="@font/cafe24_ssurround"
                 app:fontFamily="@font/cafe24_ssurround" />
 

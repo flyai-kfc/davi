@@ -139,6 +139,19 @@ object GuideTelemetry {
         Log.i(GuideAccessibilityService.TAG, event("root_state", "state" to state))
     }
 
+    /**
+     * 대화 화면의 상태 전이(#197). **이름과 안내 세션 유무만 남긴다** — 안내 중(메인 9)과
+     * 종료 확인(메인 10)은 눈으로만 확인할 수 있어 회귀가 나도 짚을 근거가 없었다.
+     *
+     * 발화·질문·goal·대화 UUID는 여기 오지 않는다(app-android/CLAUDE.md).
+     */
+    fun screenState(state: String, guideActive: Boolean) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event("screen_state", "state" to state, "guide_active" to guideActive),
+        )
+    }
+
     fun voiceState(state: String, errorCode: Int? = null) {
         Log.i(
             GuideAccessibilityService.TAG,

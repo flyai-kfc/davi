@@ -172,7 +172,12 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         glowReactsToVoice = false,
     )
     // 메인 10 — 메인 9 위에 모달만 얹는다. 뒤 화면은 그대로 보인다(시안).
-    ConversationUiState.StopConfirm -> guidingModel().copy(stopConfirmVisible = true)
+    // **세션이 밖에서 끝나면 모달도 내린다**(#197 리뷰). 끝낼 안내가 없는데 "정말 종료할까요?"가
+    // 남으면, 이 PR이 "안내 중"을 상태로 두지 않은 이유(유령 화면)를 스스로 어긴다.
+    // 화면 상태는 Activity가 정리하고 여기서는 그리지 않는 것으로 먼저 막는다.
+    ConversationUiState.StopConfirm ->
+        if (guideActive) guidingModel().copy(stopConfirmVisible = true)
+        else ConversationRenderModel(homeVisible = true, micVisible = true, micEnabled = true, glowVisible = true)
     is ConversationUiState.Listening -> ConversationRenderModel(
         logoVisible = true,
         questionRes = if (state.question == null) R.string.conversation_prompt_initial else null,

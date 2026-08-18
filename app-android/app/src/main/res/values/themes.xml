@@ -92,6 +92,17 @@
       카드 안 지시문(#197). **17sp다** — 시안 15를 14로 스냅하지 않았다. 지시문이라 못
       읽으면 사용자가 갇힌다. 근거는 davi_type_guiding 주석. 카드 안 다비의 말이라 Cafe24.
     -->
+    <!--
+      메인 10 확인 문구(#197). 다비가 묻는 말이라 Cafe24이고 크기는 시안대로 18sp다 —
+      카드 문구(Subtitle 24sp)를 그대로 쓰면 시안보다 6sp 크다.
+    -->
+    <style name="TextAppearance.Davi.Dialog" parent="TextAppearance.Davi.Body">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+        <item name="android:textSize">@dimen/davi_type_dialog</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/davi_text_primary</item>
+    </style>
     <style name="TextAppearance.Davi.Guiding" parent="TextAppearance.Davi.Body">
         <item name="android:fontFamily">@font/cafe24_ssurround</item>
         <item name="fontFamily">@font/cafe24_ssurround</item>

@@ -139,6 +139,14 @@
     <string name="conversation_guiding_bottom">계속 보시려면 뒤로가기를 눌러\n다비를 나가주세요</string>
     <string name="conversation_guiding_resume">기존 안내 이어서하기</string>
     <string name="conversation_guiding_stop">안내 종료</string>
+    <!--
+      메인 10 확인쌍의 **스크린리더 설명**(#197). 이 화면은 기존 확인쌍 컴포넌트를 재사용하는데
+      **기본 설명이 정반대다** — 최종 확인 기준으로 x가 "처음부터 다시", o가 "이대로 안내 시작"인데
+      여기서는 x가 안내를 **계속**하고 o가 **끝낸다**. 화면 문구가 뜻을 부르는 시각 사용자와 달리
+      스크린리더 사용자는 이 값만 듣는다.
+    -->
+    <string name="conversation_stop_confirm_reject_desc">안내 계속하기</string>
+    <string name="conversation_stop_confirm_accept_desc">안내 종료하기</string>
     <string name="conversation_stop_confirm">정말 안내를\n종료하시겠어요?</string>
     <string name="conversation_app_availability_warning">이 과정에 필요한 앱이 설치되어 있지 않을 수 있어요. 그래도 계속할까요?</string>
     <!--

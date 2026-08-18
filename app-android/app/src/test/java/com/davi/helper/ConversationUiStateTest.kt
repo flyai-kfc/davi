@@ -63,10 +63,22 @@ class ConversationUiStateTest {
     @Test
     fun `종료 확인은 안내 중 화면 위에 모달로 덮인다`() {
         // 시안 메인 10 — 뒤 화면이 그대로 보이고 그 위에 스크림과 다이얼로그가 얹힌다.
-        val model = renderModelOf(ConversationUiState.StopConfirm)
+        val model = renderModelOf(ConversationUiState.StopConfirm, guideActive = true)
         assertTrue(model.stopConfirmVisible)
         assertTrue("뒤 화면은 메인 9 그대로다", model.guidingVisible)
         assertEquals(R.string.conversation_guiding_title, model.questionRes)
+    }
+
+    @Test
+    fun `세션이 밖에서 끝나면 종료 확인 모달이 남지 않는다`() {
+        // 안내는 밖에서 끝난다(사용자가 대상 앱에서 완료 · 권한 소실 · 다른 종료 경로).
+        // 끝낼 안내가 없는데 "정말 종료할까요?"가 남으면, "안내 중"을 상태로 두지 않은
+        // 이유(유령 화면)를 스스로 어긴다.
+        val model = renderModelOf(ConversationUiState.StopConfirm, guideActive = false)
+        assertFalse(model.stopConfirmVisible)
+        assertFalse(model.guidingVisible)
+        assertTrue("끝났으면 평범한 홈이다", model.homeVisible)
+        assertTrue(model.micEnabled)
     }
 
     @Test

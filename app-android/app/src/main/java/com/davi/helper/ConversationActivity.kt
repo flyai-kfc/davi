@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -63,6 +64,9 @@ class ConversationActivity : AppCompatActivity() {
         setState(ConversationUiState.Home())
     }
 
+    /** 종료 확인 모달로 포커스를 한 번만 옮기기 위한 값. 렌더는 여러 번 돈다. */
+    private var stopConfirmAnnounced = false
+
     /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
     private var lastQuestionKey: Any? = null
 
@@ -73,7 +77,18 @@ class ConversationActivity : AppCompatActivity() {
     private var destroyed = false
 
     // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
-    private val sessionListener = GuideSession.Listener { runOnUiThread { render(uiState) } }
+    // 안내 세션은 **밖에서** 끝난다(사용자가 대상 앱에서 완료 · 권한 소실 · 다른 종료 경로).
+    // 그때 종료 확인이 떠 있으면 **끝낼 안내가 없는데 묻고 있는** 상태가 되므로 홈으로 내린다.
+    // 나머지 상태는 세션 유무로 그림만 달라지면 되니 다시 그리기만 한다.
+    private val sessionListener = GuideSession.Listener {
+        runOnUiThread {
+            if (uiState is ConversationUiState.StopConfirm && !GuideSession.isActive) {
+                setState(ConversationUiState.Home())
+            } else {
+                render(uiState)
+            }
+        }
+    }
 
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
@@ -185,6 +200,13 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.StopConfirm)
         }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
+        // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
+        // o가 "이대로 안내 시작"인데 여기서는 x가 안내를 계속하고 o가 끝낸다. 화면 문구가
+        // 뜻을 부르는 시각 사용자와 달리 스크린리더 사용자는 이 값만 듣는다(#197 리뷰).
+        binding.stopConfirmPair.btnConfirmReject.contentDescription =
+            getString(R.string.conversation_stop_confirm_reject_desc)
+        binding.stopConfirmPair.btnConfirmAccept.contentDescription =
+            getString(R.string.conversation_stop_confirm_accept_desc)
         binding.stopConfirmPair.btnConfirmReject.setOnClickListener {
             setState(ConversationUiState.Home())
         }
@@ -252,6 +274,12 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
     private fun setState(state: ConversationUiState) {
+        // **상태 전이를 남긴다**(#197 리뷰). 안내 중·종료 확인은 사용자가 눈으로만 확인할 수
+        // 있어 회귀가 나도 로그로 못 짚었다. **이름과 세션 유무뿐이다** — 발화·질문·goal은
+        // 여기에 오지 않는다(기존 금지 그대로).
+        if (state::class != uiState::class || state is ConversationUiState.Home) {
+            GuideTelemetry.screenState(state.javaClass.simpleName, GuideSession.isActive)
+        }
         uiState = state
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         autoReturnDelayMs(state)?.let { autoReturnHandler.postDelayed(autoReturnRunnable, it) }
@@ -402,6 +430,21 @@ class ConversationActivity : AppCompatActivity() {
         binding.stackedPair.root.isVisible(model.guidingVisible)
         binding.guidingBottom.isVisible(model.guidingVisible)
         binding.stopConfirmScrim.isVisible(model.stopConfirmVisible)
+        // **모달 중에는 뒤 화면을 스크린리더에서 뺀다.** 스크림은 시각 차단일 뿐이라
+        // 그것만으로는 TalkBack이 뒤의 "기존 안내 이어서하기"·"안내 종료"로 넘어간다 —
+        // 답하기 전에는 사라지지 않는 화면인데 뒤를 누를 수 있게 읽히면 안 된다.
+        binding.cardColumn.importantForAccessibility =
+            if (model.stopConfirmVisible) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        if (model.stopConfirmVisible && !stopConfirmAnnounced) {
+            stopConfirmAnnounced = true
+            binding.stopConfirmText.requestFocus()
+            binding.stopConfirmText.sendAccessibilityEvent(
+                AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+            )
+        } else if (!model.stopConfirmVisible) {
+            stopConfirmAnnounced = false
+        }
         binding.buttonPair.root.isVisible(model.confirmVisible)
         // 확인 화면이 둘이라 ○의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라

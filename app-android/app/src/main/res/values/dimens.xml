@@ -201,6 +201,8 @@
     -->
     <dimen name="davi_dialog_height">202dp</dimen>
     <dimen name="davi_dialog_radius">24dp</dimen>
+    <!-- 메인 10 확인 문구. 시안 Cafe24 Bold 18 — 글자는 1:1로 쓴다(#197). -->
+    <dimen name="davi_type_dialog">18sp</dimen>
     <dimen name="davi_dialog_padding_top">22dp</dimen>
     <!-- 시안 그림자 y8을 배율 1.2로 환산. blur 24는 근사에서 빠진다(drawable 주석). -->
     <dimen name="davi_dialog_shadow_offset_y">10dp</dimen>
