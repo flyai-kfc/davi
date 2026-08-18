@@ -137,10 +137,14 @@ requireAlphanumericKakaoKey("debug(DAVI_KAKAO_NATIVE_APP_KEY)", debugKakaoNative
 
 // release: 팀 카카오 앱 키를 저장소 상수로 둔다(#215). 네이티브 앱 키는 APK에서 추출 가능한
 // 공개 전제 식별자이고 등록된 패키지명·서명 해시와 함께여야만 동작하므로 비밀이 아니다 —
-// 저장소가 private이라 CI secret으로 옮길 이득이 없다. 키가 확정되면 이 상수만 채운다.
-// 비어 있는 동안은 release에서 카카오 경로 전체가 꺼진 채 남는다(지금 동작 그대로).
-// 키를 채워도 카카오 콘솔에 release 서명 해시를 등록해야 실기기 로그인이 성공한다.
-val releaseKakaoNativeAppKey = ""
+// 저장소가 private이라 CI secret으로 옮길 이득이 없다.
+// debug와 같은 카카오 앱(콘솔 앱 ID 1547399)을 쓴다. 소유자가 개인 계정이어도 카카오는 앱
+// 소유자를 Play 개발자 계정과 대조하지 않고, 우리 로그인은 동의항목을 요청하지 않아(서버가
+// id·app_id만 읽는다) 비즈 앱 전환도 필요 없다 — 콘솔 접근은 팀원 초대로 연다.
+// 같은 앱이라 서버 DAVI_KAKAO_APP_ID는 그대로 맞는다.
+// 남은 관문은 서명 해시다: Play App Signing이 재서명한 인증서 지문을 카카오 콘솔에 등록해야
+// 실기기 로그인이 성공한다(업로드 키 해시가 아니다).
+val releaseKakaoNativeAppKey = "96ec16afc31462078e4d7daefa9cf0b2"
 requireAlphanumericKakaoKey("release(releaseKakaoNativeAppKey)", releaseKakaoNativeAppKey)
 
 // 도그푸딩 옵트인(#41 리뷰). true인 debug 빌드만 기기 해시를 계산·로그·전송한다.
