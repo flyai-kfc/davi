@@ -116,14 +116,23 @@ class GuideAccessibilityService : AccessibilityService() {
                 override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
                     Log.i(TAG, "confirm rejected ($kind), continuing")
                     when (kind) {
-                        // 종료 확인의 ×는 **되돌리기**다. 밀어 둔 직전 안내를 되살리고 세션
-                        // 상태는 건드리지 않는다 — 서버에 다시 묻지 않는다. 그 사이 화면이
-                        // 바뀌었으면 표시 상태가 폐기하고 null을 준다(옛 강조를 새 화면 위에
-                        // 그리지 않는다).
+                        // 종료 확인의 ×는 **되돌리기**다. 되살릴 안내가 있으면 그대로 그리고
+                        // 서버에 다시 묻지 않는다.
+                        //
+                        // 없으면(그 사이 화면이 바뀌어 표시 상태가 폐기했으면) **다시 묻는다.**
+                        // 안 그러면 그 화면은 `markSent`로 남아 재질의가 없고, 사용자는 빈
+                        // 오버레이만 보게 된다 — 화면이 또 바뀔 때까지 안내가 영영 안 온다
+                        // (2026-08-18 실기기 실측: 확인 중 도착한 응답이 폐기된 화면에서 재현).
+                        // 완료 확인의 × 가 하는 것과 같은 처리다.
                         GuideDisplayState.ConfirmKind.QUIT -> {
                             GuideSession.quitRejected()
-                            display.dismissQuitConfirm(stability.currentSignature())
-                                ?.let { draw(it) } ?: overlay?.clear()
+                            val restored = display.dismissQuitConfirm(stability.currentSignature())
+                            if (restored != null) {
+                                draw(restored)
+                            } else {
+                                overlay?.clear()
+                                stability.markFailed()
+                            }
                         }
 
                         // 완료 확인의 ×는 **버리기**다. 기억만 해 두면 다음 샘플의 redisplay가
