@@ -32,6 +32,18 @@ interface GuidedScenario<State> {
     val hardBoundaries: List<GuidedHardBoundary>
         get() = emptyList()
 
+    /**
+     * 이 시나리오가 화면에 개인정보를 띄우는가(#134).
+     *
+     * `true`면 실행기가 **상세 trace를 강제로 끈다.** 예를 들어 문자 수신자 번호는 입력한 순간부터
+     * 이후 모든 화면 snapshot의 label에 들어가고, 상세 보고서는 그 label을 그대로 담는다.
+     * 시나리오 코드가 번호를 로그에 안 찍는 것만으로는 막을 수 없는 경로다.
+     *
+     * 인자(`davi.detailedReport`)로 켤 수 없다 — 끄는 방향으로만 작동한다.
+     */
+    val handlesPersonalData: Boolean
+        get() = false
+
     /** 기존 테스트 부산물을 정리하고 목표를 만들기 위한 안전한 초기 상태를 수집한다. */
     fun prepare(device: UiDevice): State
 

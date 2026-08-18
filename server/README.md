@@ -171,7 +171,7 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 development:
 
 ```json
-{"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true}
+{"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
 ```
 
 production:

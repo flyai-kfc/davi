@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
 
+    # 2차 마스킹 우회(#203). masked/unmasked 가이드 품질 비교 실험 전용이며 기본은 꺼짐.
+    # 켜면 앱이 보낸 label이 2차 치환 없이 그대로 LLM에 전달된다. 아래 검증이 development·
+    # loopback·개발 토큰 없음을 모두 요구하므로 production과 공용 개발 endpoint에서는 뜨지 않는다.
+    davi_disable_privacy_masking: bool = False
+
     # 카카오 로그인(kakao_auth.py). 앱 ID는 검증용 숫자 ID이며 REST API 키가 아니다.
     # 둘 다 채워야 로그인 endpoint가 동작한다. 비어 있으면 SERVER 오류로 닫힌다.
     davi_kakao_app_id: int = 0
@@ -85,6 +90,25 @@ class Settings(BaseSettings):
             and not dev_access_token
         ):
             raise ValueError("development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN이 필요합니다")
+        # 2차 마스킹 우회는 "내 맥에서만 도는 development 서버"로 경계를 좁힌다(#203).
+        # production은 물론이고, 개발 토큰이 있거나 loopback 밖에 바인딩한 순간
+        # 그 서버는 팀이 공유하는 endpoint이므로 다른 사람의 기기 화면까지 원문으로 받게 된다.
+        # 순서는 좁은 제약부터다. 바인딩이 loopback 밖이면 토큰 유무와 무관하게 그 서버는
+        # 다른 기기가 붙을 수 있는 자리이므로, 그 사실을 먼저 알려주는 편이 고치기 쉽다.
+        if self.davi_disable_privacy_masking:
+            if self.davi_env != "development":
+                raise ValueError(
+                    "DAVI_DISABLE_PRIVACY_MASKING은 development에서만 사용할 수 있습니다"
+                )
+            if bind_host not in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError(
+                    "DAVI_DISABLE_PRIVACY_MASKING은 loopback 바인딩에서만 사용할 수 있습니다"
+                )
+            if dev_access_token:
+                raise ValueError(
+                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN 설정)에서는 "
+                    "DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
+                )
         if self.davi_dev_rate_limit_requests <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")
         if self.davi_dev_rate_limit_window_seconds <= 0:
@@ -123,7 +147,14 @@ class Settings(BaseSettings):
         return {d.strip() for d in self.davi_dogfood_device_ids.split(",") if d.strip()}
 
     def should_store_raw(self, device_id: str | None) -> bool:
-        """이 기기의 raw 화면 트리를 저장해도 되는가(도그푸딩 기기만)."""
+        """이 기기의 raw 화면 트리를 저장해도 되는가(도그푸딩 기기만).
+
+        마스킹을 우회한 실행에서는 화이트리스트 기기라도 저장하지 않는다(#203). 도그푸딩
+        보존은 1차·2차 마스킹을 통과한 봉투를 전제로 승인된 채널이고(SPEC §3), 우회 실행의
+        원문 label은 그 전제를 만족하지 않는다. 우회 실험은 비식별 지표만 남긴다.
+        """
+        if self.davi_disable_privacy_masking:
+            return False
         return bool(device_id) and device_id in self.dogfood_device_ids
 
 

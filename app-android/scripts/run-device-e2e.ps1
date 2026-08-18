@@ -12,7 +12,12 @@
 param(
     [string]$Scenario = '',
     [switch]$ListScenarios,
-    [switch]$NoDetailedReport
+    [switch]$NoDetailedReport,
+    # 앱 1차 마스킹을 끈 debug APK로 설치해 실행한다(#203 비교 실험).
+    # local.properties에 DAVI_DISABLE_PRIVACY_MASKING=true를 둔 머신은 이 스위치 없이도
+    # 우회 APK가 설치된다. 서버도 DAVI_DISABLE_PRIVACY_MASKING=true로 띄워야 두 겹 모두 우회된다.
+    # 원문 화면 label이 실제 Gemini까지 나가므로 합성 데이터만 넣은 전용 테스트 기기에서만 쓴다.
+    [switch]$DisablePrivacyMasking
 )
 
 $ErrorActionPreference = 'Stop'
@@ -104,6 +109,9 @@ if ($health.stub_llm -ne $false) {
     throw '127.0.0.1:8000에 DAVI_USE_STUB_LLM=false인 서버가 필요합니다.'
 }
 $model = if ($health.model) { "$($health.model)" } else { 'unknown' }
+# 서버 2차 마스킹을 우회한 실행은 상세 보고서를 만들지 않는다(#203). 상세 보고서는 화면 label과
+# 모델 문장을 그대로 담으므로, 우회 실행에서는 그 파일이 원문 화면을 디스크에 남기게 된다.
+$serverMaskingDisabled = [bool]$health.privacy_masking_disabled
 
 $deviceLines = Invoke-CapturedNative $adb @('devices') 'adb devices'
 $connected = @(
@@ -137,6 +145,12 @@ $instrumentationResult = [System.IO.Path]::GetTempFileName()
 $safeLogResult = [System.IO.Path]::GetTempFileName()
 $privateTraceResult = [System.IO.Path]::GetTempFileName()
 $detailedReport = -not $NoDetailedReport
+if ($serverMaskingDisabled) {
+    if ($detailedReport) {
+        Write-Warning '서버 2차 마스킹 우회라 상세 보고서 생성을 끕니다(#203).'
+    }
+    $detailedReport = $false
+}
 $privateTraceAvailable = $false
 $runStartedAt = (Get-Date).ToString('o')
 $reportStamp = (Get-Date).ToString("yyyyMMdd'T'HHmmssfffzzz").Replace(':', '')
@@ -198,7 +212,12 @@ try {
 
     Push-Location $appDir
     try {
-        Invoke-CheckedNative $gradlew @("-PdaviE2eServerUrl=$serverUrl", ':app:installDebug') 'Davi debug 앱 설치'
+        # 우회 속성은 켠 실행에서만 넘긴다. 안 넘기면 local.properties의
+        # DAVI_DISABLE_PRIVACY_MASKING이 그대로 적용되므로, 그 파일로 켜 둔 머신에서는
+        # 이 설치도 우회 APK가 된다(#203). 실제로 무엇이 설치됐는지는 아래에서 앱이 보고한 값으로 본다.
+        $appInstallArgs = @("-PdaviE2eServerUrl=$serverUrl")
+        if ($DisablePrivacyMasking) { $appInstallArgs += '-PdaviDisablePrivacyMasking=true' }
+        Invoke-CheckedNative $gradlew ($appInstallArgs + ':app:installDebug') 'Davi debug 앱 설치'
         Invoke-CheckedNative $gradlew @(':e2e-driver:installDebug', ':e2e-driver:installDebugAndroidTest') 'E2E driver 설치'
     }
     finally { Pop-Location }
@@ -213,6 +232,20 @@ try {
         Start-Sleep -Seconds 1
     }
     if (-not $connectedCallback) { throw 'Davi 접근성 서비스의 실제 연결 callback을 30초 안에 확인하지 못했습니다.' }
+
+    # 앱 1차 상태는 **설치된 앱이 스스로 보고한 값**으로 읽는다(#203). 실행기 스위치로 짐작하면
+    # local.properties의 DAVI_DISABLE_PRIVACY_MASKING으로 켠 경우를 "적용"으로 잘못 알린다.
+    $appMaskingDisabled = ((Invoke-AdbCapture @('logcat', '-d', '-s', 'GuideSvc:I', '*:S') `
+        '앱 마스킹 상태 조회') -join "`n") -match 'privacyMasking=DISABLED'
+    if ($appMaskingDisabled -and $detailedReport) {
+        Write-Warning '앱 1차 마스킹 우회라 상세 보고서 생성을 끕니다(#203).'
+        $detailedReport = $false
+    }
+    # 두 겹의 상태를 각각 알린다. 한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지
+    # 모른 채 결과를 읽으면 안 된다(#203 안전 경계).
+    $appMaskingLabel = if ($appMaskingDisabled) { '우회' } else { '적용' }
+    $serverMaskingLabel = if ($serverMaskingDisabled) { '우회' } else { '적용' }
+    Write-Host "개인정보 마스킹 — 앱 1차: $appMaskingLabel / 서버 2차: $serverMaskingLabel"
 
     $accessibilityState = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
     if ($accessibilityState -notmatch 'Bound services:.*com\.davi\.helper' -or

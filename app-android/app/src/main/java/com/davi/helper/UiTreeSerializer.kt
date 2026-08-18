@@ -58,7 +58,7 @@ object UiTreeSerializer {
     private const val ROLE_PAGE_DOT = "page_dot"
 
     /** 직렬화 한 번 동안의 누적 상태. 파라미터가 늘어나는 것을 막는다. */
-    private class Ctx(val screenArea: Long) {
+    private class Ctx(val screenArea: Long, val masker: LabelMasker) {
         val elements = mutableListOf<UiElement>()
         var counter = 0
         var currentPage: Int? = null
@@ -77,11 +77,19 @@ object UiTreeSerializer {
 
     data class Result(val screen: Screen, val truncated: Boolean)
 
-    fun serialize(root: AccessibilityNodeInfo, windowTypes: Iterable<Int>? = null): Result {
+    /**
+     * @param masker 서버로 나갈 label에 적용할 1차 마스킹 정책. 기본값은 빌드 플래그가
+     *               정하며 release 산출물에서는 항상 [PrivacyMaskingLabelMasker]다(#203).
+     */
+    fun serialize(
+        root: AccessibilityNodeInfo,
+        windowTypes: Iterable<Int>? = null,
+        masker: LabelMasker = labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
+    ): Result {
         val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
             .coerceAtLeast(1L)
 
-        val ctx = Ctx(screenArea)
+        val ctx = Ctx(screenArea, masker)
         walk(root, ctx, absorbed = false, depth = 0)
 
         val truncated = ctx.elements.size > MAX_ELEMENTS
@@ -211,7 +219,9 @@ object UiTreeSerializer {
             // (실측: 키패드 라벨이 "6\n,ㄷ,ㅌ\n,M,N,O" 처럼 여러 줄로 나왔다).
             // 정규화된 label을 외부 서버로 보내기 전에 여기서 반드시 1차 마스킹한다(SPEC §2).
             // 길이 제한보다 먼저 마스킹해야 잘린 개인정보 조각이 정규식 매칭을 피하지 않는다.
-            label = PrivacyMasker.maskText(label.replace(WHITESPACE, " ").trim())
+            // 정책은 [Ctx.masker]가 들고 있다 — debug 비교 실험(#203)에서만 우회할 수 있고,
+            // 그때도 아래 정규화와 길이 제한은 그대로 적용된다.
+            label = ctx.masker.mask(label.replace(WHITESPACE, " ").trim())
                 .take(MAX_LABEL_CHARS),
             role = role ?: roleOf(node),
             // 페이지 dot은 clickable=true지만 약 50x50px이라 시니어가 조준할 수 없다.

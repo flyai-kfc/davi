@@ -157,8 +157,15 @@ class GuideAccessibilityService : AccessibilityService() {
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
         )
         // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
-        // 막을 수 있다(#77 리뷰). null이면 로그에 '-'가 찍히고 요청 필드도 통째로 빠진다.
-        dogfoodDeviceId = if (BuildConfig.DOGFOOD_OPT_IN) {
+        // 막을 수 있다(#77 리뷰). 앱의 1차 마스킹이 꺼진 요청은 서버가 구분할 수 없으므로
+        // 식별자도 보내지 않아 raw dogfood 저장 경로를 닫는다(#206 리뷰).
+        // null이면 로그에 '-'가 찍히고 요청 필드도 통째로 빠진다.
+        dogfoodDeviceId = if (
+            shouldAttachDogfoodDeviceId(
+                dogfoodOptIn = BuildConfig.DOGFOOD_OPT_IN,
+                maskingDisabled = BuildConfig.PRIVACY_MASKING_DISABLED,
+            )
+        ) {
             DogfoodDeviceId.hash(
                 Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID),
             )
@@ -174,8 +181,18 @@ class GuideAccessibilityService : AccessibilityService() {
             TAG,
             "connected server=${BuildConfig.SERVER_URL} " +
                 "overlayPermission=${overlay?.canDraw()} " +
-                "dogfoodDeviceId=${dogfoodDeviceId ?: "-"}",
+                "dogfoodDeviceId=${dogfoodDeviceId ?: "-"} " +
+                // 앱 1차 마스킹 상태는 서버 2차 상태와 독립으로 드러낸다. 한쪽만 우회한 상태를
+                // "둘 다 우회"로 오인하면 비교 결과를 잘못 읽는다(#203).
+                "privacyMasking=${if (BuildConfig.PRIVACY_MASKING_DISABLED) "DISABLED" else "on"}",
         )
+        if (BuildConfig.PRIVACY_MASKING_DISABLED) {
+            Log.w(
+                TAG,
+                "1차 개인정보 마스킹이 꺼져 있습니다. 원문 화면 label이 서버와 실제 Gemini까지 " +
+                    "그대로 나갑니다. 합성 데이터만 넣은 전용 테스트 기기에서만 사용하세요(#203).",
+            )
+        }
     }
 
     /**
@@ -277,7 +294,15 @@ class GuideAccessibilityService : AccessibilityService() {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)
                     // raw 상세 로그의 debug/release 분리는 #58. #81은 같은 화면 retry의 반복만 막는다.
-                    if (e2ePublisher?.suppressDetailedScreenLogs != true) logScreenDetails(result)
+                    // 1차 마스킹 우회 중에는 E2E 세션 밖에서도 원문 label을 남기지 않는다.
+                    if (
+                        shouldLogDetailedScreen(
+                            maskingDisabled = BuildConfig.PRIVACY_MASKING_DISABLED,
+                            e2eSuppressesDetailedLogs = e2ePublisher?.suppressDetailedScreenLogs == true,
+                        )
+                    ) {
+                        logScreenDetails(result)
+                    }
                 }
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).

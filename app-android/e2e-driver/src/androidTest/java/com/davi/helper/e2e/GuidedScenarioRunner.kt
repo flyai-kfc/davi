@@ -17,7 +17,7 @@ class GuidedScenarioRunner(private val device: UiDevice) {
         var state: State? = null
         var primaryFailure: Throwable? = null
         val queue = GuideDecisionQueue(context)
-        val detailedTrace = DetailedTraceWriter.create(context)
+        val detailedTrace = DetailedTraceWriter.create(context, scenario.handlesPersonalData)
         try {
             val prepared = scenario.prepare(device)
             state = prepared

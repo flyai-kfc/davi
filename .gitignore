@@ -36,3 +36,6 @@ app-android/build/reports/device-e2e-private/
 # JVM 크래시 덤프 (Gradle 데몬 죽을 때 생김)
 hs_err_pid*.log
 replay_pid*.log
+
+# macOS Finder 부산물
+.DS_Store
