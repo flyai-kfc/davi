@@ -1,16 +1,11 @@
 package com.davi.helper
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -66,28 +61,14 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     /**
-     * 안내가 멈췄을 때 알릴 유일한 수단이 알림이라 여기서 한 번 묻는다(#212).
-     *
-     * **특수 권한 둘과 나란히 두지 않는다** — 설정 앱에 다녀올 필요가 없는 일반 런타임 권한이라
-     * 화면에 줄을 늘릴 값이 없다. **거부해도 진행을 막지 않는다**: 거부하면 그 갈래가 조용해질
-     * 뿐이고(지금도 그렇다), 사용자가 앱을 열면 아래 onResume이 여전히 잡아낸다.
+     * **알림 권한은 여기서 묻지 않는다**(#212 · PR #240 리뷰). 접근성이 이미 켜진 기기에서는
+     * 아래 onResume이 같은 프레임에 finish()해 권한 대화상자가 함께 사라지는데, 하필 그 사람이
+     * 그 알림을 받아야 할 사람이다(알림은 "안내 중 접근성이 꺼졌을 때" 뜬다).
+     * 묻는 자리는 [ConversationActivity.onResume]이다 — 사라지지 않고, 모든 안내 세션이 거기서
+     * 시작한다.
      */
-    private val requestPostNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
-    private fun askPostNotificationsOnce() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        // 이미 있거나 사용자가 한 번 거부했으면 다시 묻지 않는다 — 시스템이 두 번째 요청을
-        // 조용히 무시하므로 다시 부르는 것은 의미가 없고, 화면만 한 번 더 깜빡인다.
-        if (granted || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) return
-        requestPostNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
-
     override fun onResume() {
         super.onResume()
-        askPostNotificationsOnce()
         if (canStartGuide()) {
             startActivity(Intent(this, ConversationActivity::class.java))
             finish()
