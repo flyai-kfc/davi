@@ -753,9 +753,11 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ServiceOffAction.NOTICE_ONLY -> {
-                // 오버레이 권한이 없어 복귀가 막힌다(BAL 면제 없음). 설정 앱 위라 안내창도 못 쓴다.
+                // 오버레이 권한이 없어 복귀가 막힌다(BAL 면제 없음). 안내창도 못 쓰는데, 이유는
+                // 화면이 설정 앱이라서가 아니라 unbind 중이라 접근성 오버레이 창이 서비스와
+                // 함께 죽어서다(#56 — 접근성 오버레이는 설정 앱 위에도 그려진다).
                 // **이 토스트는 지금 안 보인다** — 알림 권한을 아직 요청하지 않아 백그라운드
-                // 토스트가 억제된다(#56이 그 권한을 들여오면 살아난다, [ServiceOffAction.NOTICE_ONLY]).
+                // 토스트가 억제된다(**#212**가 그 권한을 들여오면 살아난다, [ServiceOffAction.NOTICE_ONLY]).
                 // 그래도 호출은 남긴다. 지우면 권한이 생겨도 이 자리만 조용히 비어 있게 된다.
                 Log.w(TAG, "service unbound during session, cannot return")
                 Toast.makeText(this, R.string.guide_service_off, Toast.LENGTH_LONG).show()

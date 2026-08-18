@@ -3,7 +3,6 @@ package com.davi.helper
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -64,8 +63,18 @@ class OverlayController(
     /** 지금 그리는 확인 화면의 종류(없으면 null). 자리 계산 콜백이 조작 오버레이에 그대로 넘긴다. */
     private var confirmKind: GuideDisplayState.ConfirmKind? = null
 
-    /** 오버레이 권한이 있는가. 없으면 온보딩에서 켜야 한다. */
-    fun canDraw(): Boolean = Settings.canDrawOverlays(context)
+    /**
+     * **이 게이트는 "그릴 수 있는가"가 아니라 "그리기로 한 조건"이다.** 창 타입이
+     * `TYPE_ACCESSIBILITY_OVERLAY`가 된 뒤로 오버레이 자체는 `SYSTEM_ALERT_WINDOW` 없이도
+     * 붙는다(머리 주석). 그래도 게이트를 남기는 이유는 **#190의 앱 복귀**다 — 백그라운드
+     * activity 실행 금지의 면제가 그 권한에서 나오므로, 권한 없이 안내를 돌리면 접근성이
+     * 꺼졌을 때 사용자를 되돌릴 길이 없다. **흔적 코드로 보고 지우지 말 것.** 유지·제거
+     * 판정은 #212.
+     *
+     * 판정 자체는 [hasGuideOverlayPermission]에 있다 — 온보딩과 기준이 갈리면 온보딩은
+     * 통과시키고 안내는 조용히 실패한다([GuidePermissions]).
+     */
+    fun canDraw(): Boolean = context.hasGuideOverlayPermission()
 
     /**
      * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
@@ -84,6 +93,7 @@ class OverlayController(
         confirm: GuideDisplayState.ConfirmKind? = null,
     ) {
         if (!canDraw()) {
+            // 창 타입은 이 권한을 안 타지만 위 게이트가 #190 복귀를 위해 막는다.
             Log.w(TAG, "overlay: 권한 없음 — 온보딩에서 '다른 앱 위에 표시'를 켜야 한다")
             return
         }
@@ -115,7 +125,11 @@ class OverlayController(
         // **"권한이 사라지면 시스템이 창을 걷는다"는 더는 사실이 아니다**(#56). 접근성
         // 오버레이는 SYSTEM_ALERT_WINDOW에 묶이지 않아 권한을 꺼도 창이 남는다. 생략의 근거는
         // 이제 비용뿐이고, 안내 중 권한이 꺼지면 [showGuide]가 조기 반환만 해 직전 안내창이
-        // 화면에 남는다 — **알려진 공백이고 권한 정리(#212)가 함께 받는다.**
+        // 화면에 남는다. 게다가 그 유령 창의 중지 칩을 누르면 [GuideSession.awaitQuitConfirm]이
+        // 대기를 세우는데 확인쌍 렌더가 같은 게이트에 막혀, 재탭도 대기 플래그에 막히고
+        // **화면(칩)과 상태(확인 대기)가 갈라진다.** 반면 이 함수의 `view?.let` 패스트패스는
+        // 같은 유령 창에 계속 그린다 — 인접한 두 경로가 반대 정책이다.
+        // **알려진 공백이고 권한 정리(#212)가 함께 받는다.**
         view?.let {
             it.setReading(on)
             return
@@ -164,6 +178,10 @@ class OverlayController(
  * MATCH_PARENT인 표시 창은 부모가 `[0,103]`(상태표시줄 인셋)인데 크기가 지정된 조작 창은
  * `[0,0]`이었다. 그래서 창 사이에 좌표를 넘길 때는 **화면 좌표**를 쓴다. 이 대칭은 좌표
  * 보장이 아니라 **동작 대칭**(터치·포커스·인셋 정책)을 위한 것이다.
+ *
+ * **아래 실측은 구 창 타입(`TYPE_APPLICATION_OVERLAY`)에서 잰 값이다.** 타입 교체(#56) 후
+ * 2026-08-18에 재확인했다 — 설정 앱의 화면 중앙 요소로 강조 좌표를 대조했고, 런처 홈·펼친
+ * 셰이드·시계 앱은 회귀로 봤다. 어긋남은 없었다.
  *
  * **조작 창이 `[0,0]`이라는 가정의 검증된 범위**(#169, 2026-08-17·18 SM-S921N / One UI 8.5):
  * 런처 홈 · 시계 앱 · 펼친 셰이드 · 3버튼 내비에서 안내창이 계산된 자리에 그대로 앉았다.

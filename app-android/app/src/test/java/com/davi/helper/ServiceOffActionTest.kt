@@ -31,8 +31,11 @@ class ServiceOffActionTest {
      * **오버레이 권한이 복귀의 성립 조건이다.** Android 10+의 백그라운드 activity 실행 금지에서
      * 우리가 쓰는 면제 둘(`BAL_ALLOW_SAW_PERMISSION` · `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`)이
      * 모두 그 권한에서 나오므로, 권한이 없으면 `startActivity`가 조용히 막힌다.
+     * 면제 둘의 관계는 **구 창 타입 기준 실측**이다 — 지금 오버레이는 접근성 창이라 인과가
+     * 끊겼고, 결론만 `BAL_ALLOW_SAW_PERMISSION`으로 선다([ServiceOffAction.RETURN_TO_APP], #56).
+     *
      * 그 경우 토스트라도 남겨야 사용자가 이유를 안다(다만 알림 권한 전까지는 그 토스트도
-     * 억제된다 — [ServiceOffAction.NOTICE_ONLY]).
+     * 억제된다 — [ServiceOffAction.NOTICE_ONLY]. 권한 요청은 **#212**).
      */
     @Test
     fun `오버레이 권한이 없으면 복귀를 시도하지 않고 알리기만 한다`() {

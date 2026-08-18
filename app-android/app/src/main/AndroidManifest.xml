@@ -5,7 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 다른 앱 위 오버레이. 사용자가 설정에서 켠다(온보딩) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <!-- 설정 앱 등 오버레이 불가 화면에서 헤드업 알림 폴백(HANDOFF §3-1) -->
+    <!-- 안내 중 접근성이 꺼졌는데 복귀도 막혔을 때의 알림(ServiceOffAction.NOTICE_ONLY).
+         런타임 요청이 아직 없어 그 갈래는 죽어 있다 — 되살리는 것은 #212.
+         헤드업 폴백 근거는 폐기됐다(#56: 접근성 오버레이는 설정 앱 위에도 그려진다). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 사용자가 누른 동안 목표를 음성으로 입력. 원시 오디오는 앱이 저장하거나 서버로 보내지 않는다. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
