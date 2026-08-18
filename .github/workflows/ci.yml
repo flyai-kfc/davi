@@ -172,6 +172,37 @@ jobs:
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
 
+      # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 값이 false여도 "설정이 있다는 것"
+      # 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다. 두 입력 경로를 각각 확인한다.
+      - name: release에서 마스킹 우회 속성 거부
+        run: |
+          set +e
+          output="$(./gradlew -PdaviDisablePrivacyMasking=false verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "daviDisablePrivacyMasking" <<<"$output"
+
+      - name: release에서 마스킹 우회 환경변수 설정 거부
+        env:
+          DAVI_DISABLE_PRIVACY_MASKING: 'false'
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_DISABLE_PRIVACY_MASKING" <<<"$output"
+
+      # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
+      # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.
+      - name: release BuildConfig의 마스킹 상수 고정 확인
+        run: |
+          ./gradlew :app:generateReleaseBuildConfig
+          generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
+          test -f "$generated"
+          grep -q 'PRIVACY_MASKING_DISABLED = false' "$generated"
+
   backend:
     name: Backend (ruff + pytest)
     needs: changes
@@ -264,7 +295,7 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 20); do
             if curl --fail --silent --max-time 1 http://127.0.0.1:8000/health \
-              | python -c 'import json,sys; data=json.load(sys.stdin); assert data == {"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":True}'; then
+              | python -c 'import json,sys; data=json.load(sys.stdin); assert data.get("status") == "ok"; assert data.get("environment") == "development"; assert data.get("model") == "gemini-3.5-flash-lite"; assert data.get("stub_llm") is True; assert data.get("privacy_masking_disabled") is False'; then
               exit 0
             fi
             sleep 1

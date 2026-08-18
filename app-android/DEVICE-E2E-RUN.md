@@ -54,6 +54,85 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 따라서 테스트 중에는 별도 helper APK가 필요하지만 사용자가 실행하거나 계속 설치해 둘 두 번째 앱은
 아니다. 다음 실행 때 실행기가 다시 설치한다.
 
+## masked / unmasked 비교 실행 (#203)
+
+마스킹이 가이드 품질에 주는 영향을 보려면 같은 시나리오를 두 번 돌려 비교한다. **기본 실행은
+언제나 마스킹이 켜져 있고**, 우회는 아래처럼 매번 명시적으로 켠다.
+
+> ⚠️ **우회 실행은 원문 화면 label을 실제 Gemini까지 보낸다.** 합성 데이터만 넣은 전용 테스트
+> 기기에서만 한다. 연락처·메시지·계정에 실제 개인정보가 있는 기기에서는 하지 않는다.
+> 정책 원본은 `../SPEC.md` §3 "마스킹 우회 비교 실험".
+
+기준선(마스킹 적용)을 먼저 남긴다.
+
+```bash
+./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey
+```
+
+도그푸딩 화이트리스트에 기기 해시를 등록할 때도 이 기준선 APK에서 연결 로그의
+`dogfoodDeviceId=` 값을 읽는다. 우회 APK는 raw 저장 경로를 닫기 위해 opt-in 빌드에서도
+식별자를 보내지 않고 `dogfoodDeviceId=-`로 표시한다.
+
+비교군은 **서버와 앱 두 겹을 모두** 우회해야 한다. 서버를 우회 설정으로 다시 띄우고,
+
+```bash
+DAVI_DISABLE_PRIVACY_MASKING=true .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+실행기에 앱 우회 플래그를 준다.
+
+```bash
+./scripts/run-device-e2e.sh --scenario samsung-clock-create-alarm-full-journey --disable-privacy-masking
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\run-device-e2e.ps1 -Scenario samsung-clock-create-alarm-full-journey -DisablePrivacyMasking
+```
+
+`--disable-privacy-masking`은 `-PdaviDisablePrivacyMasking=true`로 debug APK를 다시 설치한다.
+이 플래그 없이 실행하면 debug 기본값이 마스킹 적용이므로 **직전 우회 APK가 다시 덮인다** —
+비교군을 연속으로 돌릴 때도 매번 붙여야 한다.
+
+여러 번 반복한다면 `local.properties`에 적어 두는 편이 편하다.
+
+```properties
+DAVI_DISABLE_PRIVACY_MASKING=true
+```
+
+이 경우 `--disable-privacy-masking` 없이 돌려도 우회 APK가 설치된다. **다만 그 머신은 그때부터
+계속 우회 APK를 만든다** — 기준선을 다시 뜨려면 `-PdaviDisablePrivacyMasking=false`로 한 번만
+덮거나(속성이 파일보다 우선한다) 실험이 끝난 뒤 파일에서 지운다.
+
+### 두 겹의 상태를 각각 확인한다
+
+한쪽만 우회한 실행도 유효한 비교지만, 어느 겹이 켜져 있었는지 모른 채 결과를 읽으면 안 된다.
+실행기가 시작할 때 두 값을 각각 출력한다.
+
+```text
+개인정보 마스킹 — 앱 1차: 우회 / 서버 2차: 우회
+```
+
+직접 확인할 때는 이렇게 본다.
+
+| 겹 | 확인 방법 | 우회 중일 때 |
+|---|---|---|
+| 앱 1차 | `adb logcat -s GuideSvc` | `privacyMasking=DISABLED` + 경고 한 줄 |
+| 서버 2차 | `GET /health` | `"privacy_masking_disabled": true` |
+
+### 우회 실행이 남기지 않는 것
+
+- **상세 보고서를 만들지 않는다.** 어느 한 겹이라도 우회면 실행기가 `--no-detailed-report`와
+  같은 상태로 내려간다. 상세 보고서는 화면 label과 모델 문장을 그대로 담기 때문이다.
+- **도그푸딩 raw 봉투를 저장하지 않는다.** 앱 1차 우회는 `dogfoodDeviceId`를 요청에서 빼고,
+  서버 2차 우회는 서버 저장 정책을 끈다. 따라서 어느 한 겹만 우회해도 원문 요청이 raw 저장소에
+  들어가지 않는다.
+- **원문 label 상세 logcat을 남기지 않는다.** 앱 1차 우회 중에는 E2E 세션 밖의 일반 debug
+  안내에서도 상세 화면 로그를 끈다. 상태 확인용 `connected ... privacyMasking=DISABLED`는 남는다.
+- 비교에 남기는 것은 기본 비식별 보고서의 **판정 · 실패 코드 · 관측한 안내 단계 · 비종료 이탈**
+  같은 지표뿐이다. 원문 logcat이나 서버 로그를 PR·이슈·채팅에 붙이지 않는다.
+
 ## 보고서 위치
 
 보고서는 시나리오별로 누적된다.

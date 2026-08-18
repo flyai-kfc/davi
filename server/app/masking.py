@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
+from .config import settings
 from .schemas import Screen
 
 _TOKEN = "•••"
@@ -87,3 +89,35 @@ def mask_screen_model(screen: Screen) -> Screen:
             )
         }
     )
+
+
+@dataclass(frozen=True)
+class MaskingPolicy:
+    """2차 마스킹을 적용할지 담은 값(#203).
+
+    파이프라인이 설정을 직접 읽는 대신 이 값을 주입받는다. 그래야 마스킹 경로와 우회 경로를
+    **둘 다** 테스트에서 LLM에 실제로 전달된 요청으로 검증할 수 있다.
+    """
+
+    enabled: bool
+
+    def apply_screen(self, screen: Screen) -> Screen:
+        return mask_screen_model(screen) if self.enabled else screen
+
+    def apply_text(self, text: str) -> str:
+        return mask_text(text) if self.enabled else text
+
+
+#: 제품 기본값. 모든 프로필에서 이 정책이 기본이다.
+ENABLED_MASKING = MaskingPolicy(enabled=True)
+
+#: local development 비교 실험 전용 우회(#203).
+#: **원문 label이 실제 Gemini까지 그대로 전달된다.** `Settings`가 development·loopback·
+#: 개발 토큰 없음을 모두 만족할 때만 이 정책이 선택될 수 있다.
+DISABLED_MASKING = MaskingPolicy(enabled=False)
+
+
+def active_masking_policy() -> MaskingPolicy:
+    """설정이 정한 현재 정책. 설정 해석을 이 함수 하나로 모은다."""
+
+    return DISABLED_MASKING if settings.davi_disable_privacy_masking else ENABLED_MASKING
