@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lucide circle (E3). stroke 기반 24 그리드 — 색은 사용처 tint로 조정. -->
+<!-- Lucide circle (E3). stroke 기반 24 그리드 — 색은 사용처 tint로 조정.
+     **GD-3·GD-4 확인쌍의 ○와 알림 아이콘이 이 리소스를 함께 쓴다**(#212). 알림 쪽은 임시다 —
+     전용 아이콘은 #232(앱 레이블·아이콘 확정)에서 함께 정한다. 그 전에 이 도형을 채운 원이나
+     체크로 바꾸면 **알림 아이콘도 조용히 따라 바뀐다.** -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

@@ -48,9 +48,11 @@ internal object GuideNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            // 앱에 아직 전용 아이콘이 없다(매니페스트도 플랫폼 기본을 쓴다). 브랜드 로고를
-            // 그대로 쓰면 시스템이 흰 실루엣으로 마스킹해 뭉개지므로, 단색 도형인 원형 마크를
-            // 쓴다. 전용 알림 아이콘은 앱 아이콘 작업과 함께 온다(릴리스 트랙).
+            // **임시다.** 앱에 아직 전용 아이콘이 없어(매니페스트도 플랫폼 기본을 쓴다)
+            // 단색 도형인 원형 마크를 빌려 쓴다 — 브랜드 로고를 그대로 쓰면 시스템이 흰
+            // 실루엣으로 마스킹해 뭉개진다. **이 리소스는 GD-3·GD-4 확인쌍의 ○도 쓴다** —
+            // 그쪽을 채운 원이나 체크로 바꾸면 여기도 따라 바뀐다(PR #240 리뷰).
+            // 전용 알림 아이콘은 **#232**(앱 레이블·아이콘 확정)에서 함께 정한다.
             .setSmallIcon(R.drawable.ic_davi_circle)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(text)
