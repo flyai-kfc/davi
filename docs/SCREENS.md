@@ -149,8 +149,8 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
   후보 요청 API·HTTP·network·parse 실패도 원래 goal을 보존한 미확인이다.
 - 배치: **버튼쌍이 카드 바로 아래(86dp)에 있고 화면 아래는 비운다**(#196). 마이크·시니어
   카드는 숨는다. PR #164가 마이크와 확인쌍을 한 바닥 슬롯에 묶었던 것을 뒤집은 결과다 —
-  마이크 자리에 버튼이 앉으면 "누르고 말해 주세요"(`voice_home_title`)의 자리와 겹쳐 확인
-  화면이 입력 자리로 보인다.
+  마이크 자리에 버튼이 앉으면 「· 눌러서 말하기 ·」(`voice_home_caption`, #235)의 자리와 겹쳐
+  확인 화면이 입력 자리로 보인다.
 - 구현 연결: 구현됨(#123·#185·#196). 앱 후보의 canonical name은 goal에 덧붙이지 않는다.
   **확인쌍은 오버레이(GD-3·4)와 별개 컴포넌트다** — 시안이 `v2/button/pair`(캡슐 흰/빨강)와
   `v2/confirm-pair`(r14 빨강/초록)로 나눠 두었다. 코드도 `view_davi_button_pair.xml`과
@@ -343,11 +343,13 @@ logo · icon/*(Lucide, 브랜드 제외)
    확정으로 볼지는 화면 이슈(#178)가 판단한다 — 이 문서가 대신 닫지 않는다.
 
    - [미결] **말투가 갈린다.** 대부분 해요체인데 합니다체가 섞여 있다 —
-     `onboarding_body`("시작하려면 두 가지를 켜야 합니다"), `accessibility_service_description`,
-     #224의 `conversation_guiding_title`("안내가 진행 중입니다").
-     (`guide_hint`도 합니다체지만 debug 백업 화면 전용이라 뺐다 — #232가 `src/debug`로 옮긴다.)
-     **`onboarding_body`는 사용자가 가장 먼저 보는 화면이다** — 이상값 하나를 고치는 문제가
-     아니라 온보딩·시스템 설명까지 통일할지, 그 둘을 예외로 둘지의 문제다.
+     `onboarding_permission_note`("최초 1회만 하면 됩니다", #236) ·
+     `accessibility_service_description` · `conversation_guiding_title`("안내가 진행 중입니다", #224).
+     (`guide_hint`·`onboarding_body`도 합니다체지만 debug 백업 화면 전용이라 뺐다 —
+     #232가 `src/debug`로 옮긴다. `onboarding_body`는 #236이 ON-2를 v2로 바꾸며 release에서
+     빠졌다.)
+     **온보딩은 사용자가 가장 먼저 보는 화면이다** — 이상값 하나를 고치는 문제가 아니라
+     온보딩·시스템 설명까지 통일할지, 그 둘을 예외로 둘지의 문제다.
    - [미결] **버튼을 이름으로 부르는 문구가 다시 생겼다.** #189가 "라벨이 바뀌면 문구가 조용히
      거짓이 된다"며 기호 인용(`×`)으로 옮겼는데, `conversation_guiding_bottom`이 "뒤로가기"를
      이름으로 부른다. 시스템 버튼이라 라벨이 안 바뀐다는 근거로 예외를 둘지 정한다.
