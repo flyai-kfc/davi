@@ -70,26 +70,45 @@ override val hardBoundaries = listOf(
 요소도 실측으로 확인됐다. 그래서 문자 앱에는 좌표까지 보는 경계를 쓴다.
 
 ```kotlin
-override val hardBoundaries = listOf(MessagingSendGuard.sendControlBoundary())
+override val hardBoundaries
+    get() = listOf(
+        MessagingSendGuard.sendControlBoundary(
+            // composer에 들어온 뒤부터는 전송 버튼이 보여야 한다.
+            sendControlRequired = { stage == Stage.COMPOSER },
+        ),
+    )
 ```
 
-`MessagingSendGuard.sendControlBoundary()`는 실행기가 실제로 누를 좌표(대상 bounds의 중심)가 전송
-컨트롤 사각형 + 여백 안에 들어가면 막는다. 판정 규칙은 `MessagingSendSafety`에 순수 함수로 있고
-CI의 JVM 테스트가 매번 확인한다.
+실행기가 실제로 누를 좌표(대상 bounds의 중심)가 전송 컨트롤 사각형 + 여백 안에 들어가면 막는다.
+판정 규칙은 `MessagingSendSafety`에 순수 함수로 있고 CI의 JVM 테스트가 매번 확인한다.
+
+**`TAP`과 `TYPE`을 모두 검사한다.** `GuidedActionExecutor.type()`이 텍스트를 넣기 전에 `tap()`을
+불러 대상 중심을 실제로 누르기 때문이다. `SCROLL`은 `device.swipe`라 click을 주입하지 않아 제외한다.
 
 | 실패 코드 | 언제 |
 |---|---|
 | `sms_send_target_blocked` | 모델이 전송 컨트롤을 직접 가리켰다 |
 | `sms_send_proximity_blocked` | 누를 좌표가 전송 컨트롤 위(또는 여백 안)다 |
 | `sms_send_target_unverifiable` | 전송 컨트롤이 있는데 대상 좌표·화면을 확인하지 못했다 |
+| `sms_send_control_unidentified` | 전송 컨트롤이 **있어야 하는 단계**인데 하나도 못 찾았다 |
 
-마지막 코드가 중요하다 — **"확인하지 못했다"를 "안전하다"로 읽지 않는다.**
+뒤의 둘이 중요하다 — **"확인하지 못했다"를 "안전하다"로 읽지 않는다.**
+
+`sendControlRequired`는 시나리오가 자기 진행 단계로 판단한다. 대화 목록처럼 아직 전송 버튼이 없는
+화면까지 무조건 막으면 시나리오가 진행되지 않으므로, **composer에 들어온 뒤부터** `true`로 올린다.
+수신자를 전용 회선으로 제한하는 것은 원문 유출 방어이지 "문자를 발송하지 않는다"는 경계의 대체가
+아니다 — 둘 다 필요하다.
+
+전송 컨트롤은 text·contentDescription뿐 아니라 **resource-id**로도 찾는다(삼성 전송 버튼은
+ImageButton이라 둘 다 빌 수 있다). 모델의 다음 행동을 정답 selector로 보정하는 것이 아니라 위험
+컨트롤을 식별해 차단하는 용도이므로 안전 가드에서는 허용된다.
 
 **시나리오가 직접 좌표를 누를 때**(준비·정리)도 같은 규칙을 쓴다. `device.click(x, y)`를 그대로
 부르지 말고 살아 있는 화면을 스캔하는 가드를 통한다.
 
 ```kotlin
-MessagingSendGuard.tapOrFail(device, x = 774, y = 2112, step = null)
+MessagingSendGuard.tapOrFail(device, x = 774, y = 2112)          // 기본 fail-closed
+MessagingSendGuard.tapOrFail(device, x, y, sendControlRequired = false)  // 전송 버튼 없는 화면
 ```
 
 ### 개인정보를 띄우는 시나리오

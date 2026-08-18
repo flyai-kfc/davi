@@ -20,6 +20,10 @@ class MessagingSendSafetyTest {
 
     private fun screen(vararg elements: ScreenElement) = elements.toList()
 
+    /** 화면 요소에서 전송 사각형을 뽑아 판정부에 넣는 기본 경로. */
+    private fun boxesOf(vararg elements: ScreenElement) =
+        MessagingSendSafety.sendControlBoxes(elements.toList())
+
     private fun sendElement(label: String = "전송", bounds: Box? = sendButton) =
         ScreenElement(nodeId = "n_send", label = label, bounds = bounds)
 
@@ -32,7 +36,8 @@ class MessagingSendSafetyTest {
                 MessagingSendSafety.tapFailureCode(
                     targetBox = Box(0, 0, 100, 100),
                     targetLabel = label,
-                    elements = screen(sendElement()),
+                    sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
                 ),
             )
         }
@@ -45,7 +50,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = Box(60, 300, 400, 400),
                 targetLabel = "전송 옵션",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
             ),
         )
     }
@@ -60,25 +66,54 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = overlapping,
                 targetLabel = "첨부",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
             ),
         )
     }
 
     /**
-     * 오늘 실측한 빈 label 문제(#134)의 회귀 — 전송 버튼 label이 비어도 좌표로 막는다.
+     * 빈 label 문제(#134 실측)의 회귀 — label로는 전송 버튼을 식별하지 못한다.
      *
-     * 다만 이 경우 전송 컨트롤을 label로 식별하지 못하므로 전송 사각형 자체를 모른다.
-     * 그래서 "빈 label 요소를 전송으로 볼 수는 없다"는 한계를 명시적으로 고정한다 —
-     * 이 경로의 방어는 [MessagingSendSafety] 밖(수신자 격리·기기 스캔)이 맡는다.
+     * **식별하지 못했다고 통과시키지 않는다.** 전송 컨트롤이 있어야 하는 단계라면 실패로 닫는다.
+     * "확인이 가장 필요한 순간"을 안전하다고 판정하면 경계가 있으나 마나다(#211 리뷰).
      */
     @Test
-    fun 전송_버튼_label이_비면_이_판정부는_알_수_없다() {
+    fun 전송_컨트롤을_식별하지_못하면_필요한_단계에서_막는다() {
+        assertEquals(
+            MessagingSendSafety.SEND_CONTROL_UNIDENTIFIED,
+            MessagingSendSafety.tapFailureCode(
+                targetBox = Box(600, 2080, 900, 2160),
+                targetLabel = null,
+                sendBoxes = boxesOf(sendElement(label = "")),
+                sendControlRequired = true,
+            ),
+        )
+    }
+
+    /** 대화 목록처럼 전송 컨트롤이 아직 없는 화면까지 막으면 시나리오가 진행되지 않는다. */
+    @Test
+    fun 전송_컨트롤이_필요없는_단계에서는_식별_못해도_통과한다() {
         assertNull(
             MessagingSendSafety.tapFailureCode(
                 targetBox = Box(600, 2080, 900, 2160),
                 targetLabel = null,
-                elements = screen(sendElement(label = "")),
+                sendBoxes = boxesOf(sendElement(label = "")),
+                sendControlRequired = false,
+            ),
+        )
+    }
+
+    /** 식별 못 한 단계여도 대상 label 자체가 전송이면 그건 먼저 막는다. */
+    @Test
+    fun 식별_못한_단계여도_전송_label은_막는다() {
+        assertEquals(
+            MessagingSendSafety.SEND_TARGET_BLOCKED,
+            MessagingSendSafety.tapFailureCode(
+                targetBox = Box(600, 2080, 900, 2160),
+                targetLabel = "전송",
+                sendBoxes = emptyList(),
+                sendControlRequired = false,
             ),
         )
     }
@@ -93,7 +128,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = justAbove,
                 targetLabel = "첨부",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
             ),
         )
     }
@@ -106,7 +142,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = farAway,
                 targetLabel = "첨부",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
             ),
         )
     }
@@ -119,7 +156,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = null,
                 targetLabel = "첨부",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
             ),
         )
     }
@@ -130,7 +168,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = null,
                 targetLabel = "촬영",
-                elements = screen(ScreenElement("n1", "촬영", Box(0, 0, 100, 100))),
+                sendBoxes = boxesOf(ScreenElement("n1", "촬영", Box(0, 0, 100, 100))),
+                sendControlRequired = false,
             ),
         )
     }
@@ -148,14 +187,16 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = Box(100, 150, 200, 200),
                 targetLabel = "첨부",
-                elements = elements,
+                sendBoxes = MessagingSendSafety.sendControlBoxes(elements),
+                sendControlRequired = true,
             ),
         )
         assertNull(
             MessagingSendSafety.tapFailureCode(
                 targetBox = Box(60, 600, 400, 700),
                 targetLabel = "첨부",
-                elements = elements,
+                sendBoxes = MessagingSendSafety.sendControlBoxes(elements),
+                sendControlRequired = true,
             ),
         )
     }
@@ -177,6 +218,87 @@ class MessagingSendSafetyTest {
         )
     }
 
+    // ── 실제 탭을 주입하는 action 판정 (#211 리뷰 1) ─────────────────────────────
+
+    private val messaging = setOf("com.samsung.android.messaging")
+
+    private fun decision(
+        actionType: GuidedActionType,
+        targetBox: Box? = Box(600, 2080, 900, 2160),
+        targetLabel: String? = "첨부",
+        screenPackage: String = "com.samsung.android.messaging",
+    ) = MessagingSendSafety.decisionFailureCode(
+        actionType = actionType,
+        screenPackage = screenPackage,
+        messagingPackages = messaging,
+        targetBox = targetBox,
+        targetLabel = targetLabel,
+        sendBoxes = boxesOf(sendElement()),
+        sendControlRequired = true,
+    )
+
+    /**
+     * 핵심 회귀 — `TYPE`도 좌표 경계를 통과해야 한다.
+     *
+     * `GuidedActionExecutor.type()`이 텍스트를 넣기 전에 `tap()`을 불러 대상 bounds 중심을 실제로
+     * 누른다. `TAP`만 검사하면 잘못된 bounds의 `TYPE`이 전송 버튼을 먼저 눌러버린다.
+     */
+    @Test
+    fun TYPE도_전송_영역이면_막는다() {
+        assertEquals(
+            MessagingSendSafety.SEND_PROXIMITY_BLOCKED,
+            decision(GuidedActionType.TYPE),
+        )
+    }
+
+    @Test
+    fun TAP과_TYPE이_같은_판정을_받는다() {
+        assertEquals(decision(GuidedActionType.TAP), decision(GuidedActionType.TYPE))
+
+        val safe = Box(60, 300, 400, 400)
+        assertNull(decision(GuidedActionType.TAP, targetBox = safe))
+        assertNull(decision(GuidedActionType.TYPE, targetBox = safe))
+    }
+
+    @Test
+    fun TYPE이_전송_컨트롤을_직접_가리켜도_막는다() {
+        assertEquals(
+            MessagingSendSafety.SEND_TARGET_BLOCKED,
+            decision(GuidedActionType.TYPE, targetLabel = "전송"),
+        )
+    }
+
+    @Test
+    fun TYPE도_좌표를_모르면_통과하지_않는다() {
+        assertEquals(
+            MessagingSendSafety.SEND_TARGET_UNVERIFIABLE,
+            decision(GuidedActionType.TYPE, targetBox = null),
+        )
+    }
+
+    /** click을 주입하지 않는 action은 이 경계의 대상이 아니다. */
+    @Test
+    fun 탭을_주입하지_않는_action은_검사하지_않는다() {
+        listOf(
+            GuidedActionType.SCROLL,
+            GuidedActionType.DONE,
+            GuidedActionType.OPEN_APP_DRAWER,
+            GuidedActionType.OPEN_QUICK_SETTINGS,
+        ).forEach { actionType ->
+            assertNull("actionType=$actionType", decision(actionType))
+        }
+        assertEquals(
+            setOf(GuidedActionType.TAP, GuidedActionType.TYPE),
+            MessagingSendSafety.TAP_INJECTING_ACTIONS,
+        )
+    }
+
+    @Test
+    fun 메시지_package가_아니면_검사하지_않는다() {
+        assertNull(decision(GuidedActionType.TAP, screenPackage = "com.sec.android.app.camera"))
+        assertNull(decision(GuidedActionType.TYPE, screenPackage = "com.sec.android.app.camera"))
+    }
+
     @Test
     fun 여백은_음수를_받지_않는다() {
         assertThrows(IllegalArgumentException::class.java) {
@@ -186,7 +308,8 @@ class MessagingSendSafetyTest {
             MessagingSendSafety.tapFailureCode(
                 targetBox = Box(0, 0, 10, 10),
                 targetLabel = "첨부",
-                elements = screen(sendElement()),
+                sendBoxes = boxesOf(sendElement()),
+                sendControlRequired = true,
                 safetyMarginPx = -1,
             )
         }
