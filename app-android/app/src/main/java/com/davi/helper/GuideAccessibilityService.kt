@@ -338,7 +338,14 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        overlay?.showGuide(rect, content.text, avoidRegions(content.actionType), content.confirm)
+        overlay?.showGuide(
+            rect,
+            content.text,
+            avoidRegions(content.actionType),
+            content.actionType,
+            content.direction,
+            content.confirm,
+        )
     }
 
     /**
@@ -664,8 +671,11 @@ class GuideAccessibilityService : AccessibilityService() {
         } else {
             Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
         }
+        // 서버 방향(보러 가는 쪽) → 손가락 방향. **변환은 여기 한 곳에서만** 한다(C17). 아래로 흘러가는 값은
+        // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
+        val fingerDirection = action.direction?.let { GestureMotion.fingerDirectionFor(it) }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
-        draw(display.show(requestSignature, bounds, action.instruction, action.actionType))
+        draw(display.show(requestSignature, bounds, action.instruction, action.actionType, fingerDirection))
         e2ePublisher?.displayed(
             generation = session.generation,
             requestSignature = requestSignature,

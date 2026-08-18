@@ -2,8 +2,12 @@ package com.davi.helper
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.PointF
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
@@ -11,7 +15,10 @@ import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -111,6 +118,75 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val confirmColor = ContextCompat.getColor(context, R.color.davi_overlay_confirm)
     private val scrimColor = ContextCompat.getColor(context, R.color.davi_overlay_scrim)
 
+    // ── 방향 제스처 시연(GD-2, #152) ──────────────────────────────────────────
+    /** 시연할 방향. null이면 그리지 않는다 — 판정은 [GestureMotion.isDemonstrated]가 한다. */
+    private var gestureDirection: SwipeDirection? = null
+
+    private val handSize = resources.getDimension(R.dimen.davi_overlay_hand_size)
+    private val handTravel = resources.getDimension(R.dimen.davi_overlay_hand_travel)
+    private val handShadowOffset = resources.getDimension(R.dimen.davi_overlay_hand_shadow_offset)
+    private val handOutline = resources.getDimension(R.dimen.davi_overlay_hand_outline)
+
+    /**
+     * 손 아이콘. **직접 그리지 않고 그림을 쓴다** — 검지를 세운 손을 경로로 그리면 각도에 따라
+     * 무례한 손짓으로 읽힐 수 있어(#152 실기기 확인) 디자인이 준 아이콘으로 바꿨다.
+     *
+     * 디자인이 준 래스터 그림을 그대로 쓴다. 저장소의 다른 아이콘은 벡터지만, 이 그림을
+     * 벡터로 다시 그리면 선 굵기·곡률이 미묘하게 달라져 준 그림과 어긋난다.
+     */
+    private val handBitmap by lazy(LazyThreadSafetyMode.NONE) {
+        ContextCompat.getDrawable(context, R.drawable.ic_davi_hand)?.toBitmap()
+    }
+    private val handPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * 손 뒤에 까는 그림자. 오버레이는 **아래에 어떤 앱이 깔릴지 알 수 없어**, 밝은 화면에서는
+     * 흰 손이 통째로 묻힌다. 같은 그림을 어둡게 칠해 살짝 어긋나게 먼저 깔아 깊이를 준다.
+     *
+     * **밝은 배경 대비는 이 어두운 색이 맡는다**(PR #159 2차 리뷰). 분홍은 [handOutlinePaint]다.
+     */
+    private val handShadowPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(
+            ContextCompat.getColor(context, R.color.davi_overlay_hand_shadow),
+            PorterDuff.Mode.SRC_IN,
+        )
+    }
+
+    /**
+     * 손 둘레를 감싸는 강조색 윤곽선. 색만 마이크 글로우에서 가져왔고 **글로우처럼 움직이지는
+     * 않는다**(2026-08-17 요청).
+     *
+     * 그림자는 한쪽으로만 어긋나 두 변에만 생기므로, 흰 화면에서 손의 좌상단 실루엣이 사라진다.
+     * 같은 그림을 사방으로 조금씩 어긋나게 깔아 둘레를 채운다.
+     */
+    private val handOutlinePaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(
+            ContextCompat.getColor(context, R.color.davi_overlay_hand_outline),
+            PorterDuff.Mode.SRC_IN,
+        )
+    }
+
+    /**
+     * 그림자·윤곽선·손을 **한 장으로 미리 합성해 둔** 그림. 화면에 그릴 때는 이것만 한 번 그린다.
+     *
+     * 손은 크기도 모양도 프레임마다 변하지 않으므로 매 프레임 열 번 그릴 이유가 없다
+     * (PR #159 3차 리뷰 nit). 세션 내내 다른 앱 위에서 도는 뷰라 프레임당 비용이 그대로 남는다.
+     *
+     * **미리 합성하면 `saveLayer`도 필요 없다.** 레이어를 썼던 이유는 반투명해진 흰 손 너머로
+     * 그림자가 비쳐 색이 오가는 것이었는데, 여기서 이미 겹침이 평탄화되므로 그릴 때 알파를
+     * 한 번 거는 것으로 같은 결과가 나온다.
+     *
+     * 좌표 규약: 손 그림의 **중심**이 [handCenterInComposed]만큼 들어간 자리에 있다. 그리는 쪽은
+     * 손 중심을 원하는 자리에 맞추기 위해 이 값을 빼야 한다.
+     */
+    private val handComposed by lazy(LazyThreadSafetyMode.NONE) { composeHand() }
+
+    /** [handComposed] 안에서 손 그림 중심이 놓인 위치(왼쪽 위 기준). */
+    private var handCenterInComposed = PointF()
+
+    private val handDst = RectF()
+    // ─────────────────────────────────────────────────────────────────────────
+
     /** 서비스가 요청한 상태. 실제 표시는 onset 지연 뒤라 [readingVisible]과 다를 수 있다. */
     private var reading = false
     private var readingVisible = false
@@ -193,7 +269,7 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 끝나 표시가 사라진다. 그때는 브리딩 없이 가장 진한 한 장을 그린다.
      */
     private fun syncBreathing() {
-        val needed = readingVisible || hasTarget
+        val needed = readingVisible || hasTarget || gestureDirection != null
         if (!needed) {
             breathing.cancel()
             return
@@ -210,8 +286,12 @@ class HighlightOverlayView(context: Context) : View(context) {
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
+        actionType: ActionType? = null,
+        direction: SwipeDirection? = null,
     ) {
         hasTarget = bounds != null
+        // 방향 제스처만 시연한다(#152). 판정은 GestureMotion이 하고 여기서는 결과만 든다.
+        gestureDirection = direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
         if (bounds != null) target.set(bounds)
         this.instruction = instruction.trim()
         this.avoid = avoid
@@ -223,6 +303,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     fun clearTarget() {
         hasTarget = false
+        gestureDirection = null
         instruction = ""
         avoid = emptyList()
         syncBreathing()
@@ -257,6 +338,131 @@ class HighlightOverlayView(context: Context) : View(context) {
         canvas.drawRoundRect(readingRect, readingRadius, readingRadius, readingCorePaint)
     }
 
+    /**
+     * 방향 제스처 시연 — 손이 **손가락 방향**으로 밀린다.
+     *
+     * **안내창을 피해 놓는다**(2026-08-17 요청). 화면 정중앙이 기본이지만 안내창이 그 자리를
+     * 쓰면 글이 손에 가리므로, 위/아래 남은 공간 중 넓은 쪽으로 옮긴다
+     * ([GestureMotion.verticalCenterFor]).
+     *
+     * **방향을 여기서 보정하지 않는다.** [gestureDirection]은 이미 보정을 마친 손가락 방향이다
+     * (보정 자리는 `GuideAccessibilityService`, 규칙은 [GestureMotion.fingerDirectionFor]).
+     * 여기서 한 번 더 손대면 보정이 두 번 걸려 아무 일도 안 한 것과 같아진다.
+     */
+    private fun drawGestureHand(canvas: Canvas) {
+        val direction = gestureDirection ?: return
+        if (width == 0 || height == 0) return
+        val composed = handComposed ?: return
+
+        val animating = ValueAnimator.areAnimatorsEnabled()
+        val phase = if (animating) readingPhase else GestureMotion.STATIC_PHASE
+        val alpha = if (animating) GestureMotion.alphaAt(phase) else GestureMotion.staticAlpha()
+        if (alpha <= 0f) return
+
+        val travel = GestureMotion.travelFor(direction, handTravel)
+        // 손이 훑는 세로 폭 — 세로 이동이면 이동 거리까지, 가로 이동이면 손 높이만.
+        val bandHeight = abs(travel.dy) + handSize
+        // 안내창은 화면 좌표라 이 뷰의 로컬 좌표로 옮겨서 본다.
+        val box = layout?.box
+        val centerY = GestureMotion.verticalCenterFor(
+            canvasTop = 0f,
+            canvasBottom = height.toFloat(),
+            bandHeight = bandHeight,
+            boxTop = box?.let { it.top - layoutOriginY },
+            boxBottom = box?.let { it.bottom - layoutOriginY },
+        )
+
+        // 애니메이터가 꺼진 기기에서는 출발점에 잔상을 함께 깔아 방향을 읽히게 한다
+        // (PR #159 리뷰 5번 — 한 장만으로는 어느 쪽으로 가라는 것인지 알 수 없다).
+        if (!animating) {
+            drawHandAt(
+                canvas,
+                composed,
+                travel,
+                centerY,
+                GestureMotion.STATIC_GHOST_PROGRESS,
+                GestureMotion.staticGhostAlpha(),
+            )
+        }
+        drawHandAt(canvas, composed, travel, centerY, GestureMotion.progressAt(phase), alpha)
+    }
+
+    /**
+     * 이동 구간의 [progress] 지점에 미리 합성해 둔 손([handComposed])을 한 번 그린다.
+     *
+     * 그림자·윤곽선이 이미 이 그림 안에 평탄화돼 있으므로 알파를 그냥 걸면 된다 — 색이 서로
+     * 비치지 않는다([handComposed] 문서).
+     */
+    private fun drawHandAt(
+        canvas: Canvas,
+        composed: Bitmap,
+        travel: GestureMotion.Travel,
+        centerY: Float,
+        progress: Float,
+        alpha: Float,
+    ) {
+        // 이동 구간의 절반을 중심에 두어, 손이 [centerY]를 지나가며 움직인다.
+        val cx = width / 2f - travel.dx / 2f + travel.dx * progress
+        val cy = centerY - travel.dy / 2f + travel.dy * progress
+
+        // 합성 그림 안에서 손 중심이 들어가 있는 만큼 빼야 손 중심이 (cx, cy)에 온다.
+        val left = cx - handCenterInComposed.x
+        val top = cy - handCenterInComposed.y
+        handDst.set(left, top, left + composed.width, top + composed.height)
+        handPaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+        canvas.drawBitmap(composed, null, handDst, handPaint)
+    }
+
+    /**
+     * 그림자 → 윤곽선 → 손 순서로 한 장에 합성한다. 크기가 프레임마다 변하지 않으므로 한 번만 돈다.
+     *
+     * 합성은 **화면에 그릴 크기 그대로** 한다 — 그래야 윤곽선 두께와 그림자 offset이 dp대로 남는다.
+     * 원본 해상도에서 합성한 뒤 축소하면 그 둘이 함께 줄어든다.
+     */
+    private fun composeHand(): Bitmap? {
+        val source = handBitmap ?: return null
+        // **그림 비율을 지킨다.** 손 아이콘은 세로로 길어서 정사각형에 맞추면 찌그러진다.
+        val drawH = handSize
+        val drawW = handSize * source.width / source.height
+        // 윤곽선은 사방으로, 그림자는 오른쪽·아래로만 삐져나온다.
+        val padStart = handOutline
+        val padEnd = maxOf(handShadowOffset, handOutline)
+        val composed = createBitmap(
+            ceil(drawW + padStart + padEnd).toInt(),
+            ceil(drawH + padStart + padEnd).toInt(),
+        )
+        val canvas = Canvas(composed)
+        val handLeft = padStart
+        val handTop = padStart
+
+        // 1) 어두운 그림자 — 밝은 배경에서의 대비를 맡는다.
+        handDst.set(
+            handLeft + handShadowOffset,
+            handTop + handShadowOffset,
+            handLeft + drawW + handShadowOffset,
+            handTop + drawH + handShadowOffset,
+        )
+        handShadowPaint.alpha = SHADOW_ALPHA_255
+        canvas.drawBitmap(source, null, handDst, handShadowPaint)
+
+        // 2) 강조색 윤곽선 — 사방으로 조금씩 어긋나게 깔아 둘레를 채운다.
+        handOutlinePaint.alpha = 255
+        OUTLINE_OFFSETS.forEach { (ox, oy) ->
+            val dx = ox * handOutline
+            val dy = oy * handOutline
+            handDst.set(handLeft + dx, handTop + dy, handLeft + drawW + dx, handTop + drawH + dy)
+            canvas.drawBitmap(source, null, handDst, handOutlinePaint)
+        }
+
+        // 3) 손.
+        handDst.set(handLeft, handTop, handLeft + drawW, handTop + drawH)
+        val opaqueHand = Paint(Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(source, null, handDst, opaqueHand)
+
+        handCenterInComposed = PointF(handLeft + drawW / 2f, handTop + drawH / 2f)
+        return composed
+    }
+
     /** 창 크기가 잡히기 전에 온 안내는 자리를 못 잡는다. 크기가 생기면 그때 계산한다. */
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -281,6 +487,9 @@ class HighlightOverlayView(context: Context) : View(context) {
         // 읽는 중 테두리는 **뷰 로컬 좌표**라 아래 translate 앞에서 그린다. 창이 밀려 놓이는
         // 기기에서도 뷰가 실제로 차지한 사각형을 따라가야 잘리지 않는다.
         drawReadingBorder(canvas)
+        // 손은 **화면 중앙**에 그린다(#152 결정) — 대상이 아니라 화면 기준이므로 읽는 중
+        // 테두리와 같이 뷰 로컬 좌표를 쓴다. 아래 translate 앞이어야 하는 이유가 같다.
+        drawGestureHand(canvas)
         if (!hasTarget && instruction.isEmpty()) return
 
         // 화면 좌표 -> 캔버스 좌표 보정.
@@ -480,4 +689,24 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     private fun RectF.toLayoutBounds() = GuideBoxLayout.Bounds(left, top, right, bottom)
+
+    private companion object {
+        /** 그림자가 손보다 얼마나 옅은가. 진하면 손이 아니라 얼룩으로 보인다. */
+        const val SHADOW_ALPHA_RATIO = 0.45f
+
+        /** 레이어 안에서 쓰는 고정 그림자 알파. 모션의 진하기는 레이어가 따로 건다. */
+        const val SHADOW_ALPHA_255 = (255 * SHADOW_ALPHA_RATIO).toInt()
+
+        /**
+         * 윤곽선을 그릴 여덟 방향의 단위 벡터. 대각선은 √2로 나눠 사방 두께를 고르게 만든다 —
+         * 나누지 않으면 모서리만 굵어져 손이 팔각형처럼 보인다.
+         */
+        val OUTLINE_OFFSETS = listOf(
+            1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f,
+            DIAGONAL to DIAGONAL, DIAGONAL to -DIAGONAL,
+            -DIAGONAL to DIAGONAL, -DIAGONAL to -DIAGONAL,
+        )
+
+        const val DIAGONAL = 0.7071f
+    }
 }

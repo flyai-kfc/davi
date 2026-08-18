@@ -126,7 +126,16 @@ enum class ActionType {
     @SerialName("done") DONE,
 }
 
-/** 손가락이 움직이는 방향. "무엇이 보이게 되는지"가 아니다. 서버 `SwipeDirection`과 값이 같아야 한다. */
+/**
+ * **화면이 이동하는 방향**, 즉 사용자가 **보러 가는 쪽**이다(C17, `SPEC.md` §4).
+ * 손가락이 움직이는 방향이 아니다 — 목록 아래 내용을 보려면 `DOWN`, 다음 페이지는 `RIGHT`다.
+ * 서버 `SwipeDirection`과 값이 같아야 한다.
+ *
+ * **이 값을 그대로 그리면 안 된다.** 실제로 해야 하는 손가락 동작은 정확히 반대이며, 변환은
+ * [GestureMotion.fingerDirectionFor]가 한 자리에서 한 번만 한다. 새로 이 값을 소비하는 곳
+ * (TTS 문구·화살표 등)은 무엇을 하는지를 말할 때는 이 값을, 어떻게 하는지를 그릴 때는
+ * 변환한 값을 쓴다.
+ */
 @Serializable
 enum class SwipeDirection {
     @SerialName("up") UP,
