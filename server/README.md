@@ -437,10 +437,7 @@ pytest
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,
   SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
-
-**껍데기** (호출하면 아무 일도 없거나 raise)
-- `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. **계획 단계가 무기한 연기돼
-  (`../SPEC.md` §3 비목표) 결과를 쓰지 않는다.** 이 파일을 다음에 여는 사람이 함께 걷는다
-  (`CLAUDE.md` 추론 아키텍처 절) — 남은 TODO 둘은 SPEC의 연기 결정과 정반대를 말한다.
-- `reasoning._apply_guardrails` — 같은 삼성 런처 화면의 동일 scroll 세 번째 후보를
-  `open_app_drawer`로 전환하는 좁은 반복 가드가 단일 지점에 있다(#36).
+- `reasoning._apply_guardrails` — 단일 결정 지점. `scroll`의 대상을 요구한다(#202): 화면의
+  스크롤 요소로 교정하거나, 런처처럼 대체 행동이 있는 화면은 `open_app_drawer`로 돌리거나,
+  둘 다 없으면 SERVER 오류로 닫는다. 정책은 `CLAUDE.md` "scroll 대상 정책".
+  #36의 반복 카운트 fallback은 여기서 걷혔다 — 대상 해석 실패가 같은 증거를 첫 요청에 준다.
