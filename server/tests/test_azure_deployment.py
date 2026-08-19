@@ -109,6 +109,8 @@ def test_github_deploy_uses_unique_local_image_and_bicep_revision() -> None:
     assert "--template-file infra/azure/dev-server.bicep" in workflow
     assert "GEMINI_API_KEY" not in workflow
     assert "DAVI_DEV_ACCESS_TOKEN" not in workflow
+    # 서명 비밀은 Key Vault에만 있다. 워크플로가 다루는 것은 secret **이름**뿐이다.
+    assert "DAVI_AUTH_JWT_SECRET" not in workflow
     assert not (REPO_ROOT / "azure-pipelines.yml").exists()
 
 
@@ -159,3 +161,55 @@ def test_deploy_workflow_passes_the_test_token_secret_name() -> None:
 
     required_block = workflow[workflow.index("for name in") : workflow.index("test -n ")]
     assert "DAVI_AZURE_TEST_TOKEN_SECRET_NAME" not in required_block
+
+
+def test_kakao_auth_wiring_is_optional_so_deploys_do_not_depend_on_it() -> None:
+    """카카오 값이 없어도 배포가 돌아야 한다(#279).
+
+    테스트 토큰과 같은 이유다 — 없는 Key Vault secret을 조건 없이 참조하면 revision이
+    Healthy에 도달하지 못해 이후 배포까지 막힌다. 앱 ID는 secret이 아니라 평문 env지만,
+    **빈 문자열을 실으면 서버의 int 파싱이 실패해** 결국 같은 자리에서 막힌다. 그래서
+    비었을 때 env 항목 자체를 뺀다.
+    """
+
+    template = _text("infra/azure/dev-server.bicep")
+
+    assert "param authJwtSecretSecretName string = ''" in template
+    assert "param kakaoAppId string = ''" in template
+    # 서명 비밀은 secret 항목과 env 항목 양쪽에 가드가 걸린다.
+    assert template.count("empty(authJwtSecretSecretName)") == 2
+    # 앱 ID는 비밀이 아니라 Key Vault를 거치지 않는다 — 가드가 걸릴 자리는 env 하나뿐이다.
+    assert template.count("empty(kakaoAppId)") == 1
+    assert "keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}" in template
+    assert "name: 'DAVI_AUTH_JWT_SECRET'\n              secretRef: 'auth-jwt-secret'" in template
+    assert "name: 'DAVI_KAKAO_APP_ID'\n              value: kakaoAppId" in template
+
+
+def test_deploy_workflow_passes_and_verifies_the_kakao_auth_wiring() -> None:
+    """배선이 자동 배포에서 살아남고, 살아남았는지 배포가 스스로 확인한다(#279).
+
+    손으로 배선하면 다음 자동 배포가 조용히 지운다. 그리고 `/health`를 안 보면 배선이
+    빠진 배포도 초록이다 — `/v1/auth/kakao`는 개발 토큰 게이트 뒤라 워크플로가 찌를 수 없다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+
+    assert (
+        "DAVI_AZURE_AUTH_JWT_SECRET_NAME: ${{ vars.DAVI_AZURE_AUTH_JWT_SECRET_NAME }}" in workflow
+    )
+    assert "DAVI_AZURE_KAKAO_APP_ID: ${{ vars.DAVI_AZURE_KAKAO_APP_ID }}" in workflow
+    assert 'authJwtSecretSecretName="${DAVI_AZURE_AUTH_JWT_SECRET_NAME:-}"' in workflow
+    assert 'kakaoAppId="${DAVI_AZURE_KAKAO_APP_ID:-}"' in workflow
+
+    # 평소에는 비어 있는 것이 정상이므로 필수 변수 검사에 들어가면 안 된다.
+    required_block = workflow[workflow.index("for name in") : workflow.index("test -n ")]
+    assert "DAVI_AZURE_AUTH_JWT_SECRET_NAME" not in required_block
+    assert "DAVI_AZURE_KAKAO_APP_ID" not in required_block
+
+    # 숫자가 아닌 앱 ID는 기동 실패 → revision unhealthy → 배포 차단이므로 배포 전에 끊는다.
+    assert '! [[ "$DAVI_AZURE_KAKAO_APP_ID" =~ ^[1-9][0-9]*$ ]]' in workflow
+
+    # 채웠으면 true, 비웠으면 false. 등호 비교라 누락과 "폐기 후 남은 배선"을 모두 잡는다.
+    assert "expected_kakao_auth=true" in workflow
+    assert "expected_kakao_auth=false" in workflow
+    assert ".kakao_auth_configured == $expected_kakao_auth" in workflow
