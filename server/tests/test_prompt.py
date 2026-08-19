@@ -5,7 +5,11 @@ from app.prompt import (
     FOCUSED_INPUT_KEYBOARD_CLOSED,
     IME_NOT_VISIBLE,
     IME_VISIBLE,
+    PAGE_FIRST,
+    PAGE_LAST,
+    PAGE_ONLY_ONE,
     SCROLL_DIRECTION_INSTRUCTION,
+    SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     SWIPE_DIRECTION_LEGEND,
@@ -16,6 +20,7 @@ from app.schemas import (
     GuideAction,
     NextStepRequest,
     Screen,
+    ScrollAxis,
     SwipeDirection,
     UiElement,
 )
@@ -344,3 +349,136 @@ def test_fallback_prompt_carries_the_same_json_contract():
 
     assert "원래 프롬프트" in prompt
     assert '"required":["instruction"]' in prompt
+
+
+def _scrollable_list(*, forward: bool, backward: bool) -> UiElement:
+    """세로 목록 컨테이너 하나. forward=아래로 더 갈 수 있나, backward=위로 더 갈 수 있나."""
+
+    return UiElement(
+        node_id="n1",
+        label="목록",
+        can_scroll_forward=forward,
+        can_scroll_backward=backward,
+        scroll_axis=ScrollAxis.VERTICAL,
+        next_swipe_direction=SwipeDirection.DOWN,
+        prev_swipe_direction=SwipeDirection.UP,
+    )
+
+
+def test_prompt_states_which_direction_has_reached_its_end():
+    """끝을 값이 아니라 사실로 말한다(#217).
+
+    `can_scroll_forward=False`는 요소 줄에 원시 값으로만 실렸고, `forward`가 어느 방향인지도
+    `False`가 "끝"이라는 뜻인지도 프롬프트에 없었다. 그래서 목록 끝에서도 같은 방향 안내가
+    계속 나갔다.
+    """
+
+    prompt = build_prompt(
+        _request(
+            has_scrollable_element=True,
+            elements=[_scrollable_list(forward=False, backward=True)],
+        )
+    )
+
+    assert "down(n1) 방향은 이미 끝에 도달했습니다" in prompt
+    assert "지금 더 갈 수 있는 방향은 up(n1)입니다" in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+
+
+def test_end_of_one_list_survives_another_scrollable_on_the_same_screen():
+    """같은 방향에 여유가 있는 다른 요소가 주 목록의 "끝"을 지우면 안 된다(#218 리뷰).
+
+    방향 어휘만으로 화면 단위 합산을 하면 세로 목록 n1이 끝이어도 세로 캐러셀 n2의 여유가
+    down을 통째로 "열림"으로 만들어 끝 문장도 지시문도 함께 사라졌다. 요소 id를 같이 적어
+    두 사실을 모두 말한다.
+    """
+
+    prompt = build_prompt(
+        _request(
+            has_scrollable_element=True,
+            elements=[
+                _scrollable_list(forward=False, backward=True),
+                UiElement(
+                    node_id="n2",
+                    label="추천 카드",
+                    can_scroll_forward=True,
+                    can_scroll_backward=False,
+                    scroll_axis=ScrollAxis.VERTICAL,
+                    next_swipe_direction=SwipeDirection.DOWN,
+                    prev_swipe_direction=SwipeDirection.UP,
+                ),
+            ],
+        )
+    )
+
+    assert "지금 더 갈 수 있는 방향은 up(n1), down(n2)입니다" in prompt
+    assert "up(n2), down(n1) 방향은 이미 끝에 도달했습니다" in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+    # 이 화면은 두 방향이 양쪽 줄에 다 실린다 — 금지가 방향 단위면 문자 그대로는 스크롤이
+    # 통째로 배제된다. 데이터가 요소 단위가 됐으니 금지도 요소 단위여야 한다(#218 재리뷰).
+    assert "괄호 안 요소는" in SCROLL_END_INSTRUCTION
+    assert "그 요소를 그 방향으로" in SCROLL_END_INSTRUCTION
+
+
+def test_prompt_concludes_that_the_last_page_cannot_be_turned_further():
+    """런처처럼 scrollable 노드가 0개인 화면에서는 페이지 줄이 유일한 끝 정보원이다(#202 실측 ①)."""
+
+    prompt = build_prompt(
+        _request(
+            package_name="com.sec.android.app.launcher",
+            has_scrollable_element=False,
+            current_page=2,
+            total_pages=2,
+        )
+    )
+
+    assert PAGE_LAST in prompt
+    assert SCROLL_END_INSTRUCTION in prompt
+    # 이 경로엔 스크롤 요소가 없어 방향 줄도 그 뒤 괄호도 없다 — 지시문이 요소 id를 단정하면
+    # 프롬프트에 없는 것을 가리킨다. 그래서 괄호는 조건으로만 말한다.
+    assert "방향은 이미 끝에 도달했습니다" not in prompt
+    assert "괄호가 있으면" in SCROLL_END_INSTRUCTION
+
+
+def test_prompt_concludes_the_first_and_only_page_boundaries():
+    first = build_prompt(_request(current_page=1, total_pages=3))
+    only = build_prompt(_request(current_page=1, total_pages=1))
+    middle = build_prompt(_request(current_page=2, total_pages=3))
+
+    assert PAGE_FIRST in first
+    assert PAGE_ONLY_ONE in only
+    assert PAGE_LAST not in first
+    assert SCROLL_END_INSTRUCTION not in middle
+
+
+def test_page_boundary_is_not_concluded_from_inconsistent_values():
+    """어긋난 값(현재 쪽 > 전체 쪽)에서 결론을 지어내지 않는다."""
+
+    prompt = build_prompt(_request(current_page=5, total_pages=3))
+
+    assert "페이지: 전체 3쪽 중 5쪽" in prompt
+    assert PAGE_LAST not in prompt
+    assert SCROLL_END_INSTRUCTION not in prompt
+
+
+def test_end_state_is_silent_when_the_app_did_not_observe_scrolling():
+    """스크롤 관측을 안 보낸 앱(None)에는 스크롤 줄이 없다 — 없는 줄을 가리키는 지시도 없다."""
+
+    prompt = build_prompt(_request(elements=[_scrollable_list(forward=False, backward=True)]))
+
+    assert "스크롤:" not in prompt
+    assert SCROLL_END_INSTRUCTION not in prompt
+
+
+def test_end_state_does_not_tell_the_model_where_to_go_instead():
+    """끝난 방향을 말할 뿐 대체 방향을 지시하지 않는다.
+
+    문구 규칙이 값을 끌어당겨 원래 맞던 방향을 틀리게 만든 전례가 있다(C17 · #109).
+    """
+
+    assert "끝에 도달했다고 적힌 방향" in SCROLL_END_INSTRUCTION
+    assert "다른 행동" in SCROLL_END_INSTRUCTION
+    # 페이지 문장도 같은 경로다 — 상수만 보던 테스트가 이쪽을 지나쳤다(#218 리뷰).
+    for sentence in (SCROLL_END_INSTRUCTION, PAGE_LAST, PAGE_FIRST, PAGE_ONLY_ONE):
+        for wrong in ("반대", "up", "down", "left", "right"):
+            assert wrong not in sentence
