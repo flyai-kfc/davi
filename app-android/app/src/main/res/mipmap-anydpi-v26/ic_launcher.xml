@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  적응형 런처 아이콘. 모양(원·스퀘어클 등)은 런처 마스크가 정한다.
+  monochrome은 두지 않는다 — 테마 아이콘은 단색 실루엣으로 칠해지는데
+  이 로고는 흰 얼굴·검은 몸의 대비가 형태라서 단색이 되면 뭉개진다.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

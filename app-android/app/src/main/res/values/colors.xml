@@ -340,4 +340,15 @@
     <color name="davi_onboarding_slot">#E0E0E3</color>
     <!-- 버튼 그림자 #000000 30%. blur 없는 근사라 아래로 민 단색이다. -->
     <color name="davi_onboarding_button_shadow">#4D000000</color>
+
+    <!--
+      런처 아이콘 배경(#232). 로고 원본(Figma 400x400)의 배경 빨강과 같은 값이다.
+      davi_highlight(#F2001C)를 별칭으로 쓰지 않는다 — 그쪽은 화면 위 강조에 쓰는 시맨틱
+      토큰이라 UI 사유로 값이 움직일 수 있고, 런처 아이콘은 그때 같이 움직이면 안 되는
+      브랜드 자산이다. 값이 같고 역할이 다르면 항목을 따로 둔다
+      (davi_overlay_close_mark·davi_home_title_accent와 같은 결).
+      ic_launcher_foreground.xml의 마감 사각형이 이 값을 **참조**한다 — 그 path는 장식이
+      아니라 몸통을 배경색으로 덮어 잘라내는 마스크라 배경과 반드시 같아야 한다.
+    -->
+    <color name="ic_launcher_background">#F2001C</color>
 </resources>
