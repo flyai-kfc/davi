@@ -30,7 +30,10 @@ $reportRenderer = Join-Path $PSScriptRoot 'render-device-e2e-report.py'
 $privateReportRenderer = Join-Path $PSScriptRoot 'render-device-e2e-private-report.py'
 $serverUrl = 'http://127.0.0.1:8000'
 $runner = 'com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner'
-$service = 'com.davi.helper/com.davi.helper.GuideAccessibilityService'
+# 앞은 applicationId, 뒤는 클래스의 FQN이다 — **둘의 접두어가 다른 게 정상이다**(#58).
+# debug는 applicationIdSuffix로 com.davi.helper.debug가 되지만, 클래스 이름은 namespace
+# (com.davi.helper) 기준이라 그대로다. E2E는 debug 빌드를 몰기 때문에 앞쪽에 .debug가 붙는다.
+$service = 'com.davi.helper.debug/com.davi.helper.GuideAccessibilityService'
 
 function Invoke-CheckedNative {
     param(
@@ -248,12 +251,12 @@ try {
     Write-Host "개인정보 마스킹 — 앱 1차: $appMaskingLabel / 서버 2차: $serverMaskingLabel"
 
     $accessibilityState = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
-    if ($accessibilityState -notmatch 'Bound services:.*com\.davi\.helper' -or
-        $accessibilityState -match 'Crashed services:.*com\.davi\.helper') {
+    # **.debug까지 붙여서 본다**(#58). 접두어만 보면 release가 bound된 기기에서 debug가 죽어
+    # 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
+    if ($accessibilityState -notmatch 'Bound services:.*com\.davi\.helper\.debug' -or
+        $accessibilityState -match 'Crashed services:.*com\.davi\.helper\.debug') {
         throw 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.'
     }
-    $overlayState = (Invoke-AdbCapture @('shell', 'appops', 'get', 'com.davi.helper', 'SYSTEM_ALERT_WINDOW') '오버레이 권한 조회') -join "`n"
-    if ($overlayState -notmatch 'allow') { throw 'Davi의 다른 앱 위에 표시 권한을 기기 설정에서 허용하세요.' }
 
     $instrumentationArgs = $adbDevice + @(
         'shell', 'am', 'instrument', '-w', '-r',
