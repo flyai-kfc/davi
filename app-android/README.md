@@ -33,9 +33,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ```
 기기      : SM-S921N [R3CX...] 
-패키지    : com.davi.helper 0.1.0 설치됨
+패키지    : com.davi.helper.debug 0.1.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
-오버레이  : 설정된 적 없음(미허용) — 설정에서 "다른 앱 위에 표시"를 켤 것
 ```
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
@@ -66,7 +65,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 패키지명은 `app/build/outputs/apk/debug/output-metadata.json`의 `applicationId`에서 읽는다.
 debug 앱 ID에 접미어가 붙어도 올바른 접근성 서비스를 켜기 위해서다. 산출물이 없으면
-`com.davi.helper`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
+`com.davi.helper.debug`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
 
 ### 특수 권한은 접근성 하나뿐이다
 
