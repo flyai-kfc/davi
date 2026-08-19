@@ -130,7 +130,11 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 `DAVI_AUTH_SESSION_TTL_SECONDS`(기본 30일)다.
 
 - `DAVI_KAKAO_APP_ID`·`DAVI_AUTH_JWT_SECRET`이 비어 있으면 endpoint는 `SERVER`(503)로 닫힌다.
-  변수 목록과 형식은 `.env.example`의 카카오 절 참고.
+  변수 목록과 형식은 `.env.example`의 카카오 절 참고. 둘 다 채워졌는지는 development `/health`의
+  `kakao_auth_configured`로 드러난다 — 값은 노출하지 않고 불리언만 알린다(#279).
+- Azure 공유 개발 서버에서는 이 두 값을 손으로 배선하지 않는다. 서명 비밀은 Key Vault,
+  앱 ID는 GitHub environment 변수이며 자동 배포가 함께 싣는다
+  (`../docs/development/azure-dev-server.md`). 손으로 배선하면 다음 배포가 조용히 지운다.
 - 세션 토큰이 담긴 성공 응답은 `Cache-Control: no-store`로 캐시를 금지한다.
 - 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
   출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
@@ -224,7 +228,7 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 development:
 
 ```json
-{"status":"ok","environment":"development","provider":"gemini","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
+{"status":"ok","environment":"development","provider":"gemini","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false,"kakao_auth_configured":false}
 ```
 
 production:
