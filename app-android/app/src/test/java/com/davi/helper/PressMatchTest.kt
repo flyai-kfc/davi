@@ -46,10 +46,15 @@ class PressMatchTest {
         assertTrue(PressMatch.byLabel("카메라", listOf("카메라")))
     }
 
-    /** label은 자손 텍스트를 합친 값이라 이벤트 텍스트보다 길 수 있다. */
+    /**
+     * label이 자손 텍스트를 합친 긴 값일 때 포함까지 받으면 **옆 대상의 짧은 텍스트가 통과한다** —
+     * "소리 및 진동"을 안내하는 중에 옆 행 "진동"을 누르면 맞다고 한다(PR #264 리뷰 6).
+     * 이 축은 폴백이라 못 맞추는 쪽(미탐)이 잘못 맞추는 쪽(오탐)보다 낫다.
+     */
     @Test
-    fun `label이 텍스트를 포함하면 맞다`() {
-        assertTrue(PressMatch.byLabel("카메라 앱 열기", listOf("카메라")))
+    fun `label의 일부만 같은 텍스트는 맞지 않는다`() {
+        assertFalse(PressMatch.byLabel("소리 및 진동", listOf("진동")))
+        assertFalse(PressMatch.byLabel("카메라 앱 열기", listOf("카메라")))
     }
 
     @Test

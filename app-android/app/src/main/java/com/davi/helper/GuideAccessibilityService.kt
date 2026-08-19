@@ -341,8 +341,9 @@ class GuideAccessibilityService : AccessibilityService() {
      * 변하지 않았다(`../CLAUDE.md`의 "조작 이벤트에 의존하지 않는다").
      */
     private fun onTargetPressed(event: AccessibilityEvent) {
-        val bounds = display.currentTargetBounds() ?: return
+        val bounds = display.pressTargetBounds() ?: return
         if (!pressMatchesTarget(event, bounds)) return
+        display.consumePress()
         Log.i(TAG, "press on target")
         overlay?.pressFeedback(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
         display.hideTarget()?.let { draw(it) }

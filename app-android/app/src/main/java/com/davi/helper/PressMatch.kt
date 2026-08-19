@@ -28,9 +28,10 @@ object PressMatch {
     /**
      * 대상 label과 이벤트가 실어 온 텍스트가 같은 것을 가리키는가.
      *
-     * label은 클릭 노드에 자손 텍스트를 합친 값이라 이벤트 텍스트보다 길 수 있어 **포함까지**
-     * 받는다. 다만 짧은 텍스트는 받지 않는다 — 한 글자는 다른 대상에도 흔해서 오탐이 되고,
-     * 서버의 완료 근거 판정이 같은 함정을 겪었다(#71).
+     * **완전 일치만 받는다.** label이 자손 텍스트를 합친 긴 값일 때 포함까지 받으면 옆 대상의
+     * 짧은 텍스트가 통과한다 — "소리 및 진동"을 안내하는 중에 옆 행 "진동"을 누르면 맞다고 한다
+     * (PR #264 리뷰 6). 그건 미탐이 아니라 **오탐**이고, 이 축이 폴백인 이상 못 맞추는 쪽이 낫다.
+     * 한 글자를 거르는 하한도 같은 이유로 남긴다(서버 완료 근거 판정의 같은 함정, #71).
      *
      * **틀리면 미탐이지 오탐이 아니다.** label은 1차 마스킹을 거친 값이라(전화번호 등) 원본
      * 텍스트와 어긋날 수 있는데, 그때는 파동이 빠질 뿐 엉뚱한 곳에 뜨지 않는다.
@@ -39,7 +40,7 @@ object PressMatch {
         val label = targetLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return false
         return candidates.any { raw ->
             val text = raw.trim()
-            text.length >= MIN_LABEL_MATCH && (label == text || label.contains(text))
+            text.length >= MIN_LABEL_MATCH && label == text
         }
     }
 

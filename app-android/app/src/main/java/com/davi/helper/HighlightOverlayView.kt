@@ -106,12 +106,13 @@ class HighlightOverlayView(context: Context) : View(context) {
     /**
      * 눌림 파동(#238). 안내한 대상을 실제로 눌렀을 때 그 자리에 한 번 퍼진다.
      *
-     * 색만 성공 tone이다 — 완료 확인(GD-3) 테두리와 같은 토큰이라 "잘 됐다"는 신호가 한 색으로
-     * 모인다. `colors.xml`의 davi_success 금지 주석은 **버튼 배경** 대비 얘기라 여기엔 걸리지 않는다.
+     * 색은 오버레이 tone 별칭을 거친다 — 완료 확인(GD-3)과 같은 원색이지만 확정 디자인이 오면
+     * 이 tone만 따로 바뀔 수 있다. `colors.xml`의 davi_success 금지 주석은 **버튼 배경** 대비
+     * 얘기라 테두리·파동에는 걸리지 않는다.
      */
     private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = ContextCompat.getColor(context, R.color.davi_success)
+        color = ContextCompat.getColor(context, R.color.davi_overlay_press)
     }
 
     /** 파동을 그릴 자리. 강조가 이미 내려간 뒤에도 그려야 해서 [target]과 따로 둔다. */
