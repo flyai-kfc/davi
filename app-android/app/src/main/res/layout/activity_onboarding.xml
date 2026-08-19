@@ -60,6 +60,7 @@
                 android:layout_marginTop="@dimen/davi_onboarding_card_margin_top"
                 android:paddingStart="@dimen/davi_onboarding_card_padding_h"
                 android:paddingEnd="@dimen/davi_onboarding_card_padding_h"
+                android:paddingBottom="@dimen/davi_onboarding_card_lift"
                 android:orientation="vertical"
                 android:gravity="center"
                 android:background="@drawable/bg_davi_onboarding_card">

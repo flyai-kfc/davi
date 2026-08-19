@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ON-2 권한 버튼(#236). 시안 `v2/button` type=secondary 240×60 r12 —
-  채움 `#F4F4F6` · 테두리 `#D9D9D9` 1.5 · 그림자 `#000000` 30% y3 b4.
+  ON-2 권한 버튼. 기하는 시안 `v2/button` 240×60 r12 그대로이고, **채움만 주 버튼**이다
+  (#241) — 메인 9의 주 버튼과 같은 색을 쓴다(`bg_davi_stacked_primary`).
 
-  **카드와 같은 채움이다.** 바탕(카드 #F4F4F6)과 버튼이 같은 색이라 둘을 가르는 것은
-  테두리와 그림자뿐이다 — 실기기에서 "버튼으로 읽히는지"를 확인 항목에 두었다(#236).
+  **시안은 secondary였다.** #236이 그걸 고른 근거는 "두 권한이 동등하게 필수라 하나를 주
+  버튼으로 올리면 '이것만 누르면 된다'로 읽힌다"였는데, #212가 오버레이 권한을 걷어내
+  버튼이 하나가 되면서 **그 말이 사실이 됐다.** 게다가 카드도 버튼도 `#F4F4F6`이라 둘을
+  가르는 것이 테두리뿐이었고, 버튼이 둘일 때 형태가 주던 힌트("나란한 두 개")까지 사라졌다
+  — 이 화면에서 사용자가 할 일은 하나뿐이고 그걸 못 찾으면 앱이 시작되지 않는다.
+
+  **테두리는 없앴다.** 메인 9 주 버튼도 없고, 빨강 채움 위 회색 선은 뜻이 없다.
 
   그림자는 blur 없는 근사다(단색 도형을 아래로 민다) — 카드·확인쌍과 같은 사정이다.
 -->
@@ -22,11 +27,8 @@
             </item>
             <item android:bottom="@dimen/davi_onboarding_button_shadow_y">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/davi_surface" />
+                    <solid android:color="@color/davi_button_primary" />
                     <corners android:radius="@dimen/davi_radius_md" />
-                    <stroke
-                        android:width="@dimen/davi_onboarding_button_stroke"
-                        android:color="@color/davi_border" />
                 </shape>
             </item>
         </layer-list>

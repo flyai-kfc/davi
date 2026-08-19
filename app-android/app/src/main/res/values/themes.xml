@@ -164,7 +164,7 @@
         <item name="android:textStyle">bold</item>
         <item name="android:fontFamily">@font/cafe24_ssurround</item>
         <item name="fontFamily">@font/cafe24_ssurround</item>
-        <item name="android:textColor">@color/davi_text_primary</item>
+        <item name="android:textColor">@color/davi_button_on_primary</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="android:elevation">0dp</item>
         <item name="android:insetTop">0dp</item>

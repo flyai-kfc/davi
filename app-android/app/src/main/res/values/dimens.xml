@@ -621,12 +621,14 @@
     <dimen name="davi_onboarding_card_min_height">226dp</dimen>
     <dimen name="davi_onboarding_card_radius">16dp</dimen>
     <dimen name="davi_onboarding_card_padding_h">19dp</dimen>
+    <!-- 카드 안 내용을 살짝 위로 올린다(#241). 가운데 정렬이라 이 값의 **절반만큼** 올라간다.
+         시안에는 없는 값이다 — 실기기에서 톱니와 제목이 내려앉아 보여 조정했다(2026-08-19). -->
+    <dimen name="davi_onboarding_card_lift">20dp</dimen>
     <dimen name="davi_onboarding_card_gap">10dp</dimen>
     <dimen name="davi_onboarding_slot_size">67dp</dimen>
     <dimen name="davi_onboarding_icon_size">47dp</dimen>
     <dimen name="davi_onboarding_button_width">288dp</dimen>
     <dimen name="davi_onboarding_button_min_height">72dp</dimen>
-    <dimen name="davi_onboarding_button_stroke">1.5dp</dimen>
     <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
     <dimen name="davi_onboarding_button_margin_top">50dp</dimen>
     <dimen name="davi_onboarding_hint_margin_top">29dp</dimen>
