@@ -281,6 +281,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
         if (GuideSession.active() == null) return
 
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
         scheduleSample(SETTLE_MS)
     }
 
@@ -319,6 +320,30 @@ class GuideAccessibilityService : AccessibilityService() {
             TAG,
             "screen on, resuming (session active=${GuideSession.isActive} requery=$requeried)",
         )
+    }
+
+    /**
+     * 안내한 대상을 사용자가 **실제로 눌렀는지** 보고, 맞으면 눌림을 알리고 강조를 내린다(#238).
+     *
+     * 화면 서명이 바뀌기 전이라 [ScreenStabilityTracker]는 아직 아무것도 모르는 구간이다.
+     * #225가 닫은 것이 그 **뒤** 구간이고 여기가 그 앞이다.
+     *
+     * **정체 감지는 여전히 시간 기반이다.** 이 이벤트는 표시에만 쓰고 진행 판정에 쓰지 않는다 —
+     * 목록 끝에서 이벤트가 오지 않는 것이 `HANDOFF.md` §3에서 이 길을 접은 이유이고, 그 제약은
+     * 변하지 않았다(`../CLAUDE.md`의 "조작 이벤트에 의존하지 않는다").
+     *
+     * `source`가 null인 앱이 있다. 그때는 아무 일도 하지 않고 기존 경로가 화면 전환에서 내린다 —
+     * 퇴행은 없고 개선이 빠질 뿐이다.
+     */
+    private fun onTargetPressed(event: AccessibilityEvent) {
+        val clicked = Rect()
+        event.source?.getBoundsInScreen(clicked) ?: return
+        if (clicked.isEmpty) return
+        // 지목한 것은 컨테이너인데 클릭은 그 안쪽 뷰에서 날 수 있다. 중심 포함으로 맞춘다.
+        val target = display.pressedTargetBounds(clicked.centerX(), clicked.centerY()) ?: return
+        Log.i(TAG, "press on target")
+        overlay?.pressFeedback(Rect(target[0], target[1], target[2], target[3]))
+        display.hideTarget()?.let { draw(it) }
     }
 
     private fun scheduleSample(delayMs: Long) {
@@ -961,6 +986,8 @@ class GuideAccessibilityService : AccessibilityService() {
                 eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                // 안내한 대상을 실제로 눌렀는지 보려고 받는다(#238). 진행 판정에는 쓰지 않는다.
+                eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
     }
 }

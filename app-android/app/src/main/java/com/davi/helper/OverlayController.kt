@@ -105,6 +105,16 @@ class OverlayController(
      * 끌 때는 창을 만들지 않는다. 세션 종료·화면 소실 경로가 이 함수로 false를 반복해서
      * 보내는데, 거기서 창이 생기면 안내가 한 번도 없던 화면에도 오버레이가 붙는다.
      */
+    /**
+     * 안내한 대상을 눌렀다는 신호를 그 자리에 한 번 준다(#238).
+     *
+     * **창이 없으면 만들지 않는다** — [setReading]과 같은 이유다. 안내가 한 번도 없던 화면에
+     * 파동만으로 오버레이가 붙으면 안 된다. 모션 끄기 판정은 뷰가 한다.
+     */
+    fun pressFeedback(bounds: Rect) {
+        view?.pressFeedback(bounds)
+    }
+
     fun setReading(on: Boolean) {
         view?.let {
             it.setReading(on)

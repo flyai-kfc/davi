@@ -1,5 +1,7 @@
 package com.davi.helper
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
@@ -100,6 +102,23 @@ class HighlightOverlayView(context: Context) : View(context) {
         color = ContextCompat.getColor(context, R.color.davi_highlight)
     }
     private val highlightGlowSpread = resources.getDimension(R.dimen.davi_overlay_highlight_glow)
+
+    /**
+     * 눌림 파동(#238). 안내한 대상을 실제로 눌렀을 때 그 자리에 한 번 퍼진다.
+     *
+     * 색만 성공 tone이다 — 완료 확인(GD-3) 테두리와 같은 토큰이라 "잘 됐다"는 신호가 한 색으로
+     * 모인다. `colors.xml`의 davi_success 금지 주석은 **버튼 배경** 대비 얘기라 여기엔 걸리지 않는다.
+     */
+    private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = ContextCompat.getColor(context, R.color.davi_success)
+    }
+
+    /** 파동을 그릴 자리. 강조가 이미 내려간 뒤에도 그려야 해서 [target]과 따로 둔다. */
+    private val pressTarget = RectF()
+
+    /** 진행도 0..1. 음수면 파동이 없다. */
+    private var pressProgress = -1f
 
     // 그리지는 않지만 줄바꿈을 재려면 같은 글자여야 한다 — 그리는 쪽과 한 곳에서 만든다.
     private val instructionPaint = GuideBoxStyle.textPaint(context)
@@ -245,6 +264,30 @@ class HighlightOverlayView(context: Context) : View(context) {
             invalidate()
         }
     }
+
+    /**
+     * 눌림 파동은 **1회 재생**이라 [breathing]과 같은 애니메이터를 쓸 수 없다(#238).
+     * 저쪽은 무한 반복이고 읽는 중 테두리와 위상을 공유하는데, 파동은 시작 시점이 사용자
+     * 조작에 매여 있어 공유 위상에 얹으면 시작점을 정할 수 없다.
+     *
+     * **오버레이 안의 구동부는 늘리지 않는다** — 앱 화면([MotionDriver])과 오버레이가 서로 다른
+     * 방식을 쓰는 것이 #148의 정리 대상이라, 여기서 세 번째 방식을 들이지 않고 이 뷰가 이미
+     * 쓰는 `ValueAnimator`를 그대로 쓴다.
+     */
+    private val pressWave = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = HighlightMotion.PRESS_DURATION_MS
+        interpolator = LinearInterpolator()
+        addUpdateListener {
+            pressProgress = it.animatedValue as Float
+            invalidate()
+        }
+        addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                pressProgress = -1f
+                invalidate()
+            }
+        })
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
@@ -332,9 +375,24 @@ class HighlightOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    /**
+     * 안내한 대상을 눌렀다는 신호를 그 자리에 한 번 준다(#238).
+     *
+     * **모션을 끈 사용자에게는 그리지 않는다.** `areAnimatorsEnabled()`는 절전 모드까지 반영하는
+     * 공식 API이고, 이 뷰가 읽는 중 표시에서 이미 쓰는 판정이다. 시스템 접근성 설정을 덮어쓰지
+     * 않는다 — 파동이 빠져도 강조는 그대로 내려가므로 안내는 이어진다.
+     */
+    fun pressFeedback(bounds: Rect) {
+        if (!ValueAnimator.areAnimatorsEnabled()) return
+        pressTarget.set(bounds)
+        pressWave.cancel()
+        pressWave.start()
+    }
+
     fun clearTarget() {
         hasTarget = false
         readingWindow = false
+        pressWave.cancel()
         gestureDirection = null
         instruction = ""
         avoid = emptyList()
@@ -508,6 +566,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     override fun onDetachedFromWindow() {
         removeCallbacks(readingOnset)
         breathing.cancel()
+        pressWave.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -528,7 +587,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         // 손은 **화면 중앙**에 그린다(#152 결정) — 대상이 아니라 화면 기준이므로 읽는 중
         // 테두리와 같이 뷰 로컬 좌표를 쓴다. 아래 translate 앞이어야 하는 이유가 같다.
         drawGestureHand(canvas)
-        if (!hasTarget && instruction.isEmpty()) return
+        if (!hasTarget && instruction.isEmpty() && pressProgress < 0f) return
 
         // 화면 좌표 -> 캔버스 좌표 보정.
         //
@@ -586,6 +645,42 @@ class HighlightOverlayView(context: Context) : View(context) {
                 highlightCorner,
                 highlightCorner,
                 strokePaint,
+            )
+        }
+
+        // 강조와 독립이다 — 강조가 내려간 뒤에도 남은 파동은 마저 퍼진다.
+        drawPressWave(canvas)
+    }
+
+    /**
+     * 눌림 파동. 강조 후광과 같은 겹 쌓기를 쓴다 — `BlurMaskFilter`를 피하는 이유가 같다
+     * ([HighlightMotion.GLOW_RING_COUNT]).
+     *
+     * **화면 전환에 매지 않는다.** 강조는 "다음에 누를 곳"이라 화면이 바뀌면 거짓이 되지만,
+     * 파동은 "방금 누른 곳"이라 화면이 바뀌어도 거짓이 아니다. 도는 중에 끊으면 디졸브가
+     * 뚝 잘려 오히려 깜빡임으로 읽힌다.
+     */
+    private fun drawPressWave(canvas: Canvas) {
+        if (pressProgress < 0f) return
+        val frame = HighlightMotion.pressFrame(
+            pressProgress,
+            highlightGlowSpread * HighlightMotion.PRESS_SPREAD_RATIO,
+        )
+        if (frame.alpha <= 0) return
+        pressPaint.strokeWidth = HighlightMotion.ringStrokeFor(frame.spread, highlightStroke)
+        for (ring in 0 until HighlightMotion.GLOW_RING_COUNT) {
+            val alpha = HighlightMotion.ringAlphaAt(ring, frame.alpha)
+            if (alpha <= 0) continue
+            val offset = HighlightMotion.ringOffsetAt(ring, frame.spread)
+            pressPaint.alpha = alpha
+            canvas.drawRoundRect(
+                pressTarget.left - offset,
+                pressTarget.top - offset,
+                pressTarget.right + offset,
+                pressTarget.bottom + offset,
+                highlightCorner + offset,
+                highlightCorner + offset,
+                pressPaint,
             )
         }
     }

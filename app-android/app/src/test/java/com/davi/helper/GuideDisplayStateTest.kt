@@ -19,6 +19,7 @@ class GuideDisplayStateTest {
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
+    private val pressBounds = listOf(10, 20, 110, 220)
     private val scrollText = "아래쪽으로 스크롤해 주세요"
     private val confirmText = "다 됐어요! 해결되셨나요?"
     private val errorText = "인터넷 연결이 원활하지 않아요."
@@ -547,5 +548,39 @@ class GuideDisplayStateTest {
 
         assertNull(content?.bounds)
         assertEquals("확인을 누르세요\n$stuck", content?.text)
+    }
+
+    // ── 눌림 감지(#238) ──────────────────────────────────────────────
+
+    /** 지목한 것은 컨테이너인데 클릭은 그 안쪽 뷰에서 난다. 중심이 들어오면 같은 대상이다. */
+    @Test
+    fun `대상 안을 누르면 대상 자리를 돌려준다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요")
+
+        assertEquals(pressBounds, state.pressedTargetBounds(60, 120))
+    }
+
+    @Test
+    fun `대상 밖을 누르면 돌려주지 않는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요")
+
+        assertNull(state.pressedTargetBounds(5, 120))
+    }
+
+    /** 이미 내렸으면 다시 내릴 강조도, 다시 줄 파동도 없다. */
+    @Test
+    fun `이미 강조를 내렸으면 눌림을 잡지 않는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요")
+        state.hideTarget()
+
+        assertNull(state.pressedTargetBounds(60, 120))
+    }
+
+    /** 확인 화면은 가리킬 대상이 없다([GuideDisplayState.Content.bounds]가 null). */
+    @Test
+    fun `확인 화면에는 누를 대상이 없다`() {
+        state.showConfirm(sigA, confirmText)
+
+        assertNull(state.pressedTargetBounds(60, 120))
     }
 }
