@@ -250,6 +250,8 @@ try {
     $serverMaskingLabel = if ($serverMaskingDisabled) { '우회' } else { '적용' }
     Write-Host "개인정보 마스킹 — 앱 1차: $appMaskingLabel / 서버 2차: $serverMaskingLabel"
 
+    # 오버레이 권한(SYSTEM_ALERT_WINDOW) 점검은 없앴다 — #240이 매니페스트에서 걷어냈고 안내
+    # 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한이 없어도 그려진다(#56). sh 실행기와 같다.
     $accessibilityState = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
     # **.debug까지 붙여서 본다**(#58). 접두어만 보면 release가 bound된 기기에서 debug가 죽어
     # 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
@@ -257,7 +259,6 @@ try {
         $accessibilityState -match 'Crashed services:.*com\.davi\.helper\.debug') {
         throw 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.'
     }
-
     $instrumentationArgs = $adbDevice + @(
         'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'davi.liveGemini', 'true'

@@ -1,7 +1,9 @@
 # Azure Container Apps 공유 개발 서버
 
 이 문서는 #94의 **개발·도그푸딩 전용** Azure 서버를 최초 준비하고, 이후 `main` 서버 변경을
-GitHub Actions로 자동 배포하는 절차다. 제품 배포·사용자 인증·release APK endpoint가 아니다.
+GitHub Actions로 자동 배포하는 절차다. 제품 배포·release APK endpoint가 아니다. **카카오
+로그인은 이 서버에서도 켤 수 있지만**(#279) 그것은 debug 빌드의 로그인 흐름을 실기기로
+검증하기 위한 것이고, release가 바라볼 주소·접근·비용 정책은 #214에서 따로 정한다.
 PR 검증과 배포는 서로 다른 workflow이며, 배포 workflow는 PR에서 실행되지 않는다.
 
 ```text
@@ -14,6 +16,8 @@ main의 server/ · infra/azure/ · azure-dev-deploy.yml 변경
 
 외부 ingress는 팀 debug APK가 다른 네트워크에서도 접근하도록 HTTPS로 열려 있다. `/health` 외의
 API는 `X-Davi-Dev-Token`을 요구하고 전역 rate limit을 적용하지만, 이는 제품 사용자 인증이 아니다.
+카카오 세션 토큰과는 **다른 층**이다 — 개발 토큰은 이 endpoint에 붙을 자격을, 세션 토큰은
+사용자를 가른다. 로그인 endpoint도 개발 토큰 게이트 뒤에 있다.
 URL과 토큰을 공개 채널·이슈·PR·로그에 붙이지 않는다.
 
 ## 코드와 검증 경계
@@ -59,9 +63,15 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
    | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 | 항상 |
    | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 | 항상 |
    | `DAVI-TEST-ACCESS-TOKEN` | 32자 이상의 외부 테스트 참가자 토큰 | **외부 테스트 기간에만** |
+   | `DAVI-AUTH-JWT-SECRET` | 32자 이상의 세션 JWT 서명 비밀 | **카카오 로그인을 켤 때만** |
 
-   마지막 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`
-   기본값이 비어 있어서, 이름을 넘기지 않으면 Container App이 이 secret을 참조하지 않는다.
+   마지막 두 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`·
+   `authJwtSecretSecretName` 기본값이 비어 있어서, 이름을 넘기지 않으면 Container App이 그
+   secret을 참조하지 않는다.
+
+   `DAVI-AUTH-JWT-SECRET`은 **32자 이상이어야 한다.** 짧으면 서버가 기동을 거부해 revision이
+   Healthy에 도달하지 못하고, 아래 "순서가 중요하다"와 같은 방식으로 이후 배포까지 막힌다.
+   값을 바꾸면 발급된 세션이 전부 무효화되어 사용자가 다시 로그인해야 한다.
 
    **외부 테스트를 여는 순서 (수동 `az` 실행 없음):**
 
@@ -72,6 +82,23 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
 
    **끝낼 때는 역순이다:** 변수를 비우고 → 다음 배포를 돌리고 → secret을 지운다.
    팀 개발 토큰은 이 과정 내내 그대로 살아 있다.
+
+   **카카오 로그인을 켜는 순서 (#279, 같은 모양이다):**
+
+   1. Key Vault에 `DAVI-AUTH-JWT-SECRET` secret을 만든다(32자 이상).
+   2. GitHub environment `davi-development`의 변수 두 개를 채운다 —
+      `DAVI_AZURE_AUTH_JWT_SECRET_NAME`을 `DAVI-AUTH-JWT-SECRET`으로,
+      `DAVI_AZURE_KAKAO_APP_ID`를 카카오 개발자 콘솔의 **앱 ID(숫자)**로. 앱 ID는 비밀이 아니며
+      REST API 키·네이티브 앱 키가 아니다. 앱의 네이티브 키와 **같은 카카오 앱**이어야 한다.
+   3. main에 아무 서버 변경이나 머지한다(또는 워크플로를 수동 실행).
+
+   변수만 바꾸면 배포가 돌지 않는다 — 트리거 경로가 `server/**`·`infra/azure/**`·배포 워크플로
+   yaml이라서다. 3번이 필요한 이유가 이것이고, 위 외부 테스트 절차도 마찬가지다.
+
+   둘 중 하나만 채우면 서버는 정상 기동하고 `/v1/auth/kakao`만 503으로 닫힌다. 배선 여부는
+   `/health`의 `kakao_auth_configured`가 알리며, 배포 검증이 이 값을 **기대값과 등호로** 대조한다
+   (변수를 채웠으면 `true`, 비웠으면 `false`). 앱 ID가 숫자가 아니면 배포 워크플로의 변수 검증이
+   배포 전에 끊는다 — 기동 실패로 revision이 막히는 것보다 복구가 싸다.
 
    **순서가 중요하다.** secret 없이 변수부터 채우면 Container Apps가 revision을 만들 때
    `keyVaultUrl`을 해석하지 못해 새 revision이 Healthy에 도달하지 못하고, 배포 워크플로의
@@ -186,13 +213,23 @@ User Access Administrator 권한이 필요하다.
    | `DAVI_AZURE_CONTAINER_IDENTITY_NAME` | `id-davi-server-dev` |
    | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-app` |
 
+   다음 세 변수는 **선택**이다. 비어 있는 것이 평소 상태이고, 배포 워크플로의 필수 변수
+   검사에도 들어가지 않는다.
+
+   | Variable (선택) | 값 | 언제 |
+   |---|---|---|
+   | `DAVI_AZURE_TEST_TOKEN_SECRET_NAME` | `DAVI-TEST-ACCESS-TOKEN` | 외부 테스트 기간 |
+   | `DAVI_AZURE_AUTH_JWT_SECRET_NAME` | `DAVI-AUTH-JWT-SECRET` | 카카오 로그인을 켤 때 |
+   | `DAVI_AZURE_KAKAO_APP_ID` | 카카오 앱 ID(숫자) | 카카오 로그인을 켤 때 |
+
 4. organization의 Actions 사용 정책이 제한돼 있다면 `actions/checkout@v4`와 `azure/login@v2`를
    허용한다. workflow의 `id-token: write`는 OIDC token 발급에만 쓰며 repository contents 쓰기
    권한은 주지 않는다.
 5. `main` 보호 규칙에서 기존 CI를 필수 검사로 유지한다. 배포 workflow는 PR에서 실행되지 않고,
    병합된 코드만 공유 서버에 반영한다.
 
-`GEMINI_API_KEY`와 `DAVI_DEV_ACCESS_TOKEN`은 GitHub 변수나 secret으로 만들지 않는다. workflow의
+`GEMINI_API_KEY`·`DAVI_DEV_ACCESS_TOKEN`·`DAVI_AUTH_JWT_SECRET`은 GitHub 변수나 secret으로 만들지
+않는다(GitHub가 다루는 것은 secret **이름**뿐이다). workflow의
 배포 identity는 Key Vault secret 값을 읽지 않으며 Container App runtime identity만 읽는다.
 
 workflow는 `main` push 중 `server/**`, `infra/azure/**`, 자신의 YAML 변경에만 실행된다. 수동 실행도
@@ -241,7 +278,8 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
 - 검증된 Container App image tag가 `<main commit SHA>-<GitHub run ID>-<attempt>`다.
 - 검증된 active·healthy revision suffix가 `r<GitHub run ID>-<attempt>`이고 traffic이 100%다.
 - Container App 설정에는 Key Vault reference만 있고 secret 평문이 없다.
-- `/health`는 HTTPS 200이며 `development`, `stub_llm=false`다.
+- `/health`는 HTTPS 200이며 `development`, `stub_llm=false`다. 카카오 로그인을 켰다면
+  `kakao_auth_configured=true`이고, 켜지 않았다면 `false`다.
 - 토큰 없는 `/v1/next-step`은 401이고 유효 토큰을 쓴 익명 fixture 요청은 정상 응답한다.
 - Android debug 실기기에서 같은 endpoint로 목표 정리와 다음 안내를 각각 한 번 확인한다.
 - 앱·서버 로그에 URL 외 token, 목표, 화면 label, 발화, 모델 원문이 없는지 확인한다.

@@ -206,8 +206,10 @@
   명시적 검증 2단**으로 확정한다. 단일 스텝 반응형으로도 관통 시나리오가 닫혔고, 계획이 푸는
   문제(선행 조건 처리 — "앱이 없으면 먼저 설치")는 이번 사이클 목표에 없다.
   `server/app/reasoning.py`에 `_plan` 스텁이 남아 있으나 결과를 쓰지 않는다.
-- 제품용 관리형 클라우드 호스팅·사용자 인증. #94의 Azure Container Apps는 팀 debug APK가
+- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 팀 debug APK가
   `main` 서버를 함께 검증하는 dev-only 인프라일 뿐, 이 비목표를 해제하지 않는다.
+  **카카오 로그인 자체는 §2 범위다**(ON-1) — 여기서 비목표인 것은 그것을 떠받치는 제품용
+  호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 debug 빌드 검증 수단이다(#279).
 
 ---
 
@@ -459,8 +461,9 @@ davi/
   대조한 뒤 `/health`를 검사한다. PR은 공유 서버를 바꾸지 않는다. 최소/최대 replica와 Uvicorn
   worker는 각각 1이다.
 - Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
-  토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰은 Key Vault의 versionless secret을
-  user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는 넣지 않는다.
+  토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
+  versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
+  넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 카카오 앱 ID뿐이다(#279).
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
   Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 개발 토큰을
   요구한다. release APK는 두 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.

@@ -38,6 +38,11 @@ jobs:
       # 조용히 사라진다(배포는 성공하고 참가자만 401이 되므로 로그에 단서가 없다).
       # secret **이름**은 비밀값이 아니라 vars로 충분하다.
       DAVI_AZURE_TEST_TOKEN_SECRET_NAME: ${{ vars.DAVI_AZURE_TEST_TOKEN_SECRET_NAME }}
+      # 카카오 로그인(#279)도 같은 이유로 **선택** 변수다. 둘 다 채워야 로그인 endpoint가 열리고,
+      # 하나만 채우면 서버가 503으로 닫아 두므로 기동은 정상이다. secret **이름**과 앱 ID는
+      # 비밀값이 아니라 vars로 충분하다 — 서명 비밀 자체는 Key Vault에만 있다.
+      DAVI_AZURE_AUTH_JWT_SECRET_NAME: ${{ vars.DAVI_AZURE_AUTH_JWT_SECRET_NAME }}
+      DAVI_AZURE_KAKAO_APP_ID: ${{ vars.DAVI_AZURE_KAKAO_APP_ID }}
       IMAGE_REPOSITORY: davi-server
 
     steps:
@@ -67,6 +72,14 @@ jobs:
               exit 1
             }
           done
+
+          # 앱 ID가 숫자가 아니면 컨테이너가 기동 시 죽어 revision이 Healthy에 못 가고
+          # **이후 배포까지 막힌다**. 배포 전에 여기서 끊는 편이 복구가 싸다.
+          if [ -n "${DAVI_AZURE_KAKAO_APP_ID:-}" ] &&
+            ! [[ "$DAVI_AZURE_KAKAO_APP_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::DAVI_AZURE_KAKAO_APP_ID는 양의 정수여야 합니다."
+            exit 1
+          fi
 
       - name: 불변 image tag로 ACR push
         shell: bash
@@ -110,7 +123,9 @@ jobs:
               containerIdentityName="$DAVI_AZURE_CONTAINER_IDENTITY_NAME" \
               imageTag="$image_tag" \
               revisionSuffix="$revision_suffix" \
-              testAccessTokenSecretName="${DAVI_AZURE_TEST_TOKEN_SECRET_NAME:-}")"
+              testAccessTokenSecretName="${DAVI_AZURE_TEST_TOKEN_SECRET_NAME:-}" \
+              authJwtSecretSecretName="${DAVI_AZURE_AUTH_JWT_SECRET_NAME:-}" \
+              kakaoAppId="${DAVI_AZURE_KAKAO_APP_ID:-}")"
 
           deployed_revision="$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
           deployed_image="$(jq -er '.deployedImage.value' <<<"$deployment_outputs")"
@@ -135,6 +150,15 @@ jobs:
           test -n "$EXPECTED_IMAGE"
           test -n "$DEPLOYED_FQDN"
 
+          # 카카오 인증 배선은 /health의 비밀 아닌 불리언으로만 드러난다(/v1/auth/kakao는 dev
+          # 토큰 게이트 뒤라 여기서 찌를 수 없다). 채웠으면 true를, 비웠으면 false를 요구한다 —
+          # 한쪽만 보면 배선 누락이나 폐기 후 남은 배선 중 하나를 놓친다.
+          if [ -n "${DAVI_AZURE_AUTH_JWT_SECRET_NAME:-}" ] && [ -n "${DAVI_AZURE_KAKAO_APP_ID:-}" ]; then
+            expected_kakao_auth=true
+          else
+            expected_kakao_auth=false
+          fi
+
           for attempt in $(seq 1 18); do
             if az containerapp revision show \
               --resource-group "$DAVI_AZURE_RESOURCE_GROUP" \
@@ -155,7 +179,9 @@ jobs:
                 --output /tmp/davi-health-response \
                 "https://$DEPLOYED_FQDN/health" \
               && jq -e \
-                '.status == "ok" and .environment == "development" and .stub_llm == false' \
+                --argjson expected_kakao_auth "$expected_kakao_auth" \
+                '.status == "ok" and .environment == "development" and .stub_llm == false
+                  and .kakao_auth_configured == $expected_kakao_auth' \
                 /tmp/davi-health-response >/dev/null; then
               printf 'verified revision: %s\n' "$EXPECTED_REVISION"
               printf 'verified image: %s\n' "$EXPECTED_IMAGE"

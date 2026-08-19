@@ -883,7 +883,8 @@ class GuideAccessibilityService : AccessibilityService() {
             // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.
             Log.w(TAG, "highlight miss target=${action.targetNodeId ?: "-"}")
         } else {
-            Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
+            // bounds는 화면 위 좌표라 release에 남기지 않는다(#58). 구현이 variant마다 다르다.
+            GuideScreenLog.highlight(target?.nodeId, bounds)
         }
         // 서버 방향(보러 가는 쪽) → 손가락 방향. **변환은 여기 한 곳에서만** 한다(C17). 아래로 흘러가는 값은
         // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
@@ -917,24 +918,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 "scrollable=${screen.hasScrollableElement ?: "?"}$page" +
                 if (result.truncated) " (truncated)" else "",
         )
-        screen.elements.take(MAX_LOGGED_ELEMENTS).forEach { e ->
-            Log.d(
-                TAG,
-                "  ${e.nodeId} ${if (e.clickable) "tap" else "text"} " +
-                    "role=${e.role} bounds=${e.bounds}${scrollInfo(e)} label='${e.label}'",
-            )
-        }
-        if (screen.elements.size > MAX_LOGGED_ELEMENTS) {
-            Log.d(TAG, "  ... ${screen.elements.size - MAX_LOGGED_ELEMENTS} more")
-        }
-    }
-
-    /** 스크롤 가능한 요소에만 붙는다. 방향 안내가 맞는지 로그에서 바로 보려고 찍는다. */
-    private fun scrollInfo(e: UiElement): String {
-        if (e.canScrollForward == null && e.canScrollBackward == null) return ""
-        val fwd = if (e.canScrollForward == true) "+${e.nextSwipeDirection?.name?.lowercase()}" else ""
-        val back = if (e.canScrollBackward == true) "-${e.prevSwipeDirection?.name?.lowercase()}" else ""
-        return " scroll=${e.scrollAxis?.name?.lowercase()}$fwd$back"
+        // 요소별 label·bounds는 **화면 내용 그 자체**라 main에서 찍지 않는다(#58).
+        // debug 구현만 상세를 남기고 release 구현은 no-op이다. 위 요약 줄은 패키지명과 개수뿐이라
+        // 비식별이므로 여기 남긴다 — release에서도 "몇 개짜리 화면을 봤나"는 볼 수 있어야 한다.
+        GuideScreenLog.elements(screen)
     }
 
     private fun isInteresting(eventType: Int): Boolean = isInterestingEvent(eventType)
@@ -1001,7 +988,6 @@ class GuideAccessibilityService : AccessibilityService() {
          */
         private const val POLL_MS = 700L
 
-        private const val MAX_LOGGED_ELEMENTS = 30
 
         /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */
         internal fun isInterestingEvent(eventType: Int): Boolean =
