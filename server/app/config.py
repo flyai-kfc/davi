@@ -7,6 +7,20 @@ from typing import Literal, Self
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 공급자별 기본 모델과 키 환경변수. `DAVI_MODEL`을 비워 두면 여기 값이 쓰인다.
+# 셋 다 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다 — 품질이 더 필요하면 DAVI_MODEL로
+# 올린다(예: gemini-3.6-flash, gpt-5.6-terra, claude-sonnet-5).
+DEFAULT_MODELS: dict[str, str] = {
+    "gemini": "gemini-3.5-flash-lite",
+    "openai": "gpt-5.6-luna",
+    "anthropic": "claude-haiku-4-5",
+}
+API_KEY_SETTINGS: dict[str, str] = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
@@ -14,10 +28,32 @@ class Settings(BaseSettings):
     # 실행 프로필. 미설정 로컬/테스트는 development로 유지한다.
     davi_env: Literal["development", "production"] = "development"
 
-    # Gemini
+    # LLM 공급자. 셋 다 같은 구조화 JSON 계약을 쓰고, 교체는 이 값 하나다(`llm_provider.py`).
+    # 기본은 gemini — 기존 배포·eval·.env가 그대로 돌아야 한다.
+    davi_llm_provider: Literal["gemini", "openai", "anthropic"] = "gemini"
+
+    # 공급자 키. 고른 공급자의 키만 있으면 된다(아래 검증). 앱엔 절대 넣지 않는다.
     gemini_api_key: SecretStr = SecretStr("")
+    openai_api_key: SecretStr = SecretStr("")
+    anthropic_api_key: SecretStr = SecretStr("")
+
     # 모델은 환경변수로 둔다. HANDOFF §6: 아키텍처가 여기 묶여 있지 않다(교체 한 줄).
-    davi_model: str = "gemini-3.5-flash-lite"
+    # **비우면 공급자 기본 모델**(`DEFAULT_MODELS`)을 쓴다. 공급자만 바꾸고 모델을 안 고쳐서
+    # gemini id가 Anthropic으로 나가는 사고를 막으려고 이렇게 뒀다.
+    davi_model: str = ""
+    # 출력 토큰 상한 강제값. 0이면 공급자별로 계산한다(`llm_provider.build_provider`).
+    # 모델을 바꿨는데 답이 잘리거나 너무 비쌀 때만 손댄다.
+    davi_max_output_tokens: int = 0
+
+    # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는
+    # 늘되 느려지고 maxOutputTokens 예산을 다 써 응답이 잘릴 위험도 커진다(2026-08-18
+    # gemini-3.6-flash PARSE 실패 실기기 재현). 세 호출부가 각자 maxOutputTokens = 이 값 +
+    # 정상 응답 여유분으로 맞춰 잘림을 막는다. thinking이 없는 모델(flash-lite 등)에 보내도
+    # 조용히 무시된다(실측).
+    davi_gemini_thinking_budget: int = 800
+    # OpenAI에서 thinking에 해당하는 값. 속도를 위해 낮게 둔다. none이면 reasoning 토큰
+    # 여유분도 얹지 않는다. 판단이 얕으면 여기를 올리기 전에 모델을 올리는 편이 낫다.
+    davi_openai_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
 
     # 공용 개발 endpoint 보호용 토큰(#57). production에서는 설정 자체를 금지한다.
     davi_dev_access_token: SecretStr = SecretStr("")
@@ -58,26 +94,47 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_per_source_requests: int = 10
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
-    @field_validator("gemini_api_key", mode="after")
+    @field_validator("gemini_api_key", "openai_api_key", "anthropic_api_key", mode="after")
     @classmethod
-    def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
+    def normalize_api_key(cls, value: SecretStr) -> SecretStr:
         """검증한 키와 실제 HTTP 헤더에 쓰는 키가 같은 값이게 한다."""
 
         return SecretStr(value.get_secret_value().strip())
 
+    @property
+    def provider_api_key(self) -> SecretStr:
+        """지금 고른 공급자의 키. 나머지 공급자 키는 비어 있어도 된다."""
+
+        return {
+            "gemini": self.gemini_api_key,
+            "openai": self.openai_api_key,
+            "anthropic": self.anthropic_api_key,
+        }[self.davi_llm_provider]
+
+    @property
+    def resolved_model(self) -> str:
+        """실제로 호출에 쓰는 모델 id. 비어 있으면 공급자 기본값이다."""
+
+        return self.davi_model.strip() or DEFAULT_MODELS[self.davi_llm_provider]
+
     @model_validator(mode="after")
     def validate_runtime_profile(self) -> Self:
-        api_key = self.gemini_api_key.get_secret_value()
+        api_key = self.provider_api_key.get_secret_value()
         dev_access_token = self.davi_dev_access_token.get_secret_value().strip()
         bind_host = self.davi_bind_host.strip().lower()
-        model = self.davi_model.strip()
 
         if self.davi_env == "production" and self.davi_use_stub_llm:
             raise ValueError("production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
         if not self.davi_use_stub_llm and not api_key:
-            raise ValueError("실제 LLM을 사용하려면 GEMINI_API_KEY가 필요합니다")
-        if not model:
-            raise ValueError("DAVI_MODEL은 비어 있을 수 없습니다")
+            key_setting = API_KEY_SETTINGS[self.davi_llm_provider]
+            raise ValueError(
+                f"실제 LLM을 사용하려면 {key_setting}가 필요합니다"
+                f" (DAVI_LLM_PROVIDER={self.davi_llm_provider})"
+            )
+        if self.davi_gemini_thinking_budget < 0:
+            raise ValueError("DAVI_GEMINI_THINKING_BUDGET은 0 이상이어야 합니다")
+        if self.davi_max_output_tokens < 0:
+            raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
         if self.davi_env == "production" and dev_access_token:
             raise ValueError("production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
         if dev_access_token and len(dev_access_token) < 32:

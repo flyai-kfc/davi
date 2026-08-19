@@ -5,11 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 import unicodedata
-from collections.abc import Mapping
 from functools import cache
-from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -17,13 +14,13 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from .app_resolution_prompt import build_app_candidate_prompt, build_app_candidate_repair_prompt
 from .config import settings
 from .errors import LlmError
-from .gemini_response import (
-    GeminiCandidateError,
-    GeminiCandidateErrorReason,
-    extract_candidate_text,
-    strip_json_fence,
+from .gemini_response import strip_json_fence
+from .llm_provider import (
+    ProviderCallError,
+    ResponseContract,
+    StructuredJsonProvider,
+    build_provider,
 )
-from .gemini_schema import build_response_schema
 from .observability import LLM_LOGGER_NAME, log_event
 from .prompt import fallback_prompt
 from .schemas import (
@@ -44,9 +41,11 @@ from .schemas import (
     ErrorKind,
 )
 
-_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-_MAX_OUTPUT_TOKENS = 1024
-_DEFAULT_RETRY_AFTER_SECONDS = 60
+_OPERATION = "app_candidates"
+# 정상 응답 하나에 필요한 출력 토큰. 공급자가 보이지 않는 추론(Gemini thinking, OpenAI
+# reasoning)에 쓰는 몫은 `llm_provider.build_provider`가 여기에 더한다 — 그 몫이 예산을 다
+# 먹어 응답이 잘리는 문제가 intent_dialogue 경로에서 재현됐다(2026-08-18).
+_RESPONSE_HEADROOM_TOKENS = 1024
 _PACKAGE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
 llm_logger = logging.getLogger(LLM_LOGGER_NAME)
 
@@ -125,7 +124,9 @@ class _AppCandidateDecision(BaseModel):
         )
 
 
-APP_CANDIDATE_SCHEMA = build_response_schema(_AppCandidateDecision)
+APP_CANDIDATE_CONTRACT = ResponseContract.of(_OPERATION, _AppCandidateDecision)
+# 기존 이름 유지 — Gemini 표현이다. 공급자 중립 계약은 APP_CANDIDATE_CONTRACT를 쓴다.
+APP_CANDIDATE_SCHEMA = APP_CANDIDATE_CONTRACT.gemini_schema
 
 
 class AppCandidateResolver:
@@ -140,42 +141,30 @@ class StubAppCandidateResolver(AppCandidateResolver):
         return AppCandidatePlan(capability="unknown", candidates=[])
 
 
-class _GeminiHttpError(Exception):
-    def __init__(self, status_code: int, retry_after_seconds: int | None = None) -> None:
-        super().__init__(f"Gemini API HTTP {status_code}")
-        self.status_code = status_code
-        self.retry_after_seconds = retry_after_seconds
+class RemoteAppCandidateResolver(AppCandidateResolver):
+    """공급자 구조화 출력으로 목표에 맞는 앱 후보를 제안한다."""
 
-
-class GeminiAppCandidateResolver(AppCandidateResolver):
-    def __init__(
-        self,
-        api_key: str,
-        model: str,
-        http_client: httpx.Client | None = None,
-    ) -> None:
-        if not api_key:
-            raise LlmError(ErrorKind.AUTH, "GEMINI_API_KEY 미설정")
-        self.api_key = api_key
-        self.model = model
-        self.http_client = http_client or httpx.Client(timeout=httpx.Timeout(20.0))
+    def __init__(self, provider: StructuredJsonProvider) -> None:
+        self.provider = provider
 
     def candidates(self, goal: str) -> AppCandidatePlan:
         prompt = build_app_candidate_prompt(goal)
         try:
-            text = self._call_once(prompt, with_schema=True, attempt=1, trigger="initial")
-        except _GeminiHttpError as error:
+            text = self.provider.generate_json(
+                prompt, with_schema=True, attempt=1, trigger="initial"
+            )
+        except ProviderCallError as error:
             if error.status_code != 400:
-                raise self._to_llm_error(error) from error
+                raise self.provider.to_llm_error(error) from error
             try:
-                text = self._call_once(
-                    fallback_prompt(prompt, APP_CANDIDATE_SCHEMA),
+                text = self.provider.generate_json(
+                    fallback_prompt(prompt, self.provider.contract_schema),
                     with_schema=False,
                     attempt=2,
                     trigger="schema_recovery",
                 )
-            except _GeminiHttpError as fallback_error:
-                raise self._to_llm_error(fallback_error) from fallback_error
+            except ProviderCallError as fallback_error:
+                raise self.provider.to_llm_error(fallback_error) from fallback_error
             return self._parse(text)
 
         try:
@@ -184,70 +173,15 @@ class GeminiAppCandidateResolver(AppCandidateResolver):
             if error.kind is not ErrorKind.PARSE:
                 raise
             try:
-                repaired = self._call_once(
+                repaired = self.provider.generate_json(
                     build_app_candidate_repair_prompt(prompt),
                     with_schema=True,
                     attempt=2,
                     trigger="contract_recovery",
                 )
-            except _GeminiHttpError as repair_error:
-                raise self._to_llm_error(repair_error) from repair_error
+            except ProviderCallError as repair_error:
+                raise self.provider.to_llm_error(repair_error) from repair_error
             return self._parse(repaired)
-
-    def _call_once(self, prompt: str, *, with_schema: bool, attempt: int, trigger: str) -> str:
-        generation_config: dict[str, Any] = {
-            "responseMimeType": "application/json",
-            "maxOutputTokens": _MAX_OUTPUT_TOKENS,
-        }
-        if with_schema:
-            generation_config["responseSchema"] = APP_CANDIDATE_SCHEMA
-        started_at = time.perf_counter()
-        schema_mode = "schema" if with_schema else "fallback"
-        log_event(
-            llm_logger,
-            logging.INFO,
-            "gemini_attempt_started",
-            model=self.model,
-            operation="app_candidates",
-            provider_attempt=attempt,
-            schema_mode=schema_mode,
-            trigger=trigger,
-        )
-        try:
-            response = self.http_client.post(
-                f"{_GEMINI_API_BASE_URL}/models/{self.model}:generateContent",
-                headers={"x-goog-api-key": self.api_key},
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": generation_config,
-                },
-            )
-        except httpx.RequestError as error:
-            self._log_finished(
-                started_at, attempt, schema_mode, trigger, "error", ErrorKind.NETWORK
-            )
-            raise LlmError(ErrorKind.NETWORK, "Gemini API 네트워크 오류") from error
-        if response.is_error:
-            kind = _provider_error_kind(response.status_code)
-            self._log_finished(
-                started_at,
-                attempt,
-                schema_mode,
-                trigger,
-                "error",
-                kind,
-                provider_status_class=f"{response.status_code // 100}xx",
-            )
-            raise _GeminiHttpError(response.status_code, _retry_after_seconds(response.headers))
-        self._log_finished(
-            started_at,
-            attempt,
-            schema_mode,
-            trigger,
-            "success",
-            provider_status_class=f"{response.status_code // 100}xx",
-        )
-        return _response_text(response)
 
     def _parse(self, response_text: str) -> AppCandidatePlan:
         try:
@@ -257,55 +191,13 @@ class GeminiAppCandidateResolver(AppCandidateResolver):
             log_event(
                 llm_logger,
                 logging.WARNING,
-                "gemini_parse_error",
-                operation="app_candidates",
+                "llm_parse_error",
+                provider=self.provider.name,
+                operation=_OPERATION,
                 reason="invalid_app_candidates",
                 action="fail",
             )
-            raise LlmError(ErrorKind.PARSE, "Gemini 앱 후보 응답 계약 오류") from error
-
-    def _log_finished(
-        self,
-        started_at: float,
-        attempt: int,
-        schema_mode: str,
-        trigger: str,
-        outcome: str,
-        error_kind: ErrorKind | None = None,
-        provider_status_class: str | None = None,
-    ) -> None:
-        log_event(
-            llm_logger,
-            logging.INFO if error_kind is None else logging.WARNING,
-            "gemini_attempt_finished",
-            model=self.model,
-            operation="app_candidates",
-            provider_attempt=attempt,
-            schema_mode=schema_mode,
-            trigger=trigger,
-            outcome=outcome,
-            provider_status_class=provider_status_class,
-            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
-            error_kind=error_kind.value if error_kind else None,
-        )
-
-    @staticmethod
-    def _to_llm_error(error: _GeminiHttpError) -> LlmError:
-        if error.status_code == 429:
-            return LlmError(
-                ErrorKind.QUOTA,
-                "Gemini API 사용량 또는 요청 한도 초과",
-                (
-                    error.retry_after_seconds
-                    if error.retry_after_seconds is not None
-                    else _DEFAULT_RETRY_AFTER_SECONDS
-                ),
-            )
-        if error.status_code in {401, 403}:
-            return LlmError(ErrorKind.AUTH, "Gemini API 인증 또는 권한 오류")
-        if error.status_code == 400:
-            return LlmError(ErrorKind.BAD_REQUEST, "Gemini API 요청 형식 오류")
-        return LlmError(ErrorKind.SERVER, f"Gemini API 서버 오류 (HTTP {error.status_code})")
+            raise LlmError(ErrorKind.PARSE, "앱 후보 응답 계약 오류") from error
 
 
 def resolve_app_request(
@@ -363,14 +255,22 @@ def _finalize_feedback(goal: str, feedback: AppResolutionFeedback) -> AppResolut
     )
 
 
+def app_candidate_provider(http_client: httpx.Client | None = None) -> StructuredJsonProvider:
+    """설정이 고른 공급자로 앱 후보용 클라이언트를 만든다."""
+
+    return build_provider(
+        contract=APP_CANDIDATE_CONTRACT,
+        operation=_OPERATION,
+        response_headroom=_RESPONSE_HEADROOM_TOKENS,
+        http_client=http_client,
+    )
+
+
 @cache
 def get_app_candidate_resolver() -> AppCandidateResolver:
     if settings.davi_use_stub_llm:
         return StubAppCandidateResolver()
-    return GeminiAppCandidateResolver(
-        settings.gemini_api_key.get_secret_value(),
-        settings.davi_model,
-    )
+    return RemoteAppCandidateResolver(app_candidate_provider())
 
 
 def _normalize(value: str) -> str:
@@ -386,42 +286,3 @@ def _resolved_goal(goal: str, canonical_name: str) -> str:
     # 서버가 선택한 앱 정보가 잘리지 않게 긴 원목표 쪽만 계약 상한 안에서 줄인다.
     goal_limit = MAX_VOICE_TEXT_LENGTH - len(suffix) - 1
     return f"{goal[:goal_limit].rstrip()}…{suffix}"
-
-
-def _response_text(response: httpx.Response) -> str:
-    try:
-        return extract_candidate_text(response.json())
-    except (ValueError, GeminiCandidateError) as error:
-        if (
-            isinstance(error, GeminiCandidateError)
-            and error.reason is GeminiCandidateErrorReason.MAX_TOKENS
-        ):
-            reason = "max_output_tokens"
-        else:
-            reason = "missing_candidate_text"
-        log_event(
-            llm_logger,
-            logging.WARNING,
-            "gemini_response_error",
-            operation="app_candidates",
-            reason=reason,
-            action="fail",
-        )
-        raise LlmError(ErrorKind.PARSE, "Gemini 앱 후보 응답 본문 오류") from error
-
-
-def _retry_after_seconds(headers: Mapping[str, str]) -> int | None:
-    try:
-        return max(0, int(headers["Retry-After"]))
-    except (KeyError, ValueError):
-        return None
-
-
-def _provider_error_kind(status_code: int) -> ErrorKind:
-    if status_code == 429:
-        return ErrorKind.QUOTA
-    if status_code in {401, 403}:
-        return ErrorKind.AUTH
-    if status_code == 400:
-        return ErrorKind.BAD_REQUEST
-    return ErrorKind.SERVER

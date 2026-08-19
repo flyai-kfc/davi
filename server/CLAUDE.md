@@ -10,7 +10,11 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 개발 토큰 없음**에서만
   기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
 - **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 HANDOFF §5-4 전례 회피).
-- **모델 호출** — `gemini-3.5-flash-lite`. `DAVI_MODEL` 환경변수로 교체 가능(`Settings.davi_model`).
+- **모델 호출** — `llm_provider.py` 한 경계 뒤에 Gemini·OpenAI·Anthropic이 있다. 공급자 교체는
+  `DAVI_LLM_PROVIDER`, 모델 교체는 `DAVI_MODEL`(비우면 공급자 기본 모델). 기본은
+  `gemini` + `gemini-3.5-flash-lite`이고, 나머지 기본값은 저지연 등급인 `gpt-5.6-luna`·
+  `claude-haiku-4-5`다. **호출부는 어느 공급자인지 알지 않는다** — 세 호출부(next-step /
+  slot-fill / app-resolution)가 각자 REST 클라이언트를 복제하던 구조를 이 경계로 합쳤다.
 - **완료 검증** — `expected_result`/`evidence`를 써내게 하고 비교해 조기 종료 방지.
 - **음성 목표 정리** — 고정 슬롯·문자열 조건 없이 LLM 구조화 출력으로 질문 필요/goal 준비를 판정.
 - **목표 앱 후보** — 전체 설치 목록 없이 일반 후보 최대 5개를 만들고 기기의 ID/status 피드백을
@@ -49,10 +53,11 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
   `config.Settings`가 import 시 거부한다.
 - development를 loopback 밖에 바인딩할 때는 32자 이상 `DAVI_DEV_ACCESS_TOKEN`이 필수다.
-  공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 Gemini 쿼터를 보호한다.
+  공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 공급자 쿼터를 보호한다.
 - 요청 로그에는 비식별 운영 메타데이터만 둔다. `goal`, 화면 label, 최근 안내, 음성 발화·대화 이력·
   대화 `session_id`, 모델의 질문/goal, 요청 본문, API 키·access token은 어떤 프로필에서도 기록하지 않는다.
-- 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→Gemini 단계를 연결한다(#81).
+- 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→LLM 단계를 연결한다(#81).
+  시도 로그는 `llm_attempt_started`/`llm_attempt_finished`이고 `provider` 필드로 공급자를 남긴다.
   정상 `/health`와 기본 access log는 남기지 않으며 IP/port·User-Agent도 보존하지 않는다.
   로그 형식은 UTC timestamp가 있는 JSON Lines다. 공용 맥 스크립트는 7일, Azure Log Analytics는
   30일 보존한다. Azure에서는 도그푸딩 device allowlist를 비워 raw 저장을 끈다.
@@ -61,8 +66,13 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   위 운영 로그의 비식별 불변식은 이 채널과 무관하게 유지되며, 비화이트리스트
   `device_id`도 로그에 남기지 않는다.
 
-## Gemini 구조화 출력 함정 (`HANDOFF.md` §10 — 실측)
+## 구조화 출력 함정 (`HANDOFF.md` §10 — 실측)
+
+아래는 Gemini에서 실측한 것이지만 대부분 공급자와 무관하다. 공급자별로 갈리는 지점만 표시한다.
 - `responseSchema.properties[*].enum`에 **빈 문자열 금지**(400 `cannot be empty`). "해당 없음"은 빈 값이 아니라 **필드 생략**(required 제외)으로.
+  단 **OpenAI·Anthropic strict 모드에는 "생략"이 없다** — 모든 속성이 `required`이고 "해당 없음"은
+  `null`이다. `json_schema.py`가 `X | None` 필드만 nullable로 만들고, 그 필드 description에
+  "해당 없으면 null" 지시를 덧붙인다(선언의 "생략한다"와 스키마가 어긋나지 않게).
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
@@ -71,7 +81,10 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   후보가 `finishReason=MAX_TOKENS`로 끝나면 잘린 JSON을 일반 `invalid_json`으로 뭉개지 않고
   `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON fence 제거는 `gemini_response.py`의 순수 함수로
-  eval과 공유한다. HTTP 재시도, 로그, 서비스·평가 오류 분류는 각 호출 경계에 남긴다.
+  eval과 공유한다. HTTP 재시도, 로그, 오류 분류는 `llm_provider.py`가 세 호출부를 대신해 한다.
+- 잘림·거절은 **HTTP 200으로 온다**. Gemini는 `finishReason=MAX_TOKENS`, OpenAI는
+  `incomplete_details.reason`, Anthropic은 `stop_reason`이다. 셋 다 잘린 조각을 파싱해
+  "계약 위반"으로 뭉개지 말고 `max_output_tokens`·`refusal` 진단의 PARSE 실패로 분류한다.
 - **enum 클래스 docstring은 스키마에 실리지 않는다.** `gemini_schema`가 responseSchema에 싣는 것은
   **필드의 `description`**뿐이라, `SwipeDirection` docstring에만 있던 방향 기준이 모델에
   도달하지 않았다(#109 원인). 값의 뜻을 모델에게 말하려면 **필드 description이나 프롬프트**에
@@ -83,7 +96,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - `scroll`인데 `direction`이 빠지면 화면 메타로 앞/뒤 방향을 추측하지 않는다. 같은 schema 모드에서
   방향을 명시하도록 **한 번만 재요청**하고, 다시 빠지면 PARSE로 실패한다. 로그에는 응답 원문 대신
   `scroll_direction_missing` 진단 코드만 남긴다.
-- 음성 목표 판단은 공개 wire 모델과 Gemini 내부 모델을 분리하고, 내부 `decision_basis`를
+- 음성 목표 판단은 공개 wire 모델과 내부 판단 모델을 분리하고, 내부 `decision_basis`를
   `status`보다 먼저 생성한다. `needs_clarification`의 불필요한 goal만 제거하며, ready goal 누락·
   공백과 텍스트 상한 위반은 한 번 교정한다. schema 400 폴백을 포함해 요청당 총 2회만 호출하고,
   두 번째 위반은 PARSE로 닫는다. 로그에는 고정 reason code만 남긴다.
@@ -102,7 +115,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 ### 확정 (반영 완료)
 | # | 결정 | 근거 |
 |---|---|---|
-| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. 지금은 파일 주석만 있고 실제 연결이 없다(`GeminiLlmClient.reason`이 stub). 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
+| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. 지금은 파일 주석만 있고 실제 연결이 없다(`LlmClient.reason`이 stub). 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
 | C2 | **`GuideAction.action` → `action_type`으로 개명**한다(또는 `NextStepResponse.action` → `step`). | 지금은 `resp.action.action`. Kotlin·eval 픽스처 양쪽에서 읽기 나쁘다. 지금이 가장 싸다. |
 | C3 | **`GuideAction`에 `direction` 추가**(scroll 전용, 없으면 필드 생략). **뜻은 C17로 재정의됐다 — 보러 가는 방향이다.** | HANDOFF §12 로그가 `act=tap node=n12 dir=null`. `dir`은 실재 필드이며, 방향 없는 scroll은 앱이 실행할 수 없다. |
 | C4 | **`UiElement`에 `scroll_axis`, `next_swipe_direction`, `prev_swipe_direction` 추가.** **이 둘의 기준도 C17을 따른다** — `next`는 다음 내용을 보러 가는 방향이다(세로 목록이면 `down`). | HANDOFF §4가 검증 자산으로 명시("방향·끝 판정이 여기서 나온다"). 앱이 채울 수 있는 값인데 누락됐다. |
