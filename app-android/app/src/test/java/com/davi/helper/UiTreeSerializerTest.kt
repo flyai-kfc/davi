@@ -147,6 +147,21 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `라벨을 흡수하면 자손의 켬끔도 함께 올린다`() {
+        // 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면 그 자식은 흡수돼
+        // 별도 요소로 나가지 않는다. 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다(#288 리뷰).
+        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = null, descendant = true))
+        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = null, descendant = false))
+        assertNull(UiTreeSerializer.hoistedCheckedState(own = null, descendant = null))
+    }
+
+    @Test
+    fun `자기 상태가 있으면 자손보다 우선한다`() {
+        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = false, descendant = true))
+        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = true, descendant = false))
+    }
+
+    @Test
     fun `hint 여부는 입력칸에만 있다`() {
         assertNull(UiTreeSerializer.hintTextState(editable = false, showingHintText = false))
         assertEquals(true, UiTreeSerializer.hintTextState(editable = true, showingHintText = true))

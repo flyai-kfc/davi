@@ -121,10 +121,16 @@ TOGGLE_STATE_INSTRUCTION = (
     "목표한 상태가 이미 되어 있는 요소를 다시 누르라고 안내하지 마세요."
 )
 # C14와 같은 경계를 여기서도 지킨다 — 상태 하나로 입력 완료나 목표 달성을 추론하지 않는다.
+#
+# **`True`의 뜻만 말한다. `False`는 프롬프트에 싣지도 설명하지도 않는다**(#288 리뷰 실측).
+# Chromium이 `isShowingHintText`를 세우지 않아 **웹뷰의 빈 입력칸이 `False`로 나간다** —
+# 같은 앱·세션 A/B에서 위키백과 검색창은 비었을 때도 값이 들어 있을 때도 `False`였고, 같은 화면의
+# 네이티브 주소창만 `True`였다. 그래서 `False`를 "값이 들어 있다"로 말하면 웹뷰에서 거짓이 된다.
+# 세 상태 규약이 이걸 막지 못하는 이유는 **침묵이 아니라 틀린 값이 오기 때문**이다(C10·C18).
+# 서명에는 그대로 넣는다 — 네이티브 입력칸에서 값이 실제로 뒤집히는 변화는 여전히 화면 변화다.
 HINT_TEXT_INSTRUCTION = (
     "showing_hint_text=True인 입력칸은 아직 비어 있고, 지금 보이는 글자는 사용자가 넣은 값이 "
-    "아니라 안내문입니다. False이면 값이 들어 있습니다 — 다만 그 값이 무엇인지, 목표에 맞는지는 "
-    "화면 정보로 알 수 없습니다."
+    "아니라 안내문입니다. 이 표시가 없는 입력칸이 비었는지 채워졌는지는 화면 정보로 알 수 없습니다."
 )
 ACTIONABLE_RESULT_INSTRUCTION = (
     "입력창 외의 현재 화면 요소도 모두 확인하세요. 목표에 맞는 검색 결과나 다음 단계 UI가 지금 "
@@ -228,7 +234,7 @@ def _state_context(req: NextStepRequest) -> str:
         context += f"{DISABLED_ELEMENT_INSTRUCTION}\n"
     if any(element.checked is not None or element.selected for element in elements):
         context += f"{TOGGLE_STATE_INSTRUCTION}\n"
-    if any(element.showing_hint_text is not None for element in elements):
+    if any(element.showing_hint_text for element in elements):
         context += f"{HINT_TEXT_INSTRUCTION}\n"
     return context
 
@@ -392,9 +398,10 @@ def _format_element(element: UiElement) -> str:
         details.append("enabled=False")
     if element.selected:
         details.append("selected=True")
+    if element.showing_hint_text:
+        details.append("showing_hint_text=True")
     optional_fields = (
         ("checked", element.checked),
-        ("showing_hint_text", element.showing_hint_text),
         ("bounds", element.bounds),
         ("can_scroll_forward", element.can_scroll_forward),
         ("can_scroll_backward", element.can_scroll_backward),

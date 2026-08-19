@@ -79,18 +79,35 @@ def test_selected_is_carried_only_when_it_marks_the_current_item():
     assert TOGGLE_STATE_INSTRUCTION in prompt
 
 
-def test_empty_input_is_told_apart_from_a_filled_one_without_sending_the_value():
+def test_empty_input_is_named_without_sending_the_value():
     prompt = build_prompt(
         _request(
             elements=[
                 UiElement(node_id="n1", label="검색어 입력", editable=True, showing_hint_text=True),
-                UiElement(node_id="n2", label="이름", editable=True, showing_hint_text=False),
             ]
         )
     )
     assert "showing_hint_text=True" in prompt
-    assert "showing_hint_text=False" in prompt
     assert HINT_TEXT_INSTRUCTION in prompt
+
+
+def test_prompt_never_claims_a_field_is_filled():
+    """Chromium이 이 값을 안 세워 웹뷰의 빈 칸도 False로 온다(#288 리뷰 실측).
+
+    False를 "값이 들어 있다"로 말하면 웹뷰에서 거짓이 되므로, 프롬프트는 False를 싣지도
+    설명하지도 않는다. 세 상태 규약으로는 못 막는다 — 침묵이 아니라 틀린 값이 오기 때문이다.
+    """
+
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(node_id="n1", label="검색", editable=True, showing_hint_text=False),
+            ]
+        )
+    )
+    assert "showing_hint_text" not in prompt
+    assert HINT_TEXT_INSTRUCTION not in prompt
+    assert "값이 들어 있습니다" not in prompt
 
 
 def test_state_sentences_are_absent_when_no_element_carries_the_value():
@@ -174,11 +191,17 @@ def test_signature_changes_when_the_input_gets_filled():
     assert _screen_signature(screen(True)) != _screen_signature(screen(False))
 
 
-def test_signature_changes_when_the_screen_name_changes():
+def test_signature_leaves_the_window_title_out():
+    """제목은 label과 위험 등급이 같다 — 서버 해시에 남기지 않는다(#288 리뷰).
+
+    기기 안에서만 쓰는 `ScreenSignature`는 label과 제목을 둘 다 포함한다. 그 값은 기기를
+    떠나지 않으므로 여기의 기준과 어긋나지 않는다.
+    """
+
     def screen(title: str) -> Screen:
         return Screen(package_name="com.android.settings", window_title=title)
 
-    assert _screen_signature(screen("연결")) != _screen_signature(screen("배터리"))
+    assert _screen_signature(screen("연결")) == _screen_signature(screen("배터리"))
 
 
 def test_signature_is_stable_for_a_client_that_fills_nothing():

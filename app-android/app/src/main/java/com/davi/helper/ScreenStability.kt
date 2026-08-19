@@ -19,7 +19,9 @@ object ScreenSignature {
      */
     fun of(screen: Screen): String = buildString {
         append(screen.packageName).append('|')
-        // 제목도 volatile 숫자를 지운다 — 안 읽은 메일 개수처럼 제목에 붙는 수가 있다.
+        // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
+        // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
+        // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
         append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
         append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
         append(screen.hasScrollableElement ?: "-").append('|')

@@ -148,11 +148,15 @@ object UiTreeSerializer {
             val inspectDescendants = shouldInspectDescendants(node.isEditable)
             val merge = inspectDescendants && shouldMergeDescendants(node, ctx.screenArea)
             val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
+            // 라벨을 흡수했으면 상태도 함께 올린다. 그러지 않으면 스위치가 든 행에서 켬/끔이
+            // 통째로 사라진다 — 자식 스위치는 흡수돼 안 나가고, 행 자신은 checkable이 아니라
+            // null이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
+            val checked = if (merge) mergedCheckedState(node) else ownCheckedState(node)
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
             if (label.isNotBlank() || node.isEditable) {
-                ctx.elements.add(element(node, label, ctx))
+                ctx.elements.add(element(node, label, ctx, checked = checked))
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
@@ -211,6 +215,7 @@ object UiTreeSerializer {
         ctx: Ctx,
         role: String? = null,
         clickable: Boolean? = null,
+        checked: Boolean? = null,
     ): UiElement {
         ctx.counter++
         val r = boundsOf(node)
@@ -234,7 +239,7 @@ object UiTreeSerializer {
             // 여기부터가 "지금 어떤 상태인가"다. clickable/editable은 뷰의 설정값이라 이걸 대신하지
             // 못한다 — 비활성 버튼도 clickable=true로 오고, 스위치를 켜도 label이 그대로다(#271).
             enabled = node.isEnabled,
-            checked = checkedState(checkable = node.isCheckable, checked = node.isChecked),
+            checked = checked ?: ownCheckedState(node),
             selected = node.isSelected,
             showingHintText = hintTextState(
                 editable = node.isEditable,
@@ -361,6 +366,39 @@ object UiTreeSerializer {
         if (!text.isNullOrEmpty()) return text
         val desc = node.contentDescription?.toString()?.trim()
         if (!desc.isNullOrEmpty()) return desc
+        return null
+    }
+
+    /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
+    private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
+        checkedState(checkable = node.isCheckable, checked = node.isChecked)
+
+    /**
+     * 라벨을 흡수한 노드의 켬/끔. 자기 것이 있으면 그것이고, 없으면 흡수한 자손에서 찾는다.
+     *
+     * 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면, 그 자식은 흡수돼
+     * 별도 요소로 나가지 않는다. 그때 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다.
+     */
+    private fun mergedCheckedState(node: AccessibilityNodeInfo): Boolean? =
+        hoistedCheckedState(ownCheckedState(node), descendantCheckedState(node, 0))
+
+    /** 위 병합 규칙을 Android 타입 없이 고정하기 위한 순수 함수. 자기 것이 언제나 이긴다. */
+    internal fun hoistedCheckedState(own: Boolean?, descendant: Boolean?): Boolean? =
+        own ?: descendant
+
+    /**
+     * 라벨 병합과 **같은 경계**로 자손을 훑는다 — 같은 깊이, 그리고 중첩된 clickable 노드는
+     * 건너뛴다. 그 노드는 자기 요소로 따로 나가면서 자기 상태를 들고 가기 때문이다.
+     */
+    private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int): Boolean? {
+        if (depth >= MAX_MERGE_DEPTH) return null
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (!child.isVisibleToUser || child.isClickable) continue
+            ownCheckedState(child)?.let { return it }
+            if (child.isEditable) continue
+            descendantCheckedState(child, depth + 1)?.let { return it }
+        }
         return null
     }
 
