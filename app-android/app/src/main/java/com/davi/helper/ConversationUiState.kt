@@ -18,8 +18,21 @@ sealed interface ConversationUiState {
     /** MA-1 홈. [statusRes]는 직전 시도의 에러 문구(없으면 null). */
     data class Home(val statusRes: Int? = null) : ConversationUiState
 
-    /** MA-2 듣는 중. [question]이 null이면 첫 청취(초기 프롬프트), 아니면 서버 후속 질문. */
-    data class Listening(val question: String? = null, val partial: String = "") : ConversationUiState
+    /**
+     * MA-2 듣는 중. [question]이 null이면 첫 청취(초기 프롬프트), 아니면 서버 후속 질문.
+     *
+     * [micReady]는 **인식기가 실제로 말을 받아들이기 시작한 뒤**에만 true다(#273).
+     * `startListening()`은 즉시 인식하지 않는다 — 실측(SM-S921N)에서 마이크 자체는 +60ms에
+     * 열리는데 **그 구간에 한 말은 잡히지 않았고**, 실제로 받아들이기 시작한 것은 +0.9초였다.
+     * 화면만 먼저 "듣고 있어요"를 띄우면 그 말을 믿고 바로 말한 첫 음절이 잘린다. 진입점 셋
+     * (홈 시작·되묻기 뒤 재청취·barge-in)이 모두 이 상태를 새로 만들므로 기본값 false가
+     * 자동으로 덮이고, 부분 인식의 copy는 값을 그대로 들고 간다.
+     */
+    data class Listening(
+        val question: String? = null,
+        val partial: String = "",
+        val micReady: Boolean = false,
+    ) : ConversationUiState
 
     /**
      * MA-3 서버 질문 TTS 재생 중. 끝나면 Activity가 Listening으로 되돌린다(자동 재청취는
@@ -85,6 +98,9 @@ data class ConversationRenderModel(
     /**
      * 시니어 카드 위쪽 "듣고 있어요" 레이블(#174). **듣는 중에만** 뜬다 — 시안 메인 3·5.
      * 마이크가 그 동안 비활성이라(이미 듣고 있으므로) 사용자에게 남는 신호가 이것과 파도뿐이다.
+     *
+     * **듣는 중이어도 마이크가 열리기 전에는 뜨지 않는다**(#273). 이 레이블은 곧
+     * "지금 말씀하세요"라는 지시이므로, 아직 안 들리는 구간에 띄우면 첫 음절이 잘린다.
      */
     val utteranceLabelVisible: Boolean = false,
     val utteranceText: String = "",
@@ -178,6 +194,14 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
     ConversationUiState.StopConfirm ->
         if (guideActive) guidingModel().copy(stopConfirmVisible = true)
         else ConversationRenderModel(homeVisible = true, micVisible = true, micEnabled = true, glowVisible = true)
+    // **"듣고 있어요"·파도·글로우는 마이크가 실제로 열린 뒤에 켠다**(#273). 셋은 함께
+    // "지금 말씀하세요"라는 하나의 지시라 따로 놀면 안 된다 — 파도만 먼저 돌면 레이블이
+    // 늦은 만큼 신호가 갈린다. 마이크가 닫힌 구간에 유도 글로우만 남기지도 않는다:
+    // 이 화면의 마이크는 눌리지 않으므로 "잠긴 마이크 뒤에서 글로우를 돌리지 않는다"는
+    // 아래 홈 규칙이 여기에도 그대로 걸린다.
+    //
+    // **카드·배지·×는 그대로 둔다.** 준비 구간에 레이아웃까지 흔들리면 어긋남을 고치려다
+    // 화면이 덜컹거린다. 카드 그림자([utteranceSpeaking])도 같은 이유로 유지한다.
     is ConversationUiState.Listening -> ConversationRenderModel(
         logoVisible = true,
         questionRes = if (state.question == null) R.string.conversation_prompt_initial else null,
@@ -187,10 +211,10 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceText = state.partial,
         micVisible = true,
         closeVisible = true,
-        waveVisible = true,
-        glowVisible = true,
-        glowReactsToVoice = true,
-        utteranceLabelVisible = true,
+        waveVisible = state.micReady,
+        glowVisible = state.micReady,
+        glowReactsToVoice = state.micReady,
+        utteranceLabelVisible = state.micReady,
         utteranceSpeaking = true,
     )
     // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).

@@ -256,7 +256,7 @@ class ConversationUiStateTest {
     @Test
     fun `파도는 사용자가 말할 때만 보인다`() {
         // 이 있음·없음 자체가 발화 주체 구분이다(시안 메인 2·4에는 없고 3·5에는 있다).
-        assertTrue(renderModelOf(ConversationUiState.Listening()).waveVisible)
+        assertTrue(renderModelOf(ConversationUiState.Listening(micReady = true)).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Home()).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).waveVisible)
@@ -266,7 +266,7 @@ class ConversationUiStateTest {
 
     @Test
     fun `듣는 중 글로우는 음량에 반응한다`() {
-        val model = renderModelOf(ConversationUiState.Listening())
+        val model = renderModelOf(ConversationUiState.Listening(micReady = true))
         assertTrue(model.glowVisible)
         assertTrue(model.glowReactsToVoice)
     }
@@ -316,7 +316,7 @@ class ConversationUiStateTest {
     fun `듣고 있어요 레이블은 듣는 중에만 보인다`() {
         // 시안(메인 2~5)에서 이 레이블은 **사용자 차례라는 신호**다. 다비가 말하거나
         // 서버를 기다리는 동안 남아 있으면 "아직 내 차례"로 잘못 읽힌다.
-        assertTrue(renderModelOf(ConversationUiState.Listening()).utteranceLabelVisible)
+        assertTrue(renderModelOf(ConversationUiState.Listening(micReady = true)).utteranceLabelVisible)
         assertFalse(renderModelOf(ConversationUiState.Home()).utteranceLabelVisible)
         assertFalse(
             renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).utteranceLabelVisible,
@@ -327,10 +327,42 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `마이크가 열리기 전에는 말하라는 신호 셋이 함께 꺼져 있다`() {
+        // 인식기가 붙는 동안(실기기 약 1초) 화면이 먼저 "듣고 있어요"라고 하면 그 말을 믿고
+        // 바로 말한 첫 음절이 잘린다(#273). 셋은 하나의 지시라 따로 놀면 안 된다 —
+        // 파도만 먼저 돌아도 사용자는 말하기 시작한다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening())
+        assertFalse(준비중.utteranceLabelVisible)
+        assertFalse(준비중.waveVisible)
+        assertFalse(준비중.glowVisible)
+        assertFalse(준비중.glowReactsToVoice)
+    }
+
+    @Test
+    fun `마이크가 열려도 카드와 배지는 그대로다`() {
+        // 준비 구간에서 바뀌는 것은 신호 셋뿐이다. 레이아웃까지 흔들리면 어긋남을 고치려다
+        // 화면이 덜컹거린다 — 어르신에게는 그 흔들림이 더 큰 방해다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening(question = "누구에게 보내시겠어요?"))
+        val 듣는중 = renderModelOf(
+            ConversationUiState.Listening(question = "누구에게 보내시겠어요?", micReady = true),
+        )
+        assertEquals(듣는중.questionText, 준비중.questionText)
+        assertEquals(듣는중.logoVisible, 준비중.logoVisible)
+        assertEquals(듣는중.utteranceVisible, 준비중.utteranceVisible)
+        assertEquals(듣는중.cardQuestionFlexible, 준비중.cardQuestionFlexible)
+        assertEquals(듣는중.closeVisible, 준비중.closeVisible)
+        assertEquals(듣는중.micVisible, 준비중.micVisible)
+        assertEquals(듣는중.micEnabled, 준비중.micEnabled)
+        // 카드 그림자도 유지한다 — 이것까지 켜고 끄면 같은 덜컹임이 된다.
+        assertEquals(듣는중.utteranceSpeaking, 준비중.utteranceSpeaking)
+    }
+
+    @Test
     fun `받아쓰기 전에도 발화 카드는 자리를 지킨다`() {
-        // 레이블만 뜨고 문장은 비어 있는 상태(메인 2·4)다. 카드가 접히면 마이크를 누른
-        // 직후 화면이 크게 흔들린다.
-        val model = renderModelOf(ConversationUiState.Listening())
+        // 문장이 비어 있는 구간(메인 2·4)이다. 카드가 접히면 마이크를 누른 직후 화면이
+        // 크게 흔들린다. **레이블은 여기서 판단하지 않는다** — 시안 상태는 micReady=true
+        // 쪽이고, 기본값(준비 중)에서 레이블이 꺼지는 것은 위 #273 테스트가 따로 고정한다.
+        val model = renderModelOf(ConversationUiState.Listening(micReady = true))
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
     }
