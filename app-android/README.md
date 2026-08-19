@@ -306,8 +306,8 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 
 | 경로 | 역할 |
 |---|---|
-| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/오버레이/알림/마이크), 두 Activity, 접근성 서비스 |
-| `.../OnboardingActivity.kt` | 권한 두 개를 켜게 안내하고 갖춰지면 대화 화면으로(ON-2) |
+| `app/src/main/AndroidManifest.xml` | 권한(INTERNET/알림/마이크 — 오버레이는 #212에서 걷어냄), 두 Activity, 접근성 서비스 |
+| `.../OnboardingActivity.kt` | 접근성 권한을 켜게 안내하고 갖춰지면 대화 화면으로(ON-2) |
 | `.../ConversationActivity.kt` | 릴리스 진입점. 음성 목표 입력과 안내 시작(MA-*) |
 | `.../GuideAccessibilityService.kt` | 닫힌 루프 본체. 로그 태그 `GuideSvc` |
 | **계약 경계** | |

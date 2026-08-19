@@ -621,9 +621,10 @@
     <dimen name="davi_onboarding_card_min_height">226dp</dimen>
     <dimen name="davi_onboarding_card_radius">16dp</dimen>
     <dimen name="davi_onboarding_card_padding_h">19dp</dimen>
-    <!-- 카드 안 내용을 살짝 위로 올린다(#241). 가운데 정렬이라 이 값의 **절반만큼** 올라간다.
+    <!-- 카드 아래 패딩(#241). 내용이 세로 가운데라 **이 값의 절반만큼 위로 올라간다** —
+         20이면 10dp 상승이다. 이름을 padding으로 둔 것은 값을 그대로 읽게 하기 위해서다.
          시안에는 없는 값이다 — 실기기에서 톱니와 제목이 내려앉아 보여 조정했다(2026-08-19). -->
-    <dimen name="davi_onboarding_card_lift">20dp</dimen>
+    <dimen name="davi_onboarding_card_padding_bottom">20dp</dimen>
     <dimen name="davi_onboarding_card_gap">10dp</dimen>
     <dimen name="davi_onboarding_slot_size">67dp</dimen>
     <dimen name="davi_onboarding_icon_size">47dp</dimen>

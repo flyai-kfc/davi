@@ -151,7 +151,7 @@
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
     <!--
-      권한 버튼. 채움·테두리·그림자는 배경 드로어블이 갖고 여기는 글자와 여백만 잡는다.
+      권한 버튼. 채움·그림자는 배경 드로어블이 갖고 여기는 글자와 여백만 잡는다.
       Material3 Button이 android:background를 무시하므로 backgroundTint를 끈다(다른 화면과 같다).
 
       **서체를 두 네임스페이스에 함께 준다** — AppCompatTextView가 app:fontFamily를 먼저 읽어서,
