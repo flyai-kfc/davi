@@ -46,8 +46,14 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. #94 Azure 공유 서버는
   제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
   `config.Settings`가 import 시 거부한다.
-- development를 loopback 밖에 바인딩할 때는 32자 이상 `DAVI_DEV_ACCESS_TOKEN`이 필수다.
-  공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 공급자 쿼터를 보호한다.
+- development를 loopback 밖에 바인딩할 때는 32자 이상 토큰이 필수다 —
+  `DAVI_DEV_ACCESS_TOKEN`(팀) 또는 `DAVI_TEST_ACCESS_TOKEN`(외부 테스트 참가자) 중 하나면
+  된다. **헤더는 `X-Davi-Dev-Token` 하나뿐이고 값만 다르다** — 그래서 앱에는 대응 코드가 없다.
+  둘로 나눈 이유는 폐기 시점이 달라서다(테스트 종료 시 참가자 토큰만 지운다). 같은 값이면 그
+  구분이 없어지므로 기동 때 거부한다. 맞은 토큰 종류는 `access_token_kind`로 로그에 남고 값은
+  남지 않는다.
+  공용 스크립트는 worker 하나와 팀 전체 10회/60초 제한으로 공급자 쿼터를 보호한다 —
+  **이 창은 두 토큰이 공유한다.** 참가자가 여럿인 테스트에서는 창을 미리 올려 둘 것.
 - 요청 로그에는 비식별 운영 메타데이터만 둔다. `goal`, 화면 label, 최근 안내, 음성 발화·대화 이력·
   대화 `session_id`, 모델의 질문/goal, 요청 본문, API 키·access token은 어떤 프로필에서도 기록하지 않는다.
 - 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→LLM 단계를 연결한다(#81).

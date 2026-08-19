@@ -52,6 +52,25 @@ def test_container_app_reads_secrets_only_through_managed_identity() -> None:
     assert "identity: containerIdentity.id" in template
     assert "name: 'GEMINI_API_KEY'\n              secretRef: 'gemini-api-key'" in template
     assert "name: 'DAVI_DEV_ACCESS_TOKEN'\n              secretRef: 'dev-access-token'" in template
+    assert (
+        "name: 'DAVI_TEST_ACCESS_TOKEN'\n              secretRef: 'test-access-token'" in template
+    )
+
+
+def test_external_test_token_secret_is_optional_so_deploys_do_not_depend_on_it() -> None:
+    """secret을 만들기 전에 머지해도 배포가 깨지지 않아야 한다.
+
+    Container Apps는 revision을 만들 때 `keyVaultUrl`을 해석한다. 없는 secret을 조건 없이
+    참조하면 새 revision이 Healthy에 도달하지 못하고, 배포 워크플로의 revision·health 검증이
+    실패해 **이후 배포까지 막힌다**(PR #257 리뷰). 그래서 기본값을 비우고 양쪽에 가드를 건다.
+    """
+
+    template = _text("infra/azure/dev-server.bicep")
+
+    assert "param testAccessTokenSecretName string = ''" in template
+    # secret 항목과 env 항목 **양쪽**에 가드가 걸려야 한 쪽만 남는 반쪽 배선이 안 생긴다.
+    assert template.count("empty(testAccessTokenSecretName)") == 2
+    assert "@minLength(1)\n@description('외부 테스트 참가자용" not in template
 
 
 def test_development_key_vault_uses_short_recoverable_retention() -> None:
@@ -118,3 +137,25 @@ def test_infrastructure_ci_runs_when_container_inputs_change() -> None:
 
     assert "- 'server/app/**'" in workflow
     assert "- 'server/requirements.lock.txt'" in workflow
+
+
+def test_deploy_workflow_passes_the_test_token_secret_name() -> None:
+    """수동 배선한 테스트 토큰이 다음 main 푸시에 조용히 날아가지 않게 한다.
+
+    bicep 기본값이 비어 있으므로(위 테스트), 워크플로가 이름을 넘기지 않으면 **모든 자동
+    배포가 테스트 토큰 없는 revision을 만든다.** 배포는 성공하고 참가자만 401이 되므로
+    로그에 단서가 없다(PR #257 재리뷰).
+
+    변수는 **선택**이라 필수 변수 검사 목록에는 없어야 한다 — 평소에는 비어 있는 것이 정상이고,
+    거기 들어가면 테스트 기간이 아닐 때 모든 배포가 실패한다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+
+    assert "DAVI_AZURE_TEST_TOKEN_SECRET_NAME: ${{ vars.DAVI_AZURE_TEST_TOKEN_SECRET_NAME }}" in (
+        workflow
+    )
+    assert 'testAccessTokenSecretName="${DAVI_AZURE_TEST_TOKEN_SECRET_NAME:-}"' in workflow
+
+    required_block = workflow[workflow.index("for name in") : workflow.index("test -n ")]
+    assert "DAVI_AZURE_TEST_TOKEN_SECRET_NAME" not in required_block

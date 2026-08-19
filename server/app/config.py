@@ -57,6 +57,11 @@ class Settings(BaseSettings):
 
     # 공용 개발 endpoint 보호용 토큰(#57). production에서는 설정 자체를 금지한다.
     davi_dev_access_token: SecretStr = SecretStr("")
+    # 외부 테스트 참가자에게 나눠 주는 둘째 토큰. 개발 토큰과 **병행**한다 — 서버는 둘 중
+    # 하나만 맞으면 통과시킨다. 하나로 합치지 않는 이유는 **폐기 시점이 다르기** 때문이다:
+    # 테스트가 끝나면 이 토큰만 지우면 되고, 팀의 개발 토큰은 그대로 살아 있다. 값이 새도
+    # 폐기 범위가 테스트 참가자로 제한된다.
+    davi_test_access_token: SecretStr = SecretStr("")
     # 공식 실행 스크립트가 uvicorn --host와 같은 값으로 설정한다.
     davi_bind_host: str = "127.0.0.1"
     # 같은 Wi-Fi 팀 전체가 공유하는 인프로세스 제한. Gemini 무료 티어(약 15 RPM)보다 낮게 둔다.
@@ -94,6 +99,20 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_per_source_requests: int = 10
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
+    @property
+    def access_tokens(self) -> dict[str, str]:
+        """이 서버가 받아들이는 개발용 토큰. 값이 있는 것만 담는다.
+
+        비어 있으면 토큰 게이트 자체가 꺼지고 loopback 검사만 남는다(`main.py`).
+        키는 로그에 남길 토큰 종류이고, 값은 절대 로그에 남기지 않는다.
+        """
+
+        candidates = {
+            "dev": self.davi_dev_access_token.get_secret_value().strip(),
+            "test": self.davi_test_access_token.get_secret_value().strip(),
+        }
+        return {kind: token for kind, token in candidates.items() if token}
+
     @field_validator("gemini_api_key", "openai_api_key", "anthropic_api_key", mode="after")
     @classmethod
     def normalize_api_key(cls, value: SecretStr) -> SecretStr:
@@ -121,6 +140,7 @@ class Settings(BaseSettings):
     def validate_runtime_profile(self) -> Self:
         api_key = self.provider_api_key.get_secret_value()
         dev_access_token = self.davi_dev_access_token.get_secret_value().strip()
+        test_access_token = self.davi_test_access_token.get_secret_value().strip()
         bind_host = self.davi_bind_host.strip().lower()
 
         if self.davi_env == "production" and self.davi_use_stub_llm:
@@ -137,16 +157,29 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
         if self.davi_env == "production" and dev_access_token:
             raise ValueError("production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env == "production" and test_access_token:
+            raise ValueError("production에서는 DAVI_TEST_ACCESS_TOKEN을 설정할 수 없습니다")
         if dev_access_token and len(dev_access_token) < 32:
             raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
+        if test_access_token and len(test_access_token) < 32:
+            raise ValueError("DAVI_TEST_ACCESS_TOKEN은 32자 이상이어야 합니다")
+        # 두 토큰이 같으면 "테스트 토큰만 폐기한다"가 성립하지 않는다. 폐기 범위를 나누려고
+        # 둘로 나눈 것이므로 같은 값을 쓰는 설정은 기동 때 막는다.
+        if dev_access_token and dev_access_token == test_access_token:
+            raise ValueError("DAVI_TEST_ACCESS_TOKEN은 DAVI_DEV_ACCESS_TOKEN과 달라야 합니다")
         if self.davi_env == "production" and bind_host not in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("production은 loopback 주소에만 바인딩할 수 있습니다")
+        # 토큰 게이트를 여는 것은 둘 중 **아무 토큰이나 하나**다. 테스트 기간에 개발 토큰을
+        # 잠시 비우고 테스트 토큰만 두는 운용도 막지 않는다.
         if (
             self.davi_env == "development"
             and bind_host not in {"127.0.0.1", "localhost", "::1"}
-            and not dev_access_token
+            and not (dev_access_token or test_access_token)
         ):
-            raise ValueError("development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN이 필요합니다")
+            raise ValueError(
+                "development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN 또는 "
+                "DAVI_TEST_ACCESS_TOKEN이 필요합니다"
+            )
         # 2차 마스킹 우회는 "내 맥에서만 도는 development 서버"로 경계를 좁힌다(#203).
         # production은 물론이고, 개발 토큰이 있거나 loopback 밖에 바인딩한 순간
         # 그 서버는 팀이 공유하는 endpoint이므로 다른 사람의 기기 화면까지 원문으로 받게 된다.
@@ -161,10 +194,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DAVI_DISABLE_PRIVACY_MASKING은 loopback 바인딩에서만 사용할 수 있습니다"
                 )
-            if dev_access_token:
+            if dev_access_token or test_access_token:
                 raise ValueError(
-                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN 설정)에서는 "
-                    "DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
+                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
+                    "에서는 DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
                 )
         if self.davi_dev_rate_limit_requests <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")

@@ -59,6 +59,7 @@ def _settings(**overrides) -> Settings:
         "davi_env": "development",
         "gemini_api_key": "",
         "davi_dev_access_token": "",
+        "davi_test_access_token": "",
         "davi_bind_host": "127.0.0.1",
         "davi_use_stub_llm": True,
     }

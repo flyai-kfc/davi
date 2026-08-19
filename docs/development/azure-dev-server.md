@@ -54,10 +54,35 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
    Secret을 만드는 사람에게는 vault 범위의 `Key Vault Secrets Officer`가 필요하다. 기반 Bicep은
    runtime identity에 읽기 권한만 부여하며 특정 팀원 계정을 템플릿에 고정하지 않는다.
 
-   | Secret name | 값 |
-   |---|---|
-   | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 |
-   | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 |
+   | Secret name | 값 | 필수 |
+   |---|---|---|
+   | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 | 항상 |
+   | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 | 항상 |
+   | `DAVI-TEST-ACCESS-TOKEN` | 32자 이상의 외부 테스트 참가자 토큰 | **외부 테스트 기간에만** |
+
+   마지막 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`
+   기본값이 비어 있어서, 이름을 넘기지 않으면 Container App이 이 secret을 참조하지 않는다.
+
+   **외부 테스트를 여는 순서 (수동 `az` 실행 없음):**
+
+   1. Key Vault에 `DAVI-TEST-ACCESS-TOKEN` secret을 만든다.
+   2. GitHub environment `davi-development`의 변수
+      `DAVI_AZURE_TEST_TOKEN_SECRET_NAME`을 `DAVI-TEST-ACCESS-TOKEN`으로 채운다.
+   3. main에 아무 서버 변경이나 머지한다(또는 워크플로를 수동 실행). 그 배포부터 토큰이 실린다.
+
+   **끝낼 때는 역순이다:** 변수를 비우고 → 다음 배포를 돌리고 → secret을 지운다.
+   팀 개발 토큰은 이 과정 내내 그대로 살아 있다.
+
+   **순서가 중요하다.** secret 없이 변수부터 채우면 Container Apps가 revision을 만들 때
+   `keyVaultUrl`을 해석하지 못해 새 revision이 Healthy에 도달하지 못하고, 배포 워크플로의
+   revision·health 검증이 실패한다. 그러면 공용 개발 서버가 이전 revision에 묶이고
+   **이후 배포까지 함께 막힌다.**
+
+   **손으로 `az deployment group create`를 돌리지 않는다.** 워크플로가 계산하는
+   `imageTag`·`revisionSuffix`를 직접 고르다 틀리면 엉뚱한 이미지로 롤백된다. 그리고 손으로
+   배선해 두더라도 **파라미터 없이 도는 다음 배포가 그 배선을 조용히 지운다** — 배포는
+   성공하고 참가자만 401이 되므로 로그에 단서가 남지 않는다. 위 environment 변수 경로가
+   재배포에도 살아남는 유일한 길이다.
 
 Container App은 versionless Key Vault URI를 참조한다. secret 갱신은 Container Apps가 동기화하지만
 팀 debug APK의 개발 토큰도 함께 교체해야 한다. 새 dev vault는 purge protection을 켜지 않고 Azure가

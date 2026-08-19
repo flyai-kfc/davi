@@ -153,8 +153,8 @@ def _development_access_error(request: Request) -> JSONResponse | None:
     if settings.davi_env != "development":
         return None
 
-    expected = settings.davi_dev_access_token.get_secret_value().strip()
-    if not expected:
+    accepted = settings.access_tokens
+    if not accepted:
         client_host = request.client.host if request.client else ""
         try:
             is_loopback = ip_address(client_host).is_loopback
@@ -164,9 +164,21 @@ def _development_access_error(request: Request) -> JSONResponse | None:
             return None
         return _development_auth_error(request)
 
+    # 팀 개발 토큰과 외부 테스트 토큰을 **둘 다** 받는다. 헤더는 하나뿐이고 값만 다르므로
+    # 앱은 고칠 것이 없다 — 테스터 빌드는 받은 값을 그대로 실으면 된다.
+    #
+    # 하나라도 맞으면 통과시키되 **모든 후보를 끝까지 비교한다.** 맞는 순간 끊으면 비교 횟수가
+    # 토큰 종류에 따라 달라져, 응답 시간으로 "어느 토큰이 맞았는지"를 재는 길이 열린다.
     supplied = request.headers.get(_DEV_TOKEN_HEADER)
-    if not token_matches(expected, supplied):
+    matched_kind: str | None = None
+    for kind, expected in accepted.items():
+        if token_matches(expected, supplied):
+            matched_kind = kind
+    if matched_kind is None:
         return _development_auth_error(request)
+    # 어느 토큰이 들어왔는지만 남긴다(값은 남기지 않는다). 테스트 기간에 참가자 트래픽과
+    # 팀 트래픽을 로그에서 갈라 보기 위한 것이다.
+    request.state.access_token_kind = matched_kind
 
     if request.url.path == _AUTH_KAKAO_PATH:
         # 로그인은 전용 리미터가 모든 프로필에서 따로 제한한다. dev 창은 팀 추론 쿼터
@@ -327,6 +339,7 @@ async def observe_request(request: Request, call_next):
                 resolution_phase=metadata.get("resolution_phase"),
                 resolution_status=metadata.get("resolution_status"),
                 error_kind=error_kind,
+                access_token_kind=getattr(request.state, "access_token_kind", None),
                 retry_after_seconds=getattr(request.state, "retry_after_seconds", None),
                 validation_error_count=getattr(request.state, "validation_error_count", None),
                 exception_class=getattr(request.state, "exception_class", None),

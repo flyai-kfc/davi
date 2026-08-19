@@ -32,6 +32,12 @@ jobs:
       DAVI_AZURE_MANAGED_ENVIRONMENT_NAME: ${{ vars.DAVI_AZURE_MANAGED_ENVIRONMENT_NAME }}
       DAVI_AZURE_CONTAINER_IDENTITY_NAME: ${{ vars.DAVI_AZURE_CONTAINER_IDENTITY_NAME }}
       DAVI_AZURE_CONTAINER_APP_NAME: ${{ vars.DAVI_AZURE_CONTAINER_APP_NAME }}
+      # 외부 테스트 기간에만 채우는 **선택** 변수다. 비어 있으면 bicep 기본값과 같아져
+      # 테스트 토큰이 배선되지 않는다 — 그래서 아래 필수 변수 검사 목록에는 넣지 않는다.
+      # 이 자리가 없으면 테스트 기간에 손으로 배선한 토큰이 다음 main 푸시의 재배포에서
+      # 조용히 사라진다(배포는 성공하고 참가자만 401이 되므로 로그에 단서가 없다).
+      # secret **이름**은 비밀값이 아니라 vars로 충분하다.
+      DAVI_AZURE_TEST_TOKEN_SECRET_NAME: ${{ vars.DAVI_AZURE_TEST_TOKEN_SECRET_NAME }}
       IMAGE_REPOSITORY: davi-server
 
     steps:
@@ -103,7 +109,8 @@ jobs:
               keyVaultName="$DAVI_AZURE_KEY_VAULT_NAME" \
               containerIdentityName="$DAVI_AZURE_CONTAINER_IDENTITY_NAME" \
               imageTag="$image_tag" \
-              revisionSuffix="$revision_suffix")"
+              revisionSuffix="$revision_suffix" \
+              testAccessTokenSecretName="${DAVI_AZURE_TEST_TOKEN_SECRET_NAME:-}")"
 
           deployed_revision="$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
           deployed_image="$(jq -er '.deployedImage.value' <<<"$deployment_outputs")"
