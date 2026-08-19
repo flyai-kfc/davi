@@ -4,8 +4,10 @@
       터치 대상은 Android 권장 48dp보다 크게 잡는다.
     -->
     <!--
-      오버레이 전용 실측값 — 토큰 램프 밖 값이라 별도 유지한다(안내문 22sp는 원거리 가독 실측).
-      GD 화면 재구현 시 램프 정합을 재검토한다(docs/SCREENS.md GD-1~3).
+      **`text_overlay_instruction`은 지금 쓰는 곳이 없다**(#234). v2 안내문은
+      `davi_overlay_text_instruction`(18sp)·`davi_overlay_text_reading`(20sp)이 잡는다.
+      22sp는 구 버전의 원거리 가독 실측값이다. 나머지 둘(패딩 16 · 여백 20)은 살아 있고,
+      여백 20은 창 **윗변** 여백으로 쓰인다(아랫변은 davi_overlay_window_margin_bottom 55).
     -->
     <dimen name="text_overlay_instruction">22sp</dimen>
     <dimen name="overlay_instruction_padding">16dp</dimen>

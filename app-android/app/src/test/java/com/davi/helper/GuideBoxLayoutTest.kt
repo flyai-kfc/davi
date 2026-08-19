@@ -77,6 +77,29 @@ class GuideBoxLayoutTest {
     }
 
     @Test
+    fun `자리가 하나도 안 나오면 아랫변 여백으로 바닥에 붙인다`() {
+        // 후보가 전부 걸러지는 경로(`topFor`의 candidates.isEmpty() → bottomAnchored)다.
+        // **marginBottom을 쓰는 두 번째 자리**인데 여기만 테스트가 없었다(PR #239 리뷰).
+        // 캔버스를 상자보다 낮게 주면 어느 후보도 안 들어간다.
+        val tiny = GuideBoxLayout.Bounds(0f, 0f, 1000f, 60f)
+
+        val layout = compute("가나다", canvas = tiny)
+
+        // 상자가 캔버스보다 크므로 위쪽을 살린다 — coerceAtLeast(canvas.top).
+        assertEquals(0f, layout?.box?.top)
+    }
+
+    @Test
+    fun `자리가 좁아도 들어가면 아랫변 여백을 지킨다`() {
+        // 위와 같은 경로인데 상자가 들어가는 크기다 — 이쪽이 marginBottom 값을 고정한다.
+        val short = GuideBoxLayout.Bounds(0f, 0f, 1000f, boxHeight(1) + MARGIN_BOTTOM + 4f)
+
+        val layout = compute("가나다", canvas = short)
+
+        assertEquals(short.bottom - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
     fun `아래가 통째로 막히면 화면 윗변 여백을 쓴다`() {
         val screen = GuideBoxLayout.Bounds(0f, 100f, 1000f, 2000f)
         val blocked = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 400f, 1000f, 2000f), hard = true)

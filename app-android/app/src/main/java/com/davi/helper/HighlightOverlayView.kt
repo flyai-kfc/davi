@@ -543,22 +543,18 @@ class HighlightOverlayView(context: Context) : View(context) {
         canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
 
         if (hasTarget) {
-            // **글로우가 가장 두꺼워졌을 때를 기준으로 물린다**(#147). 매 프레임 두께에 맞춰
-            // 물리면 숨 쉬는 동안 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다 —
-            // 자리는 고정하고 두께·투명도만 변해야 "숨 쉰다"로 읽힌다.
+            // 자리는 [highlightBounds]가 정한다 — **레이아웃도 같은 사각형을 피한다.**
+            // 근거(후광을 안 섞는 이유·가장자리 클램프)는 그 KDoc에 있다.
             //
-            // **안쪽 선의 자리는 후광과 무관하게 잡는다.** 물림 계산에 번짐 거리를 섞었더니
-            // 화면 가장자리에 붙은 대상(런처 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려
-            // 찌그러져 보였다(실기기 실측, #147). 선은 대상에 붙어야 하고, 후광은 화면 밖으로
-            // 나가면 캔버스가 알아서 자른다 — 그게 자연스럽다.
-            //
-            // 자리 자체는 [highlightBounds]가 정한다 — **레이아웃도 같은 사각형을 피한다.**
+            // 그 함수가 주는 것은 **바깥변**이고 drawRoundRect는 중심선에 칠하므로,
+            // 여기서 획 절반을 안으로 물려야 잉크의 바깥이 그 변에 맞는다.
             val frame = HighlightMotion.frame(readingPhase, highlightStroke, highlightGlowSpread)
             val rect = highlightBounds()
-            val left = rect.left
-            val top = rect.top
-            val right = rect.right
-            val bottom = rect.bottom
+            val half = highlightStroke / 2f
+            val left = rect.left + half
+            val top = rect.top + half
+            val right = rect.right - half
+            val bottom = rect.bottom - half
 
             // 후광은 겹을 쌓아 번지게 한다 — 굵은 선 하나로는 이중 테두리로 보인다(실기기 실측).
             // 바깥으로 갈수록 빠르게 옅어져 마이크 뒤 글로우와 같은 인상을 준다(#147).
@@ -595,19 +591,29 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 화면에 **실제로 그려지는** 강조 사각형.
+     * 강조가 화면에서 차지하는 **바깥변** 사각형 — 획의 바깥 가장자리다.
      *
-     * **레이아웃이 피해야 하는 것은 대상이 아니라 이것이다.** 강조는 대상 bounds에서 확장과
-     * 선 두께 절반만큼 바깥으로 나가는데, 레이아웃에 원본 bounds를 넘기면 회피 여백이 그
-     * 차이만큼 조용히 줄고 겹침 판정도 그만큼 헐거워진다 — 값을 안 건드리고 **재는 기준을
-     * 바꿔서** 여백이 줄어드는 자리다(PR #239 리뷰 1, #229 리뷰 B와 같은 모양).
+     * **레이아웃이 피해야 하는 것은 대상이 아니라 이것이다.** 레이아웃에 원본 bounds를
+     * 넘기면 회피 여백이 그 차이만큼 조용히 줄고 겹침 판정도 헐거워진다 — 값을 안 건드리고
+     * **재는 기준을 바꿔서** 여백이 주는 자리다(PR #239 리뷰 1, #229 리뷰 B와 같은 모양).
+     * 확장이 0인 지금은 차이가 4dp뿐이지만, 확장을 다시 넣는 순간 되풀이된다.
+     * **그리기와 계산이 이 함수 하나를 본다** — 그리는 쪽은 여기서 획 절반을 안으로 물린다.
      *
-     * 확장이 0인 지금은 차이가 선 두께 절반(2dp)뿐이라 눈에 안 띄지만, 확장을 다시 넣는
-     * 순간 같은 일이 되풀이된다. **그리기와 계산이 이 함수 하나를 본다.**
+     * **화면 밖으로 나가면 그릴 수 있는 범위 안으로 당긴다** — 실측에서 내비게이션 바
+     * 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다. 자르는 기준이
+     * [drawableBounds]인 것은 **강조 대상이 내비바 버튼일 수 있어서**다(안내창이 앉을 범위인
+     * [boxBounds]와 다르다).
+     *
+     * **후광 번짐은 이 계산에 섞지 않는다**(#147). 섞었더니 화면 가장자리에 붙은 대상(런처
+     * 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려 찌그러져 보였다 — 선은 대상에 붙어야
+     * 하고 후광은 화면 밖으로 나가면 캔버스가 알아서 자른다. 같은 이유로 **글로우가 가장
+     * 두꺼워졌을 때가 아니라 고정 두께로** 잡는다: 매 프레임 두께에 맞춰 물리면 숨 쉬는 동안
+     * 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다. 자리는 고정하고 두께·투명도만
+     * 변해야 "숨 쉰다"로 읽힌다.
      */
     private fun highlightBounds(): GuideBoxLayout.Bounds {
         val bounds = drawableBounds()
-        val out = highlightExpand + highlightStroke / 2f
+        val out = highlightExpand + highlightStroke
         return GuideBoxLayout.Bounds(
             left = (target.left - out).coerceAtLeast(bounds.left),
             top = (target.top - out).coerceAtLeast(bounds.top),
