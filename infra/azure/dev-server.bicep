@@ -190,8 +190,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: daviModel
             }
             {
+              // 10/60s는 Gemini 무료 티어(~15 RPM) 기준으로 잡은 값이었다. gpt-5.6-luna로
+              // 전환한 뒤에는 OpenAI 실제 쿼터보다 이 전역 카운터가 먼저 걸려 QUOTA 오탐이
+              // 났다(#303, 2026-08-19 Azure Log Analytics 실측 — 실패 전량이 duration<1ms인
+              // DEV_RATE_LIMIT 즉시 거부였고 실제 OpenAI 429는 0건). 재시도도 같은 카운터를
+              // 또 먹는 구조는 그대로다. 개발 토큰으로 닫힌 단일 replica 도그푸딩 환경이라는
+              // PR #304 리뷰를 반영해 60/60s까지 올린다(리뷰 코멘트 2026-08-19).
               name: 'DAVI_DEV_RATE_LIMIT_REQUESTS'
-              value: '10'
+              value: '60'
             }
             {
               name: 'DAVI_DEV_RATE_LIMIT_WINDOW_SECONDS'
