@@ -105,15 +105,22 @@ jobs:
           test -n "$aapt2"
 
           badging() { "$aapt2" dump badging "$1"; }
-          appid() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['applicationId'])" "$1"; }
+          meta() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))[sys.argv[2]] if sys.argv[2]=='applicationId' else json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1" "$2"; }
+          appid() { meta "$1" applicationId; }
+          # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release 산출물은
+          # app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 실제 이름을 여기 적어 준다.
+          apk_of() { echo "$(dirname "$1")/$(meta "$1" outputFile)"; }
 
-          debug_apk=app/build/outputs/apk/debug/app-debug.apk
-          release_apk=app/build/outputs/apk/release/app-release.apk
+          debug_meta=app/build/outputs/apk/debug/output-metadata.json
+          release_meta=app/build/outputs/apk/release/output-metadata.json
+          debug_apk="$(apk_of "$debug_meta")"
+          release_apk="$(apk_of "$release_meta")"
+          echo "debug=$debug_apk  release=$release_apk"
           test -f "$debug_apk" && test -f "$release_apk"
 
           # 앱 식별자 — 함께 설치되려면 서로 달라야 한다.
-          test "$(appid app/build/outputs/apk/debug/output-metadata.json)" = com.davi.helper.debug
-          test "$(appid app/build/outputs/apk/release/output-metadata.json)" = com.davi.helper
+          test "$(appid "$debug_meta")" = com.davi.helper.debug
+          test "$(appid "$release_meta")" = com.davi.helper
 
           # 앱 이름 — release는 제품 이름을 유지하고, debug 이름이 새어 들어가면 안 된다.
           debug_label="$(badging "$debug_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
