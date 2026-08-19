@@ -49,6 +49,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private var dogfoodDeviceId: String? = null
     private val apiExecutor = Executors.newSingleThreadExecutor()
     private val requestInFlight = AtomicBoolean(false)
+
+    /** 직전에 보낸 읽는 중 여부. 전이일 때만 로그를 남긴다(폴링마다 찍으면 묻힌다). */
+    private var lastReading: Boolean? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val logicalRequests = LogicalRequestTracker()
     private var lastLoggedScreenSignature: String? = null
@@ -128,6 +131,7 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            lastReading = null
             guidedTargetLabel = null
             errorNotice.reset()
             lastDecision = null
@@ -202,6 +206,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             GuideSession.confirmRejected()
                             overlay?.clear()
                             display.reset()
+            lastReading = null
                             guidedTargetLabel = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
@@ -523,11 +528,8 @@ class GuideAccessibilityService : AccessibilityService() {
      * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1). 판정은 [ReadingBorder]에 있고 여기서는
      * 값을 모아 넘기기만 한다. 멱등이라 같은 값으로 반복 호출해도 안전하다.
      */
-    /** 직전에 보낸 읽는 중 여부. 전이일 때만 로그를 남긴다(폴링마다 찍으면 묻힌다). */
-    private var lastReading: Boolean? = null
-
     private fun updateReading() {
-        val reading = (
+        val reading =
             ReadingBorder.isReading(
                 // 유무만 필요하다. active()는 잠금을 잡고 이력 리스트 두 개를 복사하는데,
                 // 그 잠금은 네트워크 스레드의 기록 경로와 공유한다.
@@ -541,9 +543,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 안 쓴다 — 스크림은 다른 자리고 테두리가 없다(#193).
                 awaitingConfirm = GuideSession.awaitingConfirm,
             )
-        )
-        // 읽는 구간의 길이를 로그로 남긴다(#295). 문구 교체가 이 구간에 걸리므로, 너무 짧아
-        // 깜빡이는지·백오프에서 끊기는지를 이 전이로 판정한다.
+        // 읽는 구간의 길이를 로그로 남긴다(#295). 문구 교체가 이 구간에 걸리므로, 구간이
+        // 너무 짧아 깜빡이는지를 이 전이로 판정한다. **백오프 대기는 여기 안 잡힌다** —
+        // ScreenStability가 IDLE을 내고 isReading이 false다(#29: 서버 실패는 안내창이 맡는다).
         if (lastReading != reading) {
             lastReading = reading
             Log.i(TAG, "reading=$reading")

@@ -248,16 +248,18 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 읽는 중을 "창이 비어 있을 때만"으로 막았던 #229의 제약을 #295가 뒤집었다. 그때 근거는
      * "보고 따라 하던 안내가 사라지면 안 된다"였는데, **읽는 구간에 들어갔다는 것은 화면이
      * 이미 움직였다는 뜻**이라 그 안내는 그 시점에 유효하지 않다.
+     *
+     * **문구만 든다.** 강조·제스처는 되돌리지 않는다 — 위 근거가 복귀 시점에도 그대로
+     * 성립하므로(화면이 움직였다), 자리를 되살리면 엉뚱한 곳을 가리킨다. 문구는 "무엇을
+     * 하려던 중이었나"라 자리와 달리 화면이 바뀌어도 읽을 값이 남는다.
+     *
+     * **[GuideDisplayState]가 아니라 여기 있는 이유** — 저쪽이 미는 것은 *서버 안내*이고
+     * 되살릴 때마다 서명을 댄다(`redisplay`·`restoreTarget`·`dismissQuitConfirm`, PR #63
+     * 2차 리뷰 P1). 여기서 미는 것은 **읽는 중이라는 뷰 계층의 표시가 잠깐 창을 가져간 것**
+     * 뿐이고, 그동안 display는 자기 안내를 계속 들고 있다(`visible`이 true다). 같은 이름의
+     * 두 기계가 생긴 셈이라, "밀어 둔 안내"를 찾는 사람은 **미는 주체가 다르다**는 것부터 본다.
      */
-    private var stashed: Stash? = null
-
-    private data class Stash(
-        val instruction: String,
-        val hasTarget: Boolean,
-        val target: RectF,
-        val gestureDirection: SwipeDirection?,
-        val avoid: List<GuideBoxLayout.Avoid>,
-    )
+    private var stashed: String? = null
 
     /** [readingOnset]이 큐에 있는가. [reading]과 별개다 — [setReading] 주석 참고. */
     private var onsetPending = false
@@ -267,9 +269,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         readingVisible = true
         if (!readingWindow) {
             // 떠 있던 안내는 밀어 둔다 — 읽는 중이 안내 없이 끝나면 되돌린다.
-            if (instruction.isNotEmpty()) {
-                stashed = Stash(instruction, hasTarget, RectF(target), gestureDirection, avoid)
-            }
+            if (instruction.isNotEmpty()) stashed = instruction
             instruction = context.getString(R.string.overlay_reading)
             readingWindow = true
             // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
@@ -318,9 +318,12 @@ class HighlightOverlayView(context: Context) : View(context) {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * 읽는 중 표시를 켜고 끈다. **멱등이다** — 화면을 못 읽는 동안 서비스가 폴링마다 false를
-     * 다시 보내고, 켜진 상태로도 샘플마다 true가 다시 온다. 가드가 없으면 매번 애니메이터를
-     * 취소하거나 onset 지연이 리셋돼 테두리가 영영 뜨지 않는다.
+     * 읽는 중 표시를 켜고 끈다. 서비스가 **폴링마다** 부른다 — 켜진 상태로도 true가 다시 오고,
+     * 화면을 못 읽는 동안 false가 계속 온다. 그래서 겹쳐 들어와도 안전해야 한다.
+     *
+     * **가드가 켜짐/꺼짐에서 서로 다르다.** 끄는 쪽은 전이(`reading`)로 막으면 되지만, 켜는
+     * 쪽은 **"창을 아직 안 바꿨고 예약도 없을 때"** 로 막는다 — 전이로 막으면 두 번째 읽는
+     * 구간부터 문구가 안 바뀐다(#295, 아래 주석).
      */
     fun setReading(on: Boolean) {
         if (on) {
@@ -332,7 +335,7 @@ class HighlightOverlayView(context: Context) : View(context) {
             //
             // 대신 "창을 아직 안 바꿨고 예약도 없을 때"로 막는다 — 폴링마다 들어와도 예약이
             // 겹치지 않는다.
-            if (!readingWindow && !onsetPending) {
+            if (ReadingWindow.shouldArmOnset(on = true, windowTaken = readingWindow, onsetPending = onsetPending)) {
                 onsetPending = true
                 // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
                 postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
@@ -358,18 +361,14 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 남기면 따라 하던 사람이 근거를 통째로 잃는다.
      */
     private fun restoreOrClear() {
-        val stash = stashed
-        if (stash == null) {
+        val text = stashed
+        if (text == null) {
             clearTarget()
             return
         }
         stashed = null
         readingWindow = false
-        instruction = stash.instruction
-        hasTarget = stash.hasTarget
-        target.set(stash.target)
-        gestureDirection = stash.gestureDirection
-        avoid = stash.avoid
+        instruction = text
         relayout()
     }
 
