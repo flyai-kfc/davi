@@ -70,7 +70,7 @@ def _require_auth_settings() -> tuple[str, int]:
 
     secret = settings.davi_auth_jwt_secret.get_secret_value().strip()
     app_id = settings.davi_kakao_app_id
-    if not secret or app_id <= 0:
+    if not settings.kakao_auth_configured:
         raise AuthError(
             ErrorKind.SERVER,
             "kakao auth is not configured (DAVI_AUTH_JWT_SECRET / DAVI_KAKAO_APP_ID)",
