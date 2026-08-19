@@ -84,6 +84,7 @@ object UiTreeSerializer {
     fun serialize(
         root: AccessibilityNodeInfo,
         windowTypes: Iterable<Int>? = null,
+        windowTitle: CharSequence? = null,
         masker: LabelMasker = labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
     ): Result {
         val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
@@ -96,6 +97,7 @@ object UiTreeSerializer {
         return Result(
             screen = Screen(
                 packageName = root.packageName?.toString().orEmpty(),
+                windowTitle = windowTitleOf(windowTitle, masker),
                 elements = if (truncated) ctx.elements.take(MAX_ELEMENTS) else ctx.elements,
                 currentPage = ctx.currentPage,
                 totalPages = ctx.totalPages,
@@ -146,11 +148,15 @@ object UiTreeSerializer {
             val inspectDescendants = shouldInspectDescendants(node.isEditable)
             val merge = inspectDescendants && shouldMergeDescendants(node, ctx.screenArea)
             val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
+            // 라벨을 흡수했으면 상태도 함께 올린다. 그러지 않으면 스위치가 든 행에서 켬/끔이
+            // 통째로 사라진다 — 자식 스위치는 흡수돼 안 나가고, 행 자신은 checkable이 아니라
+            // null이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
+            val checked = if (merge) mergedCheckedState(node) else ownCheckedState(node)
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
             if (label.isNotBlank() || node.isEditable) {
-                ctx.elements.add(element(node, label, ctx))
+                ctx.elements.add(element(node, label, ctx, checked = checked))
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
@@ -209,6 +215,7 @@ object UiTreeSerializer {
         ctx: Ctx,
         role: String? = null,
         clickable: Boolean? = null,
+        checked: Boolean? = null,
     ): UiElement {
         ctx.counter++
         val r = boundsOf(node)
@@ -229,6 +236,15 @@ object UiTreeSerializer {
             clickable = clickable ?: node.isClickable,
             editable = node.isEditable,
             focused = node.isFocused,
+            // 여기부터가 "지금 어떤 상태인가"다. clickable/editable은 뷰의 설정값이라 이걸 대신하지
+            // 못한다 — 비활성 버튼도 clickable=true로 오고, 스위치를 켜도 label이 그대로다(#271).
+            enabled = node.isEnabled,
+            checked = checked ?: ownCheckedState(node),
+            selected = node.isSelected,
+            showingHintText = hintTextState(
+                editable = node.isEditable,
+                showingHintText = node.isShowingHintText,
+            ),
             bounds = listOf(r.left, r.top, r.right, r.bottom),
             canScrollForward = scroll?.forward,
             canScrollBackward = scroll?.backward,
@@ -351,6 +367,80 @@ object UiTreeSerializer {
         val desc = node.contentDescription?.toString()?.trim()
         if (!desc.isNullOrEmpty()) return desc
         return null
+    }
+
+    /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
+    private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
+        checkedState(checkable = node.isCheckable, checked = node.isChecked)
+
+    /**
+     * 라벨을 흡수한 노드의 켬/끔. 자기 것이 있으면 그것이고, 없으면 흡수한 자손에서 찾는다.
+     *
+     * 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면, 그 자식은 흡수돼
+     * 별도 요소로 나가지 않는다. 그때 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다.
+     */
+    private fun mergedCheckedState(node: AccessibilityNodeInfo): Boolean? =
+        hoistedCheckedState(ownCheckedState(node), descendantCheckedState(node, 0))
+
+    /** 위 병합 규칙을 Android 타입 없이 고정하기 위한 순수 함수. 자기 것이 언제나 이긴다. */
+    internal fun hoistedCheckedState(own: Boolean?, descendant: Boolean?): Boolean? =
+        own ?: descendant
+
+    /**
+     * 라벨 병합과 같은 깊이로 자손을 훑되, **clickable 자손은 자기 요소로 나갈 때만** 건너뛴다.
+     *
+     * 라벨은 그 노드가 자기 label로 가져가니 건너뛰는 것이 맞다. 그런데 **이름이 없어 요소로
+     * 나가지 못하는 clickable 노드**는 아무도 그 상태를 가져가지 않는다 — 건너뛰면 켬/끔이
+     * 화면에서 통째로 사라진다.
+     *
+     * 실측(#288 리뷰, SM-S921N / One UI 8.5 개발자 옵션): 표준 `SwitchPreference` 행이
+     * `LinearLayout(clickable) → [RelativeLayout → TextView 둘, LinearLayout → Switch]` 모양이고
+     * 그 `Switch`는 `clickable=true checkable=true`인데 text·content-desc가 **둘 다 없다.**
+     * 라벨은 TextView에서 행으로 합쳐지는데 상태만 갈 곳이 없었다.
+     */
+    private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int): Boolean? {
+        if (depth >= MAX_MERGE_DEPTH) return null
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (!child.isVisibleToUser) continue
+            if (child.isClickable && emitsOwnElement(mergedLabel(child), child.isEditable)) continue
+            ownCheckedState(child)?.let { return it }
+            if (child.isEditable) continue
+            descendantCheckedState(child, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * 그 노드가 자기 요소로 나가는가. 나가면 자기 상태를 들고 가므로 조상이 올릴 필요가 없고,
+     * 못 나가면 조상이 올려야 상태가 남는다. [walk]의 방출 조건과 같은 규칙이다.
+     */
+    internal fun emitsOwnElement(label: String, editable: Boolean): Boolean =
+        editable || label.isNotBlank()
+
+    /**
+     * 켤 수 없는 요소의 `isChecked=false`는 "꺼짐"이 아니라 **해당 없음**이다.
+     * 그 둘을 섞으면 모델이 화면의 모든 요소를 꺼진 토글로 읽는다.
+     */
+    internal fun checkedState(checkable: Boolean, checked: Boolean): Boolean? =
+        if (checkable) checked else null
+
+    /** 입력칸이 아닌 요소에는 hint 개념이 없다. 위와 같은 이유로 `null`을 돌려준다. */
+    internal fun hintTextState(editable: Boolean, showingHintText: Boolean): Boolean? =
+        if (editable) showingHintText else null
+
+    /**
+     * 창 제목을 화면 이름으로 쓴다(#269).
+     *
+     * **label과 정확히 같은 취급이다** — 정규화 → 1차 마스킹 → 길이 제한. 대화방 제목은 사람
+     * 이름이고 문서 뷰어는 파일명을 싣기 때문에, 마스킹을 건너뛸 근거가 없다.
+     * 제목이 없는 창이 흔하므로(11번가·TMAP·플레이스토어 실측) `null`이 정상 값이다.
+     */
+    internal fun windowTitleOf(rawTitle: CharSequence?, masker: LabelMasker): String? {
+        val normalized = rawTitle?.toString()?.replace(WHITESPACE, " ")?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return masker.mask(normalized).take(MAX_LABEL_CHARS)
     }
 
     /** Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수. */

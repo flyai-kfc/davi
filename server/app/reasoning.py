@@ -257,6 +257,11 @@ def _screen_signature(screen: Screen) -> str:
 
     label은 서버가 이미 받는 값이지만 해시만 장기간 남아도 흔한 문자열은 역추정할 수 있다.
     그래서 label의 원문·해시·길이 모두 제외한다. 시계·배터리 텍스트 변화도 같은 화면으로 본다.
+
+    **`window_title`도 같은 이유로 뺀다**(#288 리뷰). 대화방 제목은 사람 이름이고 문서 뷰어는
+    파일명을 싣는다 — 위험 등급이 label과 같다. 2차 마스킹을 거쳤다는 것은 근거가 못 된다.
+    label도 마스킹 뒤에 제외되기 때문이다. 기기 안에서만 쓰는 `ScreenSignature`는 label과 제목을
+    둘 다 포함하는데, 그 값은 기기를 떠나지 않으므로 여기의 기준과 어긋나지 않는다.
     대신 package/page/요소 순서·역할·좌표·상호작용/스크롤 상태가 바뀌면 서명이 바뀐다.
 
     이 선택은 구조·좌표가 같고 내용만 바뀐 화면을 구분하지 못한다. 목록 항목이 label만 바뀌면
@@ -280,6 +285,12 @@ def _screen_signature(screen: Screen) -> str:
                 "clickable": element.clickable,
                 "editable": element.editable,
                 "focused": element.focused,
+                # 행동 상태(C18). **이게 없으면 스위치를 켜도 같은 서명이 나온다** — label에
+                # 입력 원문도 토글 상태도 들어가지 않으므로 이 자리가 유일한 변화 신호다(#271).
+                "enabled": element.enabled,
+                "checked": element.checked,
+                "selected": element.selected,
+                "showing_hint_text": element.showing_hint_text,
                 "bounds": element.bounds,
                 "can_scroll_forward": element.can_scroll_forward,
                 "can_scroll_backward": element.can_scroll_backward,

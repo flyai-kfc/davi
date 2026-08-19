@@ -25,6 +25,25 @@ data class UiElement(
     val editable: Boolean = false,
     /** 현재 접근성 입력 포커스를 가진 요소인가. */
     val focused: Boolean = false,
+    /**
+     * 지금 조작할 수 있는 상태인가(#271).
+     *
+     * **[clickable]은 뷰의 설정값이지 상태가 아니다** — 비활성 버튼도 대개 `clickable=true`로 온다.
+     * `null`은 미관측이다. 낡은 앱의 침묵을 "비활성"으로 읽으면 tap 안내가 통째로 막히므로
+     * 기본값을 `false`로 두지 않는다(C10의 세 상태와 같은 이유).
+     */
+    val enabled: Boolean? = null,
+    /** 켬/끔 상태. 켤 수 없는(`checkable`이 아닌) 요소는 `null`이다 — 그 `false`는 "꺼짐"이 아니다. */
+    val checked: Boolean? = null,
+    /** 목록·탭에서 지금 선택된 항목인가. */
+    val selected: Boolean? = null,
+    /**
+     * 입력칸에 지금 보이는 글자가 hint인가. `true` 비어 있음 / `false` 값이 들어 있음 /
+     * `null` 입력칸이 아니거나 미관측.
+     *
+     * **입력 원문은 여전히 보내지 않는다**(#112). 비었는지 여부만 알려 준다.
+     */
+    @SerialName("showing_hint_text") val showingHintText: Boolean? = null,
     /** [left, top, right, bottom] 화면 좌표. */
     val bounds: List<Int>? = null,
     @SerialName("can_scroll_forward") val canScrollForward: Boolean? = null,
@@ -37,6 +56,14 @@ data class UiElement(
 @Serializable
 data class Screen(
     @SerialName("package_name") val packageName: String = "",
+    /**
+     * 지금 창의 제목. `package_name`만으로는 화면을 알 수 없다 — 설정>배터리가
+     * `com.samsung.android.lool`로 오는데 창 제목은 '배터리'를 바로 준다(#269 실측).
+     *
+     * **label과 같은 취급이다** — 대화방 제목은 사람 이름이고 문서 뷰어는 파일명을 싣는다.
+     * 기기 1차·서버 2차 마스킹을 그대로 통과한다. 제목이 없는 창이 흔해서 `null`이 정상이다.
+     */
+    @SerialName("window_title") val windowTitle: String? = null,
     val elements: List<UiElement> = emptyList(),
     /** 페이지 위치는 화면 단위 상태다(C5). 페이지 dot에서 읽는다(HANDOFF §3-3). */
     @SerialName("current_page") val currentPage: Int? = null,

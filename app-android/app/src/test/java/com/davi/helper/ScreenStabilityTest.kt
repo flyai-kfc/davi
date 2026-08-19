@@ -14,8 +14,10 @@ class ScreenSignatureTest {
         page: Int? = null,
         total: Int? = null,
         imeVisible: Boolean? = null,
+        windowTitle: String? = null,
     ) = Screen(
         packageName = "com.example.app",
+        windowTitle = windowTitle,
         elements = elements.toList(),
         currentPage = page,
         totalPages = total,
@@ -58,6 +60,99 @@ class ScreenSignatureTest {
         )
 
         assertEquals(ScreenSignature.of(before), ScreenSignature.of(after))
+    }
+
+    @Test
+    fun `스위치를 켜면 다른 화면이다`() {
+        // 이 화면에서 바뀌는 것은 checked 하나뿐이다 — label도 role도 clickable도 그대로다.
+        // 상태를 서명에 안 넣으면 스위치를 켜도 IDLE이라 다음 안내가 나가지 않는다(#271).
+        val off = screen(
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = false),
+        )
+        val on = screen(
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = true),
+        )
+
+        assertNotEquals(ScreenSignature.of(off), ScreenSignature.of(on))
+    }
+
+    @Test
+    fun `버튼이 활성화되면 다른 화면이다`() {
+        val disabled = screen(
+            UiElement(nodeId = "n1", label = "다음", role = "Button", clickable = true, enabled = false),
+        )
+        val enabled = screen(
+            UiElement(nodeId = "n1", label = "다음", role = "Button", clickable = true, enabled = true),
+        )
+
+        assertNotEquals(ScreenSignature.of(disabled), ScreenSignature.of(enabled))
+    }
+
+    @Test
+    fun `입력칸이 채워지면 다른 화면이다`() {
+        // 입력 원문을 label에 넣지 않으므로(#112) label은 hint 그대로다. 이 값이 유일한 신호다.
+        val empty = screen(
+            UiElement(
+                nodeId = "n1",
+                label = "검색어 입력",
+                role = "EditText",
+                editable = true,
+                showingHintText = true,
+            ),
+        )
+        val filled = screen(
+            UiElement(
+                nodeId = "n1",
+                label = "검색어 입력",
+                role = "EditText",
+                editable = true,
+                showingHintText = false,
+            ),
+        )
+
+        assertNotEquals(ScreenSignature.of(empty), ScreenSignature.of(filled))
+    }
+
+    @Test
+    fun `선택된 항목이 바뀌면 다른 화면이다`() {
+        val first = screen(
+            UiElement(nodeId = "n1", label = "연결", clickable = true, selected = true),
+            UiElement(nodeId = "n2", label = "소리", clickable = true, selected = false),
+        )
+        val second = screen(
+            UiElement(nodeId = "n1", label = "연결", clickable = true, selected = false),
+            UiElement(nodeId = "n2", label = "소리", clickable = true, selected = true),
+        )
+
+        assertNotEquals(ScreenSignature.of(first), ScreenSignature.of(second))
+    }
+
+    @Test
+    fun `미관측과 꺼짐은 다른 상태다`() {
+        // 낡은 앱의 침묵(null)을 false로 접으면 세 상태가 죽는다.
+        val unknown = screen(UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true))
+        val off = screen(
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = false),
+        )
+
+        assertNotEquals(ScreenSignature.of(unknown), ScreenSignature.of(off))
+    }
+
+    @Test
+    fun `창 제목이 바뀌면 다른 화면이다`() {
+        val connection = screen(windowTitle = "연결")
+        val battery = screen(windowTitle = "배터리")
+
+        assertNotEquals(ScreenSignature.of(connection), ScreenSignature.of(battery))
+    }
+
+    @Test
+    fun `제목에 붙는 숫자는 volatile로 본다`() {
+        // "받은편지함 (3)"처럼 개수가 붙는 제목이 매 폴링마다 새 화면이 되면 안 된다.
+        val three = screen(windowTitle = "받은편지함 (3)")
+        val four = screen(windowTitle = "받은편지함 (4)")
+
+        assertEquals(ScreenSignature.of(three), ScreenSignature.of(four))
     }
 
     @Test
