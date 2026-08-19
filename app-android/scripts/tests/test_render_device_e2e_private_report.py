@@ -66,6 +66,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
                         "screen_signature": "screen-1",
                         "action": {
                             "expected_result": "편집 화면",
+                            "screen_summary": "시계 앱의 알람 편집 화면",
                             "evidence": "추가 버튼",
                             "instruction": "추가를 여세요",
                             "action_type": "tap",
@@ -102,6 +103,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
             self.assertIn("시계 앱의 알람 목록 화면", report)
             self.assertIn("| `n1` | 추가 |", report)
             self.assertIn("| expected_result | 편집 화면 |", report)
+            self.assertIn("| screen_summary | 시계 앱의 알람 편집 화면 |", report)
             self.assertIn("| evidence | 추가 버튼 |", report)
             self.assertIn("| instruction | 추가를 여세요 |", report)
             self.assertIn("| target_node_id | `n1` |", report)

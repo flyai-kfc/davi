@@ -128,6 +128,28 @@ def test_llm_retries_once_without_schema_after_schema_400():
     assert len(requests) == 2
 
 
+def test_missing_screen_summary_does_not_kill_a_valid_action():
+    """요약 한 줄이 없다고 멀쩡한 안내를 PARSE로 닫지 않는다(#289 셀프 리뷰).
+
+    스키마에서는 required지만 강제하는 것이 없는 경로가 있다 — 스키마가 400으로 거부돼
+    프롬프트로만 계약을 말하는 폴백이다. 거기서 부수 필드 하나가 빠졌다고 실패로 닫으면
+    사용자는 쓸 수 있는 안내 대신 오류 문구를 본다.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _action_response()
+        candidate = payload["candidates"][0]["content"]["parts"][0]
+        action = json.loads(candidate["text"])
+        del action["screen_summary"]
+        candidate["text"] = json.dumps(action, ensure_ascii=False)
+        return httpx.Response(200, json=payload)
+
+    action = _client(handler).reason(_request())
+
+    assert action.action_type == "tap"
+    assert action.screen_summary == ""
+
+
 def test_llm_retries_missing_scroll_direction_once(caplog):
     requests: list[dict] = []
 

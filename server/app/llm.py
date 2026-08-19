@@ -224,6 +224,13 @@ class RemoteLlmClient(LlmClient):
             and not payload.get("direction")
         ):
             raise _MissingScrollDirectionError
+        if isinstance(payload, dict):
+            # 화면 요약이 빠진 응답을 **실패로 닫지 않는다**(C11 개정, #270). 스키마에서는
+            # required라 모델이 보통 채우지만, 스키마가 거부돼 프롬프트로만 계약을 말하는 폴백에는
+            # 강제하는 것이 없다. 거기서 요약 한 줄이 없다고 PARSE로 닫으면 **부수 필드가 멀쩡한
+            # 안내를 죽인다** — 앱은 그 화면에서 오류 문구를 띄우고 백오프한다.
+            # 같은 이유로 값의 공백 검증도 두지 않았다(`schemas.GuideAction.screen_summary`).
+            payload.setdefault("screen_summary", "")
         try:
             return GuideAction.model_validate(payload)
         except (ValueError, TypeError) as error:

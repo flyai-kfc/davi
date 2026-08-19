@@ -108,14 +108,30 @@ def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
 
 
 def test_step_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
-    """스텝은 필드가 많아 이름 하나가 조용히 어긋나기 쉽다. wire 이름을 통째로 대조한다."""
+    """스텝은 필드가 많아 이름 하나가 조용히 어긋나기 쉽다. wire 이름을 통째로 대조한다.
+
+    **선언 블록을 잘라내서 그 안에서만 찾는다.** 파일 전체를 대상으로 하면 `val instruction`·
+    `val direction`이 `GuideAction`에도 있어, Kotlin `GuideStep`에서 그 필드가 사라져도 이
+    테스트가 초록으로 남는다 — 드리프트 테스트가 잡아야 할 바로 그 경우다(#289 셀프 리뷰).
+    """
 
     from app.schemas import GuideStep
 
+    step_block = _kotlin_class_body(contract_source, "GuideStep")
     for name in GuideStep.model_fields:
         # snake_case 필드만 @SerialName이 필요하다. 나머지는 Kotlin 이름이 곧 wire 이름이다.
         expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
-        assert expected in contract_source, f"GuideStep.{name}이 Kotlin 쪽에 없다"
+        assert expected in step_block, f"GuideStep.{name}이 Kotlin 쪽에 없다"
+
+
+def _kotlin_class_body(source: str, name: str) -> str:
+    """`data class <name>(...)`의 괄호 안만 돌려준다. 없으면 그 자체가 드리프트다."""
+
+    start = source.find(f"data class {name}(")
+    assert start != -1, f"Kotlin에 data class {name}이 없다"
+    end = source.find("\n)", start)
+    assert end != -1, f"data class {name}의 선언이 닫히지 않았다"
+    return source[start:end]
 
 
 def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:

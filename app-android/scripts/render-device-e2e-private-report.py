@@ -180,6 +180,7 @@ def render(args: argparse.Namespace) -> str:
             f"| verified | `{cell(response.get('verified'))}` |",
             f"| screen_signature | `{cell(response.get('screen_signature'))}` |",
             f"| expected_result | {cell(action.get('expected_result'))} |",
+            f"| screen_summary | {cell(action.get('screen_summary'))} |",
             f"| evidence | {cell(action.get('evidence'))} |",
             f"| instruction | {cell(action.get('instruction'))} |",
             f"| action_type | `{cell(action.get('action_type'))}` |",
