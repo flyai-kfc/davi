@@ -63,12 +63,17 @@ class GuideBoxLayoutTest {
     }
 
     @Test
-    fun `대상이 없으면 화면 아랫변 여백을 쓴다`() {
-        // 아랫변 55와 윗변 20은 서로 다른 값이다 — 한 값으로 묶으면 둘 중 하나가
-        // 근거 없는 값이 된다(#234). 여기가 아랫변 쪽을 고정한다.
-        val layout = compute("가나다", canvas = GuideBoxLayout.Bounds(0f, 100f, 1000f, 2000f))
+    fun `아랫변 여백은 캔버스 윗변이 어디든 흔들리지 않는다`() {
+        // 아랫변 55와 윗변 20은 서로 다른 값이다 — 한 값으로 묶으면 둘 중 하나가 근거 없는
+        // 값이 된다(#234). **윗변만 옮겨도 아랫변 기준이 그대로여야** 두 값이 갈렸다는 뜻이다
+        // (`강조 대상이 없어도 안내문은 보여준다`가 canvas.top = 0으로 같은 자리를 이미 본다,
+        // PR #239 리뷰). 아래가 막힌 경우는 짝을 이루는 `아래가 통째로 막히면...`이 본다.
+        val bottom = 2000f - MARGIN_BOTTOM - boxHeight(1)
 
-        assertEquals(2000f - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
+        for (top in listOf(0f, 100f, 400f)) {
+            val layout = compute("가나다", canvas = GuideBoxLayout.Bounds(0f, top, 1000f, 2000f))
+            assertEquals(bottom, layout?.box?.top)
+        }
     }
 
     @Test
