@@ -8,7 +8,6 @@ import httpx
 import pytest
 from app.config import settings
 from app.errors import LlmError
-from app.llm import GeminiLlmClient
 from app.main import app
 from app.observability import (
     ATTEMPT_HEADER,
@@ -22,6 +21,8 @@ from app.observability import (
 from app.schemas import NextStepRequest, Screen, UiElement
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+
+from tests.factories import gemini_llm_client
 
 client = TestClient(app, client=("127.0.0.1", 50000))
 ANDROID_TRACING = (
@@ -228,7 +229,7 @@ def test_unhandled_exception_returns_request_id_and_safe_internal_log(caplog, mo
     assert "private exception message" not in json.dumps(event)
 
 
-def test_gemini_attempt_events_keep_request_context_without_prompt_or_response(caplog):
+def test_llm_attempt_events_keep_request_context_without_prompt_or_response(caplog):
     private_goal = "private-goal-canary"
     private_label = "private-label-canary"
     request = NextStepRequest(
@@ -236,7 +237,7 @@ def test_gemini_attempt_events_keep_request_context_without_prompt_or_response(c
         screen=Screen(elements=[UiElement(node_id="n1", label=private_label, clickable=True)]),
     )
     response_body = _gemini_response()
-    llm = GeminiLlmClient(
+    llm = gemini_llm_client(
         "private-key-canary",
         "gemini-test",
         httpx.Client(
@@ -253,8 +254,8 @@ def test_gemini_attempt_events_keep_request_context_without_prompt_or_response(c
 
     events = _events(caplog, "uvicorn.error.davi.llm")
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
     ]
     assert all(event["request_id"] == "server-request" for event in events)
     assert all(event["logical_request_id"] == context.logical_request_id for event in events)
@@ -269,11 +270,11 @@ def test_gemini_attempt_events_keep_request_context_without_prompt_or_response(c
         assert private_value not in serialized
 
 
-def test_gemini_timeout_logs_one_safe_failed_attempt(caplog):
+def test_llm_timeout_logs_one_safe_failed_attempt(caplog):
     def timeout(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("private-timeout-canary", request=request)
 
-    llm = GeminiLlmClient(
+    llm = gemini_llm_client(
         "private-key-canary",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(timeout)),
@@ -286,8 +287,8 @@ def test_gemini_timeout_logs_one_safe_failed_attempt(caplog):
 
     events = _events(caplog, "uvicorn.error.davi.llm")
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
     ]
     assert events[-1]["outcome"] == "error"
     assert events[-1]["error_kind"] == "NETWORK"
@@ -295,14 +296,14 @@ def test_gemini_timeout_logs_one_safe_failed_attempt(caplog):
     assert "private-key-canary" not in json.dumps(events)
 
 
-def test_gemini_schema_fallback_logs_each_provider_attempt(caplog):
+def test_llm_schema_fallback_logs_each_provider_attempt(caplog):
     responses = iter(
         [
             httpx.Response(400, json={"private-error": "canary"}),
             httpx.Response(200, json=_gemini_response()),
         ]
     )
-    llm = GeminiLlmClient(
+    llm = gemini_llm_client(
         "private-key-canary",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(lambda _: next(responses))),
@@ -313,10 +314,10 @@ def test_gemini_schema_fallback_logs_each_provider_attempt(caplog):
 
     events = _events(caplog, "uvicorn.error.davi.llm")
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
     ]
     assert [event["provider_attempt"] for event in events] == [1, 1, 2, 2]
     assert [event["schema_mode"] for event in events] == [
@@ -334,14 +335,14 @@ def test_gemini_schema_fallback_logs_each_provider_attempt(caplog):
     assert "private-error" not in json.dumps(events)
 
 
-def test_gemini_direction_recovery_logs_retry_in_order(caplog):
+def test_llm_direction_recovery_logs_retry_in_order(caplog):
     responses = iter(
         [
             httpx.Response(200, json=_gemini_response("scroll")),
             httpx.Response(200, json=_gemini_response("scroll", "up")),
         ]
     )
-    llm = GeminiLlmClient(
+    llm = gemini_llm_client(
         "private-key-canary",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(lambda _: next(responses))),
@@ -352,18 +353,18 @@ def test_gemini_direction_recovery_logs_retry_in_order(caplog):
 
     events = _events(caplog, "uvicorn.error.davi.llm")
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
-        "gemini_parse_recovery",
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
+        "llm_parse_recovery",
+        "llm_attempt_started",
+        "llm_attempt_finished",
     ]
     assert events[3]["provider_attempt"] == 2
     assert events[3]["trigger"] == "direction_recovery"
 
 
-def test_gemini_parse_failure_follows_successful_provider_attempt(caplog):
-    llm = GeminiLlmClient(
+def test_llm_parse_failure_follows_successful_provider_attempt(caplog):
+    llm = gemini_llm_client(
         "private-key-canary",
         "gemini-test",
         httpx.Client(
@@ -384,9 +385,9 @@ def test_gemini_parse_failure_follows_successful_provider_attempt(caplog):
 
     events = _events(caplog, "uvicorn.error.davi.llm")
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
-        "gemini_parse_error",
+        "llm_attempt_started",
+        "llm_attempt_finished",
+        "llm_parse_error",
     ]
     assert events[1]["outcome"] == "success"
     assert events[2]["reason"] == "invalid_json"

@@ -1,4 +1,4 @@
-"""고정 슬롯 없는 음성 목표 대화와 Gemini 구조화 출력 경계."""
+"""고정 슬롯 없는 음성 목표 대화와 공급자 구조화 출력 경계."""
 
 import json
 import logging
@@ -10,12 +10,15 @@ from app.errors import LlmError
 from app.intent_prompt import build_intent_prompt
 from app.intent_resolution import (
     INTENT_DIALOGUE_SCHEMA,
-    GeminiIntentResolver,
+    RemoteIntentResolver,
     StubIntentResolver,
+    get_intent_resolver,
     resolve_intent,
 )
 from app.schemas import ErrorKind, SlotFillRequest, SlotFillState
 from pydantic import ValidationError
+
+from tests.factories import gemini_intent_resolver
 
 
 def _request(
@@ -42,8 +45,8 @@ def _gemini_response(payload: dict, *, add_basis: bool = True) -> dict:
     }
 
 
-def _resolver(handler) -> GeminiIntentResolver:
-    return GeminiIntentResolver(
+def _resolver(handler) -> RemoteIntentResolver:
+    return gemini_intent_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(handler)),
@@ -159,7 +162,7 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "답변 위치만 보고 의미 없는 현재 답변" in prompt
 
 
-def test_gemini_sends_dialogue_schema_and_parses_dynamic_question():
+def test_llm_sends_dialogue_schema_and_parses_dynamic_question():
     private_session = uuid.uuid4()
     request = SlotFillRequest(
         utterance="사진 보내줘",
@@ -169,7 +172,10 @@ def test_gemini_sends_dialogue_schema_and_parses_dynamic_question():
     def handler(http_request: httpx.Request) -> httpx.Response:
         body = json.loads(http_request.content)
         assert body["generationConfig"]["responseSchema"] == INTENT_DIALOGUE_SCHEMA
-        assert body["generationConfig"]["maxOutputTokens"] == 512
+        assert body["generationConfig"]["maxOutputTokens"] == 1312
+        # thinking 모델이 이 예산을 thinking 토큰으로 다 써 응답이 잘리는 걸 막는다
+        # (실기기 재현, 2026-08-18 gemini-3.6-flash PARSE/max_output_tokens 실패).
+        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
         assert str(private_session) not in body["contents"][0]["parts"][0]["text"]
         assert http_request.headers["x-goog-api-key"] == "test-key"
         return httpx.Response(
@@ -188,7 +194,7 @@ def test_gemini_sends_dialogue_schema_and_parses_dynamic_question():
     assert state.goal is None
 
 
-def test_gemini_parses_ready_goal():
+def test_llm_parses_ready_goal():
     resolver = _resolver(
         lambda _: httpx.Response(
             200,
@@ -208,7 +214,7 @@ def test_gemini_parses_ready_goal():
     assert state.goal == "카메라 앱 열기"
 
 
-def test_gemini_normalizes_clarification_goal_without_another_call(caplog):
+def test_llm_normalizes_clarification_goal_without_another_call(caplog):
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -236,7 +242,7 @@ def test_gemini_normalizes_clarification_goal_without_another_call(caplog):
     )
 
 
-def test_gemini_retries_ready_without_goal_once_without_reusing_raw_output():
+def test_llm_retries_ready_without_goal_once_without_reusing_raw_output():
     requests: list[dict] = []
     private_invalid_message = "private-invalid-model-message"
 
@@ -273,7 +279,7 @@ def test_gemini_retries_ready_without_goal_once_without_reusing_raw_output():
     assert len(requests) == 2
 
 
-def test_gemini_contract_recovery_stops_after_second_invalid_output():
+def test_llm_contract_recovery_stops_after_second_invalid_output():
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -290,7 +296,7 @@ def test_gemini_contract_recovery_stops_after_second_invalid_output():
     assert len(requests) == 2
 
 
-def test_gemini_retries_overlong_message_once():
+def test_llm_retries_overlong_message_once():
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -321,7 +327,7 @@ def test_gemini_retries_overlong_message_once():
     assert len(requests) == 2
 
 
-def test_gemini_retries_once_without_schema_after_schema_400():
+def test_llm_retries_once_without_schema_after_schema_400():
     requests: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -398,7 +404,7 @@ def test_invalid_status_is_not_retried():
         (httpx.Response(500), ErrorKind.SERVER),
     ],
 )
-def test_gemini_classifies_provider_errors(response, kind):
+def test_llm_classifies_provider_errors(response, kind):
     with pytest.raises(LlmError) as raised:
         _resolver(lambda _: response).resolve(_request())
 
@@ -407,7 +413,7 @@ def test_gemini_classifies_provider_errors(response, kind):
         assert raised.value.retry_after_seconds == 17
 
 
-def test_gemini_classifies_network_and_invalid_output_without_logging_raw_text(caplog):
+def test_llm_classifies_network_and_invalid_output_without_logging_raw_text(caplog):
     private_output = "private-model-output-canary"
     resolver = _resolver(
         lambda _: httpx.Response(
@@ -433,13 +439,13 @@ def test_gemini_classifies_network_and_invalid_output_without_logging_raw_text(c
     assert network_error.value.kind is ErrorKind.NETWORK
 
 
-def test_gemini_logs_only_safe_operation_metadata(caplog):
+def test_llm_logs_only_safe_operation_metadata(caplog):
     private_values = [
         "private-utterance-canary",
         "private-key-canary",
         "private-decision-basis-canary",
     ]
-    resolver = GeminiIntentResolver(
+    resolver = gemini_intent_resolver(
         private_values[1],
         "gemini-test",
         httpx.Client(
@@ -465,10 +471,30 @@ def test_gemini_logs_only_safe_operation_metadata(caplog):
     events = _events(caplog)
     serialized = json.dumps(events, ensure_ascii=False)
     assert [event["event"] for event in events] == [
-        "gemini_attempt_started",
-        "gemini_attempt_finished",
+        "llm_attempt_started",
+        "llm_attempt_finished",
     ]
     assert all(event["operation"] == "intent_dialogue" for event in events)
     assert all(value not in serialized for value in private_values)
     assert "private-message-canary" not in serialized
     assert "private-goal-canary" not in serialized
+
+
+def test_get_intent_resolver_wires_thinking_budget_from_settings(set_runtime_profile):
+    assert isinstance(get_intent_resolver(), StubIntentResolver)
+
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_model="gemini-test",
+        davi_gemini_thinking_budget=321,
+    )
+    get_intent_resolver.cache_clear()
+
+    resolver = get_intent_resolver()
+
+    assert isinstance(resolver, RemoteIntentResolver)
+    # DAVI_GEMINI_THINKING_BUDGET이 공급자까지 흘러가는지(config.py) 확인한다.
+    # maxOutputTokens는 이 값 위에 원래 여유분(512)을 얹은 것이어야 잘림을 안 만든다.
+    assert resolver.provider.thinking_budget == 321
+    assert resolver.provider.max_output_tokens == 321 + 512

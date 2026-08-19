@@ -155,7 +155,7 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 | 설정 | development | production |
 |---|---|---|
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
-| `DAVI_USE_STUB_LLM=false` | non-empty `GEMINI_API_KEY` 필수 | non-empty `GEMINI_API_KEY` 필수 |
+| `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
 | `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 `0.0.0.0` | loopback만 허용 |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
@@ -164,14 +164,52 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
 토큰 없는 LAN 요청이 통과하지 않는다.
-모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+
+### LLM 공급자 교체
+
+`DAVI_LLM_PROVIDER`로 **Gemini·OpenAI·Anthropic**을 바꾼다. 셋 다 같은 pydantic 선언에서
+뽑은 구조화 JSON 계약을 쓰므로 프롬프트·가드레일·완료 검증은 그대로다(`app/llm_provider.py`).
+
+| 공급자 | API | 기본 모델 | 필요한 키 | 추론 깊이 조절 |
+|---|---|---|---|---|
+| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | `DAVI_GEMINI_THINKING_BUDGET` |
+| `openai` | Responses(`text.format`) | `gpt-5.6-luna` | `OPENAI_API_KEY` | `DAVI_OPENAI_REASONING_EFFORT` |
+| `anthropic` | Messages(`output_config.format`) | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` | 없음(모델을 올린다) |
+
+기본 모델 셋은 모두 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다. `DAVI_MODEL`을
+**비우면 공급자 기본 모델**이 쓰인다 — 공급자만 바꾸고 모델을 안 고쳐서 gemini id가
+Anthropic으로 나가는 사고를 막으려는 기본값이다. 품질이 더 필요하면 `DAVI_MODEL`로 올린다
+(`gemini-3.6-flash`, `gpt-5.6-terra`, `claude-sonnet-5`).
+
+Anthropic 경로는 **thinking 파라미터를 보내지 않고, 대신 예산에 추론 몫을 얹는다.** 끄지
+않는 이유는 끄는 방법이 모델마다 다르고 **어떤 모델은 아예 못 끄기** 때문이다 —
+`claude-haiku-4-5`는 생략하면 thinking이 안 돌지만 `claude-sonnet-5`·`claude-opus-5`는
+생략해도 adaptive thinking이 기본으로 켜져 있고(기본 effort는 high),
+`thinking: {"type": "disabled"}`는 Sonnet 5는 받지만 Opus 5는 effort가 xhigh 이상이면 400,
+Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모양이 없어서, 어느 모델이 와도
+안 깨지는 쪽(예산에 얹기)을 골랐다. thinking이 안 도는 모델에서는 상한이 남을 뿐 비용은
+늘지 않는다 — 상한은 배정이 아니라 천장이다.
+
+**보이지 않는 추론 토큰이 출력 예산을 같이 먹는다.** thinking·reasoning 토큰이 예산을 다
+쓰면 응답이 잘려 PARSE 실패로 이어진다(2026-08-18 `gemini-3.6-flash` 실기기 재현). 그래서
+next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
+추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
+OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
+모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+
+**Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
+상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이
+1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
+`DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
+느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
 
 `/health` 응답도 프로필에 따라 다르다.
 
 development:
 
 ```json
-{"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
+{"status":"ok","environment":"development","provider":"gemini","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
 ```
 
 production:
@@ -279,10 +317,11 @@ cd server
 
 PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
 PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰고 시작 시 7일보다 오래된 파일을
-정리한다. 정상 추론은 `request_received` → `gemini_attempt_started` →
-`gemini_attempt_finished` → `request_finished`로 이어지고 request ID·Logical Request ID·attempt로
+정리한다. 정상 추론은 `request_received` → `llm_attempt_started` →
+`llm_attempt_finished` → `request_finished`로 이어지고(두 이벤트는 `provider` 필드로 어느
+공급자였는지 남긴다) request ID·Logical Request ID·attempt로
 대조한다. 정상 `/health`와 기본 Uvicorn access log는 생략해 반복 I/O와 IP/port 보존을 막는다.
-목표·화면 label·최근 안내·요청 본문·프롬프트·Gemini 응답·API 키·개발 토큰은 기록하지 않는다.
+목표·화면 label·최근 안내·요청 본문·프롬프트·모델 응답·API 키·개발 토큰은 기록하지 않는다.
 
 ### 장애 확인 순서
 
@@ -345,14 +384,16 @@ pytest
 | `app/reasoning.py` | 실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
-| `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
+| `app/llm.py` | 스텁/실공급자 클라이언트. 스키마 400 폴백·direction 교정·응답 파싱. |
+| `app/llm_provider.py` | **공급자 교체 지점.** Gemini·OpenAI·Anthropic REST 호출, 오류 분류, 시도 로그. |
 | `app/intent_prompt.py` | 이전 턴+현재 발화 → 고정 슬롯 없는 음성 목표 프롬프트. |
-| `app/intent_resolution.py` | 음성 목표 스텁/Gemini 경계, 구조화 질문·goal 검증. |
+| `app/intent_resolution.py` | 음성 목표 스텁/실공급자 경계, 구조화 질문·goal 검증. |
 | `app/app_resolution_prompt.py` | goal → 일반 앱 후보 최대 5개 프롬프트. |
-| `app/app_resolution.py` | 후보 Gemini 경계와 기기 ID/status의 무상태 최종 판정. |
+| `app/app_resolution.py` | 후보 생성 경계와 기기 ID/status의 무상태 최종 판정. |
 | `app/observability.py` | 비식별 요청 문맥·고정 이벤트·안전한 JSON Lines formatter. |
 | `app/logging.json` | Uvicorn access log를 끄고 서버 진단을 JSON Lines로 통합하는 설정. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
+| `app/json_schema.py` | 모델 선언 → OpenAI·Anthropic strict JSON Schema(선택 필드는 nullable). |
 | `app/config.py` | 실행 프로필·환경변수와 fail-fast 검증. |
 
 ## 지금 무엇이 진짜인가
@@ -361,8 +402,10 @@ pytest
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
 - `app/schemas.py` — 다음 안내·음성 목표·앱 후보 대조 계약. C1~C15를 계약 테스트가 고정한다.
-- `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
-  `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
+- `app/gemini_schema.py` / `app/json_schema.py` — 모델 선언 → 공급자별 구조화 출력 스키마.
+  Gemini는 `propertyOrdering`(추론 순서)과 `required`를 자동 생성하고, OpenAI·Anthropic은 같은
+  선언에서 strict JSON Schema를 만든다(선택 필드는 "생략" 대신 nullable). 둘 다 빈 문자열
+  enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill`,
   `/v1/intent/app-resolution`, `/v1/auth/kakao` 라우팅과 `LlmError` → HTTP 상태·응답·재시도
   헤더 매핑.
@@ -374,11 +417,14 @@ pytest
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
-- `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
-  프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
+- `app/prompt.py` + `app/llm.py:RemoteLlmClient` — 프롬프트 구성과 공급자 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
+  프롬프트를 만들고, `GUIDE_ACTION_CONTRACT` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
   JSON 계약을 프롬프트로 옮겨 무스키마 호출을 한 번 재시도한다.
-  HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
-- `app/intent_prompt.py` + `app/intent_resolution.py:GeminiIntentResolver` — 완결된 이전 턴과 현재
+  HTTP 목 테스트는 세 공급자 각각의 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
+- `app/llm_provider.py` — Gemini `generateContent`, OpenAI Responses, Anthropic Messages를 한
+  경계 뒤에 둔다. 같은 pydantic 선언에서 공급자별 스키마 표현을 만들고, HTTP 상태 → `ErrorKind`
+  분류와 시도 로그를 한 자리에 모은다. 공급자를 바꿔도 앱이 받는 계약은 같다는 것을 테스트가 고정한다.
+- `app/intent_prompt.py` + `app/intent_resolution.py:RemoteIntentResolver` — 완결된 이전 턴과 현재
   발화를 분리해 직렬화하고 `needs_clarification`/`ready` 구조화 출력으로 질문 또는 goal을 만든다.
   내부 판단 근거를 status보다 먼저 생성하되 wire·로그에는 버리고, 안전한 goal 제거와 총 2회 안의
   계약 교정만 허용한다. `StubIntentResolver`는 keyless 스모크 전용이며 자연어 품질을 대변하지 않는다.

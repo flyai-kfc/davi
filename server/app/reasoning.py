@@ -233,7 +233,9 @@ def next_step(
     verified = _verify_done(action, masked)
     return NextStepResponse(
         action=action,
-        model=settings.davi_model,
+        # DAVI_MODEL을 비우면 공급자 기본 모델이 쓰인다. 앱·eval이 받는 값은
+        # 설정 문자열이 아니라 **실제로 호출된 모델 id**여야 한다.
+        model=settings.resolved_model,
         verified=verified,
         screen_signature=_screen_signature(masked.screen),
     )

@@ -341,7 +341,10 @@ def health() -> dict:
     return {
         "status": "ok",
         "environment": settings.davi_env,
-        "model": settings.davi_model,
+        # provider와 model을 함께 알린다. DAVI_MODEL을 비워 두면 공급자 기본 모델이 쓰이므로,
+        # 둘 중 하나만 보면 "어느 공급자에 어떤 모델을 보내고 있는지"를 확인할 수 없다.
+        "provider": settings.davi_llm_provider,
+        "model": settings.resolved_model,
         "stub_llm": settings.davi_use_stub_llm,
         # 서버 2차 상태만 알린다. 앱 1차 상태는 앱이 logcat으로 따로 드러내며(GuideSvc의
         # privacyMasking=), 두 값을 합치지 않아야 한쪽만 우회한 상태를 오인하지 않는다(#203).

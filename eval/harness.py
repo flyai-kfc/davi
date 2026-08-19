@@ -49,10 +49,12 @@ _SECRET_PATTERNS = (
     re.compile(r"\bsk-[0-9A-Za-z_-]{20,}\b"),
 )
 _FORBIDDEN_KEYS = {
+    "anthropic_api_key",
     "api_key",
     "device_id",
     "gemini_api_key",
     "model_response",
+    "openai_api_key",
     "raw_model_response",
 }
 

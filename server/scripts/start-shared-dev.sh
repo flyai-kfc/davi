@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shared_dev_prepare_dirs
 cd "$SHARED_DEV_SERVER_DIR"
 
-[[ -f ".env" ]] || shared_dev_die "server/.env가 없습니다. .env.example을 복사해 실제 Gemini 설정을 채우세요."
+[[ -f ".env" ]] || shared_dev_die "server/.env가 없습니다. .env.example을 복사해 실제 LLM 공급자 설정을 채우세요."
 [[ -x ".venv/bin/python" ]] || shared_dev_die "server/.venv/bin/python이 없습니다. Python 3.12 환경을 준비하세요."
 command -v curl >/dev/null 2>&1 || shared_dev_die "curl이 필요합니다."
 command -v lsof >/dev/null 2>&1 || shared_dev_die "lsof가 필요합니다."

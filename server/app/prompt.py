@@ -138,14 +138,30 @@ def build_prompt(req: NextStepRequest) -> str:
 현재 화면과 목표를 근거로 다음 한 걸음을 결정하세요."""
 
 
-def fallback_prompt(prompt: str, response_schema: dict[str, Any]) -> str:
-    """responseSchema가 거부됐을 때도 필요한 JSON 계약을 프롬프트에 남긴다."""
+def fallback_prompt(
+    prompt: str,
+    response_schema: dict[str, Any],
+    *,
+    omit_optional: bool = True,
+) -> str:
+    """스키마가 거부됐을 때도 필요한 JSON 계약을 프롬프트에 남긴다.
+
+    이 경로에는 **강제하는 것이 아무것도 없다.** 스키마는 참고 문서로 붙을 뿐이라 여기 적은
+    문장이 유일한 지시다. 그래서 "해당 없음"의 표현 규약도 공급자에 맞춰야 한다 —
+    `omit_optional`이 참이면 Gemini 규약(필드 생략), 거짓이면 strict 규약(모든 필드 + null)이다.
+    한쪽 문장을 양쪽에 쓰면 스키마와 지시가 정반대가 된다.
+    """
 
     contract = json.dumps(response_schema, ensure_ascii=False, separators=(",", ":"))
+    optional_rule = (
+        "선택 필드는 해당할 때만 포함하세요."
+        if omit_optional
+        else "계약의 모든 필드를 포함하되, 해당 없는 필드에는 null을 넣으세요."
+    )
     return (
         f"{prompt}\n\n"
         "응답은 Markdown 없이 JSON 객체 하나만 반환하세요. 아래 계약의 필수 필드를 모두 채우고 "
-        "선택 필드는 해당할 때만 포함하세요.\n"
+        f"{optional_rule}\n"
         f"JSON 계약: {contract}"
     )
 

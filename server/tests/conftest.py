@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from app.app_resolution import get_app_candidate_resolver
 from app.config import Settings, settings
 from app.intent_resolution import get_intent_resolver
 from app.llm import get_llm_client
@@ -38,11 +39,13 @@ def isolate_runtime_state(monkeypatch):
     _apply_runtime_profile(monkeypatch, _validated_runtime_profile())
     get_llm_client.cache_clear()
     get_intent_resolver.cache_clear()
+    get_app_candidate_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
     yield
     get_llm_client.cache_clear()
     get_intent_resolver.cache_clear()
+    get_app_candidate_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
 
@@ -57,6 +60,8 @@ def set_runtime_profile(
         profile = _validated_runtime_profile(**overrides)
         _apply_runtime_profile(monkeypatch, profile)
         get_llm_client.cache_clear()
+        get_intent_resolver.cache_clear()
+        get_app_candidate_resolver.cache_clear()
         return profile
 
     return apply

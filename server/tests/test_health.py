@@ -42,6 +42,7 @@ def test_development_health_includes_diagnostics():
     assert r.json() == {
         "status": "ok",
         "environment": "development",
+        "provider": "gemini",
         "model": "gemini-3.5-flash-lite",
         "stub_llm": True,
         "privacy_masking_disabled": False,

@@ -1,8 +1,11 @@
-"""LLM 클라이언트 경계. 스텁과 Gemini 두 구현.
+"""LLM 클라이언트 경계. 스텁과 실제 공급자 두 구현.
 
-여기서 HANDOFF §10 함정을 흡수한다:
+공급자(Gemini·OpenAI·Anthropic) 선택과 HTTP·스키마·오류 분류는 `llm_provider.py`가 맡는다.
+여기 남는 것은 **다음 안내 하나를 뽑는 대화 흐름**이다:
+
 - 스키마 400 시 무스키마 재시도 폴백(스키마 하나로 앱 전체가 죽는 사고 방지).
-- 에러를 QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST로 분류.
+- scroll 응답에 direction이 빠졌을 때의 1회 교정.
+- GuideAction 계약 검증과 PARSE 오류 분류.
 
 development 스텁 덕에 키 없이도 서버가 뜨고 eval 하니스가 돈다(DAVI_USE_STUB_LLM).
 """
@@ -11,22 +14,19 @@ from __future__ import annotations
 
 import json
 import logging
-import time
-from collections.abc import Mapping
 from functools import cache
-from typing import Any
 
 import httpx
 
 from .config import settings
 from .errors import LlmError
-from .gemini_response import (
-    GeminiCandidateError,
-    GeminiCandidateErrorReason,
-    extract_candidate_text,
-    strip_json_fence,
+from .gemini_response import strip_json_fence
+from .llm_provider import (
+    ProviderCallError,
+    ResponseContract,
+    StructuredJsonProvider,
+    build_provider,
 )
-from .gemini_schema import build_response_schema
 from .observability import LLM_LOGGER_NAME, log_event
 from .prompt import build_prompt, fallback_prompt
 from .schemas import (
@@ -37,13 +37,16 @@ from .schemas import (
     SwipeDirection,
 )
 
-# 모델 선언에서 뽑은 Gemini 응답 스키마. propertyOrdering이 곧 추론 순서다(C1).
+_OPERATION = "next_step"
+# 모델 선언에서 뽑은 응답 계약. propertyOrdering(선언 순서)이 곧 추론 순서다(C1).
 # import 시점에 만들어 두므로, 스키마를 못 만드는 변경은 서버 기동 때 바로 드러난다.
-GUIDE_ACTION_SCHEMA = build_response_schema(GuideAction)
-_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-_DEFAULT_RETRY_AFTER_SECONDS = 60
-# GuideAction은 짧은 JSON 한 객체다. 정상 응답의 여유는 충분히 두되 장문 폭주는 여기서 자른다.
-_MAX_OUTPUT_TOKENS = 1024
+GUIDE_ACTION_CONTRACT = ResponseContract.of(_OPERATION, GuideAction)
+# 기존 이름 유지 — Gemini 표현이다. 공급자 중립 계약은 GUIDE_ACTION_CONTRACT를 쓴다.
+GUIDE_ACTION_SCHEMA = GUIDE_ACTION_CONTRACT.gemini_schema
+
+# 정상 GuideAction 하나를 쓰는 데 필요한 출력 토큰. 공급자가 보이지 않는 추론에 쓰는 몫은
+# `llm_provider.build_provider`가 여기에 더한다.
+_RESPONSE_HEADROOM_TOKENS = 1024
 _DIRECTION_RETRY_INSTRUCTION = (
     "이전 응답은 action_type이 scroll인데 direction이 빠져 유효하지 않았습니다. "
     "direction을 up, down, left, right 중 하나로 반드시 포함해 JSON 객체 하나만 다시 반환하세요."
@@ -56,15 +59,6 @@ class LlmClient:
 
     def reason(self, req: NextStepRequest) -> GuideAction:  # pragma: no cover - interface
         raise NotImplementedError
-
-
-class _GeminiHttpError(Exception):
-    """스키마 400 재시도 여부를 정하기 위해 HTTP 정보를 보존하는 내부 예외."""
-
-    def __init__(self, status_code: int, retry_after_seconds: int | None = None) -> None:
-        super().__init__(f"Gemini API HTTP {status_code}")
-        self.status_code = status_code
-        self.retry_after_seconds = retry_after_seconds
 
 
 class _MissingScrollDirectionError(Exception):
@@ -132,24 +126,15 @@ class StubLlmClient(LlmClient):
         )
 
 
-class GeminiLlmClient(LlmClient):
-    """Gemini REST 구조화 출력 클라이언트.
+class RemoteLlmClient(LlmClient):
+    """공급자 구조화 출력으로 다음 안내를 만든다.
 
-    `http_client`는 테스트에서 MockTransport를 주입하기 위한 경계다. 운영에서는 재사용 가능한
-    httpx.Client를 하나 생성한다.
+    `provider`는 테스트에서 MockTransport를 물린 공급자를 주입하기 위한 경계이기도 하다.
+    운영에서는 `get_llm_client()`가 설정이 고른 공급자를 하나 만들어 프로세스 동안 재사용한다.
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str,
-        http_client: httpx.Client | None = None,
-    ) -> None:
-        if not api_key:
-            raise LlmError(ErrorKind.AUTH, "GEMINI_API_KEY 미설정")
-        self.api_key = api_key
-        self.model = model
-        self.http_client = http_client or httpx.Client(timeout=httpx.Timeout(20.0))
+    def __init__(self, provider: StructuredJsonProvider) -> None:
+        self.provider = provider
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         prompt = build_prompt(req)
@@ -160,25 +145,29 @@ class GeminiLlmClient(LlmClient):
         def call_once(call_prompt: str, *, trigger: str) -> str:
             nonlocal provider_attempt
             provider_attempt += 1
-            return self._call_once(
+            return self.provider.generate_json(
                 call_prompt,
                 with_schema=with_schema,
-                provider_attempt=provider_attempt,
+                attempt=provider_attempt,
                 trigger=trigger,
             )
 
         try:
             response_text = call_once(active_prompt, trigger="initial")
-        except _GeminiHttpError as error:
+        except ProviderCallError as error:
             if error.status_code != 400:
-                raise self._to_llm_error(error) from error
-            # Gemini가 responseSchema를 거부한 경우에만, 계약을 프롬프트로 옮겨 한 번 복구한다.
-            active_prompt = fallback_prompt(prompt, GUIDE_ACTION_SCHEMA)
+                raise self.provider.to_llm_error(error) from error
+            # 공급자가 스키마를 거부한 경우에만, 계약을 프롬프트로 옮겨 한 번 복구한다.
+            active_prompt = fallback_prompt(
+                prompt,
+                self.provider.contract_schema,
+                omit_optional=self.provider.omits_optional_fields,
+            )
             with_schema = False
             try:
                 response_text = call_once(active_prompt, trigger="schema_recovery")
-            except _GeminiHttpError as fallback_error:
-                raise self._to_llm_error(fallback_error) from fallback_error
+            except ProviderCallError as fallback_error:
+                raise self.provider.to_llm_error(fallback_error) from fallback_error
 
         try:
             return self._parse_action(response_text)
@@ -188,7 +177,9 @@ class GeminiLlmClient(LlmClient):
             log_event(
                 llm_logger,
                 logging.WARNING,
-                "gemini_parse_recovery",
+                "llm_parse_recovery",
+                provider=self.provider.name,
+                operation=_OPERATION,
                 reason="scroll_direction_missing",
                 action="retry",
             )
@@ -197,140 +188,31 @@ class GeminiLlmClient(LlmClient):
                     f"{active_prompt}\n\n{_DIRECTION_RETRY_INSTRUCTION}",
                     trigger="direction_recovery",
                 )
-            except _GeminiHttpError as retry_error:
-                raise self._to_llm_error(retry_error) from retry_error
+            except ProviderCallError as retry_error:
+                raise self.provider.to_llm_error(retry_error) from retry_error
             try:
                 return self._parse_action(retry_text)
             except _MissingScrollDirectionError as retry_parse_error:
                 log_event(
                     llm_logger,
                     logging.WARNING,
-                    "gemini_parse_recovery",
+                    "llm_parse_recovery",
+                    provider=self.provider.name,
+                    operation=_OPERATION,
                     reason="scroll_direction_missing",
                     action="fail",
                 )
                 raise LlmError(
                     ErrorKind.PARSE,
-                    "Gemini scroll 응답에 direction이 없음 (1회 재시도 실패)",
+                    "scroll 응답에 direction이 없음 (1회 재시도 실패)",
                 ) from retry_parse_error
-
-    def _call_once(
-        self,
-        prompt: str,
-        *,
-        with_schema: bool,
-        provider_attempt: int,
-        trigger: str,
-    ) -> str:
-        generation_config: dict[str, Any] = {
-            "responseMimeType": "application/json",
-            "maxOutputTokens": _MAX_OUTPUT_TOKENS,
-        }
-        if with_schema:
-            generation_config["responseSchema"] = GUIDE_ACTION_SCHEMA
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": generation_config,
-        }
-        schema_mode = "schema" if with_schema else "fallback"
-        started_at = time.perf_counter()
-        log_event(
-            llm_logger,
-            logging.INFO,
-            "gemini_attempt_started",
-            model=self.model,
-            provider_attempt=provider_attempt,
-            schema_mode=schema_mode,
-            trigger=trigger,
-        )
-        try:
-            response = self.http_client.post(
-                f"{_GEMINI_API_BASE_URL}/models/{self.model}:generateContent",
-                headers={"x-goog-api-key": self.api_key},
-                json=payload,
-            )
-        except httpx.TimeoutException as error:
-            self._log_attempt_finished(
-                started_at,
-                provider_attempt,
-                schema_mode,
-                trigger,
-                outcome="error",
-                error_kind=ErrorKind.NETWORK,
-            )
-            raise LlmError(ErrorKind.NETWORK, "Gemini API 요청 시간 초과") from error
-        except httpx.RequestError as error:
-            self._log_attempt_finished(
-                started_at,
-                provider_attempt,
-                schema_mode,
-                trigger,
-                outcome="error",
-                error_kind=ErrorKind.NETWORK,
-            )
-            raise LlmError(ErrorKind.NETWORK, "Gemini API 네트워크 오류") from error
-
-        if response.is_error:
-            self._log_attempt_finished(
-                started_at,
-                provider_attempt,
-                schema_mode,
-                trigger,
-                outcome="error",
-                provider_status_class=f"{response.status_code // 100}xx",
-                error_kind=_provider_error_kind(response.status_code),
-            )
-            raise _GeminiHttpError(
-                response.status_code,
-                _retry_after_seconds(response.headers),
-            )
-        self._log_attempt_finished(
-            started_at,
-            provider_attempt,
-            schema_mode,
-            trigger,
-            outcome="success",
-            provider_status_class=f"{response.status_code // 100}xx",
-        )
-        return _response_text(response)
-
-    def _log_attempt_finished(
-        self,
-        started_at: float,
-        provider_attempt: int,
-        schema_mode: str,
-        trigger: str,
-        *,
-        outcome: str,
-        provider_status_class: str | None = None,
-        error_kind: ErrorKind | None = None,
-    ) -> None:
-        log_event(
-            llm_logger,
-            logging.INFO if outcome == "success" else logging.WARNING,
-            "gemini_attempt_finished",
-            model=self.model,
-            provider_attempt=provider_attempt,
-            schema_mode=schema_mode,
-            trigger=trigger,
-            outcome=outcome,
-            provider_status_class=provider_status_class,
-            error_kind=error_kind,
-            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
-        )
 
     def _parse_action(self, response_text: str) -> GuideAction:
         try:
             payload = json.loads(strip_json_fence(response_text))
         except (ValueError, TypeError) as error:
-            log_event(
-                llm_logger,
-                logging.WARNING,
-                "gemini_parse_error",
-                reason="invalid_json",
-                action="fail",
-            )
-            raise LlmError(ErrorKind.PARSE, "Gemini 응답이 GuideAction 계약과 맞지 않음") from error
+            self._log_parse_error("invalid_json")
+            raise LlmError(ErrorKind.PARSE, "응답이 GuideAction 계약과 맞지 않음") from error
         if (
             isinstance(payload, dict)
             and payload.get("action_type") == ActionType.SCROLL
@@ -340,78 +222,30 @@ class GeminiLlmClient(LlmClient):
         try:
             return GuideAction.model_validate(payload)
         except (ValueError, TypeError) as error:
-            log_event(
-                llm_logger,
-                logging.WARNING,
-                "gemini_parse_error",
-                reason="invalid_guide_action",
-                action="fail",
-            )
-            raise LlmError(ErrorKind.PARSE, "Gemini 응답이 GuideAction 계약과 맞지 않음") from error
+            self._log_parse_error("invalid_guide_action")
+            raise LlmError(ErrorKind.PARSE, "응답이 GuideAction 계약과 맞지 않음") from error
 
-    @staticmethod
-    def _to_llm_error(error: _GeminiHttpError) -> LlmError:
-        if error.status_code == 429:
-            return LlmError(
-                ErrorKind.QUOTA,
-                "Gemini API 사용량 또는 요청 한도 초과",
-                (
-                    error.retry_after_seconds
-                    if error.retry_after_seconds is not None
-                    else _DEFAULT_RETRY_AFTER_SECONDS
-                ),
-            )
-        if error.status_code in {401, 403}:
-            return LlmError(ErrorKind.AUTH, "Gemini API 인증 또는 권한 오류")
-        if error.status_code == 400:
-            return LlmError(ErrorKind.BAD_REQUEST, "Gemini API 요청 형식 오류")
-        return LlmError(ErrorKind.SERVER, f"Gemini API 서버 오류 (HTTP {error.status_code})")
+    def _log_parse_error(self, reason: str) -> None:
+        log_event(
+            llm_logger,
+            logging.WARNING,
+            "llm_parse_error",
+            provider=self.provider.name,
+            operation=_OPERATION,
+            reason=reason,
+            action="fail",
+        )
 
 
-def _response_text(response: httpx.Response) -> str:
-    try:
-        payload = response.json()
-    except ValueError as error:
-        raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
+def next_step_provider(http_client: httpx.Client | None = None) -> StructuredJsonProvider:
+    """설정이 고른 공급자로 다음 안내용 클라이언트를 만든다."""
 
-    try:
-        return extract_candidate_text(payload)
-    except GeminiCandidateError as error:
-        if error.reason is GeminiCandidateErrorReason.MAX_TOKENS:
-            log_event(
-                llm_logger,
-                logging.WARNING,
-                "gemini_response_error",
-                reason="max_output_tokens",
-                action="fail",
-            )
-            raise LlmError(
-                ErrorKind.PARSE,
-                "Gemini 응답이 출력 토큰 상한에서 잘림",
-            ) from error
-        if error.reason is GeminiCandidateErrorReason.EMPTY_TEXT:
-            raise LlmError(ErrorKind.PARSE, "Gemini 응답 텍스트가 비어 있음") from error
-        raise LlmError(ErrorKind.PARSE, "Gemini 응답 본문에 텍스트 후보가 없음") from error
-
-
-def _retry_after_seconds(headers: Mapping[str, str]) -> int | None:
-    value = headers.get("Retry-After")
-    if value is None:
-        return None
-    try:
-        return max(0, int(value))
-    except ValueError:
-        return None
-
-
-def _provider_error_kind(status_code: int) -> ErrorKind:
-    if status_code == 429:
-        return ErrorKind.QUOTA
-    if status_code in {401, 403}:
-        return ErrorKind.AUTH
-    if status_code == 400:
-        return ErrorKind.BAD_REQUEST
-    return ErrorKind.SERVER
+    return build_provider(
+        contract=GUIDE_ACTION_CONTRACT,
+        operation=_OPERATION,
+        response_headroom=_RESPONSE_HEADROOM_TOKENS,
+        http_client=http_client,
+    )
 
 
 @cache
@@ -420,4 +254,4 @@ def get_llm_client() -> LlmClient:
 
     if settings.davi_use_stub_llm:
         return StubLlmClient()
-    return GeminiLlmClient(settings.gemini_api_key.get_secret_value(), settings.davi_model)
+    return RemoteLlmClient(next_step_provider())

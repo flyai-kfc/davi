@@ -8,8 +8,11 @@
   그게 곧 생성 순서 = 추론 순서다. action을 앞에 두면 모델이 근거를 나중에 대충 채운다.
   순서는 `gemini_schema.build_response_schema()`가 **이 선언에서 자동으로 뽑는다**(C1).
   따라서 필드 순서를 바꾸면 프롬프트 동작이 바뀐다 — 무심코 재배치하지 말 것.
-- **"해당 없음"은 빈 문자열이 아니라 필드 생략으로 표현한다.** enum에 빈 문자열을 넣으면
-  Gemini가 HTTP 400으로 거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+- **"해당 없음"은 빈 문자열로 표현하지 않는다.** enum에 빈 문자열을 넣으면 Gemini가 HTTP 400으로
+  거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+  **실제로 무엇을 보내는지는 공급자마다 다르다** — Gemini는 필드 생략, OpenAI·Anthropic strict
+  모드는 null이다. 그 규약을 여기 선언에 쓰지 않는 이유는 아래 `GuideAction.direction` 주석에
+  있다. 규약 문장은 각 스키마 변환기가 붙인다(`gemini_schema.py` / `json_schema.py`).
 """
 
 from __future__ import annotations
@@ -167,20 +170,26 @@ class GuideAction(BaseModel):
     )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
-    # 않아서**다 — `gemini_schema.build_response_schema`가 싣는 것은 필드 description뿐이라
-    # 기준이 모델에게 도달하지 않았다(#109 원인, `../CLAUDE.md`의 "Gemini 구조화 출력 함정").
+    # 않아서**다 — 스키마 변환기가 싣는 것은 필드 description뿐이라 기준이 모델에게 도달하지
+    # 않았다(#109 원인, `../CLAUDE.md`의 "구조화 출력 함정").
     # `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
+    #
+    # **"해당 없을 때 어떻게 표현하는가"는 여기 쓰지 않는다.** 그 규약이 공급자마다 다르기
+    # 때문이다 — Gemini는 필드 생략, OpenAI·Anthropic strict 모드는 null이다. 여기에 한쪽
+    # 규약을 박으면 다른 쪽 스키마와 정반대 지시가 한 프롬프트에 함께 들어간다(PR #62 리뷰가
+    # 금지한 패턴). 규약은 각 변환기가 자기 표현에 맞게 덧붙인다.
     direction: SwipeDirection | None = Field(
         default=None,
         description=(
             "scroll일 때 화면이 이동할 방향, 즉 사용자가 보러 가는 쪽. "
             "아래 내용을 보려면 down, 위로 되돌아가려면 up, "
-            "다음 페이지로 넘어가려면 right, 이전 페이지로 돌아가려면 left. 그 외에는 생략한다."
+            "다음 페이지로 넘어가려면 right, 이전 페이지로 돌아가려면 left. "
+            "scroll이 아니면 방향이 없다."
         ),
     )
     target_node_id: str | None = Field(
         default=None,
-        description="동작 대상 요소의 node_id. 대상이 없는 동작이면 생략한다.",
+        description="동작 대상 요소의 node_id. 대상이 없는 동작에는 값이 없다.",
     )
     # 문장은 `direction`과 **같은 말**로 쓴다. 손가락 동작은 앱이 그림으로 보여주므로 문장까지
     # 손가락으로 쓰면 시니어가 읽는 말이 부자연스러워진다(C17).
