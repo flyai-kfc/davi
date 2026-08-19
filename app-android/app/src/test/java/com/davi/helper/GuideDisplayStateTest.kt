@@ -552,28 +552,24 @@ class GuideDisplayStateTest {
 
     // ── 눌림 감지(#238) ──────────────────────────────────────────────
 
-    /** 지목한 것은 컨테이너인데 클릭은 그 안쪽 뷰에서 난다. 중심이 들어오면 같은 대상이다. */
+    /** 눌림을 맞출 때도 파동을 그릴 때도 이 자리를 쓴다. */
     @Test
-    fun `대상 안을 누르면 대상 자리를 돌려준다`() {
+    fun `안내가 떠 있으면 대상 자리를 돌려준다`() {
         state.show(sigA, pressBounds, "확인을 누르세요")
 
-        assertEquals(pressBounds, state.pressedTargetBounds(60, 120))
+        assertEquals(pressBounds, state.currentTargetBounds())
     }
 
+    /**
+     * 화면 전환이 빠르면 WAIT이 클릭 이벤트보다 먼저 들어와 강조가 이미 내려가 있다.
+     * 그때도 자리는 알려줘야 한다 — 파동은 "방금 누른 곳"이라 여전히 참이다(실측 회귀).
+     */
     @Test
-    fun `대상 밖을 누르면 돌려주지 않는다`() {
-        state.show(sigA, pressBounds, "확인을 누르세요")
-
-        assertNull(state.pressedTargetBounds(5, 120))
-    }
-
-    /** 이미 내렸으면 다시 내릴 강조도, 다시 줄 파동도 없다. */
-    @Test
-    fun `이미 강조를 내렸으면 눌림을 잡지 않는다`() {
+    fun `강조가 내려간 뒤에도 대상 자리는 남는다`() {
         state.show(sigA, pressBounds, "확인을 누르세요")
         state.hideTarget()
 
-        assertNull(state.pressedTargetBounds(60, 120))
+        assertEquals(pressBounds, state.currentTargetBounds())
     }
 
     /** 확인 화면은 가리킬 대상이 없다([GuideDisplayState.Content.bounds]가 null). */
@@ -581,6 +577,15 @@ class GuideDisplayStateTest {
     fun `확인 화면에는 누를 대상이 없다`() {
         state.showConfirm(sigA, confirmText)
 
-        assertNull(state.pressedTargetBounds(60, 120))
+        assertNull(state.currentTargetBounds())
+    }
+
+    /** 오버레이가 걷힌 동안에는 맞출 대상도 없다. */
+    @Test
+    fun `오버레이가 지워졌으면 대상 자리가 없다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요")
+        state.onCleared()
+
+        assertNull(state.currentTargetBounds())
     }
 }

@@ -212,22 +212,18 @@ class GuideDisplayState {
      * 확인 화면은 가리킬 대상이 없어([Content.bounds]가 null) 여기서 할 일이 없다.
      */
     /**
-     * 클릭된 노드의 중심이 **지금 강조 중인 대상 안**이면 그 대상의 자리를 돌려준다(#238).
+     * 지금 강조 중인 대상의 자리(#238). 눌림을 맞출 때와 파동을 그릴 때 같은 값을 쓴다.
      *
-     * 사각형이 정확히 같기를 요구하지 않는다 — 우리가 지목한 것은 컨테이너인데 클릭 이벤트는
-     * 그 안쪽 뷰에서 날 수 있다(런처 독 아이콘이 그 모양이다). 중심 포함이면 같은 대상으로 본다.
+     * **[targetHidden]을 보지 않는다.** 화면 전환이 빠른 앱에서는 폴링 샘플의 WAIT이 클릭
+     * 이벤트보다 먼저 들어와 강조가 이미 내려간다 — 그걸 조건으로 걸었더니 눌림을 통째로
+     * 놓쳤다(2026-08-19 SM-S921N 실측). 파동은 "방금 누른 곳"이라 강조가 내려간 뒤에도
+     * 유효하고, 중복 그리기는 [hideTarget]이 이미 막는다.
      *
-     * 좌표까지 함께 주는 이유는 **파동을 그릴 자리가 클릭된 노드가 아니라 우리가 지목한
-     * 대상**이라서다. 안쪽 뷰가 눌려도 강조가 있던 사각형에 그려야 자리가 맞는다.
-     *
-     * 이미 내렸으면([targetHidden]) null이다 — 파동은 한 번이고 내릴 강조도 남아 있지 않다.
+     * 판정 자체는 [PressMatch]가 한다 — 이 클래스는 무엇이 떠 있는지만 안다.
      */
-    fun pressedTargetBounds(centerX: Int, centerY: Int): List<Int>? {
-        if (!visible || targetHidden) return null
-        val bounds = guide?.bounds?.takeIf { it.size == 4 } ?: return null
-        val inside = centerX >= bounds[0] && centerX <= bounds[2] &&
-            centerY >= bounds[1] && centerY <= bounds[3]
-        return bounds.takeIf { inside }
+    fun currentTargetBounds(): List<Int>? {
+        if (!visible) return null
+        return guide?.bounds?.takeIf { it.size == 4 }
     }
 
     fun hideTarget(): Content? {
