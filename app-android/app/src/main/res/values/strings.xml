@@ -1,12 +1,14 @@
 <resources>
-    <string name="app_name">다비 도우미</string>
+    <string name="app_name">다비</string>
     <string name="accessibility_service_description">화면을 읽어 다음에 무엇을 누르면 되는지 화면 위에 표시해 드립니다. 화면 내용은 개인정보를 가린 뒤에만 사용됩니다.</string>
 
     <!-- ON-1 로그인 (docs/SCREENS.md). **문구는 v2 시안 확정분이다**(#266) — 더는 임시가
          아니다. 로그인은 스킵 가능하다(스킵 버튼은 추후 지운다, SCREENS.md ON-1). -->
     <string name="login_tagline">디지털 동반자 다비랑 함께해요!</string>
     <!-- 로고 아래 제목. **app_name과 따로 둔다** — 그쪽은 런처 이름과 알림 제목이 쓰는
-         값이라(AndroidManifest · GuideNotifier) 화면 문구로 재사용하면 둘이 묶인다. -->
+         값이라(AndroidManifest · GuideNotifier) 화면 문구로 재사용하면 둘이 묶인다.
+         2026-08-19에 app_name이 「다비」가 되어 **값은 같아졌지만 합치지 않는다** — 한쪽을
+         바꿀 때 다른 쪽이 딸려 오는 것이 피하려던 것이고, 그 이유는 그대로다. -->
     <string name="login_app_title">다비</string>
     <string name="btn_kakao_login">카카오톡으로 시작하기</string>
     <string name="btn_login_skip">로그인 없이 시작하기</string>
@@ -56,11 +58,11 @@
       "다시 해 보라"는 여지를 남기면 사용자가 홈에서 마이크만 누르며 갇힌다.
       개발판 글자 입력 화면에서는 이 말이 틀리지만 팀 내부 화면이라 키를 나누지 않는다.
     -->
-    <string name="voice_recognizer_unavailable">이 휴대폰은 음성 인식 기능이 없어요.\n다비 도우미를 쓸 수 없어요.</string>
+    <string name="voice_recognizer_unavailable">이 휴대폰은 음성 인식 기능이 없어요.\n다비를 쓸 수 없어요.</string>
     <!-- voice_no_speech와 원인이 다르다(사용자 무발화 vs 인식 엔진 오류). 같은 문장이 되지 않게 한다. -->
     <string name="voice_recognition_error">음성 인식에 문제가 생겼어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="voice_permission_denied">말로 입력하려면 마이크 권한이 필요해요.</string>
-    <string name="voice_permission_open_settings">휴대폰 설정에서 \'다비 도우미\'를 찾아 마이크를 켜 주세요.</string>
+    <string name="voice_permission_open_settings">휴대폰 설정에서 \'다비\'를 찾아 마이크를 켜 주세요.</string>
     <string name="voice_network_error">인터넷 연결이 원활하지 않아요.\n연결을 확인하고 다시 해 주세요.</string>
     <string name="voice_server_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="voice_server_error">하려는 일을 정리하지 못했어요.\n잠시 뒤 다시 해 주세요.</string>

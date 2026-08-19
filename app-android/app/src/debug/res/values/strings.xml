@@ -2,9 +2,9 @@
     <!--
       debug 앱 이름(#58). applicationIdSuffix로 release와 함께 깔리므로, 런처에 아이콘이 둘
       뜬다. 이름이 같으면 어느 쪽이 개발판인지 구분할 방법이 없다 — 아이콘도 같기 때문이다.
-      제품 이름(다비 도우미)은 main의 app_name이 그대로 유지한다.
+      제품 이름(다비)은 main의 app_name이 그대로 유지한다.
     -->
-    <string name="app_name">다비 도우미 (개발)</string>
+    <string name="app_name">다비 (개발)</string>
     <!-- debug 백업 런처(개발 화면) 이름. 위 개발판 본체 아이콘과도 구분한다. -->
     <string name="main_backup_label">다비 개발 화면(백업)</string>
 </resources>

@@ -144,8 +144,8 @@ jobs:
           # 앱 이름 — release는 제품 이름을 유지하고, debug 이름이 새어 들어가면 안 된다.
           debug_label="$(badging "$debug_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
           release_label="$(badging "$release_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
-          test "$debug_label" = '다비 도우미 (개발)'
-          test "$release_label" = '다비 도우미'
+          test "$debug_label" = '다비 (개발)'
+          test "$release_label" = '다비'
 
           # release 산출물에 debug 식별자·이름이 없다는 것을 반대 방향으로도 못박는다.
           assert_absent "$release_apk" 'com\.davi\.helper\.debug' 'debug 식별자가 release에 실렸다'
