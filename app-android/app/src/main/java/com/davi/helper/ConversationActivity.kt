@@ -75,6 +75,12 @@ class ConversationActivity : AppCompatActivity() {
         setState(ConversationUiState.Home())
     }
 
+    // 마이크가 실제로 열릴 때까지 "듣고 있어요"를 미루는 구간의 상한(#273).
+    // 준비 완료 신호는 인식기 구현에 달려 있어 보장으로 삼지 않는다 — 안 오면 라벨이
+    // 영영 안 뜨는 게 최악이라, 이 타이머가 도는 최악의 경우를 **이 PR 이전 동작**으로 둔다.
+    private val micReadyHandler = Handler(Looper.getMainLooper())
+    private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
+
     /** 종료 확인 모달로 포커스를 한 번만 옮기기 위한 값. 렌더는 여러 번 돈다. */
     private var stopConfirmAnnounced = false
 
@@ -156,6 +162,22 @@ class ConversationActivity : AppCompatActivity() {
 
         override fun onError(error: Int) {
             runOnUiThread { handleSpeechError(error) }
+        }
+
+        // 인식기를 새로 붙는 중 — 마이크는 아직 닫혀 있다. **폴백 재시작도 여기로 온다**
+        // (#273): 완료 신호를 이미 받은 뒤 온디바이스가 끊기면 라벨만 켜진 채 마이크가
+        // 닫히므로, 그 경우 라벨을 도로 내린다.
+        override fun onMicPreparing() {
+            runOnUiThread {
+                val state = uiState as? ConversationUiState.Listening ?: return@runOnUiThread
+                if (state.micReady) setState(state.copy(micReady = false))
+                micReadyHandler.removeCallbacks(micReadyFallback)
+                micReadyHandler.postDelayed(micReadyFallback, MIC_READY_FALLBACK_MS)
+            }
+        }
+
+        override fun onMicReady() {
+            runOnUiThread { markMicReady("mic_ready") }
         }
 
         override fun onRmsChanged(rmsdB: Float) {
@@ -305,6 +327,7 @@ class ConversationActivity : AppCompatActivity() {
     override fun onDestroy() {
         destroyed = true
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
+        micReadyHandler.removeCallbacks(micReadyFallback)
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
         launchableAppIndex.stop()
@@ -321,6 +344,9 @@ class ConversationActivity : AppCompatActivity() {
             GuideTelemetry.screenState(state.javaClass.simpleName, GuideSession.isActive)
         }
         uiState = state
+        // 듣는 중을 벗어나면 준비 상한도 함께 내린다 — 다른 화면에서 라벨이 뒤늦게 뜨지 않게.
+        // 듣는 중 → 듣는 중(부분 인식 갱신)에서는 그대로 둔다. 매번 다시 걸면 상한이 밀린다.
+        if (state !is ConversationUiState.Listening) micReadyHandler.removeCallbacks(micReadyFallback)
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         autoReturnDelayMs(state)?.let { autoReturnHandler.postDelayed(autoReturnRunnable, it) }
         render(state)
@@ -865,6 +891,21 @@ class ConversationActivity : AppCompatActivity() {
         is SlotFillResult.Success -> R.string.voice_goal_ready
     }
 
+    /**
+     * 마이크가 열렸다고 화면에 알린다(#273). **듣는 중일 때만** — 상태가 이미 넘어갔으면
+     * 무시한다. 유령 콜백은 인식기 정리가 리스너를 먼저 끊어 막지만, 상한 타이머는 우리
+     * 것이라 여기서 한 번 더 거른다.
+     */
+    private fun markMicReady(telemetry: String) {
+        micReadyHandler.removeCallbacks(micReadyFallback)
+        val state = uiState as? ConversationUiState.Listening ?: return
+        if (state.micReady) return
+        setState(state.copy(micReady = true))
+        // 상태 이름은 setState가 남기지 않는다(같은 클래스라 전이가 아니다). 준비까지 걸린
+        // 시간은 이 줄과 직전 listening 줄의 간격으로 로그에서 읽는다.
+        GuideTelemetry.voiceState(telemetry)
+    }
+
     private fun cancelVoiceDialogue() {
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.stop()
@@ -901,6 +942,13 @@ class ConversationActivity : AppCompatActivity() {
 
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
         const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
+
+        /**
+         * 준비 완료 신호를 기다리는 상한(ms). 실기기 실측이 약 1초라 그보다 여유를 두되,
+         * 어르신이 "왜 안 들어?" 하기 전에는 뜨는 값으로 잡았다. 근거는 실측 하나뿐이라
+         * 다른 기기가 더 느리면 조정한다.
+         */
+        const val MIC_READY_FALLBACK_MS = 1_500L
 
         /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
         const val OPAQUE_IMAGE_ALPHA = 255
