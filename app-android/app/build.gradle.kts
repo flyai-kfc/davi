@@ -290,8 +290,8 @@ android {
         applicationId = "com.davi.helper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // release의 안전한 기본값. 실제 제품 endpoint는 별도 배포 이슈에서 정한다.

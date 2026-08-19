@@ -33,7 +33,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ```
 기기      : SM-S921N [R3CX...] 
-패키지    : com.davi.helper.debug 0.1.0-debug 설치됨
+패키지    : com.davi.helper.debug 0.2.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
 ```
 
