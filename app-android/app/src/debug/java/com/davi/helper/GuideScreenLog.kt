@@ -37,7 +37,13 @@ object GuideScreenLog {
      * release 구현은 좌표 없이 node_id만 남긴다 — 어느 요소를 골랐는지는 비식별이다.
      */
     fun highlight(nodeId: String?, bounds: List<Int>) {
-        Log.i(GuideAccessibilityService.TAG, "highlight ${nodeId ?: "-"} bounds=$bounds")
+        // `at=`는 **CI 카나리아다**(ci.yml "release 산출물에 화면 상세 로그가 없는지 확인").
+        // 좌표를 찍는 자리가 요소 덤프와 독립이라 카나리아도 따로 있어야 한다 — 덤프 쪽
+        // 카나리아(label='·scroll=)만 보면 여기서 좌표가 되살아나도 CI가 통과한다(PR #287 리뷰).
+        // 요소 덤프의 `bounds=`를 그대로 쓰지 않는 이유는 그 문자열이 UiElement의 자동 생성
+        // toString(`..., bounds=...`)과 겹쳐 release 산출물에도 남기 때문이다.
+        // **이 리터럴을 바꾸면 ci.yml의 카나리아 목록도 함께 고친다.**
+        Log.i(GuideAccessibilityService.TAG, "highlight ${nodeId ?: "-"} at=$bounds")
     }
 
     /** 스크롤 가능한 요소에만 붙는다. 방향 안내가 맞는지 로그에서 바로 보려고 찍는다. */

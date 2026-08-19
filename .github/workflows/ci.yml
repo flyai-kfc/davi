@@ -265,7 +265,12 @@ jobs:
           test -f "$debug_apk" && test -f "$release_apk"
 
           # GuideScreenLog의 debug 구현만 쓰는 포맷이다. 바꾸면 이 목록도 함께 고친다.
-          for canary in "label='" " scroll="; do
+          #
+          # `at=`는 **highlight 좌표 전용**이다. 앞의 둘은 요소 덤프 경로 소속이라, highlight가
+          # 좌표를 다시 찍어도 그 둘은 생기지 않아 검사가 통과해 버린다(PR #287 리뷰).
+          # 요소 덤프의 `bounds=`를 카나리아로 쓸 수 없는 이유는 UiElement의 자동 생성
+          # toString(`..., bounds=...`)이 release 산출물에도 남아 구분이 안 되기 때문이다.
+          for canary in "label='" " scroll=" " at="; do
             dump "$debug_apk"   | grep -qF "$canary"
             ! dump "$release_apk" | grep -qF "$canary"
           done

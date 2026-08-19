@@ -23,6 +23,8 @@ object GuideScreenLog {
      */
     @Suppress("UNUSED_PARAMETER")
     fun highlight(nodeId: String?, bounds: List<Int>) {
+        // **bounds를 로그 문자열로 소비하지 않는다.** 이 자리는 요소 덤프와 독립된 좌표 경로라
+        // CI가 debug 전용 카나리아 `at=`로 따로 지킨다(PR #287 리뷰).
         Log.i(GuideAccessibilityService.TAG, "highlight ${nodeId ?: "-"}")
     }
 }
