@@ -58,6 +58,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **오버레이 렌더링** — 서버가 준 "다음 안내 하나"를 그린다. 지금은 **강조 사각형 + 안내문 상자**,
   그리고 **읽는 중 테두리**(#127 — 세션 시작·화면 흔들림·요청·응답 대기 구간을 덮고 안내가
   도착하면 꺼진다. 안내와 독립 레이어라 `clear()`가 지우지 않는다)까지.
+  **그 구간에는 창의 문구도 「화면을 읽고 있어요」로 갈리고 강조가 걷힌다**(#295) — 테두리와
+  같은 판정(`ReadingBorder.isReading`)을 쓴다. 백오프 대기는 그 판정에서 false라 해당 없다.
   오버레이는 둘이다(#126) — **표시 오버레이**(`FLAG_NOT_TOUCHABLE`, 하이라이트와 읽는 중 테두리를
   그리고 터치는 아래 앱으로 통과)와 **조작 오버레이**(안내창과 칩이 살고 그 영역의 터치를 받는다).
   안내창을 조작 쪽에 둔 이유는 칩이 안내창에서 떨어지지 않게 하려는 것이고, 창 전체가 터치를
@@ -147,6 +149,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - `RECORD_AUDIO`는 사용자가 `말로 입력`을 누를 때 런타임 요청한다. 원시 음성을 Davi 서버로
   직접 보내거나 저장하지 않는다. 인식된 텍스트와 이전 턴은 의미 정리를 위해 서버/Gemini로
   전송된다(SPEC §4 음성 목표 계약).
+- **debug 빌드는 패키지가 다르다** — `com.davi.helper.debug`(런처 이름 「다비 도우미 (개발)」).
+  release는 접미어가 없어 **한 기기에 둘이 나란히 깔린다.** `am start`·`settings put secure
+  enabled_accessibility_services`·`run-as`·`pm path`의 대상이 서로 다르므로, 접미어를 빼면
+  **개발 빌드를 고치고 배포본을 조작하게 된다** — 수정이 반영 안 된 것처럼 보이고 원인이 안
+  드러난다(2026-08-19에 몇 시간 걸렸다). 접근성 서비스 id도 `com.davi.helper.debug/com.davi.helper.GuideAccessibilityService`로,
+  **패키지만 접미어가 붙고 클래스명은 그대로**라 눈으로 대조하기 어렵다.
+  `adb shell pm list packages | grep davi`로 어느 쪽을 만지는지 먼저 확인한다.
 - 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 확인: `./scripts/dev-install.ps1 -Status`.
   목록(`settings get secure enabled_accessibility_services`)에 값이 있어도 바인딩이 죽어
   있을 수 있어(`dumpsys accessibility`의 `Bound services:{}`) 목록만 봐선 모른다.

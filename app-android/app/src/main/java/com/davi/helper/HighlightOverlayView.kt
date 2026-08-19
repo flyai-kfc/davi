@@ -242,14 +242,51 @@ class HighlightOverlayView(context: Context) : View(context) {
      */
     private var readingWindow = false
 
+    /**
+     * 읽는 중이 덮기 전의 안내. 읽는 중이 끝났는데 **새 안내가 아직 안 왔을 때** 되돌린다.
+     *
+     * 읽는 중을 "창이 비어 있을 때만"으로 막았던 #229의 제약을 #295가 뒤집었다. 그때 근거는
+     * "보고 따라 하던 안내가 사라지면 안 된다"였는데, **읽는 구간에 들어갔다는 것은 화면이
+     * 이미 움직였다는 뜻**이라 그 안내는 그 시점에 유효하지 않다.
+     *
+     * **문구만 든다.** 강조·제스처는 되돌리지 않는다 — 위 근거가 복귀 시점에도 그대로
+     * 성립하므로(화면이 움직였다), 자리를 되살리면 엉뚱한 곳을 가리킨다. 문구는 "무엇을
+     * 하려던 중이었나"라 자리와 달리 화면이 바뀌어도 읽을 값이 남는다.
+     *
+     * **[GuideDisplayState]가 아니라 여기 있는 이유** — 저쪽이 미는 것은 *서버 안내*이고
+     * 되살릴 때마다 서명을 댄다(`redisplay`·`restoreTarget`·`dismissQuitConfirm`, PR #63
+     * 2차 리뷰 P1). 여기서 미는 것은 **읽는 중이라는 뷰 계층의 표시가 잠깐 창을 가져간 것**
+     * 뿐이고, 그동안 display는 자기 안내를 계속 들고 있다(`visible`이 true다). 같은 이름의
+     * 두 기계가 생긴 셈이라, "밀어 둔 안내"를 찾는 사람은 **미는 주체가 다르다**는 것부터 본다.
+     *
+     * **순서 의존이 하나 있다.** onset이 걷는 `hasTarget`을 [GuideDisplayState]는 모른다 —
+     * 저쪽의 `targetHidden`은 그대로라 `restoreTarget()`이 강조를 되살릴 수 없다. 지금
+     * 안전한 이유는 **화면이 움직여 읽는 중이 켜지는 경우 같은 샘플에서 `hideTarget()`이
+     * 먼저 돌아 `targetHidden`을 세우고, onset은 250ms 뒤라 언제나 그 뒤**이기 때문이다.
+     * 그 순서를 바꾸면 강조가 다음 안내까지 안 돌아온다(PR #298 3차 리뷰).
+     */
+    private var stashed: String? = null
+
+    /** [readingOnset]이 큐에 있는가. [reading]과 별개다 — [setReading] 주석 참고. */
+    private var onsetPending = false
+
     private val readingOnset = Runnable {
+        onsetPending = false
         readingVisible = true
-        // **첫 안내가 오기 전의 빈 시간을 채운다**(GD-1). 이미 안내가 떠 있으면 건드리지
-        // 않는다 — 화면 전환·재요청에서도 읽는 중이 켜지는데, 그때 문구를 갈아 끼우면
-        // 보고 따라 하던 안내가 눈앞에서 사라진다.
-        if (instruction.isEmpty()) {
+        if (!readingWindow) {
+            // 떠 있던 안내는 밀어 둔다 — 읽는 중이 안내 없이 끝나면 되돌린다.
+            if (instruction.isNotEmpty()) stashed = instruction
             instruction = context.getString(R.string.overlay_reading)
             readingWindow = true
+            // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
+            hasTarget = false
+            gestureDirection = null
+            // **[avoid]는 걷지 않는다** — 셋 중 이것만 남는 이유가 있다. 위 둘은 *떠난 화면의
+            // 좌표를 가리키는* 값이라 되살리면 엉뚱한 곳을 가리키지만, avoid는 가리키는 값이
+            // 아니라 "이 영역을 덮지 마라"다. 특히 타이핑 안내의 IME는 hard 회피고(#38 5번:
+            // 키보드가 조작 대상 자체다), 비우면 창이 기본 자리(아랫변 55dp)로 내려앉아
+            // **키보드 위에 앉아 그 터치를 먹는다**(창 전체가 터치를 흡수한다).
+            // 낡은 avoid는 무해하다 — 이미 내려간 키보드를 피해 창이 괜히 위로 갈 뿐이다.
             relayout()
         }
         syncBreathing()
@@ -292,24 +329,52 @@ class HighlightOverlayView(context: Context) : View(context) {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * 읽는 중 표시를 켜고 끈다. **멱등이다** — 화면을 못 읽는 동안 서비스가 폴링마다 false를
-     * 다시 보내고, 켜진 상태로도 샘플마다 true가 다시 온다. 가드가 없으면 매번 애니메이터를
-     * 취소하거나 onset 지연이 리셋돼 테두리가 영영 뜨지 않는다.
+     * 읽는 중 표시를 켜고 끈다. 서비스가 **폴링마다** 부른다 — 켜진 상태로도 true가 다시 오고,
+     * 화면을 못 읽는 동안 false가 계속 온다. 그래서 겹쳐 들어와도 안전해야 한다.
+     *
+     * **가드가 켜짐/꺼짐에서 서로 다르다.** 끄는 쪽은 전이(`reading`)로 막으면 되지만, 켜는
+     * 쪽은 **"창을 아직 안 바꿨고 예약도 없을 때"** 로 막는다 — 전이로 막으면 두 번째 읽는
+     * 구간부터 문구가 안 바뀐다(#295, 아래 주석).
      */
     fun setReading(on: Boolean) {
-        if (on == reading) return
-        reading = on
         if (on) {
-            // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
-            postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
+            reading = true
+            // **`on == reading`으로 막지 않는다** — 근거는 [ReadingWindow.shouldArmOnset].
+            if (ReadingWindow.shouldArmOnset(windowTaken = readingWindow, onsetPending = onsetPending)) {
+                onsetPending = true
+                // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
+                postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
+            }
         } else {
+            if (!reading) return
+            reading = false
             removeCallbacks(readingOnset)
+            onsetPending = false
             readingVisible = false
             // 읽는 중이 만든 창은 읽는 중이 걷는다. 서버 안내가 이미 덮었으면 남긴다.
-            if (readingWindow) clearTarget()
+            if (readingWindow) restoreOrClear()
             syncBreathing()
             invalidate()
         }
+    }
+
+    /**
+     * 읽는 중이 끝났다. 밀어 둔 안내가 있으면 되돌리고, 없으면 창을 걷는다.
+     *
+     * **되돌림이 흔한 경우는 아니다** — 보통은 새 안내가 [setGuide]로 먼저 덮는다. 이 경로는
+     * 읽는 중이 **안내 없이** 끝난 때(요청 실패·백오프 종료)를 위한 것이고, 그때 빈 창을
+     * 남기면 따라 하던 사람이 근거를 통째로 잃는다.
+     */
+    private fun restoreOrClear() {
+        val text = stashed
+        if (text == null) {
+            clearTarget()
+            return
+        }
+        stashed = null
+        readingWindow = false
+        instruction = text
+        relayout()
     }
 
     /**
@@ -369,6 +434,8 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (bounds != null) target.set(bounds)
         this.instruction = instruction.trim()
         readingWindow = false
+        // 새 안내가 왔으면 밀어 둔 옛 안내는 버린다 — 되돌릴 이유가 사라졌다(#295).
+        stashed = null
         this.avoid = avoid
         // 강조가 생기거나 사라지면 브리딩이 필요한지도 함께 바뀐다(#147).
         syncBreathing()
@@ -396,6 +463,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun clearTarget() {
         hasTarget = false
         readingWindow = false
+        // 창을 통째로 걷을 때는 되돌릴 것도 없다. 남기면 다음 읽는 중이 끝날 때 이전
+        // 세션의 안내가 되살아난다(#295).
+        stashed = null
         pressWave.cancel()
         gestureDirection = null
         instruction = ""
@@ -569,6 +639,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         removeCallbacks(readingOnset)
+        onsetPending = false
         breathing.cancel()
         pressWave.cancel()
         super.onDetachedFromWindow()
