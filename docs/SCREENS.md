@@ -418,9 +418,10 @@ logo · icon/*(Lucide, 브랜드 제외)
    - [미결] **말투가 갈린다.** 대부분 해요체인데 합니다체가 섞여 있다 —
      `onboarding_permission_note`("최초 1회만 하면 됩니다", #236) ·
      `accessibility_service_description` · `conversation_guiding_title`("안내가 진행 중입니다", #224).
-     (`guide_hint`·`onboarding_body`도 합니다체지만 debug 백업 화면 전용이라 뺐다 —
-     #232가 `src/debug`로 옮긴다. `onboarding_body`는 #236이 ON-2를 v2로 바꾸며 release에서
-     빠졌다.)
+     (`guide_hint`·`onboarding_body`도 합니다체지만 release가 안 써서 뺐다. `onboarding_body`는
+     #236이 ON-2를 v2로 바꾸며 빠졌고, **`src/debug`로 옮기지는 않는다** — `strings.xml`이 그 키를
+     #227의 접근성 고지·동의 문구 몫으로 예약해 뒀다. `guide_hint` 등 나머지 debug 전용 문구의
+     이동은 #232이고, 그쪽은 #58 뒤로 미뤄졌다.)
      **온보딩은 사용자가 가장 먼저 보는 화면이다** — 이상값 하나를 고치는 문제가 아니라
      온보딩·시스템 설명까지 통일할지, 그 둘을 예외로 둘지의 문제다.
    - [미결] **버튼을 이름으로 부르는 문구가 다시 생겼다.** #189가 "라벨이 바뀌면 문구가 조용히
