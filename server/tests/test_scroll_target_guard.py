@@ -150,10 +150,13 @@ def test_horizontal_element_is_not_used_as_a_vertical_scroll_target():
     screen = Screen(
         has_scrollable_element=True,
         elements=[
+            # 앱은 다섯 필드를 통째로 채우거나 하나도 안 채운다(`UiTreeSerializer.scrollStateOf`).
+            # 실기기가 보낼 수 없는 조합으로 가드를 고정하지 않는다.
             UiElement(
                 node_id="n1",
                 label="탭",
                 can_scroll_forward=True,
+                can_scroll_backward=False,
                 scroll_axis=ScrollAxis.HORIZONTAL,
                 next_swipe_direction=SwipeDirection.RIGHT,
                 prev_swipe_direction=SwipeDirection.LEFT,
@@ -238,18 +241,28 @@ def test_app_that_never_observed_scroll_state_is_left_alone():
     assert action.target_node_id is None
 
 
-def test_axis_only_metadata_is_enough_to_be_a_target():
-    """여유(`can_scroll_*`)를 못 채운 앱도 축은 보낸다.
+def test_the_reason_tells_the_three_dead_ends_apart():
+    """실기기 로그에서 다음 수가 서로 다른 세 상황을 한 문장으로 덮지 않는다.
 
-    여유를 아는 후보가 하나도 없을 때만 축으로 대상을 정한다.
+    끝난 방향은 프롬프트(#217)로 덜 고르게 만들 문제고, 요소 목록에 안 실린 것은 절단
+    (`UiTreeSerializer.MAX_ELEMENTS`) 쪽이며, 스크롤 요소가 없는 화면은 대체 행동을 볼 자리다.
     """
 
-    screen = Screen(
-        has_scrollable_element=True,
-        elements=[UiElement(node_id="n1", label="목록", scroll_axis=ScrollAxis.VERTICAL)],
-    )
+    ended = Screen(has_scrollable_element=True, elements=[_vertical_list("n1", forward=False)])
+    missing = Screen(has_scrollable_element=True, elements=[])
+    none_at_all = Screen(has_scrollable_element=False, elements=[])
 
-    assert _guide(_scroll(), screen).target_node_id == "n1"
+    reasons = {}
+    for name, screen in (("ended", ended), ("missing", missing), ("none", none_at_all)):
+        with pytest.raises(LlmError) as raised:
+            _guide(_scroll(), screen)
+        assert raised.value.kind is ErrorKind.SERVER
+        reasons[name] = str(raised.value)
+
+    assert "이미 끝" in reasons["ended"]
+    assert "절단" in reasons["missing"]
+    assert "요소가 화면에 없음" in reasons["none"]
+    assert len(set(reasons.values())) == 3
 
 
 def test_other_action_types_are_not_touched():

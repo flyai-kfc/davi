@@ -25,20 +25,11 @@ from .schemas import (
     NextStepRequest,
     NextStepResponse,
     Screen,
-    ScrollAxis,
     SwipeDirection,
     UiElement,
 )
 
 _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
-
-# 방향이 어느 축의 움직임인지. `scroll_axis`만 온 요소(여유·방향 미관측)를 후보로 볼 때 쓴다.
-_DIRECTION_AXIS = {
-    SwipeDirection.UP: ScrollAxis.VERTICAL,
-    SwipeDirection.DOWN: ScrollAxis.VERTICAL,
-    SwipeDirection.LEFT: ScrollAxis.HORIZONTAL,
-    SwipeDirection.RIGHT: ScrollAxis.HORIZONTAL,
-}
 
 # 근거 대조 전에 양쪽에서 지우는 것: 구두점·공백 등 의미를 바꾸지 않는 문자.
 #
@@ -101,10 +92,7 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
     #    보류 항목이다(server/CLAUDE.md). **틀린 안내를 내보내는 대신 실패로 닫는다.**
     #    앱은 이 화면을 백오프 후 다시 물어보므로(`retryThisScreen`), 정체와 달리 회복 경로가
     #    남는다.
-    raise LlmError(
-        ErrorKind.SERVER,
-        "scroll 대상을 해석할 수 없다: 그 방향으로 스크롤할 수 있는 요소가 화면에 없음",
-    )
+    raise LlmError(ErrorKind.SERVER, _no_scroll_target_reason(screen, action.direction))
 
 
 def _can_open_app_drawer(screen: Screen) -> bool:
@@ -142,20 +130,19 @@ def _has_scroll_metadata(element: UiElement) -> bool:
 
 
 def _scroll_candidates(screen: Screen, direction: SwipeDirection | None) -> list[UiElement]:
-    """그 방향으로 스크롤할 수 있는 요소들. 아는 여유를 먼저 쓰고, 없으면 축만 맞는 요소로 내려간다.
+    """그 방향으로 더 갈 수 있다고 **앱이 관측한** 요소들.
 
-    두 단으로 나누는 이유는 요소마다 관측 수준이 다르기 때문이다. `can_scroll_*`까지 온 요소는
-    그 방향의 여유를 알고 있으니 **끝난 요소를 대상으로 고르지 않는다**(#217과 같은 사실).
-    축만 온 요소는 여유를 모를 뿐 대상은 될 수 있으므로, 아는 후보가 하나도 없을 때만 쓴다.
+    여유를 모르는 요소를 축만 보고 후보로 올리지 않는다. 앱은 스크롤 상태를 다섯 필드
+    (`can_scroll_*`·`scroll_axis`·`next/prev_swipe_direction`) 통째로 채우거나 하나도 안 채우거나
+    둘 중 하나라(`UiTreeSerializer.scrollStateOf`), "축만 아는 요소"는 계약상 표현될 뿐 관측된 적이
+    없다. 없는 입력을 위한 두 번째 단은 검증할 수 없는 분기라 두지 않는다(#218이
+    `SCROLL_ALL_ENDS_REACHED`를 걷어낸 것과 같은 근거).
     """
 
     if direction is None:  # pragma: no cover - 스키마가 scroll의 direction을 강제한다(C3)
         return []
 
-    known_open = [e for e in screen.elements if _scrolls_toward(e, direction)]
-    if known_open:
-        return known_open
-    return [e for e in screen.elements if _axis_matches(e, direction)]
+    return [e for e in screen.elements if _scrolls_toward(e, direction)]
 
 
 def _scrolls_toward(element: UiElement, direction: SwipeDirection) -> bool:
@@ -171,29 +158,23 @@ def _scrolls_toward(element: UiElement, direction: SwipeDirection) -> bool:
     )
 
 
-def _axis_matches(element: UiElement, direction: SwipeDirection) -> bool:
-    """여유는 모르지만 그 방향의 축으로 움직이는 스크롤 요소인가.
+def _no_scroll_target_reason(screen: Screen, direction: SwipeDirection | None) -> str:
+    """대상이 없는 이유를 세 상황으로 갈라 적는다.
 
-    끝났다고 관측된 방향은 제외한다 — 여유를 아는 값이 있으면 그쪽이 우선이다.
+    한 문장으로 덮으면 실기기 로그에서 셋을 구분할 수 없다 — 스크롤 요소가 아예 없는 화면,
+    요소는 있는데 그 방향만 끝난 화면(가장 흔하다), 그리고 앱은 스크롤 요소가 있다고 했는데
+    요소 목록에는 안 실린 화면(`UiTreeSerializer.MAX_ELEMENTS` 절단이 유력하다)은
+    다음 수가 서로 다르다.
     """
 
-    if not _has_scroll_metadata(element):
-        return False
-    if _ends_toward(element, direction):
-        return False
-    observed_directions = {
-        element.next_swipe_direction,
-        element.prev_swipe_direction,
-    } - {None}
-    if observed_directions:
-        return direction in observed_directions
-    return element.scroll_axis is _DIRECTION_AXIS[direction]
-
-
-def _ends_toward(element: UiElement, direction: SwipeDirection) -> bool:
-    return (element.can_scroll_forward is False and element.next_swipe_direction is direction) or (
-        element.can_scroll_backward is False and element.prev_swipe_direction is direction
-    )
+    if any(_has_scroll_metadata(element) for element in screen.elements):
+        return f"scroll 대상을 해석할 수 없다: 스크롤 요소는 있으나 {direction} 방향은 이미 끝"
+    if screen.has_scrollable_element:
+        return (
+            "scroll 대상을 해석할 수 없다: 화면에 스크롤 요소가 있다고 왔는데 "
+            "요소 목록에 실리지 않음(요소 수 절단 의심)"
+        )
+    return "scroll 대상을 해석할 수 없다: 그 방향으로 스크롤할 수 있는 요소가 화면에 없음"
 
 
 def _element_by_id(screen: Screen, node_id: str | None) -> UiElement | None:
