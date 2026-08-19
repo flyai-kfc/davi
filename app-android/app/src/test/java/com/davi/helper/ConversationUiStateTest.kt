@@ -359,9 +359,10 @@ class ConversationUiStateTest {
 
     @Test
     fun `받아쓰기 전에도 발화 카드는 자리를 지킨다`() {
-        // 레이블만 뜨고 문장은 비어 있는 상태(메인 2·4)다. 카드가 접히면 마이크를 누른
-        // 직후 화면이 크게 흔들린다.
-        val model = renderModelOf(ConversationUiState.Listening())
+        // 문장이 비어 있는 구간(메인 2·4)이다. 카드가 접히면 마이크를 누른 직후 화면이
+        // 크게 흔들린다. **레이블은 여기서 판단하지 않는다** — 시안 상태는 micReady=true
+        // 쪽이고, 기본값(준비 중)에서 레이블이 꺼지는 것은 위 #273 테스트가 따로 고정한다.
+        val model = renderModelOf(ConversationUiState.Listening(micReady = true))
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
     }
