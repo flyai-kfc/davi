@@ -414,6 +414,10 @@ def test_end_of_one_list_survives_another_scrollable_on_the_same_screen():
     assert "지금 더 갈 수 있는 방향은 up(n1), down(n2)입니다" in prompt
     assert "up(n2), down(n1) 방향은 이미 끝에 도달했습니다" in prompt
     assert SCROLL_END_INSTRUCTION in prompt
+    # 이 화면은 두 방향이 양쪽 줄에 다 실린다 — 금지가 방향 단위면 문자 그대로는 스크롤이
+    # 통째로 배제된다. 데이터가 요소 단위가 됐으니 금지도 요소 단위여야 한다(#218 재리뷰).
+    assert "괄호 안 요소는" in SCROLL_END_INSTRUCTION
+    assert "그 요소를 그 방향으로" in SCROLL_END_INSTRUCTION
 
 
 def test_prompt_concludes_that_the_last_page_cannot_be_turned_further():
