@@ -255,6 +255,31 @@ def test_deploy_workflow_passes_the_provider_wiring_and_verifies_it() -> None:
     assert "OPENAI_API_KEY" not in workflow
 
 
+def test_rollback_cannot_leave_a_model_pin_without_its_provider() -> None:
+    """공급자를 비우면서 모델 pin만 남기는 롤백을 배포 전에 끊는다(#299 리뷰).
+
+    provider `openai` · model `gpt-5.6-terra`에서 앞의 둘만 비우면 다음 revision은 provider
+    `gemini` · model `gpt-5.6-terra`로 뜬다. **서버 설정 검증도 `/health` 대조도 이걸 통과한다** —
+    배포가 요구한 값과 서버가 보고한 값이 서로 일관되기 때문이다. 깨지는 곳은 실제 모델 호출
+    뿐이라 공유 서버가 조용히 못 쓰게 된다. 짝이 맞는 pin까지 검사할 수는 없다(어떤 id가 어느
+    공급자 것인지 아는 표가 저장소에 없다). 그래서 **짝이 끊어진 상태**를 대신 고정한다.
+
+    문서의 롤백 절차도 함께 고정한다. 운영자가 따라가는 것은 워크플로가 아니라 그 문장이고,
+    "변수 두 개를 비운다"가 이 함정을 그대로 안내하던 자리다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+    runbook = _text("docs/development/azure-dev-server.md")
+
+    assert (
+        'if [ -n "${DAVI_AZURE_MODEL:-}" ] && [ -z "${DAVI_AZURE_LLM_PROVIDER:-}" ]; then'
+    ) in workflow
+    assert "DAVI_AZURE_MODEL을 pin 하려면 DAVI_AZURE_LLM_PROVIDER도 함께 지정하세요" in workflow
+
+    assert "**되돌릴 때는 세 변수를 함께 비운다**" in runbook
+    assert "되돌리기는 변수 두 개를 비우고" not in runbook
+
+
 def test_deploy_workflow_passes_and_verifies_the_kakao_auth_wiring() -> None:
     """배선이 자동 배포에서 살아남고, 살아남았는지 배포가 스스로 확인한다(#279).
 

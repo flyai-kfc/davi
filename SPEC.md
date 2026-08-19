@@ -470,13 +470,16 @@ davi/
 - Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
   토큰과 기존 전역 rate limit으로 보호한다. 공급자 API 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
-  넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 카카오 앱 ID뿐이다(#279).
+  넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 배포 설정(카카오 앱 ID,
+  LLM 공급자·모델)뿐이다(#279, #259).
 - **공유 서버의 LLM 공급자도 GitHub environment 변수로 고른다**(§5 표의 `DAVI_LLM_PROVIDER`를
   배포까지 이은 것). 비우면 `gemini`라 지금까지의 배포와 같고, 바꿀 때는 그 공급자의 키 secret
   이름을 짝으로 채운다 — 키 없이 공급자만 바꾸면 서버가 기동을 거부해 revision이 Healthy에
   도달하지 못하고 이후 배포까지 막히므로, 그 짝은 배포 전에 검증한다. 모델은 **비우는 것이
   기본**이고(공급자 기본 모델), 배포는 `/health`의 `provider`를 기대값과 대조해 배선이 빠진
-  배포가 초록으로 지나가지 않게 한다.
+  배포가 초록으로 지나가지 않게 한다. **모델 pin은 공급자와 짝으로만 다룬다** — 공급자를 비운
+  채 pin만 남은 상태는 설정 검증도 `/health` 대조도 통과하고 실제 호출에서만 깨지므로, 배포
+  전에 끊는다.
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
   Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
   요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
