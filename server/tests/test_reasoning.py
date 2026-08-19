@@ -34,7 +34,7 @@ class _CapturingLlmClient(LlmClient):
         )
 
 
-def test_repeat_guard_signature_changes_with_focus_and_ime_state():
+def test_screen_signature_changes_with_focus_and_ime_state():
     before = Screen(
         package_name="com.example.app",
         ime_visible=False,

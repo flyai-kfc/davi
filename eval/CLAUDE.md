@@ -44,8 +44,10 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   관측값이 있으면 `observed_model_action_review`를 함께 두고 `unreviewed`, `accepted`, `rejected`
   중 하나로 사람 검토 상태를 명시한다. judge는 `accepted`만 비교 기준으로 사용하며 나머지는
   호출 없이 skip한다. 검토 상태가 없는 관측값은 fixture 스키마 오류다.
-- `tests/test_repeat_guard.py`는 실기기 fixture를 #30 로더로 읽고, 문구만 다른 fake LLM
-  시퀀스로 같은 화면·같은 행동 반복, 화면 변화, 행동 의미 변화, 세션 재시작을 키 없이 검증한다.
+- `tests/test_scroll_target_guard.py`는 실기기 fixture를 #30 로더로 읽고, 대상 없는 scroll을
+  내놓는 fake LLM으로 서버 가드레일을 키 없이 검증한다 — 런처의 앱서랍 즉시 전환, 목록 화면의
+  대상 교정, 대체 행동도 대상도 없는 화면의 실패, 스크롤 미관측 앱의 통과(#202).
+  #36 반복 가드 회귀(`test_repeat_guard.py`)를 대신한다 — 반복 카운트가 #202에서 걷혔다.
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
 
