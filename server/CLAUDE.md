@@ -82,8 +82,11 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
-- `GuideAction` 한 객체의 정상 출력에 충분한 여유를 두고 `maxOutputTokens=1024`로 장문 응답의
-  지연·비용 상한을 고정한다. schema 400 무스키마 폴백과 복구 재시도에도 같은 상한을 쓴다.
+- 출력 상한은 **`정상 응답 여유분 + 공급자 추론 몫`으로 자동 계산한다**(#259). 호출별 여유분은
+  안내 1024 · 의도 해석 512 · 앱 후보 1024이고, 여기에 공급자의 thinking 예산이 더해진다
+  (Gemini 기본 800 → 1824/1312/1824). 손으로 상한을 박지 않는다 — 값 조정은
+  `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다(`README.md`). schema 400 무스키마 폴백과 복구
+  재시도에도 같은 상한을 쓴다.
   후보가 `finishReason=MAX_TOKENS`로 끝나면 잘린 JSON을 일반 `invalid_json`으로 뭉개지 않고
   `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON fence 제거는 `gemini_response.py`의 순수 함수로
@@ -121,7 +124,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 ### 확정 (반영 완료)
 | # | 결정 | 근거 |
 |---|---|---|
-| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. 지금은 파일 주석만 있고 실제 연결이 없다(`LlmClient.reason`이 stub). 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
+| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. **연결은 끝났다** — `llm.py`가 `ResponseContract`로 스키마를 만들고 `llm_provider.py`가 `generation_config["responseSchema"]`로 실어 보낸다. 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
 | C2 | **`GuideAction.action` → `action_type`으로 개명**한다(또는 `NextStepResponse.action` → `step`). | 지금은 `resp.action.action`. Kotlin·eval 픽스처 양쪽에서 읽기 나쁘다. 지금이 가장 싸다. |
 | C3 | **`GuideAction`에 `direction` 추가**(scroll 전용, 없으면 필드 생략). **뜻은 C17로 재정의됐다 — 보러 가는 방향이다.** | HANDOFF §12 로그가 `act=tap node=n12 dir=null`. `dir`은 실재 필드이며, 방향 없는 scroll은 앱이 실행할 수 없다. |
 | C4 | **`UiElement`에 `scroll_axis`, `next_swipe_direction`, `prev_swipe_direction` 추가.** **이 둘의 기준도 C17을 따른다** — `next`는 다음 내용을 보러 가는 방향이다(세로 목록이면 `down`). | HANDOFF §4가 검증 자산으로 명시("방향·끝 판정이 여기서 나온다"). 앱이 채울 수 있는 값인데 누락됐다. |
