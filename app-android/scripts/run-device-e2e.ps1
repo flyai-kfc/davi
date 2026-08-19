@@ -40,6 +40,13 @@ $service = 'com.davi.helper.debug/com.davi.helper.GuideAccessibilityService'
 # dev-install을 부르지 않고 직접 하는 자리라(E2E는 설치를 건드리지 않는다) 한 벌 더 둔다.
 # debug는 클래스가 applicationId(com.davi.helper.debug)로 시작하지 않아 dumpsys가 축약형으로
 # 줄이지 못한다. 그래서 여기선 완전형 하나만 보면 된다(실측).
+#
+# **첫 섹션 하나만 돌려준다.** dumpsys는 `User state[...]`를 사용자별로 찍으므로 직장 프로필·
+# 보조 사용자가 있으면 같은 라벨이 여러 번 나온다. 계측이 도는 현재 사용자(=첫 블록)만 봐야,
+# 보조 사용자에만 붙은 서비스를 우리 것으로 오탐하지 않는다. sh 실행기도 같은 의미다.
+#
+# 돌려주는 것은 `:{` 뒤부터라 머리 줄이 빠져 있다. 첫 서비스가 머리 줄과 같은 줄에 찍히므로
+# 판정에는 차이가 없지만, sh 쪽 같은 이름의 함수는 머리 줄을 포함해 돌려준다.
 function Get-DumpsysSection {
     param([string]$Dump, [string]$Label)
     $pattern = "(?ms)^\s*$([regex]::Escape($Label))\s*:\{(.*?)(?=^\s*[A-Za-z][A-Za-z0-9 ]*:\{|\z)"

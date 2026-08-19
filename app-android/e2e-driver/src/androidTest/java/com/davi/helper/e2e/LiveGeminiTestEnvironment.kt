@@ -56,6 +56,11 @@ internal object LiveGeminiTestEnvironment {
      * **한 줄만 보면 안 된다** — 바인딩된 서비스가 둘 이상이면 두 번째부터 줄이 바뀌어서(#302
      * 실측), 첫 줄만 읽으면 첫 서비스만 본다. debug/release가 함께 켜진 기기에서 우리 서비스가
      * 둘째 자리에 붙으면 멀쩡히 바인딩된 것을 `accessibility_service_not_bound`로 떨어뜨린다.
+     *
+     * **첫 섹션에서 끊는다**(`break`). dumpsys는 `User state[...]`를 사용자별로 찍으므로 직장
+     * 프로필·보조 사용자가 있으면 같은 라벨이 여러 번 나온다. 계측이 도는 것은 현재 사용자
+     * (=첫 블록)뿐이라, 뒤 사용자 것까지 이어 붙이면 보조 사용자에만 붙은 서비스를 우리 것으로
+     * 오탐한다. 호스트 실행기(`run-device-e2e.sh`·`.ps1`)도 같은 의미로 맞춰 뒀다.
      */
     private fun dumpsysSection(dump: String, label: String): String {
         val header = Regex("""^\s*${Regex.escape(label)}\s*:\{""")

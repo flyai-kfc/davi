@@ -285,6 +285,14 @@ function Restore-AccessibilityState {
 # 붙으면 멀쩡히 바인딩된 것을 "안 붙었다"로 읽고, 토글 사이클을 몇 번 돌려도 순서가 바뀌지 않아
 # 설정 화면만 계속 열린다.
 # 섹션은 전부 `이름:{` 꼴이라 다음 섹션 머리 직전까지가 한 블록이다.
+#
+# **첫 섹션 하나만 돌려준다.** dumpsys는 `User state[...]`를 사용자별로 찍으므로 직장 프로필·
+# 보조 사용자가 있으면 같은 라벨이 여러 번 나온다. 우리가 판정할 것은 이 스크립트가 설치·조작하는
+# 현재 사용자(=userId 오름차순 첫 블록)뿐이라, 뒤 사용자 것을 이어 붙이면 보조 사용자에만 붙은
+# 서비스를 우리 것으로 오탐한다. run-device-e2e의 두 실행기도 같은 의미로 맞춰 뒀다.
+#
+# 돌려주는 것은 `:{` **뒤**부터라 머리 줄이 빠져 있다. 첫 서비스가 머리 줄과 같은 줄에 찍히므로
+# 판정에는 차이가 없지만, sh·Kotlin 쪽 같은 이름의 함수는 머리 줄을 포함해 돌려준다.
 function Get-DumpsysSection {
     param([string]$Dump, [string]$Label)
     $pattern = "(?ms)^\s*$([regex]::Escape($Label))\s*:\{(.*?)(?=^\s*[A-Za-z][A-Za-z0-9 ]*:\{|\z)"
@@ -296,11 +304,15 @@ function Get-DumpsysSection {
 # 패키지 접두어로 비교하면 com.davi.helper가 com.davi.helper.debug에도 걸린다(#302).
 # 완전 컴포넌트로 본다. 단 dumpsys는 클래스가 applicationId로 시작하면 축약형(`pkg/.Cls`)으로
 # 찍으므로 두 형태를 모두 받는다 — 접미어가 없는 release는 축약형, 붙은 debug는 완전형이다(실측).
+#
+# 대상 패키지·클래스는 **파라미터로 받는다.** PowerShell은 호출 스택을 거슬러 변수를 찾으므로,
+# 상위 스코프의 $package를 그냥 읽으면 나중에 누군가 동명의 지역 변수를 둔 함수에서 이걸 부를 때
+# 조용히 다른 패키지를 판정한다.
 function Test-SectionHasService {
-    param([string]$Section)
-    if ($Section.Contains($service)) { return $true }
-    if ($serviceClass.StartsWith("$package.")) {
-        $short = "$package/" + $serviceClass.Substring($package.Length)
+    param([string]$Section, [string]$Package, [string]$ServiceClass)
+    if ($Section.Contains("$Package/$ServiceClass")) { return $true }
+    if ($ServiceClass.StartsWith("$Package.")) {
+        $short = "$Package/" + $ServiceClass.Substring($Package.Length)
         if ($Section.Contains($short)) { return $true }
     }
     return $false
@@ -309,8 +321,8 @@ function Test-SectionHasService {
 # 목록에 값이 있어도 실제로 바인딩되지 않는 경우가 있다. 그 둘을 구분해야 한다.
 function Test-ServiceBound {
     $state = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
-    if (Test-SectionHasService (Get-DumpsysSection $state 'Crashed services')) { return 'crashed' }
-    if (Test-SectionHasService (Get-DumpsysSection $state 'Bound services')) { return 'bound' }
+    if (Test-SectionHasService (Get-DumpsysSection $state 'Crashed services') $package $serviceClass) { return 'crashed' }
+    if (Test-SectionHasService (Get-DumpsysSection $state 'Bound services') $package $serviceClass) { return 'bound' }
     return 'unbound'
 }
 
