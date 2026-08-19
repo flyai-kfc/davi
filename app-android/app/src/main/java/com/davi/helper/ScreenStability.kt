@@ -19,6 +19,8 @@ object ScreenSignature {
      */
     fun of(screen: Screen): String = buildString {
         append(screen.packageName).append('|')
+        // 제목도 volatile 숫자를 지운다 — 안 읽은 메일 개수처럼 제목에 붙는 수가 있다.
+        append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
         append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
         append(screen.hasScrollableElement ?: "-").append('|')
         append(screen.imeVisible ?: "-").append('|')
@@ -26,10 +28,23 @@ object ScreenSignature {
             append(if (element.clickable) 't' else '-')
             append(if (element.editable) 'e' else '-')
             append(if (element.focused) 'f' else '-')
+            // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
+            // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
+            append(state(element.enabled, on = 'a', off = 'x'))
+            append(state(element.checked, on = 'c', off = 'u'))
+            append(state(element.selected, on = 's', off = 'n'))
+            append(state(element.showingHintText, on = 'h', off = 'v'))
             append(element.role).append(':')
             append(stableLabel(element))
             append(';')
         }
+    }
+
+    /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
+    private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
+        true -> on
+        false -> off
+        null -> '-'
     }
 
     /**
