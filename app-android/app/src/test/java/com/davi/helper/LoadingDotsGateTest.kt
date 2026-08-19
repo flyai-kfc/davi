@@ -78,6 +78,23 @@ class LoadingDotsGateTest {
     }
 
     @Test
+    fun `되감으면 프레임 시계도 0부터 다시 센다`() {
+        // 프레임 시계를 안 되돌리면 이전 구동의 큰 값이 남는다. 새 구동의 첫 프레임보다
+        // reveal이 먼저 오면 그 낡은 값이 드러난 시각으로 박히고, 뒤이어 0부터 오는 프레임이
+        // coerceAtLeast(0f)에 걸려 점이 낡은 값만큼 위상 0에 얼어붙는다(PR #301 리뷰).
+        //
+        // **드러난 직후가 아니라 그 다음 프레임에서 단정해야 잡힌다** — reveal 시점에는 두 값이
+        // 같아 어느 쪽이든 0이라, 거기서만 보면 회귀가 초록으로 통과한다.
+        gate.onFrame(3.7f)
+        gate.rearm()
+        gate.reveal()
+
+        gate.onFrame(0.1f)
+
+        assertEquals(0.1f, gate.animationSeconds(), 0.001f)
+    }
+
+    @Test
     fun `되감으면 다시 감춘다`() {
         gate.onFrame(0.4f)
         gate.reveal()
