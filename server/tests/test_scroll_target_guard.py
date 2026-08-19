@@ -176,11 +176,11 @@ def test_screen_without_any_scrollable_element_does_not_get_a_scroll():
     앱은 이 화면을 백오프 후 다시 물어보므로(`retryThisScreen`) 정체와 달리 회복 경로가 남는다.
     """
 
+    # page 메타를 두지 않는다 — 이 테스트가 보는 것은 "스크롤 요소가 없다"이지 쪽 경계가 아니다.
+    # 쪽이 있는 화면은 대상 없는 scroll이 정상이라 아래 페이지 단 테스트들이 따로 본다.
     screen = Screen(
         package_name="com.sec.android.app.clockpackage",
         has_scrollable_element=False,
-        current_page=2,
-        total_pages=2,
         elements=[UiElement(node_id="n1", label="확인", clickable=True)],
     )
 
@@ -212,7 +212,8 @@ def test_launcher_without_scrollable_elements_switches_to_the_app_drawer_at_once
 def test_launcher_page_metadata_still_keeps_the_app_drawer_out():
     """앱서랍도 같은 package + `has_scrollable_element=false`다 — page 메타로 갈린다(C11).
 
-    앱서랍에서 앱서랍을 열라고 하지 않는다. 이 화면의 scroll은 대상이 없으니 실패로 닫힌다.
+    앱서랍에서 앱서랍을 열라고 하지 않는다. **대신 실패로 닫지도 않는다** — 2/2에서 왼쪽은
+    되돌아갈 쪽이 남은 정상 안내다(#251 리뷰). 대상이 비는 것은 대상이 화면 자체이기 때문이다.
     """
 
     screen = Screen(
@@ -223,8 +224,10 @@ def test_launcher_page_metadata_still_keeps_the_app_drawer_out():
         elements=[UiElement(node_id="n1", label="전화", clickable=True)],
     )
 
-    with pytest.raises(LlmError):
-        _guide(_scroll(direction=SwipeDirection.LEFT), screen)
+    action = _guide(_scroll(direction=SwipeDirection.LEFT), screen)
+
+    assert action.action_type is ActionType.SCROLL
+    assert action.target_node_id is None
 
 
 def test_app_that_never_observed_scroll_state_is_left_alone():
@@ -241,7 +244,7 @@ def test_app_that_never_observed_scroll_state_is_left_alone():
     assert action.target_node_id is None
 
 
-def test_the_reason_tells_the_three_dead_ends_apart():
+def test_the_reason_tells_the_four_dead_ends_apart():
     """실기기 로그에서 다음 수가 서로 다른 세 상황을 한 문장으로 덮지 않는다.
 
     끝난 방향은 프롬프트(#217)로 덜 고르게 만들 문제고, 요소 목록에 안 실린 것은 절단
@@ -251,18 +254,114 @@ def test_the_reason_tells_the_three_dead_ends_apart():
     ended = Screen(has_scrollable_element=True, elements=[_vertical_list("n1", forward=False)])
     missing = Screen(has_scrollable_element=True, elements=[])
     none_at_all = Screen(has_scrollable_element=False, elements=[])
+    # 세로 목록만 있는 화면에서 모델이 좌우를 골랐다. 끝난 게 아니라 축이 다르다.
+    other_axis = Screen(has_scrollable_element=True, elements=[_vertical_list("n1")])
 
     reasons = {}
-    for name, screen in (("ended", ended), ("missing", missing), ("none", none_at_all)):
+    cases = (
+        ("ended", ended, SwipeDirection.DOWN),
+        ("missing", missing, SwipeDirection.DOWN),
+        ("none", none_at_all, SwipeDirection.DOWN),
+        ("other_axis", other_axis, SwipeDirection.RIGHT),
+    )
+    for name, screen, direction in cases:
         with pytest.raises(LlmError) as raised:
-            _guide(_scroll(), screen)
+            _guide(_scroll(direction=direction), screen)
         assert raised.value.kind is ErrorKind.SERVER
         reasons[name] = str(raised.value)
 
     assert "이미 끝" in reasons["ended"]
     assert "절단" in reasons["missing"]
     assert "요소가 화면에 없음" in reasons["none"]
-    assert len(set(reasons.values())) == 3
+    assert "축으로 움직이지 않음" in reasons["other_axis"]
+    assert len(set(reasons.values())) == 4
+
+
+def test_a_page_screen_that_still_has_a_page_left_keeps_its_scroll():
+    """런처 홈·앱서랍은 페이지가 여러 장이어도 scrollable 노드가 0개다(HANDOFF §3-2).
+
+    이 화면의 scroll은 **대상 노드가 없는 것이 정상**이다 — 대상이 요소가 아니라 화면이다.
+    넘길 쪽이 남았는데 오류로 닫으면 통과하던 정상 안내를 가드가 없앤다(#251 리뷰).
+    """
+
+    first_of_two = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=1,
+        total_pages=2,
+        elements=[],
+    )
+
+    guided = _guide(_scroll(direction=SwipeDirection.RIGHT), first_of_two)
+
+    assert guided.action_type is ActionType.SCROLL
+    assert guided.target_node_id is None
+
+
+def test_a_page_screen_can_still_go_back_to_the_previous_page():
+    """마지막 쪽이라도 **되돌아갈 쪽**은 남아 있다. 경계는 방향마다 따로 본다."""
+
+    last_of_two = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=2,
+        total_pages=2,
+        elements=[],
+    )
+
+    assert (
+        _guide(_scroll(direction=SwipeDirection.LEFT), last_of_two).action_type is ActionType.SCROLL
+    )
+
+    with pytest.raises(LlmError) as raised:
+        _guide(_scroll(direction=SwipeDirection.RIGHT), last_of_two)
+    assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_a_single_page_screen_is_not_let_through():
+    """쪽이 하나뿐이면 좌우 어느 쪽도 넘길 곳이 없다(`prompt.PAGE_ONLY_ONE`과 같은 사실)."""
+
+    only_page = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=1,
+        total_pages=1,
+        elements=[],
+    )
+
+    for direction in (SwipeDirection.LEFT, SwipeDirection.RIGHT):
+        with pytest.raises(LlmError):
+            _guide(_scroll(direction=direction), only_page)
+
+
+def test_a_vertical_scroll_on_a_page_screen_is_not_let_through():
+    """세로는 페이지 이동이 아니다. 페이지 단이 세로 요청까지 통과시키면 안 된다."""
+
+    first_of_two = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=1,
+        total_pages=2,
+        elements=[],
+    )
+
+    with pytest.raises(LlmError):
+        _guide(_scroll(direction=SwipeDirection.DOWN), first_of_two)
+
+
+def test_broken_page_numbers_do_not_open_the_gate():
+    """쪽 번호가 어긋나면 아무 결론도 내지 않는다(`prompt._page_boundary`와 같은 규칙)."""
+
+    broken = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=5,
+        total_pages=2,
+        elements=[],
+    )
+
+    with pytest.raises(LlmError):
+        _guide(_scroll(direction=SwipeDirection.RIGHT), broken)
 
 
 def test_other_action_types_are_not_touched():

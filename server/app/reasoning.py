@@ -75,11 +75,19 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
     candidates = _scroll_candidates(screen, action.direction)
     if candidates:
         named = _element_by_id(screen, action.target_node_id)
-        if named is not None and named in candidates:
+        if named is not None and any(e.node_id == named.node_id for e in candidates):
             return action
         return action.model_copy(update={"target_node_id": _widest(candidates).node_id})
 
-    # 3. 대상이 없다 — 이 scroll은 내보낼 수 없다. 안전한 대체 행동이 있는 화면은 그쪽으로 돌린다.
+    # 3. 페이지로 넘기는 화면은 **대상 노드가 없는 것이 정상이다** — 대상이 요소가 아니라
+    #    화면 자체다. 삼성 런처 홈·앱서랍은 페이지가 여러 장이어도 scrollable 노드가 0개다
+    #    (HANDOFF §3-2). 아직 넘길 쪽이 남았으면 그대로 통과시킨다. 여기를 오류로 닫으면
+    #    통과하던 정상 안내를 이 가드가 없애고(#251 리뷰), SPEC §3 시나리오 3의
+    #    "앱서랍에서 다음 쪽"이 끊긴다.
+    if _page_move_is_open(screen, action.direction):
+        return action
+
+    # 4. 대상이 없다 — 이 scroll은 내보낼 수 없다. 안전한 대체 행동이 있는 화면은 그쪽으로 돌린다.
     if _can_open_app_drawer(screen):
         return GuideAction(
             expected_result=action.expected_result,
@@ -88,11 +96,34 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
             instruction="화면 가운데를 위로 쓸어올려 전체 앱 목록을 열어 주세요.",
         )
 
-    # 4. 그 밖에는 대체할 안전한 행동이 계약에 없다 — `done`은 성공 의미이고 "진행 불가"는
+    # 5. 그 밖에는 대체할 안전한 행동이 계약에 없다 — `done`은 성공 의미이고 "진행 불가"는
     #    보류 항목이다(server/CLAUDE.md). **틀린 안내를 내보내는 대신 실패로 닫는다.**
     #    앱은 이 화면을 백오프 후 다시 물어보므로(`retryThisScreen`), 정체와 달리 회복 경로가
     #    남는다.
     raise LlmError(ErrorKind.SERVER, _no_scroll_target_reason(screen, action.direction))
+
+
+def _page_move_is_open(screen: Screen, direction: SwipeDirection | None) -> bool:
+    """페이지로 넘기는 화면에서 요청 방향에 아직 넘길 쪽이 남았는가.
+
+    **판정 근거는 프롬프트가 쓰는 것과 같은 사실이다**(`prompt._page_boundary` — #217).
+    저쪽은 모델에게 "지금이 첫 쪽/마지막 쪽"이라고 말해 주고, 이쪽은 그 사실로 통과 여부를
+    정한다. 새 지식이 아니라 이미 관측한 상태다.
+
+    쪽 번호가 어긋나면(`current > total` 등) 아무 결론도 내지 않는다 — 저쪽과 같은 규칙이다.
+    세로 방향은 페이지 이동이 아니므로 여기서 통과시키지 않는다.
+    """
+
+    current, total = screen.current_page, screen.total_pages
+    if current is None or total is None:
+        return False
+    if total < 1 or not 1 <= current <= total:
+        return False
+    if direction is SwipeDirection.RIGHT:
+        return current < total
+    if direction is SwipeDirection.LEFT:
+        return current > 1
+    return False
 
 
 def _can_open_app_drawer(screen: Screen) -> bool:
@@ -158,17 +189,30 @@ def _scrolls_toward(element: UiElement, direction: SwipeDirection) -> bool:
     )
 
 
+def _moves_along(element: UiElement, direction: SwipeDirection | None) -> bool:
+    """이 요소가 그 방향의 축으로 움직이는가(여유는 보지 않는다)."""
+
+    if direction is None:  # pragma: no cover - 스키마가 scroll의 direction을 강제한다(C3)
+        return False
+    return direction in {element.next_swipe_direction, element.prev_swipe_direction}
+
+
 def _no_scroll_target_reason(screen: Screen, direction: SwipeDirection | None) -> str:
     """대상이 없는 이유를 세 상황으로 갈라 적는다.
 
-    한 문장으로 덮으면 실기기 로그에서 셋을 구분할 수 없다 — 스크롤 요소가 아예 없는 화면,
+    한 문장으로 덮으면 실기기 로그에서 넷을 구분할 수 없다 — 스크롤 요소가 아예 없는 화면,
     요소는 있는데 그 방향만 끝난 화면(가장 흔하다), 그리고 앱은 스크롤 요소가 있다고 했는데
-    요소 목록에는 안 실린 화면(`UiTreeSerializer.MAX_ELEMENTS` 절단이 유력하다)은
-    다음 수가 서로 다르다.
+    요소 목록에는 안 실린 화면(`UiTreeSerializer.MAX_ELEMENTS` 절단이 유력하다), 그리고 세로
+    목록만 있는데 모델이 좌우를 고른 화면은 다음 수가 서로 다르다.
+
+    **"이미 끝"은 그 방향의 축으로 움직이는 요소가 있을 때만 쓴다.** 축을 안 보면 세로 목록
+    화면의 `scroll right`가 "right 방향은 이미 끝"으로 나가 네 번째 상황이 첫 칸에 섞인다.
     """
 
-    if any(_has_scroll_metadata(element) for element in screen.elements):
+    if any(_moves_along(element, direction) for element in screen.elements):
         return f"scroll 대상을 해석할 수 없다: 스크롤 요소는 있으나 {direction} 방향은 이미 끝"
+    if any(_has_scroll_metadata(element) for element in screen.elements):
+        return f"scroll 대상을 해석할 수 없다: 스크롤 요소가 {direction} 축으로 움직이지 않음"
     if screen.has_scrollable_element:
         return (
             "scroll 대상을 해석할 수 없다: 화면에 스크롤 요소가 있다고 왔는데 "
@@ -210,9 +254,11 @@ def _screen_signature(screen: Screen) -> str:
     대신 package/page/요소 순서·역할·좌표·상호작용/스크롤 상태가 바뀌면 서명이 바뀐다.
 
     이 선택은 구조·좌표가 같고 내용만 바뀐 화면을 구분하지 못한다. 목록 항목이 label만 바뀌면
-    실제 화면 변화가 있어도 같은 서명이다. 따라서 이 서명만으로 모든 화면 동일성을 주장하거나
-    현재의 좁은 런처 fallback 밖에 재사용하면 안 된다. 알고리즘이 바뀌면 앱이 보관한 이전
-    서명과 새 서명이 달라 진행 중 반복 카운트가 끊기지만, 가드가 발동하지 않는 fail-safe 방향이다.
+    실제 화면 변화가 있어도 같은 서명이다. 따라서 이 서명만으로 모든 화면 동일성을 주장하면 안 된다.
+
+    **지금 이 값을 읽는 서버 코드는 없다.** 반복 카운트를 걷으면서(#202) 소비자가 사라졌고,
+    응답에 실어 앱이 이력에 붙이는 값으로만 남아 있다. 알고리즘이 바뀌면 앱이 보관한 이전
+    서명과 새 서명이 달라지지만, 서버가 그 값으로 판정하지 않으므로 안내가 바뀌지는 않는다.
     """
 
     structure = {

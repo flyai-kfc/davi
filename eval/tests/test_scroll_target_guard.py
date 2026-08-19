@@ -76,16 +76,55 @@ def test_launcher_last_page_switches_to_the_app_drawer_on_the_first_scroll():
     assert response.action.target_node_id is None
 
 
-def test_launcher_last_page_with_page_metadata_does_not_emit_a_targetless_scroll():
-    """실측 ① 그대로. 앱서랍일 수도 있는 화면이라 전환은 막히고, scroll도 나가지 않는다."""
+def test_launcher_last_page_does_not_emit_a_scroll_past_the_last_page():
+    """실측 ① 그대로. 앱서랍일 수도 있는 화면이라 전환은 막히고, **넘길 곳이 없는 방향의**
+    scroll도 나가지 않는다.
+
+    쓸어도 화면이 바뀌지 않는 것이 #202가 말하는 "안내가 그 자리에서 죽는" 조건이다.
+    2/2에서 오른쪽이 그 방향이다.
+    """
 
     with pytest.raises(LlmError) as raised:
         next_step(
             _request("samsung_launcher_last_page_home.json"),
-            SequenceLlmClient([_scroll(1)]),
+            SequenceLlmClient([_scroll(1, direction=SwipeDirection.RIGHT)]),
         )
 
     assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_launcher_pages_that_still_have_somewhere_to_go_keep_their_scroll():
+    """넘길 쪽이 남은 화면의 대상 없는 scroll은 **결함이 아니라 정답이다**(#251 리뷰).
+
+    삼성 런처 홈·앱서랍은 페이지가 여러 장이어도 scrollable 노드가 0개다(HANDOFF §3-2).
+    대상이 요소가 아니라 화면 자체라 `target`이 비는 것이 정상이고, 앱도 이 경우 강조만 빼고
+    안내문은 그대로 띄운다(`GuideAccessibilityService`의 `highlight miss`). 사용자가 쓸면 쪽이
+    실제로 넘어가 화면이 바뀌므로 정체로도 가지 않는다.
+
+    여기를 오류로 닫으면 SPEC §3 시나리오 3(홈 → 앱서랍 → 카카오톡)의 마지막 칸이 끊긴다 —
+    C9 fallback의 목적지인 앱서랍 1/2에서 다음 쪽으로 넘길 수 없게 된다.
+    """
+
+    for fixture in (
+        "samsung_launcher_multi_page_home.json",
+        "samsung_launcher_grid_app_drawer.json",
+    ):
+        response = next_step(
+            _request(fixture),
+            SequenceLlmClient([_scroll(1, direction=SwipeDirection.RIGHT)]),
+        )
+
+        assert response.action.action_type is ActionType.SCROLL, fixture
+        assert response.action.target_node_id is None, fixture
+
+    # 마지막 쪽이라도 되돌아갈 쪽은 남아 있다. 경계는 방향마다 따로 본다.
+    back = next_step(
+        _request("samsung_launcher_last_page_home.json"),
+        SequenceLlmClient([_scroll(1, direction=SwipeDirection.LEFT)]),
+    )
+
+    assert back.action.action_type is ActionType.SCROLL
+    assert back.action.target_node_id is None
 
 
 def test_alarm_editor_scroll_gets_the_time_picker_as_its_target():
