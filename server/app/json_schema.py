@@ -12,9 +12,10 @@ strict 모드가 요구하는 것과, 그래서 Gemini 쪽과 달라지는 것:
 - null을 허용하는 것은 `X | None`으로 선언된 필드뿐이다. 기본값만 있는 list 필드
   (`Field(default_factory=list)`)에 null이 오면 pydantic 검증이 깨지므로, 그런 필드는
   required이면서 non-null로 둔다 — 모델은 빈 배열을 써야 한다.
-- 필드 description은 그대로 싣되, null 허용 필드에는 지시를 한 문장 덧붙인다. 모델 선언의
-  설명이 Gemini 기준("그 외에는 생략한다")으로 쓰여 있어서, 그대로 보내면 스키마는 값을
-  요구하는데 설명은 생략하라고 말하는 상태가 된다.
+- 필드 description은 그대로 싣되, null 허용 필드에는 규약 문장을 한 줄 덧붙인다. 모델 선언은
+  **규약 중립**이라(`schemas.py`) 각 변환기가 자기 표현에 맞는 문장을 붙인다 — 여기는 "null",
+  `gemini_schema.py`는 "필드 생략". 무스키마 폴백에서는 이 문장이 유일한 지시가 되므로, 선언에
+  한쪽 규약을 박아 두면 다른 쪽 스키마와 정반대 지시가 한 프롬프트에 함께 들어간다.
 
 속성 순서는 선언 순서 그대로다. JSON 객체는 순서를 보존하므로 그것이 곧 생성 순서 =
 추론 순서다(C1, `gemini_schema.py`의 propertyOrdering과 같은 뜻).
@@ -35,7 +36,7 @@ _PRIMITIVES: dict[type, str] = {
     bool: "boolean",
 }
 
-# 선택 필드 설명에 붙는 지시. Gemini의 "생략" 규약과 strict 모드의 "null" 규약을 잇는다.
+# 선택 필드 description에 붙는 strict 모드 규약. `gemini_schema._OMIT_HINT`와 대칭이다.
 _NULL_HINT = " 해당 없으면 null을 넣는다."
 
 

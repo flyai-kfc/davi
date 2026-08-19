@@ -8,8 +8,11 @@
   그게 곧 생성 순서 = 추론 순서다. action을 앞에 두면 모델이 근거를 나중에 대충 채운다.
   순서는 `gemini_schema.build_response_schema()`가 **이 선언에서 자동으로 뽑는다**(C1).
   따라서 필드 순서를 바꾸면 프롬프트 동작이 바뀐다 — 무심코 재배치하지 말 것.
-- **"해당 없음"은 빈 문자열이 아니라 필드 생략으로 표현한다.** enum에 빈 문자열을 넣으면
-  Gemini가 HTTP 400으로 거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+- **"해당 없음"은 빈 문자열로 표현하지 않는다.** enum에 빈 문자열을 넣으면 Gemini가 HTTP 400으로
+  거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+  **실제로 무엇을 보내는지는 공급자마다 다르다** — Gemini는 필드 생략, OpenAI·Anthropic strict
+  모드는 null이다. 그 규약을 여기 선언에 쓰지 않는 이유는 아래 `GuideAction.direction` 주석에
+  있다. 규약 문장은 각 스키마 변환기가 붙인다(`gemini_schema.py` / `json_schema.py`).
 """
 
 from __future__ import annotations
