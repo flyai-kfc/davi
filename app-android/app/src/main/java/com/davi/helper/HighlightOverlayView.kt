@@ -591,6 +591,21 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
+     * 이 뷰가 화면에서 차지한 사각형. **아무것도 물리지 않는다** — 무엇을 뺄지는 호출자가 정한다.
+     *
+     * 한 자리에 모으는 이유는 이 파일이 반복해서 세운 원칙이다 — 두 곳이 각자 세우면 원점
+     * 보정이 한 번 더 바뀔 때 한쪽만 고쳐진다([reservedHeight] KDoc, PR #229 리뷰).
+     * 예전 `drawableBounds()`가 이 역할을 겸했는데, 물림이 잘못 붙어 있어 지우면서 역할까지
+     * 같이 사라졌었다(PR #255 리뷰).
+     */
+    private fun viewBounds() = GuideBoxLayout.Bounds(
+        left = locationOnScreen[0].toFloat(),
+        top = locationOnScreen[1].toFloat(),
+        right = (locationOnScreen[0] + width).toFloat(),
+        bottom = (locationOnScreen[1] + height).toFloat(),
+    )
+
+    /**
      * 강조가 화면에서 차지하는 **바깥변** 사각형 — 획의 바깥 가장자리다.
      *
      * **레이아웃이 피해야 하는 것은 대상이 아니라 이것이다.** 레이아웃에 원본 bounds를
@@ -610,21 +625,6 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다. 자리는 고정하고 두께·투명도만
      * 변해야 "숨 쉰다"로 읽힌다.
      */
-    /**
-     * 이 뷰가 화면에서 차지한 사각형. **아무것도 물리지 않는다** — 무엇을 뺄지는 호출자가 정한다.
-     *
-     * 한 자리에 모으는 이유는 이 파일이 반복해서 세운 원칙이다 — 두 곳이 각자 세우면 원점
-     * 보정이 한 번 더 바뀔 때 한쪽만 고쳐진다([reservedHeight] KDoc, PR #229 리뷰).
-     * 예전 `drawableBounds()`가 이 역할을 겸했는데, 물림이 잘못 붙어 있어 지우면서 역할까지
-     * 같이 사라졌었다(PR #255 리뷰).
-     */
-    private fun viewBounds() = GuideBoxLayout.Bounds(
-        left = locationOnScreen[0].toFloat(),
-        top = locationOnScreen[1].toFloat(),
-        right = (locationOnScreen[0] + width).toFloat(),
-        bottom = (locationOnScreen[1] + height).toFloat(),
-    )
-
     private fun highlightBounds(): GuideBoxLayout.Bounds {
         // **자를 때 선 두께를 물리지 않는다.** 이 함수가 돌려주는 것이 바깥변이라, 잉크의
         // 바깥이 화면 끝에 딱 맞아야 한다. 획 절반을 물린 범위에 대고 자르면 절반을 두 번
@@ -729,7 +729,10 @@ class HighlightOverlayView(context: Context) : View(context) {
      * **강조 선 두께를 물리지 않는다**(#250). 예전에는 `drawableBounds()`를 거쳤는데 거기
      * 물려 있던 `highlightStroke / 2`는 강조 선의 두께였다 — 안내창은 자기 획
      * (`davi_overlay_window_stroke` 1.5dp)을 따로 쓰므로 그 물림이 안내창 캔버스를 이유 없이
-     * 좌우 2dp씩 줄이고 있었다. 위아래는 시스템 바 인셋이 더 안쪽이라 영향이 없었다.
+     * 좌우 2dp씩 줄이고 있었다. 위아래는 시스템 바 인셋이 더 안쪽이라 영향이 없었다 —
+     * **인셋을 읽는 API 30+ 기준이다.** 그 아래(minSdk 26~29)는 [safeBounds]가 null이라 원래
+     * 아무것도 안 빼므로 위아래도 2dp 넓어지지만, 하단 여백 55dp가 그 시절 3버튼 내비바
+     * (48 안팎)보다 커서 겹치지는 않는다(여유가 7 → 5dp).
      *
      * 안 빼면 `bottomAnchored`가 안내창을 내비게이션 바 안으로 밀어 넣는다. 그 자체는 시각
      * 문제로 보이지만, 안내창 사각형이 곧 **조작 오버레이 창의 터치 영역**이라(#126) 겹친
