@@ -77,10 +77,14 @@ class GuideBoxLayoutTest {
     }
 
     @Test
-    fun `자리가 하나도 안 나오면 아랫변 여백으로 바닥에 붙인다`() {
+    fun `자리가 하나도 안 나오면 위쪽을 살린다`() {
         // 후보가 전부 걸러지는 경로(`topFor`의 candidates.isEmpty() → bottomAnchored)다.
-        // **marginBottom을 쓰는 두 번째 자리**인데 여기만 테스트가 없었다(PR #239 리뷰).
-        // 캔버스를 상자보다 낮게 주면 어느 후보도 안 들어간다.
+        //
+        // **이 경로에서 marginBottom은 결과에 영향을 줄 수 없다**(PR #239 재리뷰 2에서 실증 —
+        // 그 인자를 999로 바꿔도 전체 테스트가 통과한다). 후보가 비려면
+        // `canvas.bottom - marginBottom - height < canvas.top`이어야 하는데, 그 조건에서는
+        // bottomAnchored의 coerceAtLeast(canvas.top)가 언제나 이기기 때문이다.
+        // 그래서 여기서 단언할 수 있는 것은 "위쪽을 살린다" 하나뿐이다.
         val tiny = GuideBoxLayout.Bounds(0f, 0f, 1000f, 60f)
 
         val layout = compute("가나다", canvas = tiny)
@@ -91,7 +95,9 @@ class GuideBoxLayoutTest {
 
     @Test
     fun `자리가 좁아도 들어가면 아랫변 여백을 지킨다`() {
-        // 위와 같은 경로인데 상자가 들어가는 크기다 — 이쪽이 marginBottom 값을 고정한다.
+        // **bottomAnchored 경로가 아니다.** 아랫변 후보가 필터를 통과해 평범한 후보 경로로
+        // 간다 — 캔버스가 상자보다 조금이라도 크면 그렇다(PR #239 재리뷰 2).
+        // 여기서 고정하는 것은 "캔버스가 빠듯해도 아랫변 여백을 깎지 않는다"이다.
         val short = GuideBoxLayout.Bounds(0f, 0f, 1000f, boxHeight(1) + MARGIN_BOTTOM + 4f)
 
         val layout = compute("가나다", canvas = short)

@@ -612,13 +612,19 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 변해야 "숨 쉰다"로 읽힌다.
      */
     private fun highlightBounds(): GuideBoxLayout.Bounds {
-        val bounds = drawableBounds()
+        // **자를 때 선 두께를 물리지 않는다.** 이 함수가 돌려주는 것이 바깥변이라, 잉크의
+        // 바깥이 화면 끝에 딱 맞아야 한다. [drawableBounds]는 **중심선용**이라 이미 획 절반을
+        // 물려 놓았고, 거기에 대고 자르면 절반을 두 번 빼서 가장자리 대상에서 강조가 2dp
+        // 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이 인용한 #147의 찌그러짐과 같은 방향이다.
+        // 중심선으로 되돌리는 것은 그리는 쪽의 `+ half`가 한다.
+        val left = locationOnScreen[0].toFloat()
+        val top = locationOnScreen[1].toFloat()
         val out = highlightExpand + highlightStroke
         return GuideBoxLayout.Bounds(
-            left = (target.left - out).coerceAtLeast(bounds.left),
-            top = (target.top - out).coerceAtLeast(bounds.top),
-            right = (target.right + out).coerceAtMost(bounds.right),
-            bottom = (target.bottom + out).coerceAtMost(bounds.bottom),
+            left = (target.left - out).coerceAtLeast(left),
+            top = (target.top - out).coerceAtLeast(top),
+            right = (target.right + out).coerceAtMost(left + width),
+            bottom = (target.bottom + out).coerceAtMost(top + height),
         )
     }
 
@@ -704,6 +710,11 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     /**
      * 선 두께를 물린 뒤 실제로 **그릴 수 있는** 화면 범위. 화면 좌표계다.
+     *
+     * **남은 호출자는 [boxBounds] 하나다**(#234). 물려 있는 `highlightStroke / 2`는 강조 선의
+     * 두께인데 안내창은 자기 획(`davi_overlay_window_stroke` 1.5dp)을 따로 쓰므로, 그 물림이
+     * 안내창 캔버스를 이유 없이 2dp 줄인다. 지우면 안내창이 앉을 수 있는 자리가 그만큼
+     * 넓어지는 변화라 이 이슈에서 건드리지 않았다 — 정리는 별도 이슈.
      *
      * 시스템 바를 뺀 범위가 아니다 — 강조 대상이 내비게이션 바 버튼일 수 있고, 그때 아랫변이
      * 잘리면 안 된다. 안내창이 앉을 범위는 [boxBounds]가 따로 준다.
