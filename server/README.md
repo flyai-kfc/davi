@@ -361,8 +361,10 @@ GitHub Actions가 `main`에 병합된 서버·인프라 변경을 ACR image와 �
 이번 run의 정확한 revision과 image가 active·healthy·traffic 100%인지 대조한 다음 `/health`를
 검사하므로 이전 revision의 정상 응답으로 성공하지 않는다. PR은 공유 서버를 바꾸지 않는다.
 
-외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. Gemini 키와 개발 토큰은
+외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. 공급자 API 키와 개발 토큰은
 Key Vault의 versionless secret으로만 보관하며 Container App의 user-assigned identity가 읽는다.
+공급자(`DAVI_LLM_PROVIDER`)와 그 키 secret 이름은 GitHub environment 변수로 고른다 — 비우면
+`gemini`이고, 바꿀 때는 키 secret을 **먼저** 만든다.
 앱에는 Azure URL과 개발 토큰만 debug 설정으로 전달한다. Azure의 도그푸딩 allowlist는 비워 raw
 화면 데이터를 저장하지 않는다. 최초 권한·GitHub OIDC 연결과 장애 확인은
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.

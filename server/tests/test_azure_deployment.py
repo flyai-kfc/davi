@@ -185,6 +185,101 @@ def test_kakao_auth_wiring_is_optional_so_deploys_do_not_depend_on_it() -> None:
     assert "name: 'DAVI_KAKAO_APP_ID'\n              value: kakaoAppId" in template
 
 
+def test_llm_provider_wiring_is_optional_and_defaults_to_gemini() -> None:
+    """공급자를 바꾸지 않는 배포가 지금까지와 똑같아야 한다(#259의 교체 지점을 Azure까지).
+
+    OpenAI 키도 테스트 토큰·서명 비밀과 같은 이유로 선택이다 — 없는 Key Vault secret을 조건
+    없이 참조하면 revision이 Healthy에 도달하지 못해 이후 배포까지 막힌다. Gemini 키만 조건이
+    없는데, 그쪽은 Key Vault에 항상 있는 값이고 빼면 gemini 배포가 기동에 실패한다.
+    """
+
+    template = _text("infra/azure/dev-server.bicep")
+
+    assert "param llmProvider string = 'gemini'" in template
+    # 키를 배선할 파라미터가 없는 공급자는 허용값에서 뺀다. 값만 받으면 서버가 기동을 거부해
+    # revision이 막히는데, 그건 템플릿이 스스로 막을 수 있는 실수다.
+    assert "@allowed([\n  'gemini'\n  'openai'\n])" in template
+    assert "param openAiApiKeySecretName string = ''" in template
+    # secret 항목과 env 항목 양쪽에 가드가 걸려야 반쪽 배선이 안 생긴다.
+    assert template.count("empty(openAiApiKeySecretName)") == 2
+    assert "name: 'DAVI_LLM_PROVIDER'\n              value: llmProvider" in template
+    assert "name: 'OPENAI_API_KEY'\n              secretRef: 'openai-api-key'" in template
+
+
+def test_model_defaults_to_empty_so_provider_swaps_cannot_send_a_foreign_model_id() -> None:
+    """모델 기본값은 **비움**이다. 서버가 공급자 기본 모델을 고른다(config.resolved_model).
+
+    한 공급자의 id를 기본값으로 박아 두면 `llmProvider`만 바꾼 배포가 그 id를 엉뚱한 공급자로
+    보내고, 400이 "스키마 거부"로 해석돼 무스키마 폴백까지 한 왕복 더 돈 뒤 실패한다.
+    `@minLength(1)`이 남아 있으면 애초에 비울 수가 없으므로 그것까지 함께 고정한다.
+    """
+
+    template = _text("infra/azure/dev-server.bicep")
+
+    assert "param daviModel string = ''" in template
+    assert "@minLength(1)\nparam daviModel" not in template
+
+
+def test_deploy_workflow_passes_the_provider_wiring_and_verifies_it() -> None:
+    """공급자 배선이 자동 배포에서 살아남고, 살아남았는지 배포가 스스로 확인한다.
+
+    손으로 배선하면 다음 자동 배포가 조용히 지운다(테스트 토큰에서 겪은 자리). 그리고
+    `/health`의 `provider`를 안 보면 변수를 채운 배포와 채우지 않은 배포가 똑같이 초록이다.
+    변수는 **선택**이라 필수 변수 검사 목록에는 없어야 한다 — 평소에는 비어 있는 것이 정상이다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+
+    assert "DAVI_AZURE_LLM_PROVIDER: ${{ vars.DAVI_AZURE_LLM_PROVIDER }}" in workflow
+    assert (
+        "DAVI_AZURE_OPENAI_KEY_SECRET_NAME: ${{ vars.DAVI_AZURE_OPENAI_KEY_SECRET_NAME }}"
+    ) in workflow
+    assert "DAVI_AZURE_MODEL: ${{ vars.DAVI_AZURE_MODEL }}" in workflow
+    assert 'llmProvider="${DAVI_AZURE_LLM_PROVIDER:-gemini}"' in workflow
+    assert 'openAiApiKeySecretName="${DAVI_AZURE_OPENAI_KEY_SECRET_NAME:-}"' in workflow
+    assert 'daviModel="${DAVI_AZURE_MODEL:-}"' in workflow
+    assert ".provider == $expected_provider" in workflow
+    # 모델은 pin 했을 때만 대조한다. 공급자 기본 모델 표를 워크플로에 복제하면 서버 기본값이
+    # 바뀔 때 여기만 낡아서, 정상 배포가 실패로 보인다.
+    assert '($expected_model == "" or .model == $expected_model)' in workflow
+
+    required_block = workflow[workflow.index("for name in") : workflow.index("test -n ")]
+    assert "DAVI_AZURE_LLM_PROVIDER" not in required_block
+    assert "DAVI_AZURE_OPENAI_KEY_SECRET_NAME" not in required_block
+    assert "DAVI_AZURE_MODEL" not in required_block
+
+    # 키 없는 공급자는 기동 실패로 revision을 막는다. 카카오 앱 ID와 같은 이유로 배포 전에 끊는다.
+    assert "DAVI_AZURE_LLM_PROVIDER=openai에는" in workflow
+
+    # 키 자체는 Key Vault에만 있다. 워크플로가 다루는 것은 secret **이름**뿐이다.
+    assert "OPENAI_API_KEY" not in workflow
+
+
+def test_rollback_cannot_leave_a_model_pin_without_its_provider() -> None:
+    """공급자를 비우면서 모델 pin만 남기는 롤백을 배포 전에 끊는다(#299 리뷰).
+
+    provider `openai` · model `gpt-5.6-terra`에서 앞의 둘만 비우면 다음 revision은 provider
+    `gemini` · model `gpt-5.6-terra`로 뜬다. **서버 설정 검증도 `/health` 대조도 이걸 통과한다** —
+    배포가 요구한 값과 서버가 보고한 값이 서로 일관되기 때문이다. 깨지는 곳은 실제 모델 호출
+    뿐이라 공유 서버가 조용히 못 쓰게 된다. 짝이 맞는 pin까지 검사할 수는 없다(어떤 id가 어느
+    공급자 것인지 아는 표가 저장소에 없다). 그래서 **짝이 끊어진 상태**를 대신 고정한다.
+
+    문서의 롤백 절차도 함께 고정한다. 운영자가 따라가는 것은 워크플로가 아니라 그 문장이고,
+    "변수 두 개를 비운다"가 이 함정을 그대로 안내하던 자리다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+    runbook = _text("docs/development/azure-dev-server.md")
+
+    assert (
+        'if [ -n "${DAVI_AZURE_MODEL:-}" ] && [ -z "${DAVI_AZURE_LLM_PROVIDER:-}" ]; then'
+    ) in workflow
+    assert "DAVI_AZURE_MODEL을 pin 하려면 DAVI_AZURE_LLM_PROVIDER도 함께 지정하세요" in workflow
+
+    assert "**되돌릴 때는 세 변수를 함께 비운다**" in runbook
+    assert "되돌리기는 변수 두 개를 비우고" not in runbook
+
+
 def test_deploy_workflow_passes_and_verifies_the_kakao_auth_wiring() -> None:
     """배선이 자동 배포에서 살아남고, 살아남았는지 배포가 스스로 확인한다(#279).
 

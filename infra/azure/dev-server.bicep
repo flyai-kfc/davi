@@ -32,11 +32,21 @@ param revisionSuffix string
 @minLength(1)
 param imageRepository string = 'davi-server'
 
-@minLength(1)
-param daviModel string = 'gemini-3.5-flash-lite'
+@allowed([
+  'gemini'
+  'openai'
+])
+@description('LLM 공급자(DAVI_LLM_PROVIDER). 고른 공급자의 키가 배선돼 있어야 서버가 뜬다 — openai면 openAiApiKeySecretName이 필요하고, 그 짝은 배포 워크플로가 배포 전에 검사한다. 서버는 anthropic도 지원하지만(#259) 여기서는 허용하지 않는다: 키를 배선할 파라미터가 없어 값만 넘기면 서버가 기동을 거부하고 revision이 Healthy에 도달하지 못한다. 쓰려면 openAiApiKeySecretName과 같은 모양으로 키를 먼저 잇는다.')
+param llmProvider string = 'gemini'
+
+@description('모델 id(DAVI_MODEL). **비우는 것이 기본이다** — 서버가 공급자 기본 모델을 고른다(gemini-3.5-flash-lite / gpt-5.6-luna / claude-haiku-4-5). 여기에 한 공급자의 id를 박아 두면 llmProvider만 바꾼 배포가 그 id를 엉뚱한 공급자로 보내고, 400이 "스키마 거부"로 해석돼 무스키마 폴백까지 한 왕복 더 돈 뒤 실패한다. 품질을 올리려고 pin 할 때는 공급자와 짝을 맞춘다.')
+param daviModel string = ''
 
 @minLength(1)
 param geminiApiKeySecretName string = 'GEMINI-API-KEY'
+
+@description('OpenAI 키의 Key Vault secret 이름. **비우면 아예 배선하지 않는다**(기본값). 테스트 토큰·서명 비밀과 같은 이유다 — Container Apps는 revision을 만들 때 keyVaultUrl을 해석하므로, 없는 secret을 참조하면 revision이 Healthy에 도달하지 못해 이후 배포까지 막힌다. Gemini 키를 조건 없이 배선하는 것과 다른 이유는, 그쪽은 Key Vault에 항상 있는 값이고 비우면 gemini 배포가 기동에 실패하기 때문이다.')
+param openAiApiKeySecretName string = ''
 
 @minLength(1)
 param devAccessTokenSecretName string = 'DAVI-DEV-ACCESS-TOKEN'
@@ -134,6 +144,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
                 keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${authJwtSecretSecretName}'
                 identity: containerIdentity.id
               }
+            ],
+        empty(openAiApiKeySecretName)
+          ? []
+          : [
+              {
+                name: 'openai-api-key'
+                keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${openAiApiKeySecretName}'
+                identity: containerIdentity.id
+              }
             ]
       )
     }
@@ -161,6 +180,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: '0.0.0.0'
             }
             {
+              name: 'DAVI_LLM_PROVIDER'
+              value: llmProvider
+            }
+            {
+              // 빈 문자열이어도 서버가 공급자 기본 모델로 대체한다(config.resolved_model).
+              // 그래서 카카오 앱 ID처럼 항목 자체를 뺄 필요가 없다.
               name: 'DAVI_MODEL'
               value: daviModel
             }
@@ -198,6 +223,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DAVI_KAKAO_APP_ID'
               value: kakaoAppId
+            }
+          ], empty(openAiApiKeySecretName) ? [] : [
+            {
+              name: 'OPENAI_API_KEY'
+              secretRef: 'openai-api-key'
             }
           ])
           probes: [

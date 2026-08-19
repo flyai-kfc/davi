@@ -458,7 +458,7 @@ davi/
 - 개인 USB 검증은 loopback+`adb reverse`다. 평일 팀 테스트는 전용 맥북의 local uvicorn + 같은
   사설 Wi-Fi(#57) 또는 #94의 Azure Container Apps 공유 development endpoint를 쓴다.
 - LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 접근 토큰과 팀 전체 요청
-  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. **접근 토큰은 둘이다**(#257) —
+  제한으로 같은 네트워크의 의도치 않은 공급자 호출을 막는다. **접근 토큰은 둘이다**(#257) —
   팀용 `DAVI_DEV_ACCESS_TOKEN`과 외부 테스트 참가자용 `DAVI_TEST_ACCESS_TOKEN`이 같은
   `X-Davi-Dev-Token` 헤더를 쓰고 **둘 중 하나만 맞으면 통과**한다(둘 다 32자 이상). 저녁에는
   PID 기반 스크립트로 명시 종료한다.
@@ -468,9 +468,18 @@ davi/
   대조한 뒤 `/health`를 검사한다. PR은 공유 서버를 바꾸지 않는다. 최소/최대 replica와 Uvicorn
   worker는 각각 1이다.
 - Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
-  토큰과 기존 전역 rate limit으로 보호한다. Gemini 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
+  토큰과 기존 전역 rate limit으로 보호한다. 공급자 API 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
-  넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 카카오 앱 ID뿐이다(#279).
+  넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 배포 설정(카카오 앱 ID,
+  LLM 공급자·모델)뿐이다(#279, #259).
+- **공유 서버의 LLM 공급자도 GitHub environment 변수로 고른다**(§5 표의 `DAVI_LLM_PROVIDER`를
+  배포까지 이은 것). 비우면 `gemini`라 지금까지의 배포와 같고, 바꿀 때는 그 공급자의 키 secret
+  이름을 짝으로 채운다 — 키 없이 공급자만 바꾸면 서버가 기동을 거부해 revision이 Healthy에
+  도달하지 못하고 이후 배포까지 막히므로, 그 짝은 배포 전에 검증한다. 모델은 **비우는 것이
+  기본**이고(공급자 기본 모델), 배포는 `/health`의 `provider`를 기대값과 대조해 배선이 빠진
+  배포가 초록으로 지나가지 않게 한다. **모델 pin은 공급자와 짝으로만 다룬다** — 공급자를 비운
+  채 pin만 남은 상태는 설정 검증도 `/health` 대조도 통과하고 실제 호출에서만 깨지므로, 배포
+  전에 끊는다.
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
   Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
   요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
@@ -485,7 +494,7 @@ davi/
   팀 debug APK · release APK · 외부 테스트 참가자(#257). 사설 Wi-Fi LAN 서버에는 debug만 붙는다.
 - **release에 실리는 접근 토큰은 비밀이 아니다.** APK에서 추출되므로 기밀이 아니라 **회전**으로
   다룬다 — 기간 제한 임시 capability로 보고 내부 테스트 시작 직전에 적용, 종료 즉시 서버에서
-  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 Gemini 쿼터에 물려
+  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 공급자 쿼터에 물려
   있다는 것이 그 이유다. 접근 통제·비용 상한·로그 정책의 나머지는 #214가 정한다.
 - API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
 - 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
