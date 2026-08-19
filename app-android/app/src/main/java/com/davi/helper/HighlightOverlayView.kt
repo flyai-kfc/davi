@@ -242,14 +242,40 @@ class HighlightOverlayView(context: Context) : View(context) {
      */
     private var readingWindow = false
 
+    /**
+     * 읽는 중이 덮기 전의 안내. 읽는 중이 끝났는데 **새 안내가 아직 안 왔을 때** 되돌린다.
+     *
+     * 읽는 중을 "창이 비어 있을 때만"으로 막았던 #229의 제약을 #295가 뒤집었다. 그때 근거는
+     * "보고 따라 하던 안내가 사라지면 안 된다"였는데, **읽는 구간에 들어갔다는 것은 화면이
+     * 이미 움직였다는 뜻**이라 그 안내는 그 시점에 유효하지 않다.
+     */
+    private var stashed: Stash? = null
+
+    private data class Stash(
+        val instruction: String,
+        val hasTarget: Boolean,
+        val target: RectF,
+        val gestureDirection: SwipeDirection?,
+        val avoid: List<GuideBoxLayout.Avoid>,
+    )
+
+    /** [readingOnset]이 큐에 있는가. [reading]과 별개다 — [setReading] 주석 참고. */
+    private var onsetPending = false
+
     private val readingOnset = Runnable {
+        onsetPending = false
         readingVisible = true
-        // **첫 안내가 오기 전의 빈 시간을 채운다**(GD-1). 이미 안내가 떠 있으면 건드리지
-        // 않는다 — 화면 전환·재요청에서도 읽는 중이 켜지는데, 그때 문구를 갈아 끼우면
-        // 보고 따라 하던 안내가 눈앞에서 사라진다.
-        if (instruction.isEmpty()) {
+        if (!readingWindow) {
+            // 떠 있던 안내는 밀어 둔다 — 읽는 중이 안내 없이 끝나면 되돌린다.
+            if (instruction.isNotEmpty()) {
+                stashed = Stash(instruction, hasTarget, RectF(target), gestureDirection, avoid)
+            }
             instruction = context.getString(R.string.overlay_reading)
             readingWindow = true
+            // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
+            hasTarget = false
+            gestureDirection = null
+            avoid = emptyList()
             relayout()
         }
         syncBreathing()
@@ -297,19 +323,54 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 취소하거나 onset 지연이 리셋돼 테두리가 영영 뜨지 않는다.
      */
     fun setReading(on: Boolean) {
-        if (on == reading) return
-        reading = on
         if (on) {
-            // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
-            postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
+            reading = true
+            // **`on == reading`으로 막지 않는다**(#295). 읽는 중이 켜진 채로 서버 안내가
+            // 도착하면 [setGuide]가 창을 가져가고([readingWindow]가 false), 그 뒤 화면이 또
+            // 바뀌어 다음 읽는 구간에 들어가도 `reading`은 계속 true라 **전이가 없다.**
+            // 전이로만 예약하면 두 번째 구간부터 문구가 영영 안 바뀐다(실기기 실측).
+            //
+            // 대신 "창을 아직 안 바꿨고 예약도 없을 때"로 막는다 — 폴링마다 들어와도 예약이
+            // 겹치지 않는다.
+            if (!readingWindow && !onsetPending) {
+                onsetPending = true
+                // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
+                postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)
+            }
         } else {
+            if (!reading) return
+            reading = false
             removeCallbacks(readingOnset)
+            onsetPending = false
             readingVisible = false
             // 읽는 중이 만든 창은 읽는 중이 걷는다. 서버 안내가 이미 덮었으면 남긴다.
-            if (readingWindow) clearTarget()
+            if (readingWindow) restoreOrClear()
             syncBreathing()
             invalidate()
         }
+    }
+
+    /**
+     * 읽는 중이 끝났다. 밀어 둔 안내가 있으면 되돌리고, 없으면 창을 걷는다.
+     *
+     * **되돌림이 흔한 경우는 아니다** — 보통은 새 안내가 [setGuide]로 먼저 덮는다. 이 경로는
+     * 읽는 중이 **안내 없이** 끝난 때(요청 실패·백오프 종료)를 위한 것이고, 그때 빈 창을
+     * 남기면 따라 하던 사람이 근거를 통째로 잃는다.
+     */
+    private fun restoreOrClear() {
+        val stash = stashed
+        if (stash == null) {
+            clearTarget()
+            return
+        }
+        stashed = null
+        readingWindow = false
+        instruction = stash.instruction
+        hasTarget = stash.hasTarget
+        target.set(stash.target)
+        gestureDirection = stash.gestureDirection
+        avoid = stash.avoid
+        relayout()
     }
 
     /**
@@ -369,6 +430,8 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (bounds != null) target.set(bounds)
         this.instruction = instruction.trim()
         readingWindow = false
+        // 새 안내가 왔으면 밀어 둔 옛 안내는 버린다 — 되돌릴 이유가 사라졌다(#295).
+        stashed = null
         this.avoid = avoid
         // 강조가 생기거나 사라지면 브리딩이 필요한지도 함께 바뀐다(#147).
         syncBreathing()
@@ -396,6 +459,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun clearTarget() {
         hasTarget = false
         readingWindow = false
+        // 창을 통째로 걷을 때는 되돌릴 것도 없다. 남기면 다음 읽는 중이 끝날 때 이전
+        // 세션의 안내가 되살아난다(#295).
+        stashed = null
         pressWave.cancel()
         gestureDirection = null
         instruction = ""
@@ -569,6 +635,7 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         removeCallbacks(readingOnset)
+        onsetPending = false
         breathing.cancel()
         pressWave.cancel()
         super.onDetachedFromWindow()
