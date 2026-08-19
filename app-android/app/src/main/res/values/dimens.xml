@@ -14,14 +14,18 @@
     <!-- v2에서도 4로 같다(#178·#234). 반경·확장은 davi_overlay_target_* 참고. -->
     <dimen name="davi_overlay_highlight_stroke">4dp</dimen>
     <!--
-      강조 사각형(v2 시안, #234). 대상 bounds에서 **사방 8 확장 · 반경 10**이다.
+      강조 사각형(#234). 시안은 **사방 8 확장 · 반경 10**인데, **확장은 0으로 간다**
+      (2026-08-19 디자인 담당 결정) — 강조가 아이콘에 딱 붙어야 무엇을 가리키는지 선다.
+      시안 값과 어긋나므로 Figma 쪽에 알린다.
 
-      **둘 다 환산하지 않는다(1:1).** 반경 10은 규칙 그대로이고, 사방 확장 8도 시안 값을
-      그대로 쓴다(2026-08-18 디자인 담당 결정). 확장을 크기로 보면 x1.2(9.6)이지만,
-      **강조는 시안 프레임이 아니라 실제 대상 bounds에서 재는 거리**라 환산 대상이 아니다 —
-      대상은 시안이 그린 것이 아니라 그때그때 화면에서 온다.
+      반경 10은 시안 그대로다. 환산하지 않는다(1:1) — 반지름은 규칙상 1:1이고, 확장도
+      **시안 프레임이 아니라 실제 대상 bounds에서 재는 거리**라 애초에 환산 대상이 아니었다.
+
+      **후광 28dp는 그대로 둔다.** "사방 8만으로는 자세히 봐야 보인다"는 근거가 확장과 함께
+      사라졌지만, 후광이 없으면 안 보인다는 실기기 근거는 확장과 무관하게 남는다
+      (davi_overlay_highlight_glow).
     -->
-    <dimen name="davi_overlay_target_expand">8dp</dimen>
+    <dimen name="davi_overlay_target_expand">0dp</dimen>
     <dimen name="davi_overlay_target_radius">10dp</dimen>
     <!--
       강조 후광이 안쪽 선 바깥으로 번지는 거리(#147). 안쪽 선은 불투명을 유지하고 이 후광만
@@ -175,6 +179,8 @@
     <dimen name="davi_spacing_md">12dp</dimen>
     <dimen name="davi_spacing_lg">16dp</dimen>
     <dimen name="davi_spacing_xl">24dp</dimen>
+    <!-- **지금 쓰는 곳이 없다**(#234). 강조 사각형이 마지막 사용처였는데 v2 반경 10
+         (davi_overlay_target_radius)으로 갈았다. 척도의 작은 칸이라 남겨 둔다. -->
     <dimen name="davi_radius_sm">8dp</dimen>
     <dimen name="davi_radius_md">12dp</dimen>
     <dimen name="davi_radius_lg">16dp</dimen>

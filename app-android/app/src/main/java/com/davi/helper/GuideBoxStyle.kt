@@ -56,9 +56,9 @@ object GuideBoxStyle {
     /**
      * 상자와 화면 **좌우** 가장자리 사이 여백.
      *
-     * **상하 여백과 다른 값이다**(좌우 16 / 상하 20). 하나로 묶었더니 창이 좌우로 110dp
-     * 좁아져 확인쌍이 접혔다(2026-08-18 실기기). 반대로 이 값을 상하에도 쓰면 상하 여백이
-     * 20에서 16으로 조용히 줄어든다(PR #229 리뷰) — 그래서 [marginVertical]이 따로 있다.
+     * **위·아래와 모두 다른 값이다**(좌우 16 / 위 20 / 아래 55). 하나로 묶었더니 창이 좌우로
+     * 110dp 좁아져 확인쌍이 접혔다(2026-08-18 실기기). 반대로 이 값을 세로에도 쓰면 세로 여백이
+     * 20에서 16으로 조용히 줄어든다(PR #229 리뷰) — 그래서 [marginTop]·[marginBottom]이 따로 있다.
      */
     fun margin(context: Context): Float =
         context.resources.getDimension(R.dimen.davi_overlay_window_margin_h)
