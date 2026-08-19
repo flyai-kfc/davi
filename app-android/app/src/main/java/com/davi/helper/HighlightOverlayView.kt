@@ -591,6 +591,21 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
+     * 이 뷰가 화면에서 차지한 사각형. **아무것도 물리지 않는다** — 무엇을 뺄지는 호출자가 정한다.
+     *
+     * 한 자리에 모으는 이유는 이 파일이 반복해서 세운 원칙이다 — 두 곳이 각자 세우면 원점
+     * 보정이 한 번 더 바뀔 때 한쪽만 고쳐진다([reservedHeight] KDoc, PR #229 리뷰).
+     * 예전 `drawableBounds()`가 이 역할을 겸했는데, 물림이 잘못 붙어 있어 지우면서 역할까지
+     * 같이 사라졌었다(PR #255 리뷰).
+     */
+    private fun viewBounds() = GuideBoxLayout.Bounds(
+        left = locationOnScreen[0].toFloat(),
+        top = locationOnScreen[1].toFloat(),
+        right = (locationOnScreen[0] + width).toFloat(),
+        bottom = (locationOnScreen[1] + height).toFloat(),
+    )
+
+    /**
      * 강조가 화면에서 차지하는 **바깥변** 사각형 — 획의 바깥 가장자리다.
      *
      * **레이아웃이 피해야 하는 것은 대상이 아니라 이것이다.** 레이아웃에 원본 bounds를
@@ -599,10 +614,9 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 확장이 0인 지금은 차이가 4dp뿐이지만, 확장을 다시 넣는 순간 되풀이된다.
      * **그리기와 계산이 이 함수 하나를 본다** — 그리는 쪽은 여기서 획 절반을 안으로 물린다.
      *
-     * **화면 밖으로 나가면 그릴 수 있는 범위 안으로 당긴다** — 실측에서 내비게이션 바
-     * 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다. 자르는 기준이
-     * [drawableBounds]인 것은 **강조 대상이 내비바 버튼일 수 있어서**다(안내창이 앉을 범위인
-     * [boxBounds]와 다르다).
+     * **화면 밖으로 나가면 뷰 사각형 안으로 당긴다** — 실측에서 내비게이션 바 버튼처럼
+     * bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다. **시스템 바를 빼지 않는 이유**는
+     * 강조 대상이 내비바 버튼일 수 있어서다 — 안내창이 앉을 범위([boxBounds])는 그걸 뺀다.
      *
      * **후광 번짐은 이 계산에 섞지 않는다**(#147). 섞었더니 화면 가장자리에 붙은 대상(런처
      * 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려 찌그러져 보였다 — 선은 대상에 붙어야
@@ -613,21 +627,19 @@ class HighlightOverlayView(context: Context) : View(context) {
      */
     private fun highlightBounds(): GuideBoxLayout.Bounds {
         // **자를 때 선 두께를 물리지 않는다.** 이 함수가 돌려주는 것이 바깥변이라, 잉크의
-        // 바깥이 화면 끝에 딱 맞아야 한다. [drawableBounds]는 **중심선용**이라 이미 획 절반을
-        // 물려 놓았고, 거기에 대고 자르면 절반을 두 번 빼서 가장자리 대상에서 강조가 2dp
-        // 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이 인용한 #147의 찌그러짐과 같은 방향이다.
+        // 바깥이 화면 끝에 딱 맞아야 한다. 획 절반을 물린 범위에 대고 자르면 절반을 두 번
+        // 빼서 가장자리 대상에서 강조가 2dp 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이
+        // 인용한 #147의 찌그러짐과 같은 방향이다.
         // 중심선으로 되돌리는 것은 그리는 쪽의 `+ half`가 한다.
-        // **View.left·View.top을 가리지 않게 이름을 가른다**(PR #239 리뷰). 아래 식에서
-        // width·height는 진짜 View 속성이라, 같은 식에 View 속성과 화면 좌표가 섞인다 —
-        // 지역 변수를 지우면 조용히 View.left로 넘어가 컴파일은 되고 값만 틀린다.
-        val originX = locationOnScreen[0].toFloat()
-        val originY = locationOnScreen[1].toFloat()
+        // 자를 범위는 [viewBounds]가 준다 — 화면 좌표와 View 속성을 같은 식에서 섞지 않는다
+        // (PR #239 리뷰가 짚은 `View.left` 가림이 구조적으로 사라진다).
+        val view = viewBounds()
         val out = highlightExpand + highlightStroke
         return GuideBoxLayout.Bounds(
-            left = (target.left - out).coerceAtLeast(originX),
-            top = (target.top - out).coerceAtLeast(originY),
-            right = (target.right + out).coerceAtMost(originX + width),
-            bottom = (target.bottom + out).coerceAtMost(originY + height),
+            left = (target.left - out).coerceAtLeast(view.left),
+            top = (target.top - out).coerceAtLeast(view.top),
+            right = (target.right + out).coerceAtMost(view.right),
+            bottom = (target.bottom + out).coerceAtMost(view.bottom),
         )
     }
 
@@ -712,28 +724,15 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 선 두께를 물린 뒤 실제로 **그릴 수 있는** 화면 범위. 화면 좌표계다.
+     * 안내창이 앉을 수 있는 범위 — **뷰 사각형에서 시스템 바 인셋을 뺀다**(#169).
      *
-     * **남은 호출자는 [boxBounds] 하나다**(#234). 물려 있는 `highlightStroke / 2`는 강조 선의
-     * 두께인데 안내창은 자기 획(`davi_overlay_window_stroke` 1.5dp)을 따로 쓰므로, 그 물림이
-     * 안내창 캔버스를 이유 없이 2dp 줄인다. 지우면 안내창이 앉을 수 있는 자리가 그만큼
-     * 넓어지는 변화라 이 이슈에서 건드리지 않았다 — 정리는 별도 이슈.
-     *
-     * 시스템 바를 뺀 범위가 아니다 — 강조 대상이 내비게이션 바 버튼일 수 있고, 그때 아랫변이
-     * 잘리면 안 된다. 안내창이 앉을 범위는 [boxBounds]가 따로 준다.
-     */
-    private fun drawableBounds(): GuideBoxLayout.Bounds {
-        val half = highlightStroke / 2f
-        return GuideBoxLayout.Bounds(
-            left = locationOnScreen[0] + half,
-            top = locationOnScreen[1] + half,
-            right = locationOnScreen[0] + width - half,
-            bottom = locationOnScreen[1] + height - half,
-        )
-    }
-
-    /**
-     * 안내창이 앉을 수 있는 범위 — [drawableBounds]에서 **시스템 바 인셋을 뺀다**(#169).
+     * **강조 선 두께를 물리지 않는다**(#250). 예전에는 `drawableBounds()`를 거쳤는데 거기
+     * 물려 있던 `highlightStroke / 2`는 강조 선의 두께였다 — 안내창은 자기 획
+     * (`davi_overlay_window_stroke` 1.5dp)을 따로 쓰므로 그 물림이 안내창 캔버스를 이유 없이
+     * 좌우 2dp씩 줄이고 있었다. 위아래는 시스템 바 인셋이 더 안쪽이라 영향이 없었다 —
+     * **인셋을 읽는 API 30+ 기준이다.** 그 아래(minSdk 26~29)는 [safeBounds]가 null이라 원래
+     * 아무것도 안 빼므로 위아래도 2dp 넓어지지만, 하단 여백 55dp가 그 시절 3버튼 내비바
+     * (48 안팎)보다 커서 겹치지는 않는다(여유가 7 → 5dp).
      *
      * 안 빼면 `bottomAnchored`가 안내창을 내비게이션 바 안으로 밀어 넣는다. 그 자체는 시각
      * 문제로 보이지만, 안내창 사각형이 곧 **조작 오버레이 창의 터치 영역**이라(#126) 겹친
@@ -754,13 +753,13 @@ class HighlightOverlayView(context: Context) : View(context) {
      * **화면 좌표에서 겹치는 만큼만** 자른다.
      */
     private fun boxBounds(): GuideBoxLayout.Bounds {
-        val drawable = drawableBounds()
-        val safe = safeBounds() ?: return drawable
+        val view = viewBounds()
+        val safe = safeBounds() ?: return view
         return GuideBoxLayout.Bounds(
-            left = maxOf(drawable.left, safe.left),
-            top = maxOf(drawable.top, safe.top),
-            right = minOf(drawable.right, safe.right),
-            bottom = minOf(drawable.bottom, safe.bottom),
+            left = maxOf(view.left, safe.left),
+            top = maxOf(view.top, safe.top),
+            right = minOf(view.right, safe.right),
+            bottom = minOf(view.bottom, safe.bottom),
         )
     }
 
