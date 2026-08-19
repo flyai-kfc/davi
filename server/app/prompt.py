@@ -245,8 +245,13 @@ def _history(req: NextStepRequest) -> list[GuideStep]:
 def _step_line(step: GuideStep) -> str:
     """스텝 하나를 한 줄로.
 
-    화면 이름·대상은 요소 줄과 같은 표기(`!r`)이고 안내문만 큰따옴표다 — 모델이 화면 이름과
-    사용자에게 나간 문장을 눈으로 가를 수 있게.
+    **세 값 모두 요소 줄과 같은 `!r` 표기다.** 안내문만 큰따옴표로 감싸 눈에 띄게 하려던 초안은
+    값에 따라 무너졌다(#307 리뷰 실측) — 안내문이 label을 큰따옴표로 인용하면 중첩되고,
+    `!r`은 값에 어퍼스트로피가 있으면 큰따옴표로 뒤집혀(`repr("김철수's 폰")`) 대상과 안내문의
+    표기가 같아진다. 즉 구분을 세우려던 규칙이 정반대로 동작했다.
+
+    구분은 따옴표가 아니라 **조사가 한다** — `…에서` · `…라고 안내함` · `(대상 …)`. `!r`은 값이
+    무엇이든 모호하지 않은 리터럴을 만들므로 안쪽 따옴표는 이스케이프되어 경계가 남는다.
     """
 
     hint = (step.screen_hint or "").strip()
@@ -257,7 +262,7 @@ def _step_line(step: GuideStep) -> str:
         outcome = ""
     else:
         outcome = f" — {STEP_CHANGED if step.screen_changed else STEP_UNCHANGED}"
-    return f'- {where}"{step.instruction.strip()}"라고 안내함{target}{outcome}'
+    return f"- {where}{step.instruction.strip()!r}라고 안내함{target}{outcome}"
 
 
 def _history_instruction(req: NextStepRequest) -> str:
