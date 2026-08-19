@@ -96,6 +96,39 @@ jobs:
           DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
+      # debug/release 산출물의 제품 경계를 산출물에서 직접 확인한다(#58). build.gradle.kts를
+      # 읽어 확인하면 "설정이 있다"만 보이고 **패키징까지 실제로 갔는지**는 못 본다 —
+      # 이 경계가 깨진 채 나간 빌드가 기기에서 서로를 밀어냈기 때문에 산출물로 고정한다.
+      - name: debug/release 앱 식별자·이름 경계 확인
+        run: |
+          aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)"
+          test -n "$aapt2"
+
+          badging() { "$aapt2" dump badging "$1"; }
+          appid() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['applicationId'])" "$1"; }
+
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          release_apk=app/build/outputs/apk/release/app-release.apk
+          test -f "$debug_apk" && test -f "$release_apk"
+
+          # 앱 식별자 — 함께 설치되려면 서로 달라야 한다.
+          test "$(appid app/build/outputs/apk/debug/output-metadata.json)" = com.davi.helper.debug
+          test "$(appid app/build/outputs/apk/release/output-metadata.json)" = com.davi.helper
+
+          # 앱 이름 — release는 제품 이름을 유지하고, debug 이름이 새어 들어가면 안 된다.
+          debug_label="$(badging "$debug_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
+          release_label="$(badging "$release_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
+          test "$debug_label" = '다비 도우미 (개발)'
+          test "$release_label" = '다비 도우미'
+
+          # release 산출물에 debug 식별자·이름이 없다는 것을 반대 방향으로도 못박는다.
+          ! badging "$release_apk" | grep -q 'com\.davi\.helper\.debug'
+          ! badging "$release_apk" | grep -q '개발'
+
+          # versionName 접미어도 같은 경계다 — 스토어에 -debug가 붙어 나가면 안 된다.
+          badging "$debug_apk" | grep -q "versionName='0.1.0-debug'"
+          ! badging "$release_apk" | grep -q 'debug'
+
       - name: 실기기 결과 문서 렌더러 테스트
         run: |
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
