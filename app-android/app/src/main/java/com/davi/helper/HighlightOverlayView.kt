@@ -378,9 +378,12 @@ class HighlightOverlayView(context: Context) : View(context) {
     /**
      * 안내한 대상을 눌렀다는 신호를 그 자리에 한 번 준다(#238).
      *
-     * **모션을 끈 사용자에게는 그리지 않는다.** `areAnimatorsEnabled()`는 절전 모드까지 반영하는
-     * 공식 API이고, 이 뷰가 읽는 중 표시에서 이미 쓰는 판정이다. 시스템 접근성 설정을 덮어쓰지
-     * 않는다 — 파동이 빠져도 강조는 그대로 내려가므로 안내는 이어진다.
+     * **모션을 끈 사용자에게는 그리지 않는다.** 시스템 접근성 설정을 덮어쓰지 않는다 — 파동이
+     * 빠져도 강조는 그대로 내려가므로 안내는 이어진다. 시작 판정은 여기서 하고 **그리는 시점에
+     * 다시 본다**([drawPressWave]) — 콜드 스타트 캐시 때문에 시작 판정만으로는 부족하다(#148).
+     *
+     * 절전 모드는 이 판정에 잡히지 않는다(#148 실측: `low_power=1`에서도 모션이 돌았다).
+     * "절전 = 파동 없음"을 전제하지 말 것.
      */
     fun pressFeedback(bounds: Rect) {
         if (!ValueAnimator.areAnimatorsEnabled()) return
@@ -662,6 +665,16 @@ class HighlightOverlayView(context: Context) : View(context) {
      */
     private fun drawPressWave(canvas: Canvas) {
         if (pressProgress < 0f) return
+        // **그리는 시점에 다시 본다.** 콜드 스타트에서는 `areAnimatorsEnabled`의 프로세스 캐시가
+        // 첫 창 부착보다 늦게 동기화돼, 시작 판정만 믿으면 배율 0인데도 한 번 돈다(#148 실측).
+        // 이 파일의 손 모션([drawGestureHand])이 같은 이유로 같은 자리에서 재확인한다.
+        //
+        // 손과 달리 **정지 프레임을 그리지 않는다** — 파동은 한 번 퍼지고 사라지는 것이라
+        // 멈춘 링이 남으면 "여기가 대상"이라는 잘못된 신호가 된다.
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            pressWave.cancel()
+            return
+        }
         val frame = HighlightMotion.pressFrame(
             pressProgress,
             highlightGlowSpread * HighlightMotion.PRESS_SPREAD_RATIO,
