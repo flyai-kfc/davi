@@ -84,8 +84,11 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
     #    (HANDOFF §3-2). 아직 넘길 쪽이 남았으면 그대로 통과시킨다. 여기를 오류로 닫으면
     #    통과하던 정상 안내를 이 가드가 없애고(#251 리뷰), SPEC §3 시나리오 3의
     #    "앱서랍에서 다음 쪽"이 끊긴다.
+    #    모델이 이 화면에서 `page_dot` 같은 요소를 target으로 골라도 비운다 — page dot은
+    #    정보원이지 탭 대상이 아니고(HANDOFF §3-3), 대상이 화면 자체라는 근거와도 어긋난다
+    #    (#251 리뷰).
     if _page_move_is_open(screen, action.direction):
-        return action
+        return action.model_copy(update={"target_node_id": None})
 
     # 4. 대상이 없다 — 이 scroll은 내보낼 수 없다. 안전한 대체 행동이 있는 화면은 그쪽으로 돌린다.
     if _can_open_app_drawer(screen):

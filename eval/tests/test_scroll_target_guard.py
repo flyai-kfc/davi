@@ -127,6 +127,22 @@ def test_launcher_pages_that_still_have_somewhere_to_go_keep_their_scroll():
     assert back.action.target_node_id is None
 
 
+def test_launcher_page_screen_clears_a_page_dot_target_the_model_picked():
+    """모델이 page dot을 target으로 골라도 통과시킬 때 비운다(#251 리뷰).
+
+    이 화면의 근거는 "대상이 요소가 아니라 화면 자체"다. page dot은 정보원이지 탭 대상이
+    아니라서(HANDOFF §3-3), target이 남으면 앱이 50x50짜리 dot에 강조 사각형을 그리게 된다.
+    """
+
+    response = next_step(
+        _request("samsung_launcher_multi_page_home.json"),
+        SequenceLlmClient([_scroll(1, direction=SwipeDirection.RIGHT, target="n11")]),
+    )
+
+    assert response.action.action_type is ActionType.SCROLL
+    assert response.action.target_node_id is None
+
+
 def test_alarm_editor_scroll_gets_the_time_picker_as_its_target():
     """실측 ②: `scrollable=true`인데도 `target=-`로 나갔다. 화면의 스크롤 요소로 교정한다."""
 

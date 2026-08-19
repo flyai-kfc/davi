@@ -298,6 +298,30 @@ def test_a_page_screen_that_still_has_a_page_left_keeps_its_scroll():
     assert guided.target_node_id is None
 
 
+def test_a_page_screen_clears_a_target_the_model_picked_anyway():
+    """모델이 page dot 같은 요소를 target으로 골라도 통과시킬 때 비운다(#251 리뷰).
+
+    이 화면의 근거는 "대상이 요소가 아니라 화면 자체"다. page dot은 정보원이지 탭
+    대상이 아니라서(HANDOFF §3-3), target이 남으면 그 근거와 어긋나고 앱이 50x50짜리
+    dot에 강조 사각형을 그리게 된다.
+    """
+
+    first_of_two = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=1,
+        total_pages=2,
+        elements=[
+            UiElement(node_id="n11", role="page_dot", bounds=[490, 1910, 540, 1960]),
+        ],
+    )
+
+    guided = _guide(_scroll(direction=SwipeDirection.RIGHT, target="n11"), first_of_two)
+
+    assert guided.action_type is ActionType.SCROLL
+    assert guided.target_node_id is None
+
+
 def test_a_page_screen_can_still_go_back_to_the_previous_page():
     """마지막 쪽이라도 **되돌아갈 쪽**은 남아 있다. 경계는 방향마다 따로 본다."""
 
