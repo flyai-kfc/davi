@@ -202,7 +202,6 @@
         <item name="android:textSize">@dimen/davi_type_body_lg</item>
     </style>
 
-
     <!--
       메인 7 최종 확인의 캡슐 버튼쌍(#196). 자기 기하를 직접 갖는다 — 72dp · 18sp ·
       그림자 없음이라 다른 버튼과 공유할 몸통이 없다. (예전에는 "Widget.Davi.Button을

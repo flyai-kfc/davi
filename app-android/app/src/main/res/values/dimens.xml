@@ -258,8 +258,6 @@
       그 복잡도에 비해 얻는 게 0.75dp라 그대로 둔다.
     -->
     <dimen name="davi_card_border_width">1.5dp</dimen>
-    <dimen name="davi_button_padding_h">20dp</dimen>
-    <dimen name="davi_button_elevation">2dp</dimen>
     <!--
       메인 7 최종 확인의 캡슐 버튼쌍(#196). 시안 `v2/button/pair` — 오버레이의
       `v2/chip/confirm-pair`와 **별개 컴포넌트**다(캡슐 vs r14, 흰/빨강 vs 빨강/초록).
