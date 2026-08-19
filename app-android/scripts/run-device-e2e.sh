@@ -242,14 +242,13 @@ if [[ "$ENABLED_SERVICES" != *"$SERVICE"* ]]; then
     printf 'Davi 접근성 서비스를 다시 바인딩하지 못했습니다. 설정에서 직접 켜세요.\n' >&2
     exit 2
 fi
+# 오버레이 권한(SYSTEM_ALERT_WINDOW)은 더 이상 점검하지 않는다. #240이 매니페스트에서 걷어냈고
+# 안내 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한 없이 그려진다(#56). 앱이 요청하지 않는
+# op라 설정에 토글도 없어, 남겨 두면 **아무도 통과할 수 없는 관문**이 된다(2026-08-19 실측).
 ACCESSIBILITY_STATE="$("${ADB_DEVICE[@]}" shell dumpsys accessibility)"
 if ! grep -q 'Bound services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE" ||
     grep -q 'Crashed services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE"; then
     printf 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.\n' >&2
-    exit 2
-fi
-if ! "${ADB_DEVICE[@]}" shell appops get com.davi.helper SYSTEM_ALERT_WINDOW | grep -q 'allow'; then
-    printf 'Davi의 다른 앱 위에 표시 권한을 기기 설정에서 허용하세요.\n' >&2
     exit 2
 fi
 
