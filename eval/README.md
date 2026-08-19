@@ -83,9 +83,9 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
 - #112 이전 실기기 fixture는 `editable`·`focused`·`ime_visible`을 생략한 구버전 관측으로
   그대로 유지한다. 새 입력 fixture는 실제 관측값만 넣고, 편집 요소의 입력 원문이나 IME 키 목록을
   재구성해 넣지 않는다.
-- `recent_instructions`는 모델 프롬프트용 문장 이력이고, `recent_actions`는 앱이 보관하는
-  구조화 이력이다(반복 카운트가 #202에서 걷혀 지금 서버에 소비자는 없다). fixture는 세션 시작
-  화면이므로 빈 `recent_actions`를 명시하거나 생략할 수 있다.
+- `steps`는 앱이 세션 안에 보관하는 안내 이력이다 — **스텝 하나 = 안내 하나**이고, 서버가
+  프롬프트의 이력 줄을 여기서 뽑는다(C11 개정, #270). fixture는 세션 시작 화면이므로 빈
+  `steps`를 명시하거나 생략할 수 있다.
 - `source.observed_model_action`은 실기기 실호출에서 관측한 구조화 메타데이터다. 원문 모델 응답을
   저장하는 곳이 아니며, 스텁 기대값으로 채점하지 않는다.
 - 관측 행동이 있으면 `source.observed_model_action_review`도 반드시 둔다. `unreviewed`는 아직

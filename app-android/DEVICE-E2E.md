@@ -106,7 +106,7 @@ build/reports/device-e2e-private/<scenario>/latest.md
 ```
 
 기본 보고서는 구조화 action과 판정 메타데이터만 사용한다. 상세 보고서는 각 가이드의 요청 당시
-`Screen.elements`, `recent_instructions`, `recent_actions`와 응답의 `expected_result`, `evidence`,
+`Screen.elements`, 스텝 이력(`steps`)과 응답의 `expected_result`, `screen_summary`, `evidence`,
 `instruction`, `action_type`, `direction`, `target_node_id`를 함께 보여 준다. 상세 파일은 마스킹 뒤에도
 개인 앱 이름 등이 남을 수 있는 **로컬 민감 산출물**이며 `.gitignore` 대상이다. PR·이슈에 첨부하지
 않는다. 직접 생성하지 않으려면 `--no-detailed-report` 또는 `-NoDetailedReport`를 사용한다.
