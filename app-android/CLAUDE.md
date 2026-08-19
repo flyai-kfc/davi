@@ -97,13 +97,18 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   둔다. 대화 화면처럼 고정 배치인 화면은 예외다(#123) — 요소 수를 적게 유지해 여백으로 흡수한다.
 
 ## 고정값
-- `applicationId` / `namespace` = **`com.davi.helper`** (PoC의 `com.davipoc.mvp` 재사용 안 함 — poc/mvp가 영구히 박히므로).
+- `namespace` = **`com.davi.helper`** (PoC의 `com.davipoc.mvp` 재사용 안 함 — poc/mvp가 영구히 박히므로).
+  `applicationId`는 **variant마다 다르다**(#58) — release가 `com.davi.helper`, debug는
+  `applicationIdSuffix`로 `com.davi.helper.debug`다. 둘을 한 기기에 함께 깔기 위해서다.
+  **클래스 FQN은 namespace 기준이라 접미어가 붙지 않는다** — 접근성 서비스를 컴포넌트
+  (`<applicationId>/com.davi.helper.GuideAccessibilityService`)로 지목하는 자리에서
+  앞뒤 접두어가 어긋나 보이는 건 정상이다.
 - `minSdk` 26 (Android 8.0) / `targetSdk` · `compileSdk` 36 (Android 16, 검증 기기 기준).
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
 - **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
-- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성·오버레이를 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다.
+- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성을 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다. (오버레이 판정은 #212가 `SYSTEM_ALERT_WINDOW`를 걷어낼 때 함께 없앴다.)
 - **Gradle CLI가 `Unable to establish loopback connection`으로 죽는 PC가 있다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓 임시 폴더이고, 스크립트가 흡수한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
@@ -138,7 +143,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 ## 디버깅
 - 1순위: `adb logcat -s GuideSvc`. 재현 직전 `adb logcat -c`로 버퍼 비우기.
 - 접근성에 안 보이는 속성(`selected`, 정확한 bounds)은 `adb shell uiautomator dump`. XML은 UTF-8로 읽기.
-- 로그가 비어 있으면 "안 돌았다"는 뜻. 앱 프로세스 생존은 `FreecessHandler ... com.davi.helper`로 확인.
+- 로그가 비어 있으면 "안 돌았다"는 뜻. 앱 프로세스 생존은 `FreecessHandler ... com.davi.helper.debug`로
+  확인(debug 기준 — release는 접미어가 없다).
 
 ### 도구 함정 (2026-07-28 실측)
 셸·adb 쪽 함정이라 기기와 무관하다. 기기 동작 지식은 여기 적지 말고 픽스처로 쌓는다(#47).

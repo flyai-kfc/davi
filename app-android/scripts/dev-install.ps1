@@ -65,7 +65,9 @@ $repoRoot = Split-Path -Parent $appDir              # 저장소 루트
 # 접근성 서비스 클래스는 namespace(com.davi.helper) 기준이라 applicationId에 접미어가 붙어도
 # 바뀌지 않는다. 컴포넌트의 왼쪽(패키지)만 유도한다.
 $serviceClass = 'com.davi.helper.GuideAccessibilityService'
-$fallbackPackage = 'com.davi.helper'
+# 이 스크립트는 **debug만** 다룬다. 산출물이 없을 때 떨어질 곳도 debug여야 한다 —
+# release 이름으로 떨어지면 함께 깔린 제품 앱의 서비스를 켜려다 조용히 어긋난다(#58).
+$fallbackPackage = 'com.davi.helper.debug'
 
 # 네이티브 명령(gradlew, adb)은 stderr에 정상 메시지를 흘린다.
 # PowerShell 5.1은 ErrorActionPreference=Stop 이면 그걸 오류로 보므로, 호출 동안만 완화하고
@@ -202,7 +204,12 @@ function Resolve-PackageName {
 
     $installed = @(Get-InstalledServicePackages)
     if ($installed.Count -eq 1) { return $installed[0] }
-    if ($installed.Count -gt 1) {
+    # 빌드 경로에서는 경고하지 않는다(#58). applicationIdSuffix가 들어오면서 com.davi.helper와
+    # com.davi.helper.debug가 함께 깔리는 것이 **정상**이 됐고, 그때마다 이 경고가 뜬다.
+    # 그런데 빌드 경로는 바로 아래 output-metadata.json에서 applicationId를 다시 읽어 결과를
+    # 교정하므로 사용자가 할 일이 없다 — 조치가 필요 없는데 조치를 요구하는 경고는 신호를 죽인다.
+    # 산출물이 없거나 낡을 수 있는 경로(-SkipBuild·-A11yOnly·-Status)에서만 알린다.
+    if ($installed.Count -gt 1 -and ($SkipBuild -or $Status)) {
         Write-Warning "다비 접근성 서비스를 가진 패키지가 여럿이다($($installed -join ', ')). -PackageName으로 지정할 것."
     }
 

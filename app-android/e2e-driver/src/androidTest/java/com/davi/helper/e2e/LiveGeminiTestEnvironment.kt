@@ -25,7 +25,7 @@ internal object LiveGeminiTestEnvironment {
             instrumentation.targetContext.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
         ).orEmpty()
-        if (!enabledServices.contains("com.davi.helper.GuideAccessibilityService")) {
+        if (!enabledServices.contains(DAVI_SERVICE)) {
             throw GuidedScenarioFailure("accessibility_service_disabled")
         }
         waitForAccessibilityBinding(automation)
@@ -54,7 +54,13 @@ internal object LiveGeminiTestEnvironment {
     }
 
     private const val ARG_LIVE_GEMINI = "davi.liveGemini"
-    private const val DAVI_SERVICE = "com.davi.helper/.GuideAccessibilityService"
+    /**
+     * 접근성 서비스 컴포넌트. **축약형(`pkg/.Cls`)을 쓰지 않는다** — 축약형은 클래스를
+     * `<applicationId>.Cls`로 풀기 때문에 접미어가 붙은 debug에서 틀린 이름이 된다(#58).
+     * dumpsys와 `ENABLED_ACCESSIBILITY_SERVICES`가 찍는 것도 이 완전형이다(실측).
+     */
+    private const val DAVI_SERVICE =
+        "${GuideE2eContract.DAVI_PACKAGE}/${GuideE2eContract.DAVI_CLASS_ROOT}.GuideAccessibilityService"
     private const val BIND_ATTEMPTS = 30
     private const val BIND_POLL_MS = 500L
     private const val BIND_SETTLE_MS = 1_000L

@@ -16,7 +16,10 @@ else
 fi
 SERVER_URL="http://127.0.0.1:8000"
 RUNNER="com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner"
-SERVICE="com.davi.helper/com.davi.helper.GuideAccessibilityService"
+# 앞은 applicationId, 뒤는 클래스의 FQN이다 — **둘의 접두어가 다른 게 정상이다**(#58).
+# debug는 applicationIdSuffix로 com.davi.helper.debug가 되지만, 클래스 이름은 namespace
+# (com.davi.helper) 기준이라 그대로다. E2E는 debug 빌드를 몰기 때문에 앞쪽에 .debug가 붙는다.
+SERVICE="com.davi.helper.debug/com.davi.helper.GuideAccessibilityService"
 REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-report.py"
 PRIVATE_REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-private-report.py"
 SCENARIO_REGISTRY="$APP_DIR/device-e2e-scenarios.json"
@@ -246,8 +249,10 @@ fi
 # 안내 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한 없이 그려진다(#56). 앱이 요청하지 않는
 # op라 설정에 토글도 없어, 남겨 두면 **아무도 통과할 수 없는 관문**이 된다(2026-08-19 실측).
 ACCESSIBILITY_STATE="$("${ADB_DEVICE[@]}" shell dumpsys accessibility)"
-if ! grep -q 'Bound services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE" ||
-    grep -q 'Crashed services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE"; then
+# **.debug까지 붙여서 본다**(#58). 접두어만 보면 release가 bound된 기기에서 debug가 죽어
+# 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
+if ! grep -q 'Bound services:.*com\.davi\.helper\.debug' <<<"$ACCESSIBILITY_STATE" ||
+    grep -q 'Crashed services:.*com\.davi\.helper\.debug' <<<"$ACCESSIBILITY_STATE"; then
     printf 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.\n' >&2
     exit 2
 fi
