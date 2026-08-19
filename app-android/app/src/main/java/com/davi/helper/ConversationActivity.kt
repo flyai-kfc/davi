@@ -81,9 +81,6 @@ class ConversationActivity : AppCompatActivity() {
     /** 질문 카드 스크롤을 되돌릴지 판단하는 값 — 문구가 실제로 바뀔 때만 맨 위로 보낸다. */
     private var lastQuestionKey: Any? = null
 
-    /** 직전 렌더에서 응답 대기 점이 떠 있었는가. 대기에 **새로** 들어갈 때만 지연을 다시 센다(#142). */
-    private var loadingDotsShown = false
-
     @Volatile
     private var destroyed = false
 
@@ -540,10 +537,9 @@ class ConversationActivity : AppCompatActivity() {
         // 직전 발화의 크기로 튀어나온다. 프레임 루프는 뷰가 가시성 변화에서 알아서 멈춘다.
         renderVoiceMotion(model)
 
-        // 응답 대기 점(#142). 대기에 새로 들어갈 때만 처음부터 센다 — render()는 한 대기
-        // 구간에서도 여러 번 불리므로 무조건 되돌리면 지연이 매번 다시 시작돼 점이 안 나온다.
-        if (model.loadingDotsVisible && !loadingDotsShown) binding.loadingDots.restart()
-        loadingDotsShown = model.loadingDotsVisible
+        // 응답 대기 점(#142). 지연·주기 되돌림은 뷰가 GONE→VISIBLE 전이에서 스스로 한다
+        // (#148 MotionView.onMotionLifecycleChanged) — 여기서는 가시성만 넘긴다. render()가
+        // 한 대기 구간에서 여러 번 불려도 전이가 아니면 지연이 다시 시작되지 않는다.
         binding.loadingDots.isVisible(model.loadingDotsVisible)
     }
 

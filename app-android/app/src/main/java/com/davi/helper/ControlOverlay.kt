@@ -107,24 +107,22 @@ class ControlOverlay(
     }
 
     /**
-     * 컨트롤 행에 무엇을 앉힐지. 둘이 함께 보이지 않게 한쪽만 켠다.
-     *
-     * 확인쌍은 아이콘 전용이라 화면이 달라도 그림이 같다. **뜻은 다르므로**
-     * `contentDescription`을 종류마다 갈아 끼운다 — 안 갈면 TalkBack이 종료 확인에서
-     * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨은 두지 않는다 — ×/○ 두 그림이면 서고, 글자를 얹으면 본문과 같은 말을 두 번 한다.
-     */
-    /**
-     * 읽는 중 점 셋을 켜고 끈다.
-     *
-     * [LoadingDotsView.restart]를 여기서 부르지 않는다 — GONE에서 VISIBLE로 돌아올 때
-     * `MotionDriver.start()`가 다시 돌면서 경과 시간이 0으로 되돌아간다. 대화 화면은
-     * 뷰가 계속 붙어 있는 채로 상태만 바뀌어서 손으로 되돌려야 하지만, 여기는 아니다.
+     * 읽는 중 점 셋을 켜고 끈다. 가시성만 바꾸면 된다 — GONE→VISIBLE이 곧 구동 조건
+     * 전이라, 전이 훅이 지연·주기를 알아서 처음부터 되돌린다(#148 `onMotionLifecycleChanged`).
+     * 대화 화면도 같은 방식이다.
      */
     private fun applyReading(on: Boolean) {
         val dots = readingDots ?: return
         dots.visibility = if (on) View.VISIBLE else View.GONE
     }
 
+    /**
+     * 컨트롤 행에 무엇을 앉힐지. 둘이 함께 보이지 않게 한쪽만 켠다.
+     *
+     * 확인쌍은 아이콘 전용이라 화면이 달라도 그림이 같다. **뜻은 다르므로**
+     * `contentDescription`을 종류마다 갈아 끼운다 — 안 갈면 TalkBack이 종료 확인에서
+     * "네, 다 됐어요"를 읽는다. 눈에 보이는 라벨은 두지 않는다 — ×/○ 두 그림이면 서고, 글자를 얹으면 본문과 같은 말을 두 번 한다.
+     */
     private fun applyMode(confirm: GuideDisplayState.ConfirmKind?) {
         kind = confirm
         stopChip?.visibility = if (confirm != null) View.GONE else View.VISIBLE
