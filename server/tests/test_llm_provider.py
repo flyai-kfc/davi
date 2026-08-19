@@ -23,6 +23,7 @@ from app.schemas import ErrorKind, NextStepRequest, Screen, UiElement
 
 _ACTION = {
     "expected_result": "카카오톡이 열린다",
+    "screen_summary": "런처 홈 화면",
     "evidence": "'카카오톡' 아이콘이 보임",
     "action_type": "tap",
     "direction": None,

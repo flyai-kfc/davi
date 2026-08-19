@@ -131,7 +131,7 @@ def build_prompt(req: NextStepRequest) -> str:
 목표: {req.goal}
 현재 앱 패키지: {req.screen.package_name or "알 수 없음"}
 {context}최근에 했던 안내:
-{_recent_instructions(req)}
+{_recent_step_lines(req)}
 현재 화면 요소:
 {_screen_elements(req)}
 
@@ -166,8 +166,20 @@ def fallback_prompt(
     )
 
 
-def _recent_instructions(req: NextStepRequest) -> str:
-    recent = "\n".join(f"- {i}" for i in req.recent_instructions[-MAX_HISTORY:])
+def _recent_step_lines(req: NextStepRequest) -> str:
+    """스텝 이력에서 **안내 문장만** 뽑는다.
+
+    스텝에는 조작 종류·화면 요약·화면 변화 여부가 함께 실려 있지만(C11 개정, #270), 그것들을
+    한 문장으로 펴는 것은 다음 단계다(#270 서브이슈 2). 여기서 미리 형식을 만들면 그 작업이
+    두 번 일어난다 — 지금은 옛 `recent_instructions`와 **같은 문자열**을 만든다.
+
+    빈 문장은 거른다. 앱은 문장이 비어도 스텝을 남기지만(조작과 화면 변화는 남는 사실이다)
+    프롬프트에 빈 줄을 실을 이유는 없다 — 옛 이력이 빈 문장을 아예 안 담던 것과 같은 결과다.
+    """
+
+    recent = "\n".join(
+        f"- {step.instruction}" for step in req.steps[-MAX_HISTORY:] if step.instruction.strip()
+    )
     return recent or "- 없음"
 
 

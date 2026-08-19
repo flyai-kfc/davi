@@ -94,6 +94,9 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
     if _can_open_app_drawer(screen):
         return GuideAction(
             expected_result=action.expected_result,
+            # 행동만 바꾸는 교정이라 화면 요약은 모델이 쓴 것을 그대로 승계한다. 여기서 새로
+            # 지어내면 앱이 이력에 담을 `screen_hint`가 실제 화면 관측과 어긋난다.
+            screen_summary=action.screen_summary,
             evidence="런처 화면에 스크롤할 수 있는 요소가 없음",
             action_type=ActionType.OPEN_APP_DRAWER,
             instruction="화면 가운데를 위로 쓸어올려 전체 앱 목록을 열어 주세요.",
@@ -356,14 +359,15 @@ def next_step(
     """
     # 2차 마스킹 그물: 모델에 넘기기 전에 한 번 더(1차는 앱에서 이미 수행).
     #
-    # 이력도 함께 훑는다. 1차가 놓친 값이 label에 있었다면 모델이 그걸 instruction에 인용하고,
-    # 앱은 그 문장을 이력에 담아 매 요청마다 다시 보낸다 — 화면은 넘어가도 이력은 남으므로
-    # 놓친 값이 계속 재전송된다. 그물은 들어오는 모든 텍스트에 걸려야 의미가 있다(SPEC §2).
+    # 스텝 이력도 함께 훑는다. 1차가 놓친 값이 label에 있었다면 모델이 그걸 instruction이나
+    # 화면 요약에 인용하고, 앱은 그 값을 스텝에 담아 매 요청마다 다시 보낸다 — 화면은 넘어가도
+    # 이력은 남으므로 놓친 값이 계속 재전송된다. 그물은 들어오는 모든 텍스트에 걸려야 의미가
+    # 있다(SPEC §2). `target_label`은 화면 label 그 자체라 더 말할 것도 없다.
     policy = masking if masking is not None else active_masking_policy()
     masked = req.model_copy(
         update={
             "screen": policy.apply_screen(req.screen),
-            "recent_instructions": [policy.apply_text(i) for i in req.recent_instructions],
+            "steps": policy.apply_steps(req.steps),
         }
     )
 

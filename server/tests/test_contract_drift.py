@@ -82,22 +82,56 @@ def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_
     )
 
 
-def test_repeat_guard_fields_exist_on_both_sides(contract_source: str) -> None:
-    """enum 외의 새 요청/응답 필드도 한쪽만 고치는 드리프트를 막는다(C11)."""
+def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
+    """enum 외의 새 요청/응답 필드도 한쪽만 고치는 드리프트를 막는다(C11 개정, #270)."""
 
-    assert '@SerialName("recent_actions") val recentActions: List<RecentAction>' in contract_source
-    assert contract_source.count('@SerialName("screen_signature") val screenSignature: String') == 2
+    assert "val steps: List<GuideStep> = emptyList()" in contract_source
+    assert '@SerialName("screen_signature") val screenSignature: String' in contract_source
+    assert '@SerialName("screen_summary") val screenSummary: String' in contract_source
 
-    from app.schemas import NextStepRequest, NextStepResponse, RecentAction
+    from app.schemas import GuideAction, GuideStep, NextStepRequest, NextStepResponse
 
-    assert "recent_actions" in NextStepRequest.model_fields
+    assert "steps" in NextStepRequest.model_fields
     assert "screen_signature" in NextStepResponse.model_fields
+    assert "screen_summary" in GuideAction.model_fields
     assert {
-        "screen_signature",
+        "instruction",
         "action_type",
         "direction",
-        "target_node_id",
-    } == set(RecentAction.model_fields)
+        "target_label",
+        "screen_hint",
+        "structure_signature",
+        "screen_changed",
+        "performed",
+        "content_signature",
+    } == set(GuideStep.model_fields)
+
+
+def test_step_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
+    """스텝은 필드가 많아 이름 하나가 조용히 어긋나기 쉽다. wire 이름을 통째로 대조한다.
+
+    **선언 블록을 잘라내서 그 안에서만 찾는다.** 파일 전체를 대상으로 하면 `val instruction`·
+    `val direction`이 `GuideAction`에도 있어, Kotlin `GuideStep`에서 그 필드가 사라져도 이
+    테스트가 초록으로 남는다 — 드리프트 테스트가 잡아야 할 바로 그 경우다(#289 셀프 리뷰).
+    """
+
+    from app.schemas import GuideStep
+
+    step_block = _kotlin_class_body(contract_source, "GuideStep")
+    for name in GuideStep.model_fields:
+        # snake_case 필드만 @SerialName이 필요하다. 나머지는 Kotlin 이름이 곧 wire 이름이다.
+        expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
+        assert expected in step_block, f"GuideStep.{name}이 Kotlin 쪽에 없다"
+
+
+def _kotlin_class_body(source: str, name: str) -> str:
+    """`data class <name>(...)`의 괄호 안만 돌려준다. 없으면 그 자체가 드리프트다."""
+
+    start = source.find(f"data class {name}(")
+    assert start != -1, f"Kotlin에 data class {name}이 없다"
+    end = source.find("\n)", start)
+    assert end != -1, f"data class {name}의 선언이 닫히지 않았다"
+    return source[start:end]
 
 
 def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:

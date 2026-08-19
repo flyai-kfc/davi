@@ -266,11 +266,20 @@ def test_production_next_step_logs_only_safe_metadata(
     secret_goal = "민감한 목표 원문"
     secret_label = "개인정보 hong@example.com"
     secret_instruction = "최근 민감 안내 원문"
+    secret_screen_hint = "민감한 화면 요약 원문"
     secret_token = "development-access-secret"
     payload = {
         "goal": secret_goal,
         "client_version": "0.1.0",
-        "recent_instructions": [secret_instruction],
+        "steps": [
+            {
+                "instruction": secret_instruction,
+                "action_type": "tap",
+                "target_label": secret_label,
+                "screen_hint": secret_screen_hint,
+                "structure_signature": "a" * 64,
+            }
+        ],
         "screen": {
             "package_name": "com.sec.android.app.launcher",
             "elements": [
@@ -310,6 +319,7 @@ def test_production_next_step_logs_only_safe_metadata(
     assert all(secret_goal not in message for message in messages)
     assert all(secret_label not in message for message in messages)
     assert all(secret_instruction not in message for message in messages)
+    assert all(secret_screen_hint not in message for message in messages)
     assert all(secret_token not in message for message in messages)
     assert all("시계" not in message for message in messages)
 

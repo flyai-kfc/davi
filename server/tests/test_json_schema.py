@@ -54,6 +54,7 @@ def test_property_order_follows_declaration_order():
 
     assert list(build_json_schema(GuideAction)["properties"]) == [
         "expected_result",
+        "screen_summary",
         "evidence",
         "action_type",
         "direction",
@@ -108,6 +109,7 @@ def test_guide_action_schema_accepts_a_null_direction():
     action = GuideAction.model_validate(
         {
             "expected_result": "카카오톡이 열린다",
+            "screen_summary": "런처 홈 화면",
             "evidence": "'카카오톡' 아이콘이 보임",
             "action_type": "tap",
             "direction": None,

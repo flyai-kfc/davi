@@ -480,7 +480,13 @@ class GuideAccessibilityService : AccessibilityService() {
                 }
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
-                if (requestNextStep(result.screen, signature, session)) {
+                //
+                // 보내기 직전에 마지막 스텝의 `screen_changed`를 확정하고(C11 개정), **스냅샷을
+                // 그 뒤에 다시 뜬다** — 위 [session]은 이 샘플 처음의 값이라 방금 적은 값이
+                // 들어 있지 않고, 그대로 보내면 한 요청씩 늦는다.
+                GuideSession.observeScreen(session.generation, signature)
+                val sending = GuideSession.active() ?: return
+                if (requestNextStep(result.screen, signature, sending)) {
                     stability.markSent(signature, now)
                 }
                 scheduleSample(POLL_MS)
@@ -610,10 +616,9 @@ class GuideAccessibilityService : AccessibilityService() {
                     screen = screen,
                     // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
                     deviceId = dogfoodDeviceId,
-                    // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
-                    recentInstructions = session.recentInstructions,
-                    // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
-                    recentActions = session.recentActions,
+                    // 직전에 무엇을 안내했고 그래서 화면이 바뀌었는지 모르면 모델이 같은 말을
+                    // 반복한다(HANDOFF §3-10, C11 개정).
+                    steps = session.steps,
                     clientVersion = BuildConfig.VERSION_NAME,
                 )
                 when (val result = client.nextStep(request, logicalRequest)) {
@@ -633,7 +638,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 // scroll은 방향이 곧 안내다. 로그에 없으면 방향이 맞았는지
                                 // 실기기에서 확인할 길이 없다(#37).
                                 "direction=${action.direction?.name?.lowercase() ?: "-"} " +
-                                "history=${session.recentInstructions.size}",
+                                "history=${session.steps.size}",
                         )
                         mainHandler.post {
                             // 게이트는 결과를 통째로 받아 스스로 판정한다 — 분기에서 성공/실패를
@@ -870,14 +875,27 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
-        GuideSession.recordInstruction(session.generation, action.instruction)
-        GuideSession.recordAction(session.generation, response.screenSignature, action)
-
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
         }
         val bounds = target?.bounds?.takeIf { it.size == 4 }
         guidedTargetLabel = target?.label?.takeIf { it.isNotBlank() }
+
+        // 안내 하나 = 스텝 하나(C11 개정). **값을 모으기만 한다** — 조회한 target label 말고는
+        // 전부 응답 echo이고, 화면이 바뀌었는지는 다음 샘플이 채운다.
+        GuideSession.recordStep(
+            session.generation,
+            requestSignature,
+            GuideStep(
+                instruction = action.instruction,
+                actionType = action.actionType,
+                direction = action.direction,
+                targetLabel = guidedTargetLabel,
+                screenHint = action.screenSummary.takeIf { it.isNotBlank() },
+                structureSignature = response.screenSignature,
+            ),
+        )
+
         if (bounds == null) {
             // 화면에 없는 node_id를 고르는 것은 경량 모델의 전형적 실수다. 안내문은 그대로 띄우되
             // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.

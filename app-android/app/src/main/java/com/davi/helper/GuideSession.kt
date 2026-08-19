@@ -36,8 +36,7 @@ object GuideSession {
     data class Active(
         val generation: Long,
         val goal: String,
-        val recentInstructions: List<String>,
-        val recentActions: List<RecentAction>,
+        val steps: List<GuideStep>,
     )
 
     /**
@@ -50,8 +49,7 @@ object GuideSession {
             Active(
                 generation = generation,
                 goal = it,
-                recentInstructions = instructions.toList(),
-                recentActions = actions.toList(),
+                steps = steps.toList(),
             )
         }
 
@@ -67,21 +65,27 @@ object GuideSession {
     private val listeners = CopyOnWriteArrayList<Listener>()
 
     /**
-     * 이 세션에서 사용자에게 보여준 안내들. 서버 프롬프트에 실려 **같은 안내 반복을 막는다**
-     * (HANDOFF §3-10: 매 스텝 무상태면 모델이 직전 안내를 모른다).
+     * 이 세션에서 사용자에게 보여준 안내들. **스텝 하나 = 안내 하나**다(C11 개정, #270).
+     * 서버 프롬프트에 실려 **같은 안내 반복을 막는다**(HANDOFF §3-10: 매 스텝 무상태면 모델이
+     * 직전 안내를 모른다).
      *
-     * 세션이 끝나거나 목표가 바뀌면 비운다 — 다음 목표에 이전 안내가 새면 안 된다.
+     * 문장 이력과 구조 이력을 따로 들던 것을 합친 것이다. 나뉘어 있던 동안 모델은 "무엇을
+     * 안내했는지"만 알고 **그래서 화면이 바뀌었는지**를 몰랐다.
+     *
+     * 값은 서버 응답의 echo와 앱 관측뿐이다 — 화면 서명도 서버가 계산해 응답에 실은 값을
+     * 그대로 보관한다. 세션이 끝나거나 목표가 바뀌면 비운다.
      * 서비스의 네트워크 스레드가 읽고 메인 스레드가 쓰므로 접근을 잠금으로 막는다.
      */
-    private val instructions = ArrayDeque<String>()
+    private val steps = ArrayDeque<GuideStep>()
 
     /**
-     * 서버 반복 가드에 보내는 구조화 행동 이력.
+     * 마지막 스텝이 표시된 화면의 **기기 시그니처**([ScreenSignature]).
      *
-     * 화면 서명은 서버가 label 없이 계산해 응답에 실은 값을 그대로 보관한다. 따라서 앱이 화면
-     * 원문을 해시하거나 별도 식별자를 만들지 않는다. 세션 generation이 바뀌면 함께 폐기한다.
+     * 스텝이 들고 있는 `structure_signature`는 서버가 label 없이 만든 값이라 앱이 다시 계산할
+     * 수 없다. 화면이 바뀌었는지는 앱이 이미 매 샘플 만드는 기기 시그니처로 판정한다 —
+     * 두 서명은 목적이 다르고 서로를 대신하지 못한다.
      */
-    private val actions = ArrayDeque<RecentAction>()
+    private var lastStepSignature: String? = null
 
     /**
      * 이 세션에서 **연속으로** 믿지 않고 넘긴 `done` 수. done이 아닌 안내가 실제로 표시되면
@@ -109,7 +113,7 @@ object GuideSession {
      *
      * **유효기간이 있다.** 다른 화면의 done이 오거나 **안내가 실제로 나가면**(= 사용자가
      * 진행했다) 지운다. 후자가 없으면 완료 신호가 드문 실제 세션에서 이력이 끝까지 남는다
-     * ([recordInstruction], PR #153 리뷰 P2).
+     * ([recordStep], PR #153 리뷰 P2).
      */
     private var rejectedSignature: String? = null
 
@@ -260,12 +264,16 @@ object GuideSession {
     }
 
     /**
-     * 사용자에게 실제로 보여준 안내만 기록한다. 중복도 그대로 남긴다 — 반복 자체가 신호다.
+     * 사용자에게 실제로 보여준 안내만 스텝으로 기록한다. 중복도 그대로 남긴다 — 반복 자체가
+     * 신호다.
      *
      * 요청 시점의 세대를 함께 받아, 늦게 도착한 이전 세션의 안내가 새 세션 이력에 섞이지 않게 한다.
+     *
+     * [screenSignature]는 그 안내가 뜬 화면의 **기기 시그니처**다. 스텝에 싣지 않고 여기에만
+     * 두는 이유는 [lastStepSignature] 참고 — 화면이 바뀌었는지 판정하는 데만 쓴다.
      */
     @Synchronized
-    fun recordInstruction(generation: Long, instruction: String) {
+    fun recordStep(generation: Long, screenSignature: String, step: GuideStep) {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
         unverifiedDones = 0
@@ -275,33 +283,40 @@ object GuideSession {
         // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
         // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
         rejectedSignature = null
-        val trimmed = instruction.trim()
-        if (trimmed.isEmpty()) return
-        instructions.addLast(trimmed)
-        while (instructions.size > MAX_HISTORY) {
-            instructions.removeFirst()
+        steps.addLast(step.copy(instruction = step.instruction.trim()))
+        while (steps.size > MAX_HISTORY) {
+            steps.removeFirst()
         }
+        lastStepSignature = screenSignature
     }
 
     /**
-     * 사용자에게 실제로 표시한 행동만 기록한다.
+     * **요청을 보내기 직전에** 마지막 스텝의 "그래서 화면이 바뀌었는가"를 적는다.
      *
-     * 이전 세대의 늦은 응답은 [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
+     * 판정 시점이 여기인 이유: 이 값이 서버에 닿는 순간이 곧 요청을 보내는 순간이고, 그때가
+     * 앱이 답을 확실히 아는 유일한 시점이다. 시간으로 끊으면(예: 정체 판정 7초) **느린 사용자를
+     * 실패로 적는다** — 시니어가 안내 한 줄을 읽고 따라 하는 데 7초는 흔하다. 2026-08-19
+     * SM-S921N에서 실제로 그 상태를 봤다.
+     *
+     * **새 신호를 만들지 않는다.** 화면이 바뀐 사실은 시그니처 홀드가 이미 판정한 것이고
+     * (`ScreenSignature`), 여기서는 그 결과를 스텝에 옮겨 적을 뿐이다 — 조작 이벤트에 기대지
+     * 않는다는 제약은 그대로다(`../CLAUDE.md`).
+     *
+     * **true는 되돌리지 않는다.** 한 번 바뀐 화면이 다시 그 화면으로 돌아와도(A→B→A) 그 안내가
+     * 먹혔다는 사실은 그대로다. 회귀 자체를 가리는 것은 내용 서명의 몫이다(#270 서브 4).
+     * 반대로 false는 true로 덮인다 — 같은 화면에서 다시 묻는 동안(재시도·미검증 done)은 false,
+     * 사용자가 결국 진행하면 true다.
      */
     @Synchronized
-    fun recordAction(generation: Long, screenSignature: String, action: GuideAction) {
+    fun observeScreen(generation: Long, screenSignature: String) {
         if (!isCurrent(generation)) return
-        actions.addLast(
-            RecentAction(
-                screenSignature = screenSignature,
-                actionType = action.actionType,
-                direction = action.direction,
-                targetNodeId = action.targetNodeId,
-            ),
-        )
-        while (actions.size > MAX_HISTORY) {
-            actions.removeFirst()
-        }
+        val stepSignature = lastStepSignature ?: return
+        val last = steps.lastOrNull() ?: return
+        if (last.screenChanged == true) return
+        val changed = screenSignature != stepSignature
+        if (last.screenChanged == changed) return
+        steps.removeLast()
+        steps.addLast(last.copy(screenChanged = changed))
     }
 
     /**
@@ -326,8 +341,8 @@ object GuideSession {
             // 중지(null)와 시작이 각각 한 번씩 올린다. 그래서 중지 후 같은 목표로 다시 시작해도
             // 세대가 달라지고, 그 사이에 떠 있던 응답이 새 세션에 섞이지 않는다.
             generation++
-            instructions.clear()
-            actions.clear()
+            steps.clear()
+            lastStepSignature = null
             unverifiedDones = 0
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.

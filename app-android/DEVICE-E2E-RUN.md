@@ -171,7 +171,7 @@ build/reports/device-e2e-private/
 상세 분석 보고서는 각 가이드 번호 아래에서 다음을 함께 보여 준다.
 
 - 요청 시점의 package/page/scroll/IME 및 전달된 화면 요소 전체
-- 그 요청에 실제 포함된 `recent_instructions`와 구조화 `recent_actions`
+- 그 요청에 실제 포함된 스텝 이력(`steps`) — 안내 문장·조작·대상 label·화면 요약·화면 변화 여부
 - 응답의 model/verified/screen signature와 전체 `GuideAction` 필드
 - 해석된 target bounds·role, 비종료 이탈과 실행/실패 결과
 
