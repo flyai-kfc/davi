@@ -46,6 +46,12 @@ abstract class MotionView @JvmOverloads constructor(
      *
      * 모션이 꺼져 있으면 `(0f, 0f)`으로 **한 번만** 불린다. 그래서 이 함수는 "시간 0의 모습"이
      * 정지 프레임으로 쓸 만하도록 써야 하고, [onDraw]도 그 한 프레임만으로 그려낼 수 있어야 한다.
+     *
+     * **다만 그 한 장이 첫 프레임이라는 보장은 없다.** `areAnimatorsEnabled`의 프로세스 캐시가
+     * 콜드 스타트에서 늦게 동기화되면 움직이는 프레임 N장이 흐른 뒤에야 [MotionDriver]가 꺼짐을
+     * 알아채고 `(0f, 0f)`을 흘린다(`app-android/CLAUDE.md` 기기 함정 — SM-S921N 실측).
+     * 전제해도 되는 것은 "정지 프레임은 언젠가 한 장 온다"까지이고 "첫 프레임이 정지 프레임이다"는
+     * 아니다 — delta를 누적하는 뷰는 위상 0이 아니라 그때까지 쌓인 위상에서 얼어붙는다.
      */
     protected abstract fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float)
 
