@@ -253,8 +253,15 @@ jobs:
       - name: release 산출물에 화면 상세 로그가 없는지 확인
         run: |
           dump() { unzip -p "$1" 'classes*.dex' | strings; }
-          debug_apk=app/build/outputs/apk/debug/app-debug.apk
-          release_apk=app/build/outputs/apk/release/app-release.apk
+          # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release
+          # 산출물은 app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 output-metadata.json에
+          # 실제 이름을 적어 주므로 거기서 유도한다.
+          apk_of() {
+            echo "$(dirname "$1")/$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1")"
+          }
+          debug_apk="$(apk_of app/build/outputs/apk/debug/output-metadata.json)"
+          release_apk="$(apk_of app/build/outputs/apk/release/output-metadata.json)"
+          echo "debug=$debug_apk  release=$release_apk"
           test -f "$debug_apk" && test -f "$release_apk"
 
           # GuideScreenLog의 debug 구현만 쓰는 포맷이다. 바꾸면 이 목록도 함께 고친다.
