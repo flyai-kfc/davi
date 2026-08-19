@@ -10,7 +10,7 @@
   채움이 offset만큼 짧아지지만 터치 영역은 뷰 크기 그대로다.
 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed">
+    android:color="@color/davi_state_layer_pressed_on_dark">
     <item>
         <layer-list>
             <item

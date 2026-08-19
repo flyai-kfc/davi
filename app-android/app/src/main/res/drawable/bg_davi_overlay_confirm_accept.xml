@@ -8,7 +8,7 @@
   그림자는 blur 없는 근사다(단색 도형을 아래로 민다) — 카드·버튼과 같은 사정이다.
 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed">
+    android:color="@color/davi_state_layer_pressed_on_dark">
     <item>
         <layer-list>
             <item
