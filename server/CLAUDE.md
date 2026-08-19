@@ -7,8 +7,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 ## 이 폴더의 책임
 - **2차 마스킹 그물** — 앱 1차 마스킹이 놓친 패턴 방어. 원격 업데이트 가능(앱 재배포 불필요).
   적용 여부는 `masking.MaskingPolicy`가 값으로 들고 `reasoning.next_step()`이 주입받는다.
-  우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 접근 토큰 없음**
-  (팀용·테스트 참가자용 **둘 다**, #257)에서만 기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
+  우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 접근 토큰 없음**에서만
+  기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
+  토큰은 팀용·테스트 참가자용 **둘 다** 해당한다(#257) — 어느 하나라도 있으면 거부한다.
 - **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 HANDOFF §5-4 전례 회피).
 - **모델 호출** — `llm_provider.py` 한 경계 뒤에 Gemini·OpenAI·Anthropic이 있다. 공급자 교체는
   `DAVI_LLM_PROVIDER`, 모델 교체는 `DAVI_MODEL`(비우면 공급자 기본 모델). 기본은
@@ -44,10 +45,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 제품 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. #94 Azure 공유 서버는
-  제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. **release APK가 이 서버를
-  바라보게 됐지만(#248) 그 성격은 안 바뀐다** — 붙는 쪽이 늘었을 뿐 서버는 여전히 토큰으로 닫힌
-  개발 서버다. 잘못된 조합은
-  `config.Settings`가 import 시 거부한다.
+  제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
+  `config.Settings`가 import 시 거부한다. **release APK가 이 서버를 바라보게 됐지만(#248)
+  그 성격은 안 바뀐다** — 붙는 쪽이 늘었을 뿐 서버는 여전히 토큰으로 닫힌 개발 서버다.
 - development를 loopback 밖에 바인딩할 때는 32자 이상 토큰이 필수다 —
   `DAVI_DEV_ACCESS_TOKEN`(팀) 또는 `DAVI_TEST_ACCESS_TOKEN`(외부 테스트 참가자) 중 하나면
   된다. **헤더는 `X-Davi-Dev-Token` 하나뿐이고 값만 다르다** — 그래서 앱에는 대응 코드가 없다.
