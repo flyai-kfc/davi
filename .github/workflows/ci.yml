@@ -243,6 +243,26 @@ jobs:
           test -f "$generated"
           grep -q 'PRIVACY_MASKING_DISABLED = false' "$generated"
 
+      # 화면 요소의 label·bounds 상세 로그는 debug 전용이다(#58). 마스킹은 패턴 기반이라
+      # 사람 이름·대화 내용처럼 패턴 밖 텍스트를 지우지 못하므로 "마스킹했으니 남겨도 된다"가
+      # 성립하지 않는다. **포맷 문자열이 산출물에 없으면 그 줄은 절대 나올 수 없다** —
+      # 소스를 읽는 정적 검사보다 이 편이 우회하기 어렵다.
+      #
+      # debug 쪽도 함께 본다. release만 검사하면 포맷이 바뀌었을 때 검사가 조용히 통과하는
+      # 빈 관문이 된다 — 카나리아가 사라진 걸 실패로 잡아야 검사가 살아 있다.
+      - name: release 산출물에 화면 상세 로그가 없는지 확인
+        run: |
+          dump() { unzip -p "$1" 'classes*.dex' | strings; }
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          release_apk=app/build/outputs/apk/release/app-release.apk
+          test -f "$debug_apk" && test -f "$release_apk"
+
+          # GuideScreenLog의 debug 구현만 쓰는 포맷이다. 바꾸면 이 목록도 함께 고친다.
+          for canary in "label='" " scroll="; do
+            dump "$debug_apk"   | grep -qF "$canary"
+            ! dump "$release_apk" | grep -qF "$canary"
+          done
+
   backend:
     name: Backend (ruff + pytest)
     needs: changes
