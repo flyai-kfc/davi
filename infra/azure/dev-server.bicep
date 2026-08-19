@@ -44,6 +44,12 @@ param devAccessTokenSecretName string = 'DAVI-DEV-ACCESS-TOKEN'
 @description('외부 테스트 참가자용 둘째 토큰의 Key Vault secret 이름. **비우면 아예 배선하지 않는다**(기본값). Container Apps는 revision을 만들 때 keyVaultUrl을 해석하므로, 없는 secret을 참조하면 revision이 Healthy에 도달하지 못해 이후 배포까지 막힌다. 그래서 secret 생성과 이 템플릿의 머지 순서에 의존하지 않도록 선택으로 둔다. 테스트 기간에만 이 파라미터를 넘기고, 끝나면 빼는 것으로 폐기가 끝난다.')
 param testAccessTokenSecretName string = ''
 
+@description('세션 JWT 서명 비밀(DAVI_AUTH_JWT_SECRET)의 Key Vault secret 이름. **비우면 아예 배선하지 않는다**(기본값). 이유는 위 테스트 토큰과 같다 — secret 생성 순서가 배포를 막지 않아야 한다. 값이 32자 미만이면 서버가 기동 시 거부하므로 revision이 Healthy에 도달하지 못한다.')
+param authJwtSecretSecretName string = ''
+
+@description('카카오 개발자 콘솔의 앱 ID(숫자 문자열). 비밀이 아니라 GitHub environment 변수로 넘긴다 — 토큰 발급처 대조용이며 REST API 키·네이티브 앱 키가 아니다. **비우면 env 항목 자체를 뺀다**: 빈 문자열을 실으면 서버의 int 파싱이 실패해 컨테이너가 기동하지 못한다.')
+param kakaoAppId string = ''
+
 var commonTags = {
   environment: 'development'
   project: 'davi'
@@ -119,6 +125,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
                 keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${testAccessTokenSecretName}'
                 identity: containerIdentity.id
               }
+            ],
+        empty(authJwtSecretSecretName)
+          ? []
+          : [
+              {
+                name: 'auth-jwt-secret'
+                keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${authJwtSecretSecretName}'
+                identity: containerIdentity.id
+              }
             ]
       )
     }
@@ -173,6 +188,16 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DAVI_TEST_ACCESS_TOKEN'
               secretRef: 'test-access-token'
+            }
+          ], empty(authJwtSecretSecretName) ? [] : [
+            {
+              name: 'DAVI_AUTH_JWT_SECRET'
+              secretRef: 'auth-jwt-secret'
+            }
+          ], empty(kakaoAppId) ? [] : [
+            {
+              name: 'DAVI_KAKAO_APP_ID'
+              value: kakaoAppId
             }
           ])
           probes: [

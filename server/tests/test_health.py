@@ -46,6 +46,7 @@ def test_development_health_includes_diagnostics():
         "model": "gemini-3.5-flash-lite",
         "stub_llm": True,
         "privacy_masking_disabled": False,
+        "kakao_auth_configured": False,
     }
 
 
@@ -57,6 +58,40 @@ def test_development_health_reports_the_masking_bypass(set_runtime_profile):
 
     assert r.status_code == 200
     assert r.json()["privacy_masking_disabled"] is True
+
+
+def test_development_health_reports_kakao_auth_wiring(set_runtime_profile):
+    """Azure 배포 검증이 카카오 배선을 확인하는 유일한 경로다(#279).
+
+    `/v1/auth/kakao`는 개발 토큰 게이트 뒤에 있어 배포 워크플로가 찌를 수 없다.
+    """
+
+    app_id = 987654
+    secret = "kakao-session-signing-secret-value-1234"
+    set_runtime_profile(davi_kakao_app_id=app_id, davi_auth_jwt_secret=secret)
+
+    r = client.get("/health")
+
+    assert r.status_code == 200
+    assert r.json()["kakao_auth_configured"] is True
+    # 불리언만 알린다. 앱 ID와 서명 비밀은 응답 어디에도 없다.
+    assert str(app_id) not in r.text
+    assert secret not in r.text
+
+
+def test_development_health_reports_half_wired_kakao_auth_as_unconfigured(set_runtime_profile):
+    """한쪽만 채운 배포는 로그인이 503으로 닫힌 상태다 — 검증이 통과하면 안 된다."""
+
+    set_runtime_profile(davi_kakao_app_id=987654, davi_auth_jwt_secret="")
+
+    assert client.get("/health").json()["kakao_auth_configured"] is False
+
+    set_runtime_profile(
+        davi_kakao_app_id=0,
+        davi_auth_jwt_secret="kakao-session-signing-secret-value-1234",
+    )
+
+    assert client.get("/health").json()["kakao_auth_configured"] is False
 
 
 def test_production_health_only_includes_status(set_runtime_profile):

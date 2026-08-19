@@ -113,6 +113,20 @@ class Settings(BaseSettings):
         }
         return {kind: token for kind, token in candidates.items() if token}
 
+    @property
+    def kakao_auth_configured(self) -> bool:
+        """카카오 로그인 endpoint가 열려 있는가.
+
+        판정을 여기 하나로 둔다 — `kakao_auth.py`의 게이트와 `/health`가 각자 조건을 적으면
+        한쪽만 고쳐져 "배포는 통과했는데 로그인은 닫혀 있다"가 된다. `/health`가 이 값을
+        알리는 이유는 배포 검증이 `/v1/auth/kakao`를 찌를 수 없어서다(#279): 그 endpoint는
+        개발 토큰 게이트 뒤에 있다. 불리언만 알리고 앱 ID·서명 비밀은 노출하지 않는다.
+        """
+
+        return bool(self.davi_auth_jwt_secret.get_secret_value().strip()) and (
+            self.davi_kakao_app_id > 0
+        )
+
     @field_validator("gemini_api_key", "openai_api_key", "anthropic_api_key", mode="after")
     @classmethod
     def normalize_api_key(cls, value: SecretStr) -> SecretStr:

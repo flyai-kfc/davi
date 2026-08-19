@@ -362,6 +362,9 @@ def health() -> dict:
         # 서버 2차 상태만 알린다. 앱 1차 상태는 앱이 logcat으로 따로 드러내며(GuideSvc의
         # privacyMasking=), 두 값을 합치지 않아야 한쪽만 우회한 상태를 오인하지 않는다(#203).
         "privacy_masking_disabled": settings.davi_disable_privacy_masking,
+        # 배포 워크플로가 카카오 로그인 배선을 확인하는 유일한 자리다(#279). production 분기는
+        # 그대로 status만 알린다 — 진단 값은 개발 환경에서만 드러낸다.
+        "kakao_auth_configured": settings.kakao_auth_configured,
     }
 
 
