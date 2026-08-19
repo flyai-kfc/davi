@@ -25,7 +25,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ### 지금 상태만 보고 싶다면
 
-아무것도 바꾸지 않고 기기·설치 패키지·접근성·오버레이 상태를 한 줄씩 출력한다.
+아무것도 바꾸지 않고 기기·설치 패키지·접근성 상태를 한 줄씩 출력한다.
 
 ```powershell
 ./scripts/dev-install.ps1 -Status
@@ -36,6 +36,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 패키지    : com.davi.helper.debug 0.1.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
 ```
+
+오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
 있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
@@ -345,7 +347,7 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 **동작하는 구현**
 - Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL·접근 토큰 주입 — debug는 `DAVI_DEBUG_*`,
   release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`), 매니페스트, 접근성 서비스 등록.
-- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 두 권한이 갖춰지면 대화 화면으로
+- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
 - 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal 전달까지
