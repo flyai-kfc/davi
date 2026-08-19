@@ -44,7 +44,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 제품 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. #94 Azure 공유 서버는
-  제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
+  제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. **release APK가 이 서버를
+  바라보게 됐지만(#248) 그 성격은 안 바뀐다** — 붙는 쪽이 늘었을 뿐 서버는 여전히 토큰으로 닫힌
+  개발 서버다. 잘못된 조합은
   `config.Settings`가 import 시 거부한다.
 - development를 loopback 밖에 바인딩할 때는 32자 이상 토큰이 필수다 —
   `DAVI_DEV_ACCESS_TOKEN`(팀) 또는 `DAVI_TEST_ACCESS_TOKEN`(외부 테스트 참가자) 중 하나면

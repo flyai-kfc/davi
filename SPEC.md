@@ -206,10 +206,12 @@
   명시적 검증 2단**으로 확정한다. 단일 스텝 반응형으로도 관통 시나리오가 닫혔고, 계획이 푸는
   문제(선행 조건 처리 — "앱이 없으면 먼저 설치")는 이번 사이클 목표에 없다.
   `server/app/reasoning.py`에 `_plan` 스텁이 남아 있으나 결과를 쓰지 않는다.
-- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 팀 debug APK가
-  `main` 서버를 함께 검증하는 dev-only 인프라일 뿐, 이 비목표를 해제하지 않는다.
+- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 **debug·release APK가
+  함께 바라보는 개발 인프라**이며(#248), 이 비목표를 해제하지 않는다 — 서버는 development
+  프로필이고 접근 토큰으로 닫혀 있다(§7).
   **카카오 로그인 자체는 §2 범위다**(ON-1) — 여기서 비목표인 것은 그것을 떠받치는 제품용
-  호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 debug 빌드 검증 수단이다(#279).
+  호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 **빌드 검증 수단**이다(#279).
+  debug만이 아니라 release도 같은 서버로 로그인한다(#248·#219 — `releaseLoginEnabled`).
 
 ---
 
@@ -465,12 +467,20 @@ davi/
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
   넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 카카오 앱 ID뿐이다(#279).
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
-  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 개발 토큰을
-  요구한다. release APK는 두 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.
+  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
+  요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
+  통신은 그대로 거부한다. 사설 Wi-Fi 평문 URL과 debug 전용 토큰(`DAVI_DEBUG_*`)은 여전히 release에
+  들어가지 않는다.
 - Azure 로그는 기존 비식별 JSON Lines만 Log Analytics에 30일 보존한다. 클라우드에서는
   `DAVI_DOGFOOD_DEVICE_IDS`를 비워 원본 도그푸딩 raw를 저장하지 않는다.
 - ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다. #94의
-  Azure endpoint는 팀 debug APK 공유를 위한 명시적 dev-only 예외이며 제품 사용자 인증을 대신하지 않는다.
+  Azure endpoint는 **debug APK와 release APK가 함께 바라보는 개발 서버**다(#248). **release가 붙는
+  것이 이 서버를 제품 인프라로 만들지는 않는다** — 서버는 development 프로필이고 모든 원격 요청이
+  접근 토큰을 요구하며, 제품 사용자 인증을 대신하지 않는다.
+- **release에 실리는 접근 토큰은 비밀이 아니다.** APK에서 추출되므로 기밀이 아니라 **회전**으로
+  다룬다 — 기간 제한 임시 capability로 보고 내부 테스트 시작 직전에 적용, 종료 즉시 서버에서
+  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 Gemini 쿼터에 물려
+  있다는 것이 그 이유다. 접근 통제·비용 상한·로그 정책의 나머지는 #214가 정한다.
 - API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
 - 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
 
