@@ -31,6 +31,7 @@
 |---|---|---|
 | **가르치기 vs 대신 해주기** | **안내만.** `performAction`/`performGlobalAction`으로 대신 조작하지 않는다. 오버레이의 조작 수단(중지 칩 등)은 **우리 세션만** 끝내고 대상 앱 요소는 사용자가 누른다(§11, #126). | 제품 목적이 "시니어가 스스로 하도록 돕기". HANDOFF §8. 되살릴 여지는 남기되 이번 사이클 범위 밖. |
 | **화면 데이터 외부 전송** | **기기에서 1차 마스킹 → 서버에서 2차 그물.** 원본은 기기를 떠나지 않는다. 유일한 예외는 §3의 dev-only 비교 실험(#203)이며 release·production에서는 우회할 수 없다. | 서버에서 마스킹하면 원본이 이미 기기를 떠난 뒤라 로그·프록시에 남을 수 있다. 앱 마스킹은 그 약속을 코드가 아니라 구조로 보장. HANDOFF §5-1. |
+| **잠긴 기기에는 띄우지 않는다** | 화면이 꺼지면 오버레이를 **걷고**, 잠금이 풀린 뒤(`ACTION_USER_PRESENT`)에만 되살린다. **세션은 유지한다.** 꺼진 동안 도착한 응답은 버리고 깨어날 때 그 화면을 다시 묻는다. | 창이 `TYPE_ACCESSIBILITY_OVERLAY`가 되면서 **키가드보다 위 층이 됐다**(#56) — 잠금화면에 안내창·칩이 뜨고 **칩이 실제로 눌리는 것**을 실측했다. 화면 내용을 인용한 안내문이 **잠금을 풀지 않은 사람에게 보이는 것**은 위 "화면 데이터 외부 전송" 행과 **다른 문제**다 — 그쪽은 기기 밖으로 나가는 이야기이고 이건 기기 안에서의 표시다. 마스킹을 거쳤다는 것이 답이 되지 않는다. 기준을 키가드가 아니라 **화면 꺼짐**으로 잡은 이유는 안내 도중 보안 인증이 뜨는 것이 정상 흐름이라 그걸로 세션을 끝내면 안 되기 때문이다. |
 | **서버의 존재 이유** | API 키 은닉(§5-2) **그리고** 추론 오케스트레이션. | 키가 APK에 있으면 추출당한다. 추론까지 서버에 두면 앱 재배포 없이 프롬프트·가드레일을 반복할 수 있다. |
 | **누가 권한을 켜나** | 가족 대신 설정 / 시니어 본인, **두 모드 분기**. 단 **착수는 베타로 미룬다**(§3 비목표). | 특수 권한은 시니어 혼자 켜기 어렵다. **둘이던 것이 접근성 하나로 줄었다**(#212 — `SYSTEM_ALERT_WINDOW`를 걷어내고 자동 복귀를 알림 탭으로 옮겼다). HANDOFF §5-7. 이번 사이클은 피드백이 팀 내부라 두 모드를 쓸 사람이 없다. |
 
@@ -158,7 +159,8 @@
   release는 `BuildConfig.PRIVACY_MASKING_DISABLED`가 상수 `false`이고,
   `verifyReleaseConfiguration`이 **두 경로 중 어느 하나라도 존재하면** 실패시킨다.
 - **서버 2차** — `DAVI_DISABLE_PRIVACY_MASKING=true`. **development + loopback 바인딩 +
-  개발 토큰 없음**을 모두 만족할 때만 기동한다. 공용 개발 endpoint(#94 Azure, 사설 Wi-Fi 맥)는
+  접근 토큰 없음**을 모두 만족할 때만 기동한다. 토큰은 팀용·테스트 참가자용 **둘 다** 해당한다
+  (#257) — 어느 하나라도 설정돼 있으면 거부한다. 공용 개발 endpoint(#94 Azure, 사설 Wi-Fi 맥)는
   토큰·바인딩 조건에서 걸러진다 — 남의 기기 화면까지 원문으로 받는 자리이기 때문이다.
 - **두 겹은 독립적으로 드러낸다** — 앱은 logcat `GuideSvc`의 `privacyMasking=`, 서버는
   `/health`의 `privacy_masking_disabled`. 한쪽만 우회한 상태를 "둘 다 우회"로 오인하면
@@ -205,11 +207,14 @@
 - **추론의 계획(sub-task) 단계** — **무기한 연기한다**(2026-08-18). 파이프라인은 **실행 →
   명시적 검증 2단**으로 확정한다. 단일 스텝 반응형으로도 관통 시나리오가 닫혔고, 계획이 푸는
   문제(선행 조건 처리 — "앱이 없으면 먼저 설치")는 이번 사이클 목표에 없다.
-  `server/app/reasoning.py`에 `_plan` 스텁이 남아 있으나 결과를 쓰지 않는다.
-- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 팀 debug APK가
-  `main` 서버를 함께 검증하는 dev-only 인프라일 뿐, 이 비목표를 해제하지 않는다.
+  `reasoning.py`의 `_plan` 스텁과 TODO는 **#251이 걷었다**(2026-08-19) — 규칙대로 그 파일을
+  여는 사람이 함께 지웠다.
+- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 **debug·release APK가
+  함께 바라보는 개발 인프라**이며(#248), 이 비목표를 해제하지 않는다 — 서버는 development
+  프로필이고 접근 토큰으로 닫혀 있다(§7).
   **카카오 로그인 자체는 §2 범위다**(ON-1) — 여기서 비목표인 것은 그것을 떠받치는 제품용
-  호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 debug 빌드 검증 수단이다(#279).
+  호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 **빌드 검증 수단**이다(#279).
+  debug만이 아니라 release도 같은 서버로 로그인한다(#248·#219 — `releaseLoginEnabled`).
 
 ---
 
@@ -304,7 +309,7 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 충분하면 기존 GuideSession에 넣을 정규화된 `goal`을 반환한다. 서버는 세션 상태를 저장하지 않으며
 앱은 최대 5왕복만 메모리에 두고 재시작 때 폐기한다.
 
-Gemini 내부 출력은 짧은 `decision_basis`를 `status`보다 먼저 생성하지만 wire·로그에는 내보내지
+모델 내부 출력은 짧은 `decision_basis`를 `status`보다 먼저 생성하지만 wire·로그에는 내보내지
 않는다. 앱 wire 응답은 기존 `status`·`message`·`goal` **그대로다**. `needs_clarification`의
 `message`에는 질문 문장 뒤에 짧은 답변 예시 문장("예를 들면 카카오톡이나 문자요")이 붙을 수 있다
 (2026-08-14 합의 · **프롬프트 구현 전 — #140**). 예시는 선택지가 아니다 — **별도 보기 필드나
@@ -452,9 +457,11 @@ davi/
 
 - 개인 USB 검증은 loopback+`adb reverse`다. 평일 팀 테스트는 전용 맥북의 local uvicorn + 같은
   사설 Wi-Fi(#57) 또는 #94의 Azure Container Apps 공유 development endpoint를 쓴다.
-- LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 개발 토큰과 팀 전체 요청
-  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로
-  명시 종료한다.
+- LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 접근 토큰과 팀 전체 요청
+  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. **접근 토큰은 둘이다**(#257) —
+  팀용 `DAVI_DEV_ACCESS_TOKEN`과 외부 테스트 참가자용 `DAVI_TEST_ACCESS_TOKEN`이 같은
+  `X-Davi-Dev-Token` 헤더를 쓰고 **둘 중 하나만 맞으면 통과**한다(둘 다 32자 이상). 저녁에는
+  PID 기반 스크립트로 명시 종료한다.
 - Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
   digest 고정 base와 Docker 전용 의존성 lock으로 build한다. commit SHA와 Actions run ID/attempt로
   식별되는 불변 image/revision을 배포하고, 정확한 revision/image가 active·healthy·traffic 100%인지
@@ -465,12 +472,21 @@ davi/
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
   넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 카카오 앱 ID뿐이다(#279).
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
-  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 개발 토큰을
-  요구한다. release APK는 두 개발 URL·토큰을 포함하지 않고 평문 통신을 거부한다.
+  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
+  요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
+  통신은 그대로 거부한다. 사설 Wi-Fi 평문 URL과 debug 전용 토큰(`DAVI_DEBUG_*`)은 여전히 release에
+  들어가지 않는다.
 - Azure 로그는 기존 비식별 JSON Lines만 Log Analytics에 30일 보존한다. 클라우드에서는
   `DAVI_DOGFOOD_DEVICE_IDS`를 비워 원본 도그푸딩 raw를 저장하지 않는다.
 - ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다. #94의
-  Azure endpoint는 팀 debug APK 공유를 위한 명시적 dev-only 예외이며 제품 사용자 인증을 대신하지 않는다.
+  Azure endpoint는 **debug APK와 release APK가 함께 바라보는 개발 서버**다(#248). **release가 붙는
+  것이 이 서버를 제품 인프라로 만들지는 않는다** — 서버는 development 프로필이고 모든 원격 요청이
+  접근 토큰을 요구하며, 제품 사용자 인증을 대신하지 않는다. **여기에 붙는 주체는 셋이다** —
+  팀 debug APK · release APK · 외부 테스트 참가자(#257). 사설 Wi-Fi LAN 서버에는 debug만 붙는다.
+- **release에 실리는 접근 토큰은 비밀이 아니다.** APK에서 추출되므로 기밀이 아니라 **회전**으로
+  다룬다 — 기간 제한 임시 capability로 보고 내부 테스트 시작 직전에 적용, 종료 즉시 서버에서
+  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 Gemini 쿼터에 물려
+  있다는 것이 그 이유다. 접근 통제·비용 상한·로그 정책의 나머지는 #214가 정한다.
 - API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
 - 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
 

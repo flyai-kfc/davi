@@ -242,8 +242,10 @@ Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 �
   (2026-08-11, #100). 이름은 Figma 변수의 Android code syntax와 1:1이며 값의 원본은 Figma다
 - C1 역할별 2서체: **반영**(2026-08-17, #181). Cafe24 Ssurround v2.0 번들(1.6MB, 한글
   11,172자 100%), 고지 전문은 `app-android/licenses/cafe24-ssurround-LICENSE.txt`.
-  지금 실제로 Cafe24로 그려지는 뷰는 `home_title`·`card_question` 둘이고, 나머지 자리는
-  그 화면이 생길 때 같은 규칙으로 따라온다
+  적용 범위는 화면이 갈릴 때마다 넓어졌다 — 지금은 `themes.xml`의 Cafe24 스타일만 여덟 종을
+  넘고(홈 제목·캡션, 실패 문구, 메인 9·10, ON-2 카드·버튼 …) 레이아웃이 직접 지정하는 자리도
+  있다. **개별 뷰를 세어 여기 적지 않는다** — 세는 순간 낡는다. 무엇이 Cafe24인지는 위 C1의
+  역할 규칙과 아래 "서체 — 역할별 둘"이 답한다
 - 테마 **Light 고정**으로 B3 충돌 해소 — `Theme.Davi`가 `Theme.Material3.Light`를 상속하고
   M3 색을 토큰에 매핑한다. 다크 대응은 토큰에 다크 값을 설계하는 시점에 착수
 - `HighlightOverlayView`의 하드코딩 색 3건·raw px 2건은 토큰으로 교체됨. 오버레이 전용

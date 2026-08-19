@@ -67,7 +67,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   묶었더니 셰이드를 내린 것만으로 답할 자리가 사라지고 그 화면에 대고 재질의가 나갔다(실측).
   **스크림은 터치를 막지 않는다** — 그리는 창이 `FLAG_NOT_TOUCHABLE`이고, 뒤집으면 "대신 조작하지
   않는다"와 부딪친다. 막을 이유도 없다(답하기 전엔 안 사라지므로 가둘 위험만 남는다).
-  방향 스와이프 애니메이션은 아직 없다(#152 — HANDOFF §4의 `SwipeGuideView`).
+  방향 스와이프 애니메이션은 **들어와 있다**(#152, `GestureMotion`) — 판정·손가락 방향 변환이
+  거기 모여 있고 서버가 준 방향을 한 자리에서 뒤집는다(C17).
   **화면이 꺼지면 오버레이를 걷고 잠금이 풀린 뒤에만 되살린다. 세션은 유지한다**(#56).
   기준이 키가드가 아니라 **화면 꺼짐**인 이유는 안내 도중 보안 인증이 뜨는 것이 정상 흐름이라
   그걸로 세션을 끝내면 안 되기 때문이고, 되살리는 시점이 `ACTION_USER_PRESENT`인 이유는 화면만
@@ -86,7 +87,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **로그인 버튼은 `BuildConfig.LOGIN_ENABLED`에 건다** — 키 유무가 아니라 **로그인이 끝까지
   갈 수 있는가**다. 카카오 인증에 성공해도 세션을 교환할 `SERVER_URL`이 placeholder면
   `login_error_server`로 끝나므로, 그 빌드는 버튼을 띄우지 않는다. 진입점(scheme·handler
-  activity)은 키와 함께 켜 두어 주소가 정해지는 순간(#214) 조건만 참이 되게 한다.
+  activity)은 키와 함께 켜 두어 주소가 정해지는 순간 조건만 참이 되게 했고, **#248로 그 순간이
+  왔다** — release `SERVER_URL`이 Azure 실주소라 `LOGIN_ENABLED`가 켜진다. #214에는 접근 통제·
+  비용·로그 정책이 남아 있다.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
 
 ## UI 컨벤션 (확정 2026-07-24)
@@ -119,9 +122,12 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.
 - **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로 `./scripts/dev-install.ps1 -A11yOnly`로 권한만 복구한다(2초).
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
-- **API 키를 앱에 넣지 않는다.** debug에만 서버 URL·개발 접근 토큰을 주입한다. release는
-  개발 설정을 읽거나 포함하지 않는다. 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
-  **되살리지 않는다**(HANDOFF §5-2).
+- **API 키를 앱에 넣지 않는다.** 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
+  **되살리지 않는다**(HANDOFF §5-2). 서버 URL·접근 토큰은 **빌드 타입마다 따로** 주입한다 —
+  debug는 `DAVI_DEBUG_*`, **release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`**(#248).
+  release가 `debugSetting`이 아니라 `localSetting`으로 읽는 이유는 **정당하게 쓰는 값이라
+  개발 설정 관문이 막을 대상이 아니기 때문**이다(#221 서명 키와 같은 결). 막는 것은
+  `DAVI_DEBUG_*`가 release에 새는 것이다.
 - **release 서명은 debug 설정이 아니다**(#221). 업로드 키스토어 경로·비밀번호는
   `local.properties`에서 읽되 `debugSetting`이 아니라 `localSetting`으로 읽는다 — release가
   정당하게 쓰는 값이라 `verifyReleaseConfiguration`이 막는 대상에 넣으면 안 된다.

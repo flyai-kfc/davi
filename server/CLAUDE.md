@@ -7,8 +7,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 ## 이 폴더의 책임
 - **2차 마스킹 그물** — 앱 1차 마스킹이 놓친 패턴 방어. 원격 업데이트 가능(앱 재배포 불필요).
   적용 여부는 `masking.MaskingPolicy`가 값으로 들고 `reasoning.next_step()`이 주입받는다.
-  우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 개발 토큰 없음**에서만
+  우회(`DAVI_DISABLE_PRIVACY_MASKING=true`)는 **development + loopback + 접근 토큰 없음**에서만
   기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
+  토큰은 팀용·테스트 참가자용 **둘 다** 해당한다(#257) — 어느 하나라도 있으면 거부한다.
 - **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 HANDOFF §5-4 전례 회피).
 - **모델 호출** — `llm_provider.py` 한 경계 뒤에 Gemini·OpenAI·Anthropic이 있다. 공급자 교체는
   `DAVI_LLM_PROVIDER`, 모델 교체는 `DAVI_MODEL`(비우면 공급자 기본 모델). 기본은
@@ -45,7 +46,8 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 제품 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. #94 Azure 공유 서버는
   제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
-  `config.Settings`가 import 시 거부한다.
+  `config.Settings`가 import 시 거부한다. **release APK가 이 서버를 바라보게 됐지만(#248)
+  그 성격은 안 바뀐다** — 붙는 쪽이 늘었을 뿐 서버는 여전히 토큰으로 닫힌 개발 서버다.
 - development를 loopback 밖에 바인딩할 때는 32자 이상 토큰이 필수다 —
   `DAVI_DEV_ACCESS_TOKEN`(팀) 또는 `DAVI_TEST_ACCESS_TOKEN`(외부 테스트 참가자) 중 하나면
   된다. **헤더는 `X-Davi-Dev-Token` 하나뿐이고 값만 다르다** — 그래서 앱에는 대응 코드가 없다.
@@ -80,8 +82,11 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
-- `GuideAction` 한 객체의 정상 출력에 충분한 여유를 두고 `maxOutputTokens=1024`로 장문 응답의
-  지연·비용 상한을 고정한다. schema 400 무스키마 폴백과 복구 재시도에도 같은 상한을 쓴다.
+- 출력 상한은 **`정상 응답 여유분 + 공급자 추론 몫`으로 자동 계산한다**(#259). 호출별 여유분은
+  안내 1024 · 의도 해석 512 · 앱 후보 1024이고, 여기에 공급자의 thinking 예산이 더해진다
+  (Gemini 기본 800 → 1824/1312/1824). 손으로 상한을 박지 않는다 — 값 조정은
+  `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다(`README.md`). schema 400 무스키마 폴백과 복구
+  재시도에도 같은 상한을 쓴다.
   후보가 `finishReason=MAX_TOKENS`로 끝나면 잘린 JSON을 일반 `invalid_json`으로 뭉개지 않고
   `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON fence 제거는 `gemini_response.py`의 순수 함수로
@@ -119,7 +124,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 ### 확정 (반영 완료)
 | # | 결정 | 근거 |
 |---|---|---|
-| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. 지금은 파일 주석만 있고 실제 연결이 없다(`LlmClient.reason`이 stub). 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
+| C1 | **`propertyOrdering`을 pydantic 필드 순서에서 코드로 생성**한다. 손으로 배열을 적지 않는다. | `propertyOrdering`은 표준 JSON Schema가 아닌 **Gemini 전용 키**다. **연결은 끝났다** — `llm.py`가 `ResponseContract`로 스키마를 만들고 `llm_provider.py`가 `generation_config["responseSchema"]`로 실어 보낸다. 두 벌을 손으로 맞추면 반드시 어긋나고, 어긋나면 HANDOFF §3-7(근거를 나중에 대충 채움)이 재발한다. |
 | C2 | **`GuideAction.action` → `action_type`으로 개명**한다(또는 `NextStepResponse.action` → `step`). | 지금은 `resp.action.action`. Kotlin·eval 픽스처 양쪽에서 읽기 나쁘다. 지금이 가장 싸다. |
 | C3 | **`GuideAction`에 `direction` 추가**(scroll 전용, 없으면 필드 생략). **뜻은 C17로 재정의됐다 — 보러 가는 방향이다.** | HANDOFF §12 로그가 `act=tap node=n12 dir=null`. `dir`은 실재 필드이며, 방향 없는 scroll은 앱이 실행할 수 없다. |
 | C4 | **`UiElement`에 `scroll_axis`, `next_swipe_direction`, `prev_swipe_direction` 추가.** **이 둘의 기준도 C17을 따른다** — `next`는 다음 내용을 보러 가는 방향이다(세로 목록이면 `down`). | HANDOFF §4가 검증 자산으로 명시("방향·끝 판정이 여기서 나온다"). 앱이 채울 수 있는 값인데 누락됐다. |
@@ -131,7 +136,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 | C10 | **`Screen`에 `has_scrollable_element`(선택) 추가.** True/False/None 세 상태를 구분한다. | 요소를 훑어 유추하면 "스크롤 요소가 없다"와 "앱이 아직 안 채웠다"가 섞인다. 삼성 런처 홈은 `scrollable` 노드가 0개인데 그 침묵을 모델이 "넘길 수 있다"로 읽었다(위와 같은 실측). **없다는 것도 상태다**(루트 `CLAUDE.md`: 지식이 아니라 상태를 준다). 이름은 "화면이 스크롤된다"가 아니라 관찰한 사실 그대로다 — 트리에 스크롤 노드가 없어도 실제로는 넘어가는 화면이 있다(런처 페이징). |
 | C11 | **앱이 `recent_actions`를 세션 안에 최대 10개 보관하고, 서버가 돌려준 구조 기반 `screen_signature`와 함께 다음 요청에 보낸다. 서버는 무상태로 반복을 판정한다.** | `recent_instructions`는 문구가 매번 달랐던 8회 scroll을 정확히 식별할 수 없다. `device_id`는 기기와 세션을 혼동하고, 서버 캐시는 TTL·멀티워커·세션 누출 문제를 만든다. #44의 generation 격리와 함께 구조화 이력을 비우면 같은 목표 재시작도 분리된다. 서명은 label을 포함하지 않아 시계·배터리 변동과 원문 label 해시의 재식별 위험을 피한다. |
 | C12 | **앱이 비식별 `X-Davi-Logical-Request-ID`와 `X-Davi-Attempt`를 HTTP header로 보내고 서버가 검증·echo·단계별 로그 연결에 사용한다. JSON 본문은 바꾸지 않는다.** | 앱이 10초에 timeout된 뒤 서버가 최대 20초 넘게 처리해 같은 화면 호출 5건이 겹쳤지만, 서버가 나중에 만든 `X-Request-ID`는 응답을 못 받은 앱과 대조할 수 없었다. ID는 무작위 UUID이며 goal·label·화면 서명·기기 ID에서 파생하지 않는다. #81은 관측만, dedupe·cache·timeout은 #82다. |
-| C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`을 반환한다**(되묻기 답변 예시도 필드가 아니라 `message` 문장에 싣는다 — C16). 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. 내부 Gemini 모델은 짧은 `decision_basis`를 먼저 생성하며 wire·로그에는 내보내지 않는다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. 결론보다 근거를 먼저 생성하는 C1 순서를 새 LLM 경계에도 유지한다. |
+| C13 | **`/v1/intent/slot-fill`은 고정 슬롯 목록 없이 `needs_clarification`/`ready`, 사용자 `message`, 선택 `goal`을 반환한다**(되묻기 답변 예시도 필드가 아니라 `message` 문장에 싣는다 — C16). 요청 이력은 이전에 끝난 user/assistant 쌍이고 `utterance`가 현재 발화다. 내부 모델은 짧은 `decision_basis`를 먼저 생성하며 wire·로그에는 내보내지 않는다. | #88의 사람 표식·답변 위치 규칙은 자연어 변형과 무관한 답변을 오분류했고, 슬롯 taxonomy가 새 목표마다 서버·앱 계약을 키운다. 질문 자체를 LLM이 생성하고 앱은 상태와 TTS만 맡는다. 무작위 `session_id`는 모델·로그·서버 상태에 쓰지 않는다. 결론보다 근거를 먼저 생성하는 C1 순서를 새 LLM 경계에도 유지한다. |
 | C14 | **`UiElement.editable`·`focused`와 선택 `Screen.ime_visible`을 서로 다른 입력 상태로 보낸다.** | `editable+focused`는 사용자가 입력 대상을 선택했다는 주 신호이고, `ime_visible`은 소프트 키보드 창 관측이다(#112). 둘만으로 추가 입력이 필요하다고 단정하지 않는다. 입력 준비 상태에서는 목표에 맞는 결과·후속 UI가 이미 보이는지 LLM이 먼저 판단하고, 보이면 포커스와 IME가 유지돼도 그 조작을 우선한다(#120). 그런 UI가 없고 입력이 더 필요할 때 `true`이면 같은 칸의 재탭보다 `type`, `false`이면 키보드를 여는 탭을 먼저 안내한다. 미관측 `None`은 기존 앱의 입력 안내를 막지 않는다. 일반 입력 원문과 IME 키 트리는 보내지 않는다. 구조 검증된 `NumberPicker`의 짧은 숫자는 사용자 입력 원문이 아니라 직접 조정한 선택 상태이므로 예외로 보존한다(#117). 어느 상태로도 입력 완료·목표 완료를 추론하지 않는다. 낡은 앱의 필드 누락은 `false`·`None`, 빈 window 목록은 미관측 `None`으로 받는다. |
 | C15 | **`/v1/intent/app-resolution`은 goal→일반 후보 plan, plan+기기 `candidate_id/status`→최종 상태의 2단 무상태 계약이다.** 후보는 최대 5개이고 앱이 server-origin plan을 echo하므로 서버 세션 캐시가 없다. | LLM은 앱 의미를 알지만 설치 상태를 모르고, Android는 launcher 앱을 알지만 의미를 일반화할 수 없다. 전체 설치 목록이나 기기 고유 label/package를 보내지 않고 두 판단을 결합한다(#102·#128). |
 | C16 | **되묻기 답변 예시는 별도 필드가 아니라 `needs_clarification`의 `message` 문장에 싣는다 — 보기 목록 필드를 계약에 추가하지 않는다.** 질문 문장은 열린 채로 두고 예시는 뒤따르는 별도 문장("예를 들면 ~요")이다. 개수는 스키마가 아니라 프롬프트로 통제한다(많아야 둘, 줄 것이 없으면 붙이지 않는다 — 예시 없는 질문도 정상). 프롬프트는 **고유명 생성을 금지하고 행위 유형 예시만 허용**한다. 프롬프트 구현은 #140. | 되묻기가 열린 질문 하나뿐이라 막연한 답이 돌아오고 같은 질문이 다시 나갔다. 5왕복 상한까지 헛돌면 실패 화면으로 끝나 처음부터 다시다(#123). 필드로 실으면 화면에 선택지로 그려지는 길이 열리는데, **화면에 뜬 보기는 예시가 아니라 선택지로 읽혀** 원하는 답이 없어도 어르신이 그중에서 고르고, 개수가 자리를 만들면 줄 근거가 없는 자리에서도 모델이 채운 것이 **어르신이 "응 그거"로 받아버리는 자리**에 뜬다. 고유명이 긍정되면 없는 대상이 `goal`에 박혀 되돌릴 지점이 없고, 행위 유형은 틀려도 부정되고 끝난다 — 그래서 금지 대상은 추측 자체가 아니라 고유명 생성이다. 근거: `docs/voice-goal.md` §2 [합의] F(2026-08-14 팀 합의, 칩·별도 필드 초안을 물린 경위 포함). |

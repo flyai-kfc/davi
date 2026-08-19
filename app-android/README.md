@@ -25,7 +25,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ### 지금 상태만 보고 싶다면
 
-아무것도 바꾸지 않고 기기·설치 패키지·접근성·오버레이 상태를 한 줄씩 출력한다.
+아무것도 바꾸지 않고 기기·설치 패키지·접근성 상태를 한 줄씩 출력한다.
 
 ```powershell
 ./scripts/dev-install.ps1 -Status
@@ -36,6 +36,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 패키지    : com.davi.helper.debug 0.1.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
 ```
+
+오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
 있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
@@ -206,16 +208,23 @@ DAVI_DISABLE_PRIVACY_MASKING=false
 `10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
 없다. 사설 Wi-Fi 주소에는 토큰이 필수다. Azure 공유 개발 서버는 기본 443 포트의
 `*.azurecontainerapps.io` **HTTPS** URL만 허용하며 원격 host이므로 토큰이 필수다. HTTPS에는
-평문 통신 예외를 만들지 않는다. 그 밖의 공개 endpoint와 터널은 허용하지 않으며, release에는
-어느 개발 값도 들어가지 않는다.
+평문 통신 예외를 만들지 않는다. 그 밖의 공개 endpoint와 터널은 허용하지 않는다. release에는
+**`DAVI_DEBUG_*` 계열이 들어가지 않는다** — 다만 release는 자기 몫의 Azure URL·접근 토큰을
+따로 갖는다(아래).
 
 일회성 자동 검증은 파일에 토큰을 기록하지 않도록 같은 이름의 환경변수를 사용할 수 있다.
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
 개발 설정으로 취급한다.
 
-release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 빌드되고 평문 HTTP를
-거부한다. `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이
-남아 있으면 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
+**release는 Azure 개발 서버를 바라본다**(2026-08-19, #248). URL은 공개 식별자라 상수이고
+(`build.gradle.kts`의 `releaseServerUrl`), 접근 토큰은 `local.properties`의
+`DAVI_RELEASE_ACCESS_TOKEN`을 **`localSetting`으로** 읽는다 — release가 정당하게 쓰는 값이라
+`debugSetting`이 막는 대상에 넣으면 안 된다. **값이 비면 `verifyReleaseConfiguration`이 빌드를
+실패시킨다.** 토큰은 APK에서 추출되므로 비밀이 아니고 **회전으로 다룬다**(내부 테스트 종료 즉시
+서버에서 무효화). 평문 HTTP는 그대로 거부한다.
+
+`local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이 남아 있으면
+release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
 
 `DAVI_DISABLE_PRIVACY_MASKING`도 마찬가지로 release 관문에 걸린다 — **값이 `false`여도
 설정이 남아 있다는 것 자체를 실패로 본다.** `-PdaviDisablePrivacyMasking`을 준 release 빌드도
@@ -336,8 +345,9 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
-- Gradle 구성(버전 카탈로그, viewBinding, debug 전용 서버 URL·개발 토큰 주입), 매니페스트, 접근성 서비스 등록.
-- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 두 권한이 갖춰지면 대화 화면으로
+- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL·접근 토큰 주입 — debug는 `DAVI_DEBUG_*`,
+  release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`), 매니페스트, 접근성 서비스 등록.
+- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
 - 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal 전달까지

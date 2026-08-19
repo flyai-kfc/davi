@@ -49,8 +49,8 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
   - **배경은 메인·ON-2와 같은 분홍 메시다**(2026-08-18 결정: 앱의 모든 배경이 같다).
     이전에는 이 화면만 흰 단색(`davi_bg`)이었다.
   - **서체는 Cafe24다** — 앱명·부제·버튼 라벨 전부. 시안이 그렇게 잡았다.
-    `DESIGN-CONVENTIONS.md`의 C1 표가 온보딩을 Pretendard로 적고 있으나 **표가 낡았다**
-    (ON-2가 먼저 갈렸고 이 화면이 둘째다).
+    `DESIGN-CONVENTIONS.md` C1이 **온보딩을 예외로 명시한다**(2026-08-19 갱신, #266) —
+    ON-2가 먼저 갈렸고 이 화면이 둘째다.
   - **앱명은 28sp다. 시안은 40이고, 램프(28·24·20·17·14)로 스냅했다**(#266) — 40은 글자
     배율 2.0에서 80sp라 「다비」가 버튼 폭 288을 넘길 위험이 있다. 램프 밖을 그대로 쓴 선례
     (메인 7 라벨 18 · 실패 문구 19)가 있으므로 규칙이 아니라 이 화면의 판단이다.
@@ -388,6 +388,16 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
 
 ---
 
+## GD 공통 — 화면이 꺼졌을 때 (동작만)
+
+- **오버레이를 걷는다.** 잠금이 풀린 뒤(`ACTION_USER_PRESENT`)에만 되살리고, **세션은 유지한다**.
+  화면만 켜진 잠금화면에서는 되살리지 않는다.
+- **꺼진 동안 도착한 응답은 버린다** — 그리면 잠금화면에 창이 다시 붙는다. 깨어날 때 그 화면을
+  다시 묻는다. 정체 타이머도 재개 시점으로 다시 찍는다(꺼져 있던 구간은 정체가 아니다).
+- 기준이 키가드가 아니라 **화면 꺼짐**인 이유 — 안내 도중 보안 인증이 뜨는 것은 정상 흐름이라
+  그걸로 세션을 끝내면 안 된다. 원칙은 `SPEC.md` §2, 앱 쪽 규칙은 `app-android/CLAUDE.md`(#56).
+- **시각은 여기서 정하지 않는다.** 걷혔다 돌아오는 전환에 별도 표현을 둘지는 Figma가 원본이다.
+
 ## 컴포넌트 인덱스 (Figma Components 페이지)
 
 button · button/oauth-kakao · button/mic · card/guide · chip/confirm-pair ·
@@ -418,9 +428,10 @@ logo · icon/*(Lucide, 브랜드 제외)
    - [미결] **말투가 갈린다.** 대부분 해요체인데 합니다체가 섞여 있다 —
      `onboarding_permission_note`("최초 1회만 하면 됩니다", #236) ·
      `accessibility_service_description` · `conversation_guiding_title`("안내가 진행 중입니다", #224).
-     (`guide_hint`·`onboarding_body`도 합니다체지만 debug 백업 화면 전용이라 뺐다 —
-     #232가 `src/debug`로 옮긴다. `onboarding_body`는 #236이 ON-2를 v2로 바꾸며 release에서
-     빠졌다.)
+     (`guide_hint`·`onboarding_body`도 합니다체지만 release가 안 써서 뺐다. `onboarding_body`는
+     #236이 ON-2를 v2로 바꾸며 빠졌고, **`src/debug`로 옮기지는 않는다** — `strings.xml`이 그 키를
+     #227의 접근성 고지·동의 문구 몫으로 예약해 뒀다. `guide_hint` 등 나머지 debug 전용 문구의
+     이동은 #232이고, 그쪽은 #58 뒤로 미뤄졌다.)
      **온보딩은 사용자가 가장 먼저 보는 화면이다** — 이상값 하나를 고치는 문제가 아니라
      온보딩·시스템 설명까지 통일할지, 그 둘을 예외로 둘지의 문제다.
    - [미결] **버튼을 이름으로 부르는 문구가 다시 생겼다.** #189가 "라벨이 바뀌면 문구가 조용히
