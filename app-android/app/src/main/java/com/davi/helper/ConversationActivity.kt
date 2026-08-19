@@ -180,6 +180,12 @@ class ConversationActivity : AppCompatActivity() {
             runOnUiThread { markMicReady("mic_ready") }
         }
 
+        // 화면을 바꾸지 않는다 — 이 신호가 이르다는 것이 #273의 실측이다. 남기는 이유는
+        // 아래 mic_ready와의 간격이 기기·인식기별 차이를 보여 주기 때문이다.
+        override fun onEndpointerReady() {
+            runOnUiThread { GuideTelemetry.voiceState("endpointer_ready") }
+        }
+
         override fun onRmsChanged(rmsdB: Float) {
             // 프레임마다 오는 값이라 setState를 거치지 않고 뷰에 곧장 넘긴다 — 상태가 바뀐 게
             // 아니므로 render()를 다시 돌릴 이유가 없다. 값 정리·수렴은 뷰 쪽에서 한다(#132).
@@ -895,6 +901,8 @@ class ConversationActivity : AppCompatActivity() {
      * 마이크가 열렸다고 화면에 알린다(#273). **듣는 중일 때만** — 상태가 이미 넘어갔으면
      * 무시한다. 유령 콜백은 인식기 정리가 리스너를 먼저 끊어 막지만, 상한 타이머는 우리
      * 것이라 여기서 한 번 더 거른다.
+     *
+     * 부르는 쪽은 첫 음량 이벤트(정상)와 상한 타이머(신호가 안 오는 인식기) 둘뿐이다.
      */
     private fun markMicReady(telemetry: String) {
         micReadyHandler.removeCallbacks(micReadyFallback)
@@ -944,11 +952,15 @@ class ConversationActivity : AppCompatActivity() {
         const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
 
         /**
-         * 준비 완료 신호를 기다리는 상한(ms). 실기기 실측이 약 1초라 그보다 여유를 두되,
-         * 어르신이 "왜 안 들어?" 하기 전에는 뜨는 값으로 잡았다. 근거는 실측 하나뿐이라
-         * 다른 기기가 더 느리면 조정한다.
+         * 첫 음량 이벤트를 기다리는 상한(ms). 세기를 안 주는 인식기에서도 레이블이 뜨게 하는
+         * 최후 수단이다.
+         *
+         * **넉넉히 잡는다.** 이게 돌면 아직 안 들리는데 "듣고 있어요"를 띄우는 것이라
+         * #273이 고친 그 상태로 돌아간다 — 늦게 뜨는 손해보다 크다. 실측(SM-S921N, 청취 8회)이
+         * 890~940ms에 몰려 있어 두 배 남짓을 뒀고, 그 8회에서 상한이 돈 적은 없다.
+         * 다른 기기에서 `mic_ready_fallback`이 로그에 보이면 그 기기 값으로 다시 잡는다.
          */
-        const val MIC_READY_FALLBACK_MS = 1_500L
+        const val MIC_READY_FALLBACK_MS = 2_000L
 
         /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
         const val OPAQUE_IMAGE_ALPHA = 255

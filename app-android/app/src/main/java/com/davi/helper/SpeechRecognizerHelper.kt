@@ -33,11 +33,28 @@ class SpeechRecognizerHelper(
         fun onMicPreparing() = Unit
 
         /**
-         * 프레임워크가 발화를 받을 준비를 마쳤다 — **여기서부터 실제로 들린다.**
-         * 화면이 "듣고 있어요"를 띄우는 시점이 이 신호다(#273). `start()` 호출은
-         * 시점이 아니다 — 인식 서비스에 붙는 시간이 있어 실기기에서 약 1초 벌어졌다.
+         * **마이크가 실제로 소리를 넘기기 시작했다.** 화면이 "듣고 있어요"를 띄우는 시점이
+         * 이 신호다(#273).
+         *
+         * 근거는 첫 음량 이벤트다 — 세기 값은 열린 마이크에서만 나온다.
+         *
+         * **"마이크가 열렸다"와 "인식이 시작됐다"가 다르다**는 것이 2026-08-19 실측의 핵심이다
+         * (SM-S921N, 청취 8회). `startListening()` 기준으로 오디오 정책의 입력 개시와 시스템
+         * 마이크 표시는 +60ms, `onReadyForSpeech`는 +240~290ms, 첫 음량은 +890~940ms에 왔다.
+         * 그런데 **첫 음량 전에 한 말은 마이크가 열려 있어도 인식되지 않았다** — 사용자가
+         * 겪은 잘림이 이 구간이다. `onReadyForSpeech`는 이름 그대로 "엔드포인터가 준비됐다"이지
+         * "녹음한 것을 받아들인다"가 아니라서 화면 기준으로 쓸 수 없다.
          */
         fun onMicReady() = Unit
+
+        /**
+         * `onReadyForSpeech` 그대로 — **진단용**이다. 화면 판단에 쓰지 않는다.
+         *
+         * 이 신호와 [onMicReady] 사이가 기기·인식기마다 얼마나 벌어지는지를 로그에 남겨
+         * 두려고 유지한다. 위 실측에서 그 간격은 약 650ms였고, 다른 기기에서 다시 확인할 때도
+         * 이 두 줄의 간격이 답이다.
+         */
+        fun onEndpointerReady() = Unit
 
         /**
          * 마이크 입력 세기(dB). 파도·글로우가 목소리에 반응하는 데만 쓴다(#132).
@@ -52,6 +69,9 @@ class SpeechRecognizerHelper(
     private var recognizer: SpeechRecognizer? = null
     private var usingOnDevice = false
     private var fallbackAttempted = false
+
+    /** 이번 인식 세션에서 [Listener.onMicReady]를 이미 보냈는가. 첫 음량 이벤트에서만 보낸다. */
+    private var micReadySignalled = false
 
     val isAvailable: Boolean
         get() = onDeviceAvailable() || SpeechRecognizer.isRecognitionAvailable(appContext)
@@ -69,6 +89,7 @@ class SpeechRecognizerHelper(
 
     private fun startRecognizer(onDevice: Boolean) {
         // 폴백 재시작도 이 함수를 타므로 "준비 중"이 그때마다 다시 나간다(#273).
+        micReadySignalled = false
         listener.onMicPreparing()
         try {
             usingOnDevice = onDevice
@@ -88,6 +109,7 @@ class SpeechRecognizerHelper(
         destroyRecognizer()
         usingOnDevice = false
         fallbackAttempted = false
+        micReadySignalled = false
     }
 
     private fun destroyRecognizer() {
@@ -150,9 +172,17 @@ class SpeechRecognizerHelper(
                 listener.onError(error)
             }
         }
-        override fun onReadyForSpeech(params: Bundle?) = listener.onMicReady()
+        override fun onReadyForSpeech(params: Bundle?) = listener.onEndpointerReady()
         override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = listener.onRmsChanged(rmsdB)
+        override fun onRmsChanged(rmsdB: Float) {
+            // 첫 음량 = 마이크가 실제로 소리를 넘기기 시작한 지점(#273). 값보다 **도착 자체**가
+            // 정보다. 알림을 세기 전달보다 먼저 보내 화면이 파도를 켜고 나서 값을 받게 한다.
+            if (!micReadySignalled) {
+                micReadySignalled = true
+                listener.onMicReady()
+            }
+            listener.onRmsChanged(rmsdB)
+        }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
