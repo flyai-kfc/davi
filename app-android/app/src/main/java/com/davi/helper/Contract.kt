@@ -56,12 +56,11 @@ data class NextStepRequest(
     val goal: String,
     val screen: Screen,
     @SerialName("device_id") val deviceId: String? = null,
-    @SerialName("recent_instructions") val recentInstructions: List<String> = emptyList(),
     /**
-     * 반복 가드 전용 구조화 이력. 안내 문장과 역할을 섞지 않는다(C11).
+     * 이 세션에서 실제로 표시한 안내들. **스텝 하나 = 안내 하나**다(C11 개정, #270).
      * 활성 [GuideSession] 안에서만 최대 10개를 보관하므로 서버 상태나 기기 식별자가 필요 없다.
      */
-    @SerialName("recent_actions") val recentActions: List<RecentAction> = emptyList(),
+    val steps: List<GuideStep> = emptyList(),
     @SerialName("client_version") val clientVersion: String? = null,
 )
 
@@ -88,6 +87,15 @@ data class NextStepResponse(
 @Serializable
 data class GuideAction(
     @SerialName("expected_result") val expectedResult: String,
+    /**
+     * 모델이 쓴 현재 화면 한 줄 요약(C11 개정, #270). 앱은 **해석하지 않고** 스텝의
+     * `screen_hint`로 되돌려 보낸다 — 화면당 한 번 생성되고 이후로는 echo만 돈다.
+     *
+     * 서버 스키마는 required지만 여기 기본값을 두는 이유는 하나뿐이다 — 앱이 먼저 올라간
+     * 구간에서 이 필드가 없는 응답을 만나면 **안내 전체가 파싱 실패로 죽는다.** 값이 비면
+     * 이력에 싣지 않는 것으로 끝난다.
+     */
+    @SerialName("screen_summary") val screenSummary: String = "",
     val evidence: String,
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
@@ -95,12 +103,32 @@ data class GuideAction(
     val instruction: String,
 )
 
+/**
+ * 안내 한 번의 기록(C11 개정, #270). 기준은 서버 `GuideStep`이다.
+ *
+ * 값의 출처는 둘뿐이다 — **서버 응답 echo**([instruction]·[actionType]·[direction]·
+ * [targetLabel]·[screenHint]·[structureSignature])와 **앱 관측**([screenChanged]·[performed]·
+ * [contentSignature]). 앱은 나르기만 하고 해석하지 않는다. [targetLabel]만 `target_node_id`로
+ * 현재 화면에서 찾아 붙이는데, 강조를 그리려고 어차피 하는 조회다.
+ *
+ * [performed]와 [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 3·4). 필드를 먼저
+ * 두는 것은 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
+ */
 @Serializable
-data class RecentAction(
-    @SerialName("screen_signature") val screenSignature: String,
+data class GuideStep(
+    val instruction: String,
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
-    @SerialName("target_node_id") val targetNodeId: String? = null,
+    /** 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다. */
+    @SerialName("target_label") val targetLabel: String? = null,
+    /** 그 안내가 나간 화면이 무엇이었는지. 응답 [GuideAction.screenSummary]의 echo. */
+    @SerialName("screen_hint") val screenHint: String? = null,
+    /** 응답 [NextStepResponse.screenSignature]의 echo. 앱이 만들지 않는다. */
+    @SerialName("structure_signature") val structureSignature: String,
+    /** 그 안내 뒤 화면이 실제로 바뀌었는가. `null`은 아직 모른다는 뜻이다. */
+    @SerialName("screen_changed") val screenChanged: Boolean? = null,
+    val performed: Boolean? = null,
+    @SerialName("content_signature") val contentSignature: String? = null,
 )
 
 /**

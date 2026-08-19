@@ -27,19 +27,30 @@ class GuideSessionTest {
 
     private fun currentGeneration(): Long = GuideSession.active()!!.generation
 
-    private fun history(): List<String> = GuideSession.active()?.recentInstructions.orEmpty()
+    private fun steps(): List<GuideStep> = GuideSession.active()?.steps.orEmpty()
 
-    private fun actionHistory(): List<RecentAction> = GuideSession.active()?.recentActions.orEmpty()
+    private fun history(): List<String> = steps().map { it.instruction }
 
-    private fun sampleAction(targetNodeId: String = "n1") =
-        GuideAction(
-            expectedResult = "목표 화면",
-            evidence = "구조화 근거",
-            actionType = ActionType.SCROLL,
-            direction = SwipeDirection.UP,
-            targetNodeId = targetNodeId,
-            instruction = "화면을 넘기세요.",
-        )
+    private fun sampleStep(
+        instruction: String = "화면을 넘기세요.",
+        targetLabel: String? = "카카오톡",
+        screenHint: String? = "런처 홈 화면",
+        structureSignature: String = "a".repeat(64),
+    ) = GuideStep(
+        instruction = instruction,
+        actionType = ActionType.SCROLL,
+        direction = SwipeDirection.UP,
+        targetLabel = targetLabel,
+        screenHint = screenHint,
+        structureSignature = structureSignature,
+    )
+
+    /** 안내 하나를 기록하는 짧은 손잡이. 화면 시그니처를 안 쓰는 테스트가 대부분이다. */
+    private fun record(
+        generation: Long = currentGeneration(),
+        instruction: String = "화면을 넘기세요.",
+        screenSignature: String = SIGNATURE,
+    ) = GuideSession.recordStep(generation, screenSignature, sampleStep(instruction = instruction))
 
     @Test
     fun `시작하면 공백을 제거한 목표가 남는다`() {
@@ -106,8 +117,8 @@ class GuideSessionTest {
     fun `안내 이력이 순서대로 쌓인다`() {
         GuideSession.start("카카오톡 열기")
 
-        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
-        GuideSession.recordInstruction(currentGeneration(), "  친구 목록을 누르세요.  ")
+        record(instruction = "카카오톡을 누르세요.")
+        record(instruction = "  친구 목록을 누르세요.  ")
 
         assertEquals(
             listOf("카카오톡을 누르세요.", "친구 목록을 누르세요."),
@@ -115,13 +126,32 @@ class GuideSessionTest {
         )
     }
 
+    /** 앱은 값을 나르기만 한다 — 응답 echo가 스텝에 그대로 실려야 서버가 문장을 만들 수 있다. */
+    @Test
+    fun `스텝은 응답 echo 값을 그대로 나른다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.recordStep(currentGeneration(), SIGNATURE, sampleStep())
+
+        val step = steps().single()
+        assertEquals(ActionType.SCROLL, step.actionType)
+        assertEquals(SwipeDirection.UP, step.direction)
+        assertEquals("카카오톡", step.targetLabel)
+        assertEquals("런처 홈 화면", step.screenHint)
+        assertEquals("a".repeat(64), step.structureSignature)
+        // 아직 관측하지 않은 셋. `performed`·`content_signature`는 후속 서브이슈다(#270).
+        assertNull(step.screenChanged)
+        assertNull(step.performed)
+        assertNull(step.contentSignature)
+    }
+
     /** 반복 자체가 모델에게 주는 신호다. 중복이라고 지우면 그 신호가 사라진다. */
     @Test
     fun `같은 안내가 반복돼도 그대로 남는다`() {
         GuideSession.start("카카오톡 열기")
 
-        GuideSession.recordInstruction(currentGeneration(), "화면을 넘기세요.")
-        GuideSession.recordInstruction(currentGeneration(), "화면을 넘기세요.")
+        record()
+        record()
 
         assertEquals(2, history().size)
     }
@@ -130,7 +160,7 @@ class GuideSessionTest {
     fun `상한을 넘으면 오래된 것부터 버린다`() {
         GuideSession.start("카카오톡 열기")
 
-        repeat(13) { GuideSession.recordInstruction(currentGeneration(), "안내 $it") }
+        repeat(13) { record(instruction = "안내 $it") }
 
         val history = history()
         assertEquals(10, history.size)
@@ -138,55 +168,108 @@ class GuideSessionTest {
         assertEquals("안내 12", history.last())
     }
 
+    /**
+     * 문장이 비어도 **행동은 있었다.** 스텝을 통째로 버리면 그 안내의 조작 종류와 화면 변화까지
+     * 함께 사라진다 — 프롬프트에서 빈 줄을 거르는 것은 서버의 몫이다(`prompt._recent_step_lines`).
+     */
     @Test
-    fun `구조화 행동 이력도 순서와 상한을 지킨다`() {
-        GuideSession.start("카카오톡 열기")
-        val generation = currentGeneration()
-
-        repeat(13) { index ->
-            GuideSession.recordAction(
-                generation,
-                index.toString().padStart(64, '0'),
-                sampleAction(targetNodeId = "n$index"),
-            )
-        }
-
-        assertEquals(10, actionHistory().size)
-        assertEquals("n3", actionHistory().first().targetNodeId)
-        assertEquals("n12", actionHistory().last().targetNodeId)
-    }
-
-    @Test
-    fun `빈 안내는 기록하지 않는다`() {
+    fun `빈 안내도 스텝으로는 남는다`() {
         GuideSession.start("카카오톡 열기")
 
-        GuideSession.recordInstruction(currentGeneration(), "   ")
+        record(instruction = "   ")
 
-        assertTrue(history().isEmpty())
+        assertEquals(1, steps().size)
+        assertEquals("", steps().single().instruction)
     }
 
     /** 이력이 남으면 다음 세션의 프롬프트에 엉뚱한 안내가 섞인다. */
     @Test
     fun `중지 후 같은 목표로 다시 시작해도 이력은 비어 있다`() {
         GuideSession.start("카카오톡 열기")
-        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
-        GuideSession.recordAction(currentGeneration(), "a".repeat(64), sampleAction())
+        record(instruction = "카카오톡을 누르세요.")
 
         GuideSession.stop()
         GuideSession.start("카카오톡 열기")
 
-        assertTrue(history().isEmpty())
-        assertTrue(actionHistory().isEmpty())
+        assertTrue(steps().isEmpty())
     }
 
     @Test
     fun `새 목표로 시작하면 이력이 비워진다`() {
         GuideSession.start("카카오톡 열기")
-        GuideSession.recordInstruction(currentGeneration(), "카카오톡을 누르세요.")
+        record(instruction = "카카오톡을 누르세요.")
 
         GuideSession.start("카메라 열기")
 
         assertTrue(history().isEmpty())
+    }
+
+    // --- 화면이 바뀌었는가 (#270) -------------------------------------------------
+    //
+    // 스텝은 안내를 표시할 때 생기고, 이 값은 그다음 관측에서 확정된다. 새 신호를 만들지 않고
+    // 시그니처 홀드와 정체 판정의 결과를 적어 둘 뿐이다.
+
+    @Test
+    fun `다른 화면이 안정되면 마지막 스텝이 바뀐 것으로 닫힌다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+
+        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
+
+        assertEquals(true, steps().single().screenChanged)
+    }
+
+    @Test
+    fun `같은 화면을 다시 봐도 아직 판정하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+
+        GuideSession.observeScreenChange(currentGeneration(), SIGNATURE)
+
+        assertNull(steps().single().screenChanged)
+    }
+
+    @Test
+    fun `안내한 화면이 정체되면 그대로였던 것으로 닫힌다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+
+        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+
+        assertEquals(false, steps().single().screenChanged)
+    }
+
+    /** 한 번 닫힌 판정은 뒤집지 않는다 — 그 안내 뒤에 일어난 일은 이미 관측했다. */
+    @Test
+    fun `이미 닫힌 스텝은 다시 판정하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+
+        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
+
+        assertEquals(false, steps().single().screenChanged)
+    }
+
+    /** 다른 화면의 정체는 그 안내에 대한 답이 아니다. */
+    @Test
+    fun `다른 화면의 정체는 마지막 스텝을 닫지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+
+        GuideSession.observeScreenStuck(currentGeneration(), OTHER_SIGNATURE)
+
+        assertNull(steps().single().screenChanged)
+    }
+
+    @Test
+    fun `스텝이 없으면 화면 관측은 아무것도 하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
+        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+
+        assertTrue(steps().isEmpty())
     }
 
     // --- 늦게 도착한 응답 (PR #44 리뷰) ------------------------------------------
@@ -226,22 +309,9 @@ class GuideSessionTest {
         GuideSession.stop()
         GuideSession.start("카카오톡 열기")
 
-        GuideSession.recordInstruction(stale, "이전 세션의 안내입니다.")
+        record(generation = stale, instruction = "이전 세션의 안내입니다.")
 
-        assertTrue(history().isEmpty())
-    }
-
-    /** 늦은 응답의 행동도 새 세션 서버 가드 이력에 섞이면 안 된다. */
-    @Test
-    fun `이전 세대의 행동은 기록되지 않는다`() {
-        GuideSession.start("카카오톡 열기")
-        val stale = currentGeneration()
-        GuideSession.stop()
-        GuideSession.start("카카오톡 열기")
-
-        GuideSession.recordAction(stale, "b".repeat(64), sampleAction())
-
-        assertTrue(actionHistory().isEmpty())
+        assertTrue(steps().isEmpty())
     }
 
     /** 세션이 없는 동안 도착한 응답도 버린다. */
@@ -394,7 +464,7 @@ class GuideSessionTest {
         GuideSession.onDone(generation, false, SIGNATURE)
         GuideSession.onDone(generation, false, SIGNATURE)
 
-        GuideSession.recordInstruction(generation, "카메라를 누르세요.")
+        record(generation, "카메라를 누르세요.")
 
         assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
     }
@@ -455,7 +525,7 @@ class GuideSessionTest {
         val generation = currentGeneration()
         GuideSession.onDone(generation, true, SIGNATURE)
 
-        GuideSession.recordInstruction(generation, "다른 화면의 안내")
+        record(generation, "다른 화면의 안내")
 
         assertTrue(GuideSession.awaitingConfirm)
         assertTrue(GuideSession.isActive)
@@ -475,7 +545,7 @@ class GuideSessionTest {
         GuideSession.onDone(generation, true, SIGNATURE)
         GuideSession.confirmRejected()
 
-        GuideSession.recordInstruction(generation, "알람을 눌러 보세요.")
+        record(generation, "알람을 눌러 보세요.")
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,

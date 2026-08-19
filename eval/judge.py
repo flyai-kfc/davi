@@ -245,7 +245,9 @@ def build_judge_prompt(
     evaluation_data = {
         "goal": request.goal,
         "screen": request.screen.model_dump(mode="json"),
-        "recent_instructions": request.recent_instructions,
+        "steps": [
+            step.model_dump(mode="json", exclude_none=True) for step in request.steps
+        ],
         "reference_action": reference.model_dump(mode="json", exclude_none=True),
         "candidate_action": candidate.model_dump(mode="json", exclude_none=True),
     }

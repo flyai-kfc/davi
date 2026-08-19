@@ -42,6 +42,7 @@ def _scroll(
 ) -> GuideAction:
     return GuideAction(
         expected_result="목표 앱을 찾는다",
+        screen_summary="테스트 화면",
         evidence="현재 화면에서 목표 앱이 보이지 않음",
         action_type=ActionType.SCROLL,
         direction=direction,

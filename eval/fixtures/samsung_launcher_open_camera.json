@@ -126,7 +126,7 @@
         }
       ]
     },
-    "recent_actions": []
+    "steps": []
   },
   "expected": {
     "stub_outcome": "success",

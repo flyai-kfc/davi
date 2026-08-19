@@ -48,12 +48,14 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
                             "has_scrollable_element": False,
                             "ime_visible": False,
                         },
-                        "recent_instructions": ["이전 안내"],
-                        "recent_actions": [
+                        "steps": [
                             {
-                                "screen_signature": "screen-0",
+                                "instruction": "이전 안내",
                                 "action_type": "tap",
-                                "target_node_id": "n2",
+                                "target_label": "알람",
+                                "screen_hint": "시계 앱의 알람 목록 화면",
+                                "structure_signature": "screen-0",
+                                "screen_changed": True,
                             }
                         ],
                         "client_version": "0.1",
@@ -97,6 +99,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
 
             self.assertIn("## 가이드 1", report)
             self.assertIn("이전 안내", report)
+            self.assertIn("시계 앱의 알람 목록 화면", report)
             self.assertIn("| `n1` | 추가 |", report)
             self.assertIn("| expected_result | 편집 화면 |", report)
             self.assertIn("| evidence | 추가 버튼 |", report)

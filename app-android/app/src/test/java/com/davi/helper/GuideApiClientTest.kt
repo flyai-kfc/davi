@@ -65,8 +65,12 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"editable\":true"))
         assertTrue(body.contains("\"focused\":true"))
         assertTrue(body.contains("\"ime_visible\":true"))
-        assertTrue(body.contains("\"recent_actions\""))
-        assertTrue(body.contains("\"screen_signature\":\"${"b".repeat(64)}\""))
+        assertTrue(body.contains("\"steps\""))
+        assertTrue(body.contains("\"structure_signature\":\"${"b".repeat(64)}\""))
+        assertTrue(body.contains("\"screen_hint\":\"런처 홈 화면\""))
+        assertTrue(body.contains("\"screen_changed\":true"))
+        // 아직 관측하지 않는 둘은 explicitNulls=false라 아예 실리지 않는다(#270 서브 3·4).
+        assertFalse(body.contains("\"performed\""))
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -212,11 +216,14 @@ class GuideApiClientTest {
             ),
             imeVisible = true,
         ),
-        recentActions = listOf(
-            RecentAction(
-                screenSignature = "b".repeat(64),
+        steps = listOf(
+            GuideStep(
+                instruction = "'설정'을 눌러 주세요.",
                 actionType = ActionType.TAP,
-                targetNodeId = "n1",
+                targetLabel = "설정",
+                screenHint = "런처 홈 화면",
+                structureSignature = "b".repeat(64),
+                screenChanged = true,
             ),
         ),
         clientVersion = "0.1.0",

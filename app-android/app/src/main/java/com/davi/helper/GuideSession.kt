@@ -36,8 +36,7 @@ object GuideSession {
     data class Active(
         val generation: Long,
         val goal: String,
-        val recentInstructions: List<String>,
-        val recentActions: List<RecentAction>,
+        val steps: List<GuideStep>,
     )
 
     /**
@@ -50,8 +49,7 @@ object GuideSession {
             Active(
                 generation = generation,
                 goal = it,
-                recentInstructions = instructions.toList(),
-                recentActions = actions.toList(),
+                steps = steps.toList(),
             )
         }
 
@@ -67,21 +65,27 @@ object GuideSession {
     private val listeners = CopyOnWriteArrayList<Listener>()
 
     /**
-     * 이 세션에서 사용자에게 보여준 안내들. 서버 프롬프트에 실려 **같은 안내 반복을 막는다**
-     * (HANDOFF §3-10: 매 스텝 무상태면 모델이 직전 안내를 모른다).
+     * 이 세션에서 사용자에게 보여준 안내들. **스텝 하나 = 안내 하나**다(C11 개정, #270).
+     * 서버 프롬프트에 실려 **같은 안내 반복을 막는다**(HANDOFF §3-10: 매 스텝 무상태면 모델이
+     * 직전 안내를 모른다).
      *
-     * 세션이 끝나거나 목표가 바뀌면 비운다 — 다음 목표에 이전 안내가 새면 안 된다.
+     * 문장 이력과 구조 이력을 따로 들던 것을 합친 것이다. 나뉘어 있던 동안 모델은 "무엇을
+     * 안내했는지"만 알고 **그래서 화면이 바뀌었는지**를 몰랐다.
+     *
+     * 값은 서버 응답의 echo와 앱 관측뿐이다 — 화면 서명도 서버가 계산해 응답에 실은 값을
+     * 그대로 보관한다. 세션이 끝나거나 목표가 바뀌면 비운다.
      * 서비스의 네트워크 스레드가 읽고 메인 스레드가 쓰므로 접근을 잠금으로 막는다.
      */
-    private val instructions = ArrayDeque<String>()
+    private val steps = ArrayDeque<GuideStep>()
 
     /**
-     * 서버 반복 가드에 보내는 구조화 행동 이력.
+     * 마지막 스텝이 표시된 화면의 **기기 시그니처**([ScreenSignature]).
      *
-     * 화면 서명은 서버가 label 없이 계산해 응답에 실은 값을 그대로 보관한다. 따라서 앱이 화면
-     * 원문을 해시하거나 별도 식별자를 만들지 않는다. 세션 generation이 바뀌면 함께 폐기한다.
+     * 스텝이 들고 있는 `structure_signature`는 서버가 label 없이 만든 값이라 앱이 다시 계산할
+     * 수 없다. 화면이 바뀌었는지는 앱이 이미 매 샘플 만드는 기기 시그니처로 판정한다 —
+     * 두 서명은 목적이 다르고 서로를 대신하지 못한다.
      */
-    private val actions = ArrayDeque<RecentAction>()
+    private var lastStepSignature: String? = null
 
     /**
      * 이 세션에서 **연속으로** 믿지 않고 넘긴 `done` 수. done이 아닌 안내가 실제로 표시되면
@@ -109,7 +113,7 @@ object GuideSession {
      *
      * **유효기간이 있다.** 다른 화면의 done이 오거나 **안내가 실제로 나가면**(= 사용자가
      * 진행했다) 지운다. 후자가 없으면 완료 신호가 드문 실제 세션에서 이력이 끝까지 남는다
-     * ([recordInstruction], PR #153 리뷰 P2).
+     * ([recordStep], PR #153 리뷰 P2).
      */
     private var rejectedSignature: String? = null
 
@@ -260,12 +264,16 @@ object GuideSession {
     }
 
     /**
-     * 사용자에게 실제로 보여준 안내만 기록한다. 중복도 그대로 남긴다 — 반복 자체가 신호다.
+     * 사용자에게 실제로 보여준 안내만 스텝으로 기록한다. 중복도 그대로 남긴다 — 반복 자체가
+     * 신호다.
      *
      * 요청 시점의 세대를 함께 받아, 늦게 도착한 이전 세션의 안내가 새 세션 이력에 섞이지 않게 한다.
+     *
+     * [screenSignature]는 그 안내가 뜬 화면의 **기기 시그니처**다. 스텝에 싣지 않고 여기에만
+     * 두는 이유는 [lastStepSignature] 참고 — 화면이 바뀌었는지 판정하는 데만 쓴다.
      */
     @Synchronized
-    fun recordInstruction(generation: Long, instruction: String) {
+    fun recordStep(generation: Long, screenSignature: String, step: GuideStep) {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
         unverifiedDones = 0
@@ -275,33 +283,55 @@ object GuideSession {
         // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
         // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
         rejectedSignature = null
-        val trimmed = instruction.trim()
-        if (trimmed.isEmpty()) return
-        instructions.addLast(trimmed)
-        while (instructions.size > MAX_HISTORY) {
-            instructions.removeFirst()
+        steps.addLast(step.copy(instruction = step.instruction.trim()))
+        while (steps.size > MAX_HISTORY) {
+            steps.removeFirst()
         }
+        lastStepSignature = screenSignature
     }
 
     /**
-     * 사용자에게 실제로 표시한 행동만 기록한다.
+     * 안정된 화면을 하나 봤다. 마지막 스텝의 "그래서 화면이 바뀌었는가"를 여기서 확정한다.
      *
-     * 이전 세대의 늦은 응답은 [isCurrent] 검사에서 버려 새 세션의 반복 상태에 섞이지 않는다.
+     * **새 신호를 만들지 않는다.** 화면이 바뀐 사실은 이미 시그니처 홀드가 판정하고 있고,
+     * 여기서는 그 결과를 스텝에 적어 둘 뿐이다 — 조작 이벤트에 기대지 않는다는 제약은
+     * 그대로다(`../CLAUDE.md`).
+     *
+     * 흔들리는 동안(WAIT)에는 부르지 않는다. 덜 그려진 트리의 시그니처로 "바뀌었다"를 적으면
+     * #32가 요청에서 막은 것을 이력에서 되살린다.
      */
     @Synchronized
-    fun recordAction(generation: Long, screenSignature: String, action: GuideAction) {
-        if (!isCurrent(generation)) return
-        actions.addLast(
-            RecentAction(
-                screenSignature = screenSignature,
-                actionType = action.actionType,
-                direction = action.direction,
-                targetNodeId = action.targetNodeId,
-            ),
-        )
-        while (actions.size > MAX_HISTORY) {
-            actions.removeFirst()
-        }
+    fun observeScreenChange(generation: Long, screenSignature: String) {
+        val pending = pendingStep(generation) ?: return
+        if (screenSignature == lastStepSignature) return
+        replaceLastStep(pending.copy(screenChanged = true))
+    }
+
+    /**
+     * 안내한 그 화면이 정체로 판정됐다([ScreenStabilityTracker.Decision.STUCK]). 마지막 스텝을
+     * "화면이 그대로였다"로 닫는다.
+     *
+     * 이 값은 **화면이 결국 바뀐 뒤의 요청**에 실려 서버에 닿는다. 정체 중에는 서버를 다시
+     * 부르지 않기 때문이고(#39), 그게 이 신호를 늦게라도 보내야 하는 이유이기도 하다 —
+     * 듣지 않은 안내를 모델이 알아야 다른 수를 고른다.
+     */
+    @Synchronized
+    fun observeScreenStuck(generation: Long, screenSignature: String) {
+        val pending = pendingStep(generation) ?: return
+        if (screenSignature != lastStepSignature) return
+        replaceLastStep(pending.copy(screenChanged = false))
+    }
+
+    /** 아직 화면 변화가 확정되지 않은 마지막 스텝. 없으면 null이라 호출자는 아무것도 안 한다. */
+    private fun pendingStep(generation: Long): GuideStep? {
+        if (!isCurrent(generation)) return null
+        if (lastStepSignature == null) return null
+        return steps.lastOrNull()?.takeIf { it.screenChanged == null }
+    }
+
+    private fun replaceLastStep(step: GuideStep) {
+        steps.removeLast()
+        steps.addLast(step)
     }
 
     /**
@@ -326,8 +356,8 @@ object GuideSession {
             // 중지(null)와 시작이 각각 한 번씩 올린다. 그래서 중지 후 같은 목표로 다시 시작해도
             // 세대가 달라지고, 그 사이에 떠 있던 응답이 새 세션에 섞이지 않는다.
             generation++
-            instructions.clear()
-            actions.clear()
+            steps.clear()
+            lastStepSignature = null
             unverifiedDones = 0
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.

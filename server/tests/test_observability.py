@@ -59,6 +59,7 @@ def _events(caplog, logger_name: str) -> list[dict]:
 def _gemini_response(action_type: str = "tap", direction: str | None = None) -> dict:
     action = {
         "expected_result": "result",
+        "screen_summary": "screen",
         "evidence": "evidence",
         "action_type": action_type,
         "target_node_id": "n1",

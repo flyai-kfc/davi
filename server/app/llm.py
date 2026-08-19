@@ -92,12 +92,16 @@ class StubLlmClient(LlmClient):
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         expected = f"목표 '{req.goal}' 달성"
+        # 스텁은 화면을 읽지 못하므로 package 이름을 그대로 쓴다. 모델이 만드는 한 줄 요약과
+        # 성격은 다르지만, 계약이 요구하는 자리를 비워 두지 않는 것이 여기서 할 일이다.
+        summary = f"{req.screen.package_name or '알 수 없는 앱'}의 화면"
 
         clickable = [e for e in req.screen.elements if e.clickable and e.label]
         if clickable:
             target = clickable[0]
             return GuideAction(
                 expected_result=expected,
+                screen_summary=summary,
                 evidence=f"화면에 '{target.label}' 버튼이 보임",
                 action_type=ActionType.TAP,
                 target_node_id=target.node_id,
@@ -112,6 +116,7 @@ class StubLlmClient(LlmClient):
             direction = scrollable.next_swipe_direction or SwipeDirection.UP
             return GuideAction(
                 expected_result=expected,
+                screen_summary=summary,
                 evidence="누를 수 있는 요소가 없고 더 넘길 수 있는 목록이 있음",
                 action_type=ActionType.SCROLL,
                 direction=direction,

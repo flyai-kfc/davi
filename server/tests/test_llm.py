@@ -10,7 +10,14 @@ from app.llm import (
     StubLlmClient,
     get_llm_client,
 )
-from app.schemas import ErrorKind, NextStepRequest, Screen, UiElement
+from app.schemas import (
+    ActionType,
+    ErrorKind,
+    GuideStep,
+    NextStepRequest,
+    Screen,
+    UiElement,
+)
 
 from tests.factories import gemini_llm_client
 
@@ -18,7 +25,15 @@ from tests.factories import gemini_llm_client
 def _request() -> NextStepRequest:
     return NextStepRequest(
         goal="카카오톡 열기",
-        recent_instructions=["앱 서랍을 여세요."],
+        steps=[
+            GuideStep(
+                instruction="앱 서랍을 여세요.",
+                action_type=ActionType.OPEN_APP_DRAWER,
+                screen_hint="런처 홈 화면",
+                structure_signature="a" * 64,
+                screen_changed=True,
+            )
+        ],
         screen=Screen(
             package_name="com.android.launcher",
             current_page=1,
@@ -39,6 +54,7 @@ def _request() -> NextStepRequest:
 def _action_response(action_type: str = "tap", direction: str | None = None) -> dict:
     action = {
         "expected_result": "카카오톡이 열린다",
+        "screen_summary": "런처 홈 화면",
         "evidence": "카카오톡 아이콘이 보임",
         "action_type": action_type,
         "target_node_id": "n1",

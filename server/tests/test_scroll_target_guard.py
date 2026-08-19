@@ -41,6 +41,7 @@ def _scroll(
 ) -> GuideAction:
     return GuideAction(
         expected_result="목표 화면에 도달",
+        screen_summary="테스트 화면",
         evidence="목표에 맞는 요소가 아직 보이지 않음",
         action_type=ActionType.SCROLL,
         direction=direction,
@@ -394,6 +395,7 @@ def test_other_action_types_are_not_touched():
     screen = Screen(has_scrollable_element=True, elements=[_vertical_list("n2")])
     tap = GuideAction(
         expected_result="완료",
+        screen_summary="테스트 화면",
         evidence="근거",
         action_type=ActionType.TAP,
         target_node_id="n9",

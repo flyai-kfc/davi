@@ -121,28 +121,23 @@ def render(args: argparse.Namespace) -> str:
             f"| ime_visible | `{cell(screen.get('ime_visible'))}` |",
             f"| client_version | `{cell(request.get('client_version'))}` |",
             "",
-            "#### recent_instructions",
+            "#### steps",
             "",
         ]
-        recent_instructions = request.get("recent_instructions") or []
-        if recent_instructions:
-            lines += ["| 순서 | 문장 |", "|---:|---|"]
-            lines += [f"| {index} | {cell(value)} |" for index, value in enumerate(recent_instructions, 1)]
-        else:
-            lines.append("- 없음")
-
-        lines += ["", "#### recent_actions", ""]
-        recent_actions = request.get("recent_actions") or []
-        if recent_actions:
+        steps = request.get("steps") or []
+        if steps:
             lines += [
-                "| 순서 | screen_signature | action_type | direction | target_node_id |",
-                "|---:|---|---|---|---|",
+                "| 순서 | instruction | action_type | direction | target_label | "
+                "screen_hint | changed | performed | structure_signature |",
+                "|---:|---|---|---|---|---|---|---|---|",
             ]
-            for index, value in enumerate(recent_actions, 1):
+            for index, value in enumerate(steps, 1):
                 lines.append(
-                    f"| {index} | `{cell(value.get('screen_signature'))}` | "
+                    f"| {index} | {cell(value.get('instruction'))} | "
                     f"`{cell(value.get('action_type'))}` | `{cell(value.get('direction'))}` | "
-                    f"`{cell(value.get('target_node_id'))}` |"
+                    f"{cell(value.get('target_label'))} | {cell(value.get('screen_hint'))} | "
+                    f"`{cell(value.get('screen_changed'))}` | `{cell(value.get('performed'))}` | "
+                    f"`{cell(value.get('structure_signature'))}` |"
                 )
         else:
             lines.append("- 없음")

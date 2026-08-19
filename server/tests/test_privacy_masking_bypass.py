@@ -19,6 +19,7 @@ from app.reasoning import next_step
 from app.schemas import (
     ActionType,
     GuideAction,
+    GuideStep,
     NextStepRequest,
     Screen,
     UiElement,
@@ -39,6 +40,7 @@ class _CapturingLlmClient(LlmClient):
         self.seen = req
         return GuideAction(
             expected_result="완료",
+            screen_summary="테스트 화면",
             evidence="근거",
             action_type=ActionType.TAP,
             target_node_id="n1",
@@ -50,7 +52,14 @@ def _request() -> NextStepRequest:
     return NextStepRequest(
         goal="문의하기",
         screen=Screen(elements=[UiElement(node_id="n1", label=_PII_LABEL)]),
-        recent_instructions=[_PII_INSTRUCTION],
+        steps=[
+            GuideStep(
+                instruction=_PII_INSTRUCTION,
+                action_type=ActionType.TAP,
+                target_label=_PII_LABEL,
+                structure_signature="a" * 64,
+            )
+        ],
     )
 
 
@@ -81,7 +90,9 @@ def test_default_policy_masks_screen_and_history():
 
     assert spy.seen is not None
     assert "hong@example.com" not in spy.seen.screen.elements[0].label
-    assert "010-1234-5678" not in " ".join(spy.seen.recent_instructions)
+    step = spy.seen.steps[0]
+    assert "010-1234-5678" not in step.instruction
+    assert "hong@example.com" not in (step.target_label or "")
 
 
 # --- 우회 동작 ----------------------------------------------------------------
@@ -95,7 +106,8 @@ def test_disabled_policy_passes_original_labels_to_the_model():
 
     assert spy.seen is not None
     assert spy.seen.screen.elements[0].label == _PII_LABEL
-    assert spy.seen.recent_instructions == [_PII_INSTRUCTION]
+    assert spy.seen.steps[0].instruction == _PII_INSTRUCTION
+    assert spy.seen.steps[0].target_label == _PII_LABEL
 
 
 def test_disabled_policy_still_does_not_mutate_the_request():
@@ -106,7 +118,7 @@ def test_disabled_policy_still_does_not_mutate_the_request():
     next_step(req, spy, masking=DISABLED_MASKING)
 
     assert req.screen.elements[0].label == _PII_LABEL
-    assert req.recent_instructions == [_PII_INSTRUCTION]
+    assert req.steps[0].instruction == _PII_INSTRUCTION
 
 
 def test_explicit_policy_overrides_settings(set_runtime_profile):

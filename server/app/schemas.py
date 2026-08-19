@@ -120,18 +120,47 @@ class Screen(BaseModel):
     ime_visible: bool | None = None
 
 
-class RecentAction(BaseModel):
-    """같은 세션에서 직전에 실제 표시한 행동의 구조화 기록.
+MAX_STEPS = 10
 
-    ``screen_signature``는 서버가 응답에 넣어 준 구조 기반 서명을 앱이 그대로 되돌려 보낸다.
-    화면 label이나 안내 문장은 포함하지 않는다. 문장 이력은 모델 프롬프트용
-    ``recent_instructions``와 역할을 분리한다(C11).
+
+class GuideStep(BaseModel):
+    """안내 한 번의 기록. **스텝 하나 = 안내 하나**다(C11 개정, #270).
+
+    ``recent_instructions``(문장)와 ``recent_actions``(구조)로 나뉘어 있던 두 이력을 합친 것이다.
+    나뉘어 있던 동안 모델은 "무엇을 안내했는지"만 알고 **그래서 화면이 바뀌었는지**를 몰랐고,
+    구조 쪽은 소비자가 사라져 빈 계약으로 남아 있었다(#251).
+
+    값의 출처는 두 가지뿐이다 — **서버 응답의 echo**(``instruction``·``action_type``·
+    ``direction``·``target_label``·``screen_hint``·``structure_signature``)와 **앱의 관측**
+    (``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
+    해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
+    붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
+
+    **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다(서브이슈 2).
+
+    ``structure_signature``는 응답 ``screen_signature``의 echo다. 스텝 안에서만 이름이 다른
+    이유는 내용 기반 서명(``content_signature``)이 같은 레코드에 함께 서기 때문이다 —
+    구조와 내용을 한 이름으로 부르면 어느 쪽인지 읽을 수 없다.
     """
 
-    screen_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    instruction: str
     action_type: ActionType
     direction: SwipeDirection | None = None
-    target_node_id: str | None = None
+    # 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다.
+    target_label: str | None = None
+    # 그 안내가 나간 화면이 무엇이었는지. 응답 `GuideAction.screen_summary`의 echo다.
+    screen_hint: str | None = None
+    structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # 그 안내 뒤 화면이 실제로 바뀌었는가. True/False/None(아직 모름)을 구분한다 —
+    # 앱은 안내를 표시한 시점에 스텝을 만들고, 이 값은 그다음 관측에서 확정된다.
+    screen_changed: bool | None = None
+    # 안내한 대상을 사용자가 실제로 눌렀는가(앱 `PressMatch`, #264). **아직 앱이 채우지 않는다**
+    # — 연결은 #270 서브이슈 3이다. 필드를 먼저 두는 이유는 앱·서버 관통 계약 변경을 한 번으로
+    # 묶기 위해서다.
+    performed: bool | None = None
+    # 구조가 같고 내용만 바뀐 화면과 A→B→A 회귀를 서버가 이력 간 비교로 가르기 위한 값
+    # (기기 시그니처 + 세션 salt 해시). **아직 앱이 채우지 않는다** — #270 서브이슈 4.
+    content_signature: str | None = None
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:
@@ -144,12 +173,10 @@ class NextStepRequest(BaseModel):
     goal: str
     screen: Screen
     device_id: str | None = None
-    # 반복 안내 방지용 최근 안내 이력. 오래된 것이 앞에 온다. HANDOFF §3-10.
-    # 서버는 프롬프트에 넣을 때 MAX_HISTORY개로 자른다 — 앱이 더 보내도 계약 위반은 아니다.
-    recent_instructions: list[str] = Field(default_factory=list)
-    # 반복 가드 전용 구조화 이력. 서버 상태 대신 활성 앱 세션이 보관하고, 오래된 것이 앞에 온다.
-    # 앱과 서버 모두 10개로 제한해 요청 크기와 세션 메모리에 상한을 둔다(C11).
-    recent_actions: list[RecentAction] = Field(default_factory=list, max_length=10)
+    # 이 세션에서 실제로 표시한 안내들. 오래된 것이 앞에 온다(HANDOFF §3-10).
+    # 서버 상태 대신 활성 앱 세션이 보관하고, 앱과 서버 모두 MAX_STEPS개로 제한해 요청 크기와
+    # 세션 메모리에 상한을 둔다(C11).
+    steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
 
@@ -162,6 +189,23 @@ class GuideAction(BaseModel):
     """
 
     expected_result: str = Field(description="목표만 보고 정한 최종 상태")
+    # 화면 정체성을 **모델이 정한다**(C11 개정, #270). 창 제목·코드 휴리스틱을 버린 근거는
+    # 서드파티 실측이다 — 카카오T 택시 흐름 5화면의 창 제목이 null/'카카오 T' 둘뿐이고
+    # 배민 주문 흐름 6화면이 전부 '배달의민족'이라 내부 화면을 가르지 못했다(2026-08-19 SM-S921N).
+    #
+    # **자리는 두 번째다.** `expected_result` 앞에 두면 "목표만 보고 정한 최종 상태"가 현재
+    # 화면에 끌려간다 — 완료 검증이 조기 종료를 잡는 근거가 거기서 나온다(SPEC §4). 뒤이어
+    # 화면 관측(요약) → 근거(evidence) 순으로 이어진다. 필드 순서 = 추론 순서다(C1).
+    #
+    # **공백 검증을 두지 않는다.** 요약 한 줄이 비었다고 안내 전체를 실패로 닫으면, 부수적인
+    # 필드가 주 기능을 죽인다. 앱은 빈 값을 이력에 싣지 않는 것으로 처리한다.
+    screen_summary: str = Field(
+        description=(
+            "지금 사용자가 보고 있는 화면이 무엇인지 한국어 한 줄로 짧게. "
+            "어느 앱의 어떤 화면인지가 드러나게 쓴다 — 예: '설정 앱의 연결 목록 화면', "
+            "'카카오T의 출발지 설정 화면'. 다음에 할 행동은 여기 쓰지 않는다."
+        )
+    )
     # 이 설명은 주석이 아니라 responseSchema를 타고 모델에게 간다. 무스키마 폴백에서는 스키마
     # JSON이 프롬프트 본문에 통째로 붙으므로, `prompt.EVIDENCE_INSTRUCTION`과 **같은 뜻**이어야
     # 한다. 한쪽이 "짧게 적어라"가 되면 한 프롬프트에 정반대 지시가 둘 들어간다(PR #62 리뷰).
