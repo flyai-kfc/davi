@@ -247,14 +247,13 @@ try {
     $serverMaskingLabel = if ($serverMaskingDisabled) { '우회' } else { '적용' }
     Write-Host "개인정보 마스킹 — 앱 1차: $appMaskingLabel / 서버 2차: $serverMaskingLabel"
 
+    # 오버레이 권한(SYSTEM_ALERT_WINDOW) 점검은 없앴다 — #240이 매니페스트에서 걷어냈고 안내
+    # 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한이 없어도 그려진다(#56). sh 실행기와 같다.
     $accessibilityState = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
     if ($accessibilityState -notmatch 'Bound services:.*com\.davi\.helper' -or
         $accessibilityState -match 'Crashed services:.*com\.davi\.helper') {
         throw 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.'
     }
-    $overlayState = (Invoke-AdbCapture @('shell', 'appops', 'get', 'com.davi.helper', 'SYSTEM_ALERT_WINDOW') '오버레이 권한 조회') -join "`n"
-    if ($overlayState -notmatch 'allow') { throw 'Davi의 다른 앱 위에 표시 권한을 기기 설정에서 허용하세요.' }
-
     $instrumentationArgs = $adbDevice + @(
         'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'davi.liveGemini', 'true'
