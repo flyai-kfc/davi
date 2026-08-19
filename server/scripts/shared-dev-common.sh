@@ -102,9 +102,16 @@ shared_dev_env_file() {
     printf '%s/davi/shared-dev.env\n' "${XDG_CONFIG_HOME:-"$HOME/.config"}"
 }
 
+# 파일 권한 비트를 8진수 문자열로. GNU(coreutils)와 BSD(macOS)의 문법이 달라 둘 다 시도한다.
+#
+# **GNU를 먼저 시도해야 한다.** 반대로 두면 GNU에서 `-f`가 `--file-system`으로 해석돼
+# `'%Lp'`를 파일 인자로 보고 실패하면서도 **대상 파일의 파일시스템 정보를 출력**한다. 그 출력이
+# `||` 뒤의 정상 결과와 합쳐져 mode에 섞이고, 권한이 정확히 600인 파일이 거부된다.
+# macOS에서는 `stat -c`가 "illegal option"으로 종료코드 1이라 안전하게 BSD 쪽으로 넘어간다.
+# (PR #257에서 스크립트를 실제로 실행하는 테스트를 넣고서야 리눅스 CI에서 드러났다.)
 shared_dev_file_mode() {
     local path="$1"
-    stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null
+    stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path" 2>/dev/null
 }
 
 # 토큰 파일에서 키 하나를 뽑는다. 키 이름을 인자로 받는 이유는 외부 테스트 토큰

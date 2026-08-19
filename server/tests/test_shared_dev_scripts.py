@@ -156,3 +156,19 @@ def test_loose_token_file_permissions_are_rejected(tmp_path):
 
     assert result.returncode == 1
     assert "권한은 600" in result.stderr
+
+
+def test_file_mode_tries_gnu_stat_before_bsd():
+    """순서가 뒤집히면 리눅스에서 권한 600인 파일이 거부된다.
+
+    GNU에서 `-f`는 `--file-system`이라 `'%Lp'`를 파일 인자로 보고 실패하면서도 대상의
+    파일시스템 정보를 출력한다. 그 출력이 `||` 뒤 결과와 합쳐져 mode에 섞인다. 위 실행
+    테스트들이 리눅스 CI에서는 이걸 잡지만, macOS 로컬에서는 BSD 문법이 먼저 맞아 통과하므로
+    순서 자체를 여기서 고정한다.
+    """
+
+    common = (SCRIPTS_DIR / "shared-dev-common.sh").read_text(encoding="utf-8")
+    body = common[common.index("shared_dev_file_mode()") :]
+    body = body[: body.index("\n}\n")]
+
+    assert body.index("stat -c '%a'") < body.index("stat -f '%Lp'")
