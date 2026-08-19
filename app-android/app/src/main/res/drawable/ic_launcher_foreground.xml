@@ -6,8 +6,23 @@
   SVG의 matrix를 group의 rotation/scale/translate로 분해하지 않는다 — 분해가 어긋나면
   귀·나비넥타이 위치가 원본과 달라진다(실제로 겪었다). 아핀 변환은 베지어 제어점에
   그대로 적용되므로 좌표를 구워 넣는 편이 원본과 일치한다.
-  배경 빨강은 배경 레이어(@color/ic_launcher_background)가 담당하므로 여기 없다.
-  브랜드 자산이라 색은 토큰으로 바꾸지 않고 원본 값을 유지한다.
+  배경 판(전면 빨강)은 배경 레이어(@color/ic_launcher_background)가 담당하므로 여기 없다.
+  다만 **마지막 path는 배경색을 참조한다** — 장식이 아니라 검은 몸통의 우하단을 배경색으로
+  덮어 잘라내는 마스크라서(ic_davi_logo.xml의 "우하단 마감 사각형"과 같은 역할) 배경 항목과
+  값이 반드시 같아야 한다. 하드코딩하면 배경만 바꿨을 때 빨간 사다리꼴이 그대로 드러난다.
+  나머지 색은 브랜드 자산이라 토큰으로 바꾸지 않고 원본 값을 유지한다.
+
+  안전 영역 확인(#232 완료 조건). 뷰포트 108, 중심 (54,54), 66dp 안전원 = 반경 33.
+  베지어를 100등분해 샘플링한 실제 곡선 거리다(제어점 거리는 곡선 바깥이라 과대추정된다).
+
+    몸통    #FF000000  maxR = 31.74   ← 가장 빠듯하다. 여유 1.26
+    오른쪽 귀 #FFFFFFFF  maxR = 26.65
+    왼쪽 귀  #FFFFFFFF  maxR = 23.42
+    얼굴    #FFFFFFFF  maxR = 22.25
+    나머지 이목구비·나비넥타이            maxR < 12
+    마감 마스크 (배경색 참조)  maxR = 35.51  ← 배경과 같은 색이라 넘어가도 무관
+
+  그림 요소는 전부 33 안에 든다. 원본 SVG를 다시 뽑으면 몸통부터 재확인한다.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -55,5 +70,5 @@
         android:fillColor="#FF000000" />
     <path
         android:pathData="M69.9214,57.0251 L80.2637,63.1922 L65.7649,87.5068 L55.4226,81.3398Z"
-        android:fillColor="#F2001C" />
+        android:fillColor="@color/ic_launcher_background" />
 </vector>
