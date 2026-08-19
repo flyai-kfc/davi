@@ -151,7 +151,8 @@ class GuideStep(BaseModel):
     해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
     붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
 
-    **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다(서브이슈 2).
+    **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다
+    (``prompt._step_line``, #305).
 
     ``structure_signature``는 응답 ``screen_signature``의 echo다. 스텝 안에서만 이름이 다른
     이유는 내용 기반 서명(``content_signature``)이 같은 레코드에 함께 서기 때문이다 —
