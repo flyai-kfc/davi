@@ -240,7 +240,11 @@ val releaseServerUrl =
 
 // 서버가 development 프로필이라 원격 요청마다 접근 토큰을 요구한다(server/app/main.py의
 // _development_access_error). 주소만 넣으면 붙기는 해도 모든 요청이 401로 끝난다 — 실측했다.
-// 카카오 키와 달리 이건 비밀이라 상수로 두지 않고 local.properties·환경변수에서 읽는다.
+// **releaseKakaoNativeAppKey와 같은 결로 이것도 APK에서 추출된다 — 비밀이 아니다**(#248 리뷰).
+// 상수로 두지 않는 이유는 기밀성이 아니라 **회전**이다: 팀 전체가 공유하는 Gemini 쿼터에
+// 물려 있어 기간 제한 임시 capability로 다뤄야 하고(내부 테스트 시작 직전 서버에 적용, 종료
+// 즉시 서버에서 무효화·회전 — local.properties 삭제는 폐기가 아니다), 상수면 회전마다 커밋과
+// 재배포가 필요해진다. 접근 통제·비용 상한·로그 정책의 나머지는 #214가 정한다.
 // 값이 비어도 여기서 던지지 않는다 — debug 빌드까지 같이 깨진다. release에서만 아래
 // verifyReleaseConfiguration이 실패로 만든다.
 val releaseAccessToken = localSetting("DAVI_RELEASE_ACCESS_TOKEN")

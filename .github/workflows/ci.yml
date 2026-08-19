@@ -89,7 +89,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       # 실기기/Gemini 시나리오는 opt-in이지만 androidTest 소스와 APK는 키 없이 항상 컴파일한다.
+      # assembleRelease는 preReleaseBuild를 거쳐 verifyReleaseConfiguration을 문다(#248) —
+      # DAVI_RELEASE_ACCESS_TOKEN이 없으면 여기서 항상 실패하므로 CI 전용 더미값을 준다.
       - name: debug/release/test APK 빌드 + 단위 테스트
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
       - name: 실기기 결과 문서 렌더러 테스트
@@ -171,6 +175,38 @@ jobs:
           set -e
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
+
+      # 서버가 development 프로필이라 release도 접근 토큰을 요구한다(#248). 세 경계를 각각 고정한다
+      # — 미설정, 32자 미만, 정상값(통과 + BuildConfig 배선).
+      - name: release 접근 토큰 미설정 거부
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_RELEASE_ACCESS_TOKEN을 설정하세요" <<<"$output"
+
+      - name: release 접근 토큰 32자 미만 거부
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-short-token-0001
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_RELEASE_ACCESS_TOKEN은 32자 이상이어야 합니다" <<<"$output"
+
+      - name: release 접근 토큰 정상값 통과 및 BuildConfig 배선 확인
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
+        run: |
+          ./gradlew verifyReleaseConfiguration
+          ./gradlew :app:generateReleaseBuildConfig
+          generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
+          test -f "$generated"
+          grep -q 'DEV_ACCESS_TOKEN = "ci-only-not-a-secret-release-token-0001"' "$generated"
 
       # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 값이 false여도 "설정이 있다는 것"
       # 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다. 두 입력 경로를 각각 확인한다.
