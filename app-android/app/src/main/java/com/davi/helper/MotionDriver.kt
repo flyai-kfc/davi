@@ -32,6 +32,15 @@ class MotionDriver(
     // 타입을 명시한다 — 콜백 본문이 자기 자신을 다시 거는 구조라, 추론에 맡기면 순환한다.
     private val frameCallback: Choreographer.FrameCallback = Choreographer.FrameCallback { frameNanos ->
         if (!running) return@FrameCallback
+        // 루프 중에도 매 프레임 재확인한다. 콜드 스타트에서는 areAnimatorsEnabled의 프로세스
+        // 캐시가 첫 start()보다 늦게 동기화될 수 있어(SM-S921N 실측 — 첫 진입 내내 루프가
+        // 돌았고, 재진입 전이에서야 정지됐다. #148), 시작 판정만으로는 모션 끄기를 놓친다.
+        // 캐시 필드 읽기라 프레임마다 봐도 싸고, 대기 중 모션 끄기도 이 길로 바로 반영된다.
+        if (isMotionDisabled) {
+            stop()
+            onFrame(0f, 0f)
+            return@FrameCallback
+        }
         if (startNanos == 0L) {
             startNanos = frameNanos
             lastNanos = frameNanos
