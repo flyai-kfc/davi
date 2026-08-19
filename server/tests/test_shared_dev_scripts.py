@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -53,28 +54,105 @@ def test_start_script_enforces_development_real_llm_and_lan_bind():
 
     assert 'settings.davi_env != "development"' in content
     assert "settings.davi_use_stub_llm" in content
-    assert 'dev_token="${DAVI_DEV_ACCESS_TOKEN:-}"' in content
+    # 토큰 해결은 common.sh의 `shared_dev_resolve_tokens`로 옮겼다(아래에서 실행해 검증한다).
+    assert "shared_dev_resolve_tokens" in content
+    assert 'export DAVI_DEV_ACCESS_TOKEN="$dev_token"' in content
     assert 'export DAVI_BIND_HOST="0.0.0.0"' in content
     assert "--workers 1" in content
     assert "--no-access-log" in content
     assert "--log-config app/logging.json" in content
 
 
-def test_start_script_carries_the_optional_test_access_token() -> None:
-    """토큰 파일은 pydantic이 읽지 않는다 — 스크립트가 export하지 않으면 서버에 안 실린다.
+def _resolve_tokens(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """`shared_dev_resolve_tokens`를 실제로 실행한다.
 
-    `.env.example`이 두 토큰을 같은 파일에 두라고 안내하므로, 안내대로 했을 때 조용히
-    실패하면 안 된다. 다만 테스트 기간이 아닌 때가 기본이라 **없어도 기동은 된다**.
+    문자열 단언만으로는 조건 분기의 회귀를 못 잡는다 — `-z dev || -z test`로 넓힌 조건이
+    평상시 실행을 죽이던 것을 CI가 못 잡았다(PR #257 리뷰). 그래서 여기서 돌려 본다.
     """
 
-    common = (SCRIPTS_DIR / "shared-dev-common.sh").read_text(encoding="utf-8")
-    start = (SCRIPTS_DIR / "start-shared-dev.sh").read_text(encoding="utf-8")
+    script = (
+        f'source "{SCRIPTS_DIR / "shared-dev-common.sh"}"\n'
+        "shared_dev_resolve_tokens\n"
+        'printf "%s|%s\\n" "$SHARED_DEV_DEV_TOKEN" "$SHARED_DEV_TEST_TOKEN"\n'
+    )
+    return subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), **env},
+    )
 
-    # 키 이름을 인자로 받아야 두 토큰을 같은 파서로 뽑을 수 있다.
-    assert 'local key="${2:-DAVI_DEV_ACCESS_TOKEN}"' in common
-    assert 'shared_dev_load_token "$env_file" DAVI_TEST_ACCESS_TOKEN' in start
-    assert 'export DAVI_TEST_ACCESS_TOKEN="$test_token"' in start
-    # 선택 값이므로 없다고 죽지 않는다.
-    assert '|| test_token=""' in start
-    # 길이 하한은 있을 때만 적용한다.
-    assert 'if [[ -n "$test_token" && "${#test_token}" -lt 32 ]]; then' in start
+
+def test_exported_dev_token_alone_starts_without_a_token_file():
+    """평상시 상태다 — 외부 테스트 기간이 아니라 테스트 토큰이 없다.
+
+    개발 토큰이 환경에 있으면 토큰 파일은 필요 없다. 파일 검사를 무조건 걸면
+    "개발 토큰 파일이 없습니다"로 죽으면서 개발 토큰은 멀쩡히 들려 있는 상태가 된다.
+    """
+
+    dev = "d" * 32
+    result = _resolve_tokens(
+        {"DAVI_DEV_ACCESS_TOKEN": dev, "DAVI_SHARED_DEV_ENV_FILE": "/nonexistent/shared-dev.env"}
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"{dev}|"
+
+
+def test_missing_token_file_still_fails_when_no_dev_token_is_exported():
+    result = _resolve_tokens({"DAVI_SHARED_DEV_ENV_FILE": "/nonexistent/shared-dev.env"})
+
+    assert result.returncode == 1
+    assert "개발 토큰 파일이 없습니다" in result.stderr
+
+
+def test_token_file_supplies_both_keys(tmp_path):
+    dev, test = "d" * 32, "t" * 32
+    env_file = tmp_path / "shared-dev.env"
+    env_file.write_text(
+        f"DAVI_DEV_ACCESS_TOKEN={dev}\nDAVI_TEST_ACCESS_TOKEN={test}\n", encoding="utf-8"
+    )
+    env_file.chmod(0o600)
+
+    result = _resolve_tokens({"DAVI_SHARED_DEV_ENV_FILE": str(env_file)})
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"{dev}|{test}"
+
+
+def test_token_file_without_the_test_key_is_not_an_error(tmp_path):
+    """테스트 토큰은 선택이다 — 테스트 기간이 아닌 때가 기본이다."""
+
+    dev = "d" * 32
+    env_file = tmp_path / "shared-dev.env"
+    env_file.write_text(f"DAVI_DEV_ACCESS_TOKEN={dev}\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    result = _resolve_tokens({"DAVI_SHARED_DEV_ENV_FILE": str(env_file)})
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"{dev}|"
+
+
+def test_short_test_token_is_rejected(tmp_path):
+    env_file = tmp_path / "shared-dev.env"
+    env_file.write_text(
+        f"DAVI_DEV_ACCESS_TOKEN={'d' * 32}\nDAVI_TEST_ACCESS_TOKEN=short\n", encoding="utf-8"
+    )
+    env_file.chmod(0o600)
+
+    result = _resolve_tokens({"DAVI_SHARED_DEV_ENV_FILE": str(env_file)})
+
+    assert result.returncode == 1
+    assert "DAVI_TEST_ACCESS_TOKEN은 32자 이상" in result.stderr
+
+
+def test_loose_token_file_permissions_are_rejected(tmp_path):
+    env_file = tmp_path / "shared-dev.env"
+    env_file.write_text(f"DAVI_DEV_ACCESS_TOKEN={'d' * 32}\n", encoding="utf-8")
+    env_file.chmod(0o644)
+
+    result = _resolve_tokens({"DAVI_SHARED_DEV_ENV_FILE": str(env_file)})
+
+    assert result.returncode == 1
+    assert "권한은 600" in result.stderr

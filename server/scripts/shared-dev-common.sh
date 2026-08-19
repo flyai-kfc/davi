@@ -126,3 +126,43 @@ shared_dev_load_token() {
     [[ -n "$token" ]] || return 1
     printf '%s\n' "$token"
 }
+
+# 두 토큰을 환경변수 -> 토큰 파일 순으로 해결해 전역에 담는다.
+#
+# 결과를 stdout이 아니라 전역으로 돌려주는 이유는 `shared_dev_die`가 `exit`이기 때문이다 —
+# `$(...)` 안에서 부르면 서브셸만 죽고 호출자는 빈 값으로 계속 간다.
+#
+# **토큰 파일은 개발 토큰을 환경에서 못 구했을 때만 필수다.** 테스트 토큰이 없는 것이
+# 평상시의 정상 상태라, 파일 존재·권한 검사를 무조건 걸면 개발 토큰만 export한 실행이
+# "개발 토큰 파일이 없습니다"로 죽는다(PR #257 리뷰에서 실측된 회귀).
+shared_dev_resolve_tokens() {
+    SHARED_DEV_DEV_TOKEN="${DAVI_DEV_ACCESS_TOKEN:-}"
+    SHARED_DEV_TEST_TOKEN="${DAVI_TEST_ACCESS_TOKEN:-}"
+    local env_file mode
+
+    if [[ -z "$SHARED_DEV_DEV_TOKEN" || -z "$SHARED_DEV_TEST_TOKEN" ]]; then
+        env_file="$(shared_dev_env_file)"
+        if [[ -f "$env_file" ]]; then
+            mode="$(shared_dev_file_mode "$env_file")"
+            [[ "$mode" == "600" ]] \
+                || shared_dev_die "개발 토큰 파일 권한은 600이어야 합니다(현재 $mode)."
+            if [[ -z "$SHARED_DEV_DEV_TOKEN" ]]; then
+                SHARED_DEV_DEV_TOKEN="$(shared_dev_load_token "$env_file")" \
+                    || shared_dev_die "토큰 파일에 DAVI_DEV_ACCESS_TOKEN이 없습니다."
+            fi
+            if [[ -z "$SHARED_DEV_TEST_TOKEN" ]]; then
+                SHARED_DEV_TEST_TOKEN="$(
+                    shared_dev_load_token "$env_file" DAVI_TEST_ACCESS_TOKEN
+                )" || SHARED_DEV_TEST_TOKEN=""
+            fi
+        elif [[ -z "$SHARED_DEV_DEV_TOKEN" ]]; then
+            shared_dev_die "개발 토큰 파일이 없습니다: $env_file"
+        fi
+    fi
+
+    [[ "${#SHARED_DEV_DEV_TOKEN}" -ge 32 ]] \
+        || shared_dev_die "DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다."
+    if [[ -n "$SHARED_DEV_TEST_TOKEN" && "${#SHARED_DEV_TEST_TOKEN}" -lt 32 ]]; then
+        shared_dev_die "DAVI_TEST_ACCESS_TOKEN은 32자 이상이어야 합니다."
+    fi
+}

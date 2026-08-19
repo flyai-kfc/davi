@@ -23,29 +23,10 @@ fi
 
 shared_dev_port_in_use && shared_dev_die "TCP ${SHARED_DEV_PORT} 포트를 다른 프로세스가 사용 중입니다."
 
-dev_token="${DAVI_DEV_ACCESS_TOKEN:-}"
-# 외부 테스트 참가자용 둘째 토큰은 **선택**이다. 테스트 기간이 아닌 때가 기본이므로,
-# 없다고 기동을 막지 않는다. 대신 있으면 반드시 export한다 — 토큰 파일은 pydantic이 읽지
-# 않아서(Settings의 env_file은 server/.env) 여기서 안 실으면 서버가 경고 없이 그 토큰 없이
-# 뜨고, 참가자 빌드는 전부 401을 받는다.
-test_token="${DAVI_TEST_ACCESS_TOKEN:-}"
-if [[ -z "$dev_token" || -z "$test_token" ]]; then
-    env_file="$(shared_dev_env_file)"
-    [[ -f "$env_file" ]] || shared_dev_die "개발 토큰 파일이 없습니다: $env_file"
-    mode="$(shared_dev_file_mode "$env_file")"
-    [[ "$mode" == "600" ]] || shared_dev_die "개발 토큰 파일 권한은 600이어야 합니다(현재 $mode)."
-    if [[ -z "$dev_token" ]]; then
-        dev_token="$(shared_dev_load_token "$env_file")" \
-            || shared_dev_die "토큰 파일에 DAVI_DEV_ACCESS_TOKEN이 없습니다."
-    fi
-    if [[ -z "$test_token" ]]; then
-        test_token="$(shared_dev_load_token "$env_file" DAVI_TEST_ACCESS_TOKEN)" || test_token=""
-    fi
-fi
-[[ "${#dev_token}" -ge 32 ]] || shared_dev_die "DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다."
-if [[ -n "$test_token" && "${#test_token}" -lt 32 ]]; then
-    shared_dev_die "DAVI_TEST_ACCESS_TOKEN은 32자 이상이어야 합니다."
-fi
+# 토큰 해결·검증은 common.sh의 함수 하나다(테스트가 실제로 실행해 본다).
+shared_dev_resolve_tokens
+dev_token="$SHARED_DEV_DEV_TOKEN"
+test_token="$SHARED_DEV_TEST_TOKEN"
 
 private_ip="$(shared_dev_private_ipv4)" || shared_dev_die "활성 사설 IPv4를 찾지 못했습니다. Wi-Fi 연결을 확인하세요."
 
