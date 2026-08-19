@@ -232,7 +232,11 @@ jobs:
 
       # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
       # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.
+      # generateReleaseBuildConfig도 preReleaseBuild를 거쳐 verifyReleaseConfiguration을
+      # 물기 때문에(#248) 토큰이 없으면 이 단계도 실패한다.
       - name: release BuildConfig의 마스킹 상수 고정 확인
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: |
           ./gradlew :app:generateReleaseBuildConfig
           generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
