@@ -25,6 +25,21 @@ class SpeechRecognizerHelper(
         fun onError(error: Int)
 
         /**
+         * 인식기를 새로 붙이는 중 — 아직 마이크는 닫혀 있다. [onMicReady]와 한 쌍이다.
+         *
+         * **온디바이스→네트워크 폴백에서도 다시 불린다.** 완료 쪽만 받으면 그 폴백에서
+         * 화면은 "듣고 있어요"를 켠 채인데 마이크만 닫혔다 다시 열린다(#273).
+         */
+        fun onMicPreparing() = Unit
+
+        /**
+         * 프레임워크가 발화를 받을 준비를 마쳤다 — **여기서부터 실제로 들린다.**
+         * 화면이 "듣고 있어요"를 띄우는 시점이 이 신호다(#273). `start()` 호출은
+         * 시점이 아니다 — 인식 서비스에 붙는 시간이 있어 실기기에서 약 1초 벌어졌다.
+         */
+        fun onMicReady() = Unit
+
+        /**
          * 마이크 입력 세기(dB). 파도·글로우가 목소리에 반응하는 데만 쓴다(#132).
          *
          * **원시 오디오가 아니라 세기 하나뿐이다** — 내용이 남지 않으므로 이 클래스의
@@ -53,6 +68,8 @@ class SpeechRecognizerHelper(
     }
 
     private fun startRecognizer(onDevice: Boolean) {
+        // 폴백 재시작도 이 함수를 타므로 "준비 중"이 그때마다 다시 나간다(#273).
+        listener.onMicPreparing()
         try {
             usingOnDevice = onDevice
             val created = createRecognizer(onDevice)
@@ -133,7 +150,7 @@ class SpeechRecognizerHelper(
                 listener.onError(error)
             }
         }
-        override fun onReadyForSpeech(params: Bundle?) = Unit
+        override fun onReadyForSpeech(params: Bundle?) = listener.onMicReady()
         override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) = listener.onRmsChanged(rmsdB)
         override fun onBufferReceived(buffer: ByteArray?) = Unit
