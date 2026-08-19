@@ -107,11 +107,16 @@ shared_dev_file_mode() {
     stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null
 }
 
+# 토큰 파일에서 키 하나를 뽑는다. 키 이름을 인자로 받는 이유는 외부 테스트 토큰
+# (DAVI_TEST_ACCESS_TOKEN)도 같은 파일에 두기 때문이다 — `.env.example`이 그렇게 안내한다.
+# 이 파일은 pydantic이 읽지 않으므로(Settings의 env_file은 server/.env), 여기서 export하지
+# 않으면 프로세스 환경에도 없고 서버는 경고 없이 그 토큰 없이 기동한다.
 shared_dev_load_token() {
     local env_file="$1"
+    local key="${2:-DAVI_DEV_ACCESS_TOKEN}"
     local token
     token="$(
-        sed -n 's/^[[:space:]]*DAVI_DEV_ACCESS_TOKEN[[:space:]]*=[[:space:]]*//p' "$env_file" \
+        sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$env_file" \
             | tail -n 1
     )"
     case "$token" in

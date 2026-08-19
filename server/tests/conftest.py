@@ -15,6 +15,7 @@ def _validated_runtime_profile(**overrides: Any) -> Settings:
         "gemini_api_key": "",
         "davi_model": "gemini-3.5-flash-lite",
         "davi_dev_access_token": "",
+        "davi_test_access_token": "",
         "davi_bind_host": "127.0.0.1",
         "davi_dev_rate_limit_requests": 10,
         "davi_dev_rate_limit_window_seconds": 60,

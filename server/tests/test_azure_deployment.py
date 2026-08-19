@@ -137,3 +137,25 @@ def test_infrastructure_ci_runs_when_container_inputs_change() -> None:
 
     assert "- 'server/app/**'" in workflow
     assert "- 'server/requirements.lock.txt'" in workflow
+
+
+def test_deploy_workflow_passes_the_test_token_secret_name() -> None:
+    """수동 배선한 테스트 토큰이 다음 main 푸시에 조용히 날아가지 않게 한다.
+
+    bicep 기본값이 비어 있으므로(위 테스트), 워크플로가 이름을 넘기지 않으면 **모든 자동
+    배포가 테스트 토큰 없는 revision을 만든다.** 배포는 성공하고 참가자만 401이 되므로
+    로그에 단서가 없다(PR #257 재리뷰).
+
+    변수는 **선택**이라 필수 변수 검사 목록에는 없어야 한다 — 평소에는 비어 있는 것이 정상이고,
+    거기 들어가면 테스트 기간이 아닐 때 모든 배포가 실패한다.
+    """
+
+    workflow = _text(".github/workflows/azure-dev-deploy.yml")
+
+    assert "DAVI_AZURE_TEST_TOKEN_SECRET_NAME: ${{ vars.DAVI_AZURE_TEST_TOKEN_SECRET_NAME }}" in (
+        workflow
+    )
+    assert 'testAccessTokenSecretName="${DAVI_AZURE_TEST_TOKEN_SECRET_NAME:-}"' in workflow
+
+    required_block = workflow[workflow.index("for name in") : workflow.index("test -n ")]
+    assert "DAVI_AZURE_TEST_TOKEN_SECRET_NAME" not in required_block
