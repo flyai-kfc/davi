@@ -108,7 +108,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
 - **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
-- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성·오버레이를 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다.
+- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성을 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다. (오버레이 판정은 #212가 `SYSTEM_ALERT_WINDOW`를 걷어낼 때 함께 없앴다.)
 - **Gradle CLI가 `Unable to establish loopback connection`으로 죽는 PC가 있다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓 임시 폴더이고, 스크립트가 흡수한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
