@@ -206,7 +206,6 @@ class GuideAccessibilityService : AccessibilityService() {
                             GuideSession.confirmRejected()
                             overlay?.clear()
                             display.reset()
-            lastReading = null
                             guidedTargetLabel = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).

@@ -14,26 +14,20 @@ import org.junit.Test
 class ReadingWindowTest {
 
     @Test
-    fun readingOn_freshWindow_arms() {
-        assertTrue(ReadingWindow.shouldArmOnset(on = true, windowTaken = false, onsetPending = false))
-    }
-
-    @Test
-    fun readingOff_neverArms() {
-        assertFalse(ReadingWindow.shouldArmOnset(on = false, windowTaken = false, onsetPending = false))
-        assertFalse(ReadingWindow.shouldArmOnset(on = false, windowTaken = true, onsetPending = true))
+    fun freshWindow_arms() {
+        assertTrue(ReadingWindow.shouldArmOnset(windowTaken = false, onsetPending = false))
     }
 
     /** 이미 읽는 중 문구가 떠 있으면 다시 바꿀 것이 없다. */
     @Test
     fun windowAlreadyTaken_doesNotArm() {
-        assertFalse(ReadingWindow.shouldArmOnset(on = true, windowTaken = true, onsetPending = false))
+        assertFalse(ReadingWindow.shouldArmOnset(windowTaken = true, onsetPending = false))
     }
 
     /** 서비스가 폴링마다 부른다 — 예약이 겹치면 지연이 리셋돼 표시가 늦어진다. */
     @Test
     fun onsetAlreadyPending_doesNotArmAgain() {
-        assertFalse(ReadingWindow.shouldArmOnset(on = true, windowTaken = false, onsetPending = true))
+        assertFalse(ReadingWindow.shouldArmOnset(windowTaken = false, onsetPending = true))
     }
 
     /**
@@ -45,11 +39,11 @@ class ReadingWindowTest {
     @Test
     fun twoConsecutiveWindows_secondOneStillArms() {
         // 1구간: 예약 → 실행(창 가져감)
-        assertTrue(ReadingWindow.shouldArmOnset(on = true, windowTaken = false, onsetPending = false))
-        assertFalse(ReadingWindow.shouldArmOnset(on = true, windowTaken = false, onsetPending = true))
-        assertFalse(ReadingWindow.shouldArmOnset(on = true, windowTaken = true, onsetPending = false))
+        assertTrue(ReadingWindow.shouldArmOnset(windowTaken = false, onsetPending = false))
+        assertFalse(ReadingWindow.shouldArmOnset(windowTaken = false, onsetPending = true))
+        assertFalse(ReadingWindow.shouldArmOnset(windowTaken = true, onsetPending = false))
 
         // 서버 안내가 도착해 창을 가져갔다(windowTaken=false). on은 여전히 true다.
-        assertTrue(ReadingWindow.shouldArmOnset(on = true, windowTaken = false, onsetPending = false))
+        assertTrue(ReadingWindow.shouldArmOnset(windowTaken = false, onsetPending = false))
     }
 }

@@ -275,7 +275,12 @@ class HighlightOverlayView(context: Context) : View(context) {
             // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
             hasTarget = false
             gestureDirection = null
-            avoid = emptyList()
+            // **[avoid]는 걷지 않는다** — 셋 중 이것만 남는 이유가 있다. 위 둘은 *떠난 화면의
+            // 좌표를 가리키는* 값이라 되살리면 엉뚱한 곳을 가리키지만, avoid는 가리키는 값이
+            // 아니라 "이 영역을 덮지 마라"다. 특히 타이핑 안내의 IME는 hard 회피고(#38 5번:
+            // 키보드가 조작 대상 자체다), 비우면 창이 기본 자리(아랫변 55dp)로 내려앉아
+            // **키보드 위에 앉아 그 터치를 먹는다**(창 전체가 터치를 흡수한다).
+            // 낡은 avoid는 무해하다 — 이미 내려간 키보드를 피해 창이 괜히 위로 갈 뿐이다.
             relayout()
         }
         syncBreathing()
@@ -328,14 +333,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun setReading(on: Boolean) {
         if (on) {
             reading = true
-            // **`on == reading`으로 막지 않는다**(#295). 읽는 중이 켜진 채로 서버 안내가
-            // 도착하면 [setGuide]가 창을 가져가고([readingWindow]가 false), 그 뒤 화면이 또
-            // 바뀌어 다음 읽는 구간에 들어가도 `reading`은 계속 true라 **전이가 없다.**
-            // 전이로만 예약하면 두 번째 구간부터 문구가 영영 안 바뀐다(실기기 실측).
-            //
-            // 대신 "창을 아직 안 바꿨고 예약도 없을 때"로 막는다 — 폴링마다 들어와도 예약이
-            // 겹치지 않는다.
-            if (ReadingWindow.shouldArmOnset(on = true, windowTaken = readingWindow, onsetPending = onsetPending)) {
+            // **`on == reading`으로 막지 않는다** — 근거는 [ReadingWindow.shouldArmOnset].
+            if (ReadingWindow.shouldArmOnset(windowTaken = readingWindow, onsetPending = onsetPending)) {
                 onsetPending = true
                 // 응답이 빠르면 러너블이 아예 실행되지 않아 한 프레임도 그리지 않는다.
                 postDelayed(readingOnset, ReadingBorder.ONSET_DELAY_MS)

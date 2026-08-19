@@ -11,15 +11,16 @@ package com.davi.helper
 object ReadingWindow {
 
     /**
-     * 지금 읽는 중 표시를 **예약해야 하는가**.
+     * 읽는 중이 켜져 있을 때, 표시를 **예약해야 하는가**.
      *
      * [windowTaken]은 창을 이미 읽는 중이 가져갔는가, [onsetPending]은 예약이 이미 큐에
      * 있는가다. 서비스가 폴링마다 부르므로 둘 다 없을 때만 예약해야 겹치지 않는다.
      *
-     * **`on`의 전이로 판정하지 않는다.** 읽는 중이 켜진 채로 서버 안내가 도착하면 창은
-     * 안내가 가져가는데([windowTaken]이 false가 된다) `on`은 계속 true다. 전이로만 예약하면
-     * 그 뒤 화면이 다시 움직여도 예약이 안 걸려 **두 번째 구간부터 문구가 영영 안 바뀐다.**
+     * **"읽는 중이 켜졌다"는 전이로 판정하지 않는다.** 읽는 중이 켜진 채로 서버 안내가
+     * 도착하면 창은 안내가 가져가는데([windowTaken]이 false가 된다) 읽는 중은 계속 켜져
+     * 있다. 전이로만 예약하면 그 뒤 화면이 다시 움직여도 예약이 안 걸려 **두 번째 구간부터
+     * 문구가 영영 안 바뀐다.**
      */
-    fun shouldArmOnset(on: Boolean, windowTaken: Boolean, onsetPending: Boolean): Boolean =
-        on && !windowTaken && !onsetPending
+    fun shouldArmOnset(windowTaken: Boolean, onsetPending: Boolean): Boolean =
+        !windowTaken && !onsetPending
 }
