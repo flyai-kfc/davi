@@ -30,8 +30,9 @@ class GuideBoxLayoutTest {
         canvas = canvas,
         target = target,
         margin = MARGIN,
-        marginVertical = MARGIN_V,
-        targetGap = TARGET_GAP,
+        marginTop = MARGIN_TOP,
+        marginBottom = MARGIN_BOTTOM,
+        avoidGap = AVOID_GAP,
         padding = PADDING,
         paddingVertical = PADDING_V,
         lineHeight = LINE_HEIGHT,
@@ -49,7 +50,69 @@ class GuideBoxLayoutTest {
         val layout = compute("가나다", controlHeight = dots)
 
         assertEquals(boxHeight(1, dots), layout!!.box.bottom - layout.box.top, 0.01f)
-        assertEquals(2000f - MARGIN_V - boxHeight(1, dots), layout.box.top, 0.01f)
+        assertEquals(2000f - MARGIN_BOTTOM - boxHeight(1, dots), layout.box.top, 0.01f)
+    }
+
+    @Test
+    fun `대상이 아래쪽이어도 대상 위에 붙고 그 거리는 회피 여백이다`() {
+        // **대상 곁이 먼저다** — 안내창이 하단 고정이라 대상이 아래쪽이면 겹치므로 위로 올라간다.
+        // 그때 쓰는 것은 화면 가장자리 여백이 아니라 겹침 회피 여백이다(#234).
+        val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 1800f, 400f, 1950f))
+
+        assertEquals(1800f - AVOID_GAP - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
+    fun `아랫변 여백은 캔버스 윗변이 어디든 흔들리지 않는다`() {
+        // 아랫변 55와 윗변 20은 서로 다른 값이다 — 한 값으로 묶으면 둘 중 하나가 근거 없는
+        // 값이 된다(#234). **윗변만 옮겨도 아랫변 기준이 그대로여야** 두 값이 갈렸다는 뜻이다
+        // (`강조 대상이 없어도 안내문은 보여준다`가 canvas.top = 0으로 같은 자리를 이미 본다,
+        // PR #239 리뷰). 아래가 막힌 경우는 짝을 이루는 `아래가 통째로 막히면...`이 본다.
+        val bottom = 2000f - MARGIN_BOTTOM - boxHeight(1)
+
+        for (top in listOf(0f, 100f, 400f)) {
+            val layout = compute("가나다", canvas = GuideBoxLayout.Bounds(0f, top, 1000f, 2000f))
+            assertEquals(bottom, layout?.box?.top)
+        }
+    }
+
+    @Test
+    fun `자리가 하나도 안 나오면 위쪽을 살린다`() {
+        // 후보가 전부 걸러지는 경로(`topFor`의 candidates.isEmpty() → bottomAnchored)다.
+        //
+        // **이 경로에서 marginBottom은 결과에 영향을 줄 수 없다**(PR #239 재리뷰 2에서 실증 —
+        // 그 인자를 999로 바꿔도 전체 테스트가 통과한다). 후보가 비려면
+        // `canvas.bottom - marginBottom - height < canvas.top`이어야 하는데, 그 조건에서는
+        // bottomAnchored의 coerceAtLeast(canvas.top)가 언제나 이기기 때문이다.
+        // 그래서 여기서 단언할 수 있는 것은 "위쪽을 살린다" 하나뿐이다.
+        val tiny = GuideBoxLayout.Bounds(0f, 0f, 1000f, 60f)
+
+        val layout = compute("가나다", canvas = tiny)
+
+        // 상자가 캔버스보다 크므로 위쪽을 살린다 — coerceAtLeast(canvas.top).
+        assertEquals(0f, layout?.box?.top)
+    }
+
+    @Test
+    fun `자리가 좁아도 들어가면 아랫변 여백을 지킨다`() {
+        // **bottomAnchored 경로가 아니다.** 아랫변 후보가 필터를 통과해 평범한 후보 경로로
+        // 간다 — 캔버스가 상자보다 조금이라도 크면 그렇다(PR #239 재리뷰 2).
+        // 여기서 고정하는 것은 "캔버스가 빠듯해도 아랫변 여백을 깎지 않는다"이다.
+        val short = GuideBoxLayout.Bounds(0f, 0f, 1000f, boxHeight(1) + MARGIN_BOTTOM + 4f)
+
+        val layout = compute("가나다", canvas = short)
+
+        assertEquals(short.bottom - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
+    }
+
+    @Test
+    fun `아래가 통째로 막히면 화면 윗변 여백을 쓴다`() {
+        val screen = GuideBoxLayout.Bounds(0f, 100f, 1000f, 2000f)
+        val blocked = GuideBoxLayout.Avoid(GuideBoxLayout.Bounds(0f, 400f, 1000f, 2000f), hard = true)
+
+        val layout = compute("가나다", canvas = screen, avoid = listOf(blocked))
+
+        assertEquals(100f + MARGIN_TOP, layout?.box?.top)
     }
 
     @Test
@@ -97,21 +160,21 @@ class GuideBoxLayoutTest {
     fun `대상 위에 자리가 있으면 위에 놓는다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 500f, 400f, 600f))
 
-        assertEquals(500f - TARGET_GAP - boxHeight(1), layout?.box?.top)
+        assertEquals(500f - AVOID_GAP - boxHeight(1), layout?.box?.top)
     }
 
     @Test
     fun `대상 위가 좁으면 아래에 놓는다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 100f))
 
-        assertEquals(100f + TARGET_GAP, layout?.box?.top)
+        assertEquals(100f + AVOID_GAP, layout?.box?.top)
     }
 
     @Test
     fun `위아래 모두 안 되면 화면 아래에 붙인다`() {
         val layout = compute("가나다", target = GuideBoxLayout.Bounds(100f, 10f, 400f, 1990f))
 
-        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
+        assertEquals(2000f - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -119,7 +182,7 @@ class GuideBoxLayoutTest {
         // 서버가 화면에 없는 대상을 골라도 안내는 떠야 한다.
         val layout = compute("가나다", target = null)
 
-        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
+        assertEquals(2000f - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -136,7 +199,7 @@ class GuideBoxLayoutTest {
             avoid = listOf(dialog),
         )
 
-        assertEquals(103f + MARGIN_V, layout?.box?.top)
+        assertEquals(103f + MARGIN_TOP, layout?.box?.top)
     }
 
     @Test
@@ -144,7 +207,7 @@ class GuideBoxLayoutTest {
         val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = true)))
 
         // 키보드를 건드리지 않는 자리 중 첫 번째(대상 위).
-        assertEquals(1000f - TARGET_GAP - boxHeight(1), layout?.box?.top)
+        assertEquals(1000f - AVOID_GAP - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -153,7 +216,7 @@ class GuideBoxLayoutTest {
         // 그러면 키보드를 조금 덮더라도 겹침이 가장 작은 자리가 낫다.
         val layout = compute("가나다", target = TARGET, avoid = listOf(DIALOG, keyboard(hard = false)))
 
-        assertEquals(TARGET.bottom + TARGET_GAP, layout?.box?.top)
+        assertEquals(TARGET.bottom + AVOID_GAP, layout?.box?.top)
     }
 
     @Test
@@ -212,7 +275,7 @@ class GuideBoxLayoutTest {
         val layout = compute("가나다", canvas = screen, avoid = listOf(field, keyboard))
 
         // 입력칸(900~960)을 덮는 화면 위가 아니라 키보드를 조금 무는 화면 아래.
-        assertEquals(2000f - MARGIN_V - boxHeight(1), layout?.box?.top)
+        assertEquals(2000f - MARGIN_BOTTOM - boxHeight(1), layout?.box?.top)
     }
 
     @Test
@@ -331,8 +394,8 @@ class GuideBoxLayoutTest {
         val plain = compute(text, target = TARGET, avoid = listOf(band))
         val withRow = compute(text, target = TARGET, avoid = listOf(band), controlHeight = CONTROL_ROW)
 
-        assertEquals(1000f - TARGET_GAP - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
-        assertEquals(TARGET.bottom + TARGET_GAP, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
+        assertEquals(1000f - AVOID_GAP - boxHeight(1), plain!!.box.top, 0.01f) // 대상 위 — 띠에 안 닿는다
+        assertEquals(TARGET.bottom + AVOID_GAP, withRow!!.box.top, 0.01f) // 컨트롤 행까지 재면 띠를 물어 대상 아래로
     }
 
     // --- 중앙 배치 (GD-4 종료 확인, #193) ----------------------------------------
@@ -389,15 +452,16 @@ class GuideBoxLayoutTest {
         /** **가로와 다른 값이어야 한다** — 같으면 둘을 뒤바꿔도 테스트가 통과한다. */
         const val PADDING_V = 18f
 
-        /** 화면 위아래 가장자리와의 여백. 좌우(MARGIN)와 다른 값이다. */
-        const val MARGIN_V = 24f
-
         /**
-         * 강조 상자와 안내창 사이. **MARGIN(20) · MARGIN_V(24)와 달라야 한다** — 같은 값이면
-         * 대상 간격이 다시 화면 여백을 빌려 써도 테스트가 통과한다(PR #229 재리뷰에서
-         * 회귀를 넣어 30개 전부 통과하는 것이 확인됐다).
+         * 화면 위·아래 가장자리와의 여백. **넷이 전부 달라야 한다**(좌우 20 · 위 24 · 아래 32 ·
+         * 회피 28) — 둘이 같으면 하나를 다른 하나로 빌려 써도 테스트가 통과한다(PR #229 재리뷰에서
+         * 회귀를 넣어 30개 전부 통과하는 것이 확인됐다). 실제 값은 위 20 / 아래 55로 서로 다르다.
          */
-        const val TARGET_GAP = 28f
+        const val MARGIN_TOP = 24f
+        const val MARGIN_BOTTOM = 32f
+
+        /** 겹침 회피 여백(#234). 대상을 피해 앉을 때만 쓴다. */
+        const val AVOID_GAP = 28f
         const val LINE_HEIGHT = 30f
 
         /** 칩이 앉는 컨트롤 행 높이(#126). */

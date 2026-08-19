@@ -81,7 +81,8 @@ class HighlightOverlayView(context: Context) : View(context) {
     // 색·크기 전부 디자인 토큰(colors.xml·dimens.xml)에서 온다 — 하드코딩·px 계산 금지(#100).
     // 검증 기기(3x 밀도)에서 기존 raw px(12/24)와 dp 토큰(4dp/8dp)이 같은 픽셀값이라 시인성은 보존된다.
     private val highlightStroke = resources.getDimension(R.dimen.davi_overlay_highlight_stroke)
-    private val highlightCorner = resources.getDimension(R.dimen.davi_radius_sm)
+    private val highlightCorner = resources.getDimension(R.dimen.davi_overlay_target_radius)
+    private val highlightExpand = resources.getDimension(R.dimen.davi_overlay_target_expand)
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -106,8 +107,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val instructionPadding = GuideBoxStyle.padding(context)
     private val instructionPaddingV = GuideBoxStyle.paddingVertical(context)
     private val instructionMargin = GuideBoxStyle.margin(context)
-    private val instructionMarginV = GuideBoxStyle.marginVertical(context)
-    private val instructionTargetGap = GuideBoxStyle.targetGap(context)
+    private val instructionMarginTop = GuideBoxStyle.marginTop(context)
+    private val instructionMarginBottom = GuideBoxStyle.marginBottom(context)
+    private val instructionAvoidGap = GuideBoxStyle.avoidGap(context)
     private val controlRow = GuideBoxStyle.controlRow(context)
     private val dotsRow = resources.getDimension(R.dimen.davi_overlay_dots_row)
 
@@ -541,24 +543,18 @@ class HighlightOverlayView(context: Context) : View(context) {
         canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
 
         if (hasTarget) {
-            val bounds = drawableBounds()
-            // 테두리가 대상 가장자리를 덮지 않도록 선 두께의 절반만큼 바깥으로 물린다.
-            // 단 화면 밖으로 나가면 그만큼 잘리므로, 그릴 수 있는 범위 안으로 당긴다
-            // (실측: 네비게이션바 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다).
+            // 자리는 [highlightBounds]가 정한다 — **레이아웃도 같은 사각형을 피한다.**
+            // 근거(후광을 안 섞는 이유·가장자리 클램프)는 그 KDoc에 있다.
             //
-            // **글로우가 가장 두꺼워졌을 때를 기준으로 물린다**(#147). 매 프레임 두께에 맞춰
-            // 물리면 숨 쉬는 동안 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다 —
-            // 자리는 고정하고 두께·투명도만 변해야 "숨 쉰다"로 읽힌다.
+            // 그 함수가 주는 것은 **바깥변**이고 drawRoundRect는 중심선에 칠하므로,
+            // 여기서 획 절반을 안으로 물려야 잉크의 바깥이 그 변에 맞는다.
             val frame = HighlightMotion.frame(readingPhase, highlightStroke, highlightGlowSpread)
-            // **안쪽 선의 자리는 후광과 무관하게 잡는다.** 물림 계산에 번짐 거리를 섞었더니
-            // 화면 가장자리에 붙은 대상(런처 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려
-            // 찌그러져 보였다(실기기 실측, #147). 선은 대상에 붙어야 하고, 후광은 화면 밖으로
-            // 나가면 캔버스가 알아서 자른다 — 그게 자연스럽다.
-            val half = frame.coreStroke / 2f
-            val left = (target.left - half).coerceAtLeast(bounds.left)
-            val top = (target.top - half).coerceAtLeast(bounds.top)
-            val right = (target.right + half).coerceAtMost(bounds.right)
-            val bottom = (target.bottom + half).coerceAtMost(bounds.bottom)
+            val rect = highlightBounds()
+            val half = highlightStroke / 2f
+            val left = rect.left + half
+            val top = rect.top + half
+            val right = rect.right - half
+            val bottom = rect.bottom - half
 
             // 후광은 겹을 쌓아 번지게 한다 — 굵은 선 하나로는 이중 테두리로 보인다(실기기 실측).
             // 바깥으로 갈수록 빠르게 옅어져 마이크 뒤 글로우와 같은 인상을 준다(#147).
@@ -595,6 +591,47 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
+     * 강조가 화면에서 차지하는 **바깥변** 사각형 — 획의 바깥 가장자리다.
+     *
+     * **레이아웃이 피해야 하는 것은 대상이 아니라 이것이다.** 레이아웃에 원본 bounds를
+     * 넘기면 회피 여백이 그 차이만큼 조용히 줄고 겹침 판정도 헐거워진다 — 값을 안 건드리고
+     * **재는 기준을 바꿔서** 여백이 주는 자리다(PR #239 리뷰 1, #229 리뷰 B와 같은 모양).
+     * 확장이 0인 지금은 차이가 4dp뿐이지만, 확장을 다시 넣는 순간 되풀이된다.
+     * **그리기와 계산이 이 함수 하나를 본다** — 그리는 쪽은 여기서 획 절반을 안으로 물린다.
+     *
+     * **화면 밖으로 나가면 그릴 수 있는 범위 안으로 당긴다** — 실측에서 내비게이션 바
+     * 버튼처럼 bounds 아래가 화면 높이와 같으면 아랫변이 잘렸다. 자르는 기준이
+     * [drawableBounds]인 것은 **강조 대상이 내비바 버튼일 수 있어서**다(안내창이 앉을 범위인
+     * [boxBounds]와 다르다).
+     *
+     * **후광 번짐은 이 계산에 섞지 않는다**(#147). 섞었더니 화면 가장자리에 붙은 대상(런처
+     * 독의 카메라)에서 사각형이 아이콘 안쪽으로 밀려 찌그러져 보였다 — 선은 대상에 붙어야
+     * 하고 후광은 화면 밖으로 나가면 캔버스가 알아서 자른다. 같은 이유로 **글로우가 가장
+     * 두꺼워졌을 때가 아니라 고정 두께로** 잡는다: 매 프레임 두께에 맞춰 물리면 숨 쉬는 동안
+     * 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다. 자리는 고정하고 두께·투명도만
+     * 변해야 "숨 쉰다"로 읽힌다.
+     */
+    private fun highlightBounds(): GuideBoxLayout.Bounds {
+        // **자를 때 선 두께를 물리지 않는다.** 이 함수가 돌려주는 것이 바깥변이라, 잉크의
+        // 바깥이 화면 끝에 딱 맞아야 한다. [drawableBounds]는 **중심선용**이라 이미 획 절반을
+        // 물려 놓았고, 거기에 대고 자르면 절반을 두 번 빼서 가장자리 대상에서 강조가 2dp
+        // 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이 인용한 #147의 찌그러짐과 같은 방향이다.
+        // 중심선으로 되돌리는 것은 그리는 쪽의 `+ half`가 한다.
+        // **View.left·View.top을 가리지 않게 이름을 가른다**(PR #239 리뷰). 아래 식에서
+        // width·height는 진짜 View 속성이라, 같은 식에 View 속성과 화면 좌표가 섞인다 —
+        // 지역 변수를 지우면 조용히 View.left로 넘어가 컴파일은 되고 값만 틀린다.
+        val originX = locationOnScreen[0].toFloat()
+        val originY = locationOnScreen[1].toFloat()
+        val out = highlightExpand + highlightStroke
+        return GuideBoxLayout.Bounds(
+            left = (target.left - out).coerceAtLeast(originX),
+            top = (target.top - out).coerceAtLeast(originY),
+            right = (target.right + out).coerceAtMost(originX + width),
+            bottom = (target.bottom + out).coerceAtMost(originY + height),
+        )
+    }
+
+    /**
      * 상자 아래에 비워 둘 높이. **계산과 그리기가 이 함수 하나를 본다** — 두 곳이 각자
      * 조건을 세면 값이 셋이 되는 순간 갈린다(PR #229 리뷰).
      *
@@ -624,10 +661,11 @@ class HighlightOverlayView(context: Context) : View(context) {
                     // 강조 클램프와 달리 **시스템 바를 뺀** 범위다(#169) — 안내창이 내비게이션
                     // 바를 덮으면 그 밴드의 탭까지 조작 오버레이가 흡수한다.
                     canvas = boxBounds(),
-                    target = if (hasTarget) target.toLayoutBounds() else null,
+                    target = if (hasTarget) highlightBounds() else null,
                     margin = instructionMargin,
-                    marginVertical = instructionMarginV,
-                    targetGap = instructionTargetGap,
+                    marginTop = instructionMarginTop,
+                    marginBottom = instructionMarginBottom,
+                    avoidGap = instructionAvoidGap,
                     padding = instructionPadding,
                     paddingVertical = instructionPaddingV,
                     lineHeight = metrics.bottom - metrics.top,
@@ -675,6 +713,11 @@ class HighlightOverlayView(context: Context) : View(context) {
 
     /**
      * 선 두께를 물린 뒤 실제로 **그릴 수 있는** 화면 범위. 화면 좌표계다.
+     *
+     * **남은 호출자는 [boxBounds] 하나다**(#234). 물려 있는 `highlightStroke / 2`는 강조 선의
+     * 두께인데 안내창은 자기 획(`davi_overlay_window_stroke` 1.5dp)을 따로 쓰므로, 그 물림이
+     * 안내창 캔버스를 이유 없이 2dp 줄인다. 지우면 안내창이 앉을 수 있는 자리가 그만큼
+     * 넓어지는 변화라 이 이슈에서 건드리지 않았다 — 정리는 별도 이슈.
      *
      * 시스템 바를 뺀 범위가 아니다 — 강조 대상이 내비게이션 바 버튼일 수 있고, 그때 아랫변이
      * 잘리면 안 된다. 안내창이 앉을 범위는 [boxBounds]가 따로 준다.
