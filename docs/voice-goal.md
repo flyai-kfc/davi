@@ -26,7 +26,7 @@
 | TTS | `app-android/.../TextToSpeechHelper.kt` | 질문 읽기. 실패해도 화면 문구로 흐름 유지 |
 | 대화 상태 | `app-android/.../VoiceDialogueSession.kt` | user/assistant 쌍 누적, 최대 10메시지(5왕복), generation 격리, stage 머신 |
 | HTTP | `app-android/.../SlotFillApiClient.kt` → `POST /v1/intent/slot-fill` | |
-| 의도 해석 | `server/app/intent_resolution.py`, `intent_prompt.py` | LLM 1콜 구조화 출력, 스텁/Gemini 2구현, 스키마 400 폴백, 계약 위반 1회 교정 |
+| 의도 해석 | `server/app/intent_resolution.py`, `intent_prompt.py` | LLM 1콜 구조화 출력, 스텁/원격 2구현(원격은 `llm_provider`가 고른 공급자, #259), 스키마 400 폴백, 계약 위반 1회 교정 |
 | 계약 | `server/app/schemas.py` (C13) | `SlotFillRequest{utterance, session_id, conversation_history}` → `SlotFillState{status, message, goal}` |
 | 테스트 | `test_intent_resolution.py`, `test_slot_fill_api.py`, `VoiceDialogueSessionTest.kt`, `SlotFillApiClientTest.kt` | |
 

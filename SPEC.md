@@ -158,7 +158,8 @@
   release는 `BuildConfig.PRIVACY_MASKING_DISABLED`가 상수 `false`이고,
   `verifyReleaseConfiguration`이 **두 경로 중 어느 하나라도 존재하면** 실패시킨다.
 - **서버 2차** — `DAVI_DISABLE_PRIVACY_MASKING=true`. **development + loopback 바인딩 +
-  개발 토큰 없음**을 모두 만족할 때만 기동한다. 공용 개발 endpoint(#94 Azure, 사설 Wi-Fi 맥)는
+  접근 토큰 없음**을 모두 만족할 때만 기동한다. 토큰은 팀용·테스트 참가자용 **둘 다** 해당한다
+  (#257) — 어느 하나라도 설정돼 있으면 거부한다. 공용 개발 endpoint(#94 Azure, 사설 Wi-Fi 맥)는
   토큰·바인딩 조건에서 걸러진다 — 남의 기기 화면까지 원문으로 받는 자리이기 때문이다.
 - **두 겹은 독립적으로 드러낸다** — 앱은 logcat `GuideSvc`의 `privacyMasking=`, 서버는
   `/health`의 `privacy_masking_disabled`. 한쪽만 우회한 상태를 "둘 다 우회"로 오인하면
@@ -307,7 +308,7 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 충분하면 기존 GuideSession에 넣을 정규화된 `goal`을 반환한다. 서버는 세션 상태를 저장하지 않으며
 앱은 최대 5왕복만 메모리에 두고 재시작 때 폐기한다.
 
-Gemini 내부 출력은 짧은 `decision_basis`를 `status`보다 먼저 생성하지만 wire·로그에는 내보내지
+모델 내부 출력은 짧은 `decision_basis`를 `status`보다 먼저 생성하지만 wire·로그에는 내보내지
 않는다. 앱 wire 응답은 기존 `status`·`message`·`goal` **그대로다**. `needs_clarification`의
 `message`에는 질문 문장 뒤에 짧은 답변 예시 문장("예를 들면 카카오톡이나 문자요")이 붙을 수 있다
 (2026-08-14 합의 · **프롬프트 구현 전 — #140**). 예시는 선택지가 아니다 — **별도 보기 필드나
@@ -455,8 +456,11 @@ davi/
 
 - 개인 USB 검증은 loopback+`adb reverse`다. 평일 팀 테스트는 전용 맥북의 local uvicorn + 같은
   사설 Wi-Fi(#57) 또는 #94의 Azure Container Apps 공유 development endpoint를 쓴다.
-- LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 개발 토큰과 팀 전체 요청
-  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. 저녁에는 PID 기반 스크립트로
+- LAN 서버는 development에서만 `0.0.0.0:8000`에 열고, 32자 이상 접근 토큰과 팀 전체 요청
+  제한으로 같은 네트워크의 의도치 않은 Gemini 호출을 막는다. **접근 토큰은 둘이다**(#257) —
+  팀용 `DAVI_DEV_ACCESS_TOKEN`과 외부 테스트 참가자용 `DAVI_TEST_ACCESS_TOKEN`이 같은
+  `X-Davi-Dev-Token` 헤더를 쓰고 **둘 중 하나만 맞으면 통과**한다. 즉 이 서버에 붙을 수 있는
+  주체는 팀 debug APK · release APK(§7) · 외부 테스트 참가자 셋이다. 저녁에는 PID 기반 스크립트로
   명시 종료한다.
 - Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
   digest 고정 base와 Docker 전용 의존성 lock으로 build한다. commit SHA와 Actions run ID/attempt로
