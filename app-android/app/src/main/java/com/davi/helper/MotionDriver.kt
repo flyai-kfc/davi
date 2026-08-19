@@ -25,8 +25,8 @@ class MotionDriver(
     private var startNanos = 0L
     private var lastNanos = 0L
 
-    /** 모션이 꺼져 있으면 true. 호출자가 "움직이지 않는 그림"을 골라야 할 때 본다. */
-    val isMotionDisabled: Boolean
+    // 모션 꺼짐은 구동부 안에서만 판정한다 — 호출자는 "한 번은 그려진다"([start])만 알면 된다.
+    private val isMotionDisabled: Boolean
         get() = !ValueAnimator.areAnimatorsEnabled()
 
     // 타입을 명시한다 — 콜백 본문이 자기 자신을 다시 거는 구조라, 추론에 맡기면 순환한다.
