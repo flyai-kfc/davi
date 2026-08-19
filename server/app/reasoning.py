@@ -269,6 +269,9 @@ def _screen_signature(screen: Screen) -> str:
 
     structure = {
         "package_name": screen.package_name,
+        # 마스킹을 거친 뒤의 제목이다(호출자가 masked.screen을 넘긴다). 화면이 바뀌면 제목도
+        # 바뀌는 경우가 많아 구조 신호로 값이 있다.
+        "window_title": screen.window_title,
         "current_page": screen.current_page,
         "total_pages": screen.total_pages,
         "has_scrollable_element": screen.has_scrollable_element,
@@ -280,6 +283,12 @@ def _screen_signature(screen: Screen) -> str:
                 "clickable": element.clickable,
                 "editable": element.editable,
                 "focused": element.focused,
+                # 행동 상태(C18). **이게 없으면 스위치를 켜도 같은 서명이 나온다** — label에
+                # 입력 원문도 토글 상태도 들어가지 않으므로 이 자리가 유일한 변화 신호다(#271).
+                "enabled": element.enabled,
+                "checked": element.checked,
+                "selected": element.selected,
+                "showing_hint_text": element.showing_hint_text,
                 "bounds": element.bounds,
                 "can_scroll_forward": element.can_scroll_forward,
                 "can_scroll_backward": element.can_scroll_backward,

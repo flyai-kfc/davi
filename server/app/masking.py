@@ -29,6 +29,9 @@ _MASKED_ELEMENT_TEXT_FIELDS = ("label",)
 # 화면을 요약하며 고유명(장소명 등)을 인용하는 것이 실측됐다.
 _MASKED_STEP_TEXT_FIELDS = ("instruction", "target_label", "screen_hint")
 
+# 화면 단위 텍스트 필드. 요소 목록과 순회 축이 달라 따로 두되 규칙은 같다.
+_MASKED_SCREEN_TEXT_FIELDS = ("window_title",)
+
 # (이름, 정규식) — 오탐을 줄이려 형태가 뚜렷한 것부터. 필요 시 추가.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("email", re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")),
@@ -73,27 +76,38 @@ def _mask_element_text_fields[ElementT](
 
 
 def mask_screen(screen: dict[str, Any]) -> dict[str, Any]:
-    """Screen dict의 모든 element label을 마스킹한 새 dict를 돌려준다(비파괴)."""
+    """Screen dict의 민감 텍스트를 마스킹한 새 dict를 돌려준다(비파괴)."""
     elements = _mask_element_text_fields(
         screen.get("elements", []),
         read_field=lambda element, field_name: element.get(field_name, ""),
         copy_with_updates=lambda element, updates: {**element, **updates},
     )
-    return {**screen, "elements": elements}
+    screen_updates = {
+        field_name: mask_text(screen[field_name])
+        for field_name in _MASKED_SCREEN_TEXT_FIELDS
+        if isinstance(screen.get(field_name), str)
+    }
+    return {**screen, **screen_updates, "elements": elements}
 
 
 def mask_screen_model(screen: Screen) -> Screen:
     """파이프라인용 Screen 모델을 직렬화 왕복 없이 비파괴로 2차 마스킹한다."""
 
-    return screen.model_copy(
-        update={
-            "elements": _mask_element_text_fields(
-                screen.elements,
-                read_field=lambda element, field_name: getattr(element, field_name),
-                copy_with_updates=lambda element, updates: element.model_copy(update=updates),
-            )
+    updates: dict[str, Any] = {
+        "elements": _mask_element_text_fields(
+            screen.elements,
+            read_field=lambda element, field_name: getattr(element, field_name),
+            copy_with_updates=lambda element, updates: element.model_copy(update=updates),
+        )
+    }
+    updates.update(
+        {
+            field_name: mask_text(value)
+            for field_name in _MASKED_SCREEN_TEXT_FIELDS
+            if isinstance(value := getattr(screen, field_name, None), str)
         }
     )
+    return screen.model_copy(update=updates)
 
 
 def mask_step_model(step: GuideStep) -> GuideStep:

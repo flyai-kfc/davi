@@ -106,6 +106,26 @@ FOCUSED_INPUT_KEYBOARD_CLOSED = (
     "입력해야 한다면 type을 바로 안내하지 말고, 그 입력칸을 tap해 키보드를 여는 한 단계를 먼저 "
     "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
+# 행동 상태 문장들(C18 · #271). 규칙은 위 스크롤 문장들과 같다 — **값이 실릴 때만 붙인다.**
+# 없는 필드를 설명하는 문장이 되지 않게 하려는 것이고, 요소 줄마다 붙이지 않는 이유는 토큰이
+# 요소 수만큼 불어나서다.
+#
+# **관측 사실과 대상 배제까지만 쓰고 "그러니 무엇을 눌러라"는 넣지 않는다.** 문구 규칙이 값을
+# 끌어당겨 원래 맞던 값을 틀리게 만든 전례가 있다(C17 · #109).
+DISABLED_ELEMENT_INSTRUCTION = (
+    "enabled=False로 적힌 요소는 지금 누를 수 없는 상태입니다. 그 요소를 누르라고 안내하지 말고, "
+    "누를 수 있게 되는 데 필요한 다른 단계를 고르세요."
+)
+TOGGLE_STATE_INSTRUCTION = (
+    "checked는 그 요소의 켜짐/꺼짐 상태이고, selected=True는 지금 선택되어 있는 항목입니다. "
+    "목표한 상태가 이미 되어 있는 요소를 다시 누르라고 안내하지 마세요."
+)
+# C14와 같은 경계를 여기서도 지킨다 — 상태 하나로 입력 완료나 목표 달성을 추론하지 않는다.
+HINT_TEXT_INSTRUCTION = (
+    "showing_hint_text=True인 입력칸은 아직 비어 있고, 지금 보이는 글자는 사용자가 넣은 값이 "
+    "아니라 안내문입니다. False이면 값이 들어 있습니다 — 다만 그 값이 무엇인지, 목표에 맞는지는 "
+    "화면 정보로 알 수 없습니다."
+)
 ACTIONABLE_RESULT_INSTRUCTION = (
     "입력창 외의 현재 화면 요소도 모두 확인하세요. 목표에 맞는 검색 결과나 다음 단계 UI가 지금 "
     "보이고 바로 조작 가능하면, 입력창의 포커스나 키보드 표시와 관계없이 그 요소를 누르는 tap을 "
@@ -119,7 +139,7 @@ def build_prompt(req: NextStepRequest) -> str:
 
     context = (
         f"{_page_context(req)}{_scroll_context(req)}{_end_instruction(req)}"
-        f"{_swipe_legend(req)}{_input_context(req)}"
+        f"{_swipe_legend(req)}{_input_context(req)}{_state_context(req)}"
     )
     return f"""당신은 스마트폰 사용을 돕는 안내 도우미입니다.
 사용자 대신 화면을 누르거나 조작하지 말고, 사용자가 다음에 할 행동 딱 한 가지만 안내하세요.
@@ -129,7 +149,7 @@ def build_prompt(req: NextStepRequest) -> str:
 {SCROLL_DIRECTION_INSTRUCTION}
 
 목표: {req.goal}
-현재 앱 패키지: {req.screen.package_name or "알 수 없음"}
+{_screen_line(req)}
 {context}최근에 했던 안내:
 {_recent_step_lines(req)}
 현재 화면 요소:
@@ -181,6 +201,36 @@ def _recent_step_lines(req: NextStepRequest) -> str:
         f"- {step.instruction}" for step in req.steps[-MAX_HISTORY:] if step.instruction.strip()
     )
     return recent or "- 없음"
+
+
+def _screen_line(req: NextStepRequest) -> str:
+    """지금 화면을 한 줄로. 창 제목이 있으면 그것이 화면 이름이다(#269).
+
+    package만으로는 화면을 알 수 없다 — 설정>배터리가 `com.samsung.android.lool`로 온다.
+    제목이 없는 창이 흔하므로(11번가·TMAP·플레이스토어 실측) 그때는 종전 줄 그대로 둔다.
+    """
+
+    package = req.screen.package_name or "알 수 없음"
+    title = (req.screen.window_title or "").strip()
+    return f"현재 화면: {title!r} ({package})" if title else f"현재 앱 패키지: {package}"
+
+
+def _state_context(req: NextStepRequest) -> str:
+    """요소 줄에 실제로 실린 행동 상태만 설명한다(C18).
+
+    조건을 판정하는 규칙이 [_format_element]의 출력 규칙과 같아야 한다. 어긋나면 프롬프트에
+    없는 값을 설명하거나, 실린 값을 설명 없이 두게 된다.
+    """
+
+    elements = req.screen.elements
+    context = ""
+    if any(element.enabled is False for element in elements):
+        context += f"{DISABLED_ELEMENT_INSTRUCTION}\n"
+    if any(element.checked is not None or element.selected for element in elements):
+        context += f"{TOGGLE_STATE_INSTRUCTION}\n"
+    if any(element.showing_hint_text is not None for element in elements):
+        context += f"{HINT_TEXT_INSTRUCTION}\n"
+    return context
 
 
 def _page_context(req: NextStepRequest) -> str:
@@ -336,7 +386,15 @@ def _format_element(element: UiElement) -> str:
         f"editable={element.editable}",
         f"focused={element.focused}",
     ]
+    # 상태는 **정보가 있을 때만** 싣는다. 요소가 최대 200개라 `enabled=True`·`selected=False`처럼
+    # 기본값인 줄까지 붙이면 토큰이 요소 수만큼 불어난다. 미관측(None)에는 침묵한다(C10).
+    if element.enabled is False:
+        details.append("enabled=False")
+    if element.selected:
+        details.append("selected=True")
     optional_fields = (
+        ("checked", element.checked),
+        ("showing_hint_text", element.showing_hint_text),
         ("bounds", element.bounds),
         ("can_scroll_forward", element.can_scroll_forward),
         ("can_scroll_backward", element.can_scroll_backward),

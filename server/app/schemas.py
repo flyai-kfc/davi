@@ -87,6 +87,17 @@ class UiElement(BaseModel):
     # 입력 원문은 label에 넣지 않는다. 이 둘은 접근성 상태만 전달한다(#112).
     editable: bool = False
     focused: bool = False
+
+    # 행동 상태 (C18). clickable/editable은 뷰의 설정값이라 이걸 대신하지 못한다.
+    #   None = 낡은 앱이 안 보냄(미관측). **False로 기본값을 두지 않는다** — 침묵을
+    #   "비활성/꺼짐"으로 읽으면 안내가 통째로 막힌다(C10과 같은 세 상태 규약).
+    enabled: bool | None = None
+    # 켤 수 없는 요소는 None이다. 그 False는 "꺼짐"이 아니라 해당 없음이다.
+    checked: bool | None = None
+    selected: bool | None = None
+    # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
+    showing_hint_text: bool | None = None
+
     bounds: list[int] | None = None  # [left, top, right, bottom]
 
     # 스크롤 상태 (C4). 방향·끝 판정이 여기서 나온다.
@@ -106,6 +117,10 @@ class Screen(BaseModel):
     """
 
     package_name: str = ""
+    # 창 제목(C18). package만으로는 화면을 알 수 없다 — 설정>배터리가 com.samsung.android.lool로
+    # 오는데 창 제목은 '배터리'를 바로 준다(#269 실측, SM-S921N). 제목이 없는 창이 흔해서
+    # None이 정상이고, 값이 있으면 **label과 같은 2차 마스킹 대상이다**(대화방 제목 = 사람 이름).
+    window_title: str | None = None
     elements: list[UiElement] = Field(default_factory=list)
     current_page: int | None = None
     total_pages: int | None = None
