@@ -133,7 +133,7 @@ jobs:
           ! badging "$release_apk" | grep -q '개발'
 
           # versionName 접미어도 같은 경계다 — 스토어에 -debug가 붙어 나가면 안 된다.
-          badging "$debug_apk" | grep -q "versionName='0.1.0-debug'"
+          badging "$debug_apk" | grep -qE "versionName='[^']*-debug'"
           ! badging "$release_apk" | grep -q 'debug'
 
       - name: 실기기 결과 문서 렌더러 테스트

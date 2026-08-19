@@ -56,7 +56,22 @@ data class DisplayedDecision(
 /** Davi debug manifest와 driver 사이의 서명 보호된 IPC 계약. 값 변경 시 양쪽을 함께 고친다. */
 internal object GuideE2eContract {
     const val PERMISSION = "com.davi.helper.permission.CONTROL_E2E"
-    const val DAVI_PACKAGE = "com.davi.helper"
+
+    /**
+     * 드라이버가 모는 앱의 **applicationId**. E2E는 debug 빌드만 몰고, debug는
+     * `applicationIdSuffix`로 `.debug`가 붙는다(#58).
+     *
+     * **[DAVI_CLASS_ROOT]와 붙여 쓰지 않는다.** 컴포넌트를 지목할 때 앞(패키지)은 이 값이고
+     * 뒤(클래스 FQN)는 namespace 기준이라 접미어가 없다. 한 상수로 겸하면 debug만 깔린
+     * 기기에서는 ActivityNotFoundException이고, 둘 다 깔린 기기에서는 **release 앱이 떠서**
+     * 시나리오가 엉뚱한 앱을 조용히 몬다.
+     *
+     * 리소스 id 접두어(`By.res`)도 namespace가 아니라 이 applicationId를 따른다.
+     */
+    const val DAVI_PACKAGE = "com.davi.helper.debug"
+
+    /** 클래스 FQN의 뿌리. **namespace라 접미어가 붙지 않는다**([DAVI_PACKAGE] 참고). */
+    const val DAVI_CLASS_ROOT = "com.davi.helper"
     const val ACTION_START = "com.davi.helper.e2e.START"
     const val ACTION_START_JOURNEY = "com.davi.helper.e2e.START_JOURNEY"
     const val ACTION_STOP = "com.davi.helper.e2e.STOP"
