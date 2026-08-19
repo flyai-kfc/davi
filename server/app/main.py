@@ -28,6 +28,7 @@ from .kakao_auth import (
     KakaoLoginRequest,
     SessionTokenResponse,
     login_with_kakao,
+    verify_session_token,
 )
 from .llm import get_llm_client
 from .observability import (
@@ -75,7 +76,13 @@ _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
+_SESSION_AUTH_HEADER = "Authorization"
+_SESSION_AUTH_PREFIX = "Bearer "
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
+_EXTERNAL_DAILY_WINDOW_SECONDS = 24 * 60 * 60
+# 세션 인증이 필요한 추론 endpoint만이다. 로그인(_AUTH_KAKAO_PATH)은 토큰이 없는 상태로
+# 호출되므로 대상이 아니다 — 자체 auth_rate_limiter가 프로필과 무관하게 따로 막는다.
+_SESSION_PROTECTED_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH})
 dev_rate_limiter = SlidingWindowRateLimiter()
 # 로그인 전용 리미터(#167 리뷰 P1). dev 리미터는 development에서만 돌지만, 로그인은 인증 전
 # 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 제한한다. 별도 창을 쓰는
@@ -84,6 +91,12 @@ dev_rate_limiter = SlidingWindowRateLimiter()
 # 출처별 제한이 한 출처의 폭주로부터 정상 사용자를, 전역 상한이 카카오 API 소모 총량을
 # 지키며, 거부된 요청은 출처 키를 남기지 않아 분산 출처 폭주에도 키 수가 전역 상한으로 묶인다.
 auth_rate_limiter = SourceAndGlobalRateLimiter()
+# beta·production 추론 endpoint 전용 리미터(#214). 출처는 카카오 회원번호(세션 토큰의 sub)다.
+# 짧은 창(폭주)과 하루 창(누적)을 별개 인스턴스로 둔다 — 같은 인스턴스에 두 판정을 섞으면
+# 어느 창이 막았는지 구분이 안 되고, 하루 창의 오래된 타임스탬프가 짧은 창의 정리 주기와
+# 어긋난다.
+external_rate_limiter = SourceAndGlobalRateLimiter()
+external_daily_rate_limiter = SourceAndGlobalRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -210,6 +223,93 @@ def _development_auth_error(request: Request) -> JSONResponse:
     )
 
 
+def _external_access_error(request: Request) -> JSONResponse | None:
+    """development가 아닌 프로필(beta·production)에서 세션 인증과 요청 제한을 검사한다(#214).
+
+    ``_development_access_error``는 development에서만 동작하므로, 그 밖의 프로필에서는
+    지금까지 어떤 요청 경계도 없었다. 카카오 로그인이 발급한 세션 JWT를 여기서 처음
+    검증한다 — 로그인 자체(``_AUTH_KAKAO_PATH``)는 토큰이 없는 상태로 호출되므로
+    ``_SESSION_PROTECTED_PATHS``에 없고, 자체 ``auth_rate_limiter``가 프로필과 무관하게
+    로그인 폭주만 따로 막는다.
+    """
+
+    if settings.davi_env == "development":
+        return None
+    if request.url.path not in _SESSION_PROTECTED_PATHS:
+        return None
+
+    authorization = request.headers.get(_SESSION_AUTH_HEADER, "")
+    if not authorization.startswith(_SESSION_AUTH_PREFIX):
+        return _external_auth_error(request)
+    token = authorization[len(_SESSION_AUTH_PREFIX) :].strip()
+    if not token:
+        return _external_auth_error(request)
+    try:
+        kakao_user_id = verify_session_token(token)
+    except AuthError:
+        return _external_auth_error(request)
+
+    # 출처는 카카오 회원번호다 — device_id·IP가 아니라 인증된 사용자 단위로 제한한다.
+    source = str(kakao_user_id)
+    decision = external_rate_limiter.check(
+        source,
+        source_limit=settings.davi_external_rate_limit_per_source_requests,
+        source_window_seconds=settings.davi_external_rate_limit_per_source_window_seconds,
+        global_limit=settings.davi_external_rate_limit_requests,
+        global_window_seconds=settings.davi_external_rate_limit_window_seconds,
+    )
+    if not decision.allowed:
+        return _external_rate_limit_response(request, decision, scope="burst")
+
+    daily_decision = external_daily_rate_limiter.check(
+        source,
+        source_limit=settings.davi_external_daily_limit_per_source_requests,
+        source_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+        global_limit=settings.davi_external_daily_limit_requests,
+        global_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+    )
+    if not daily_decision.allowed:
+        return _external_rate_limit_response(request, daily_decision, scope="daily")
+
+    return None
+
+
+def _external_auth_error(request: Request) -> JSONResponse:
+    request.state.error_kind = "EXTERNAL_AUTH"
+    error = ApiError(
+        kind=ErrorKind.AUTH,
+        message="session token required",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=error.model_dump(),
+    )
+
+
+def _external_rate_limit_response(
+    request: Request,
+    decision: RateLimitDecision,
+    *,
+    scope: str,
+) -> JSONResponse:
+    retry_after = decision.retry_after_seconds or 1
+    scope_label = "SOURCE" if decision.limited_scope == "source" else "GLOBAL"
+    request.state.error_kind = f"EXTERNAL_{scope.upper()}_LIMIT_{scope_label}"
+    request.state.retry_after_seconds = retry_after
+    error = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="request limit exceeded",
+        retry_after_seconds=retry_after,
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=error.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 def _store_raw_if_dogfood(
     req: NextStepRequest,
     status_code: int,
@@ -288,7 +388,11 @@ async def observe_request(request: Request, call_next):
             request.state.error_kind = ErrorKind.BAD_REQUEST.value
             response = _invalid_trace_headers_response(request.state.request_id)
         else:
-            response = _development_access_error(request) if route in _TRACED_API_PATHS else None
+            response = None
+            if route in _TRACED_API_PATHS:
+                response = _development_access_error(request)
+                if response is None:
+                    response = _external_access_error(request)
             if response is None:
                 response = await call_next(request)
         _attach_trace_headers(response, context)
@@ -336,7 +440,7 @@ async def observe_request(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
-    if settings.davi_env == "production":
+    if settings.davi_env != "development":
         return {"status": "ok"}
     return {
         "status": "ok",

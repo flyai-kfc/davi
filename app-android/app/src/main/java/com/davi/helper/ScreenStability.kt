@@ -74,6 +74,7 @@ class ScreenStabilityTracker(
     private var failures = 0
     private var lastAttemptMs = 0L
     private var requestOutstanding = false
+    private var minRetryAfterMs = 0L
 
     fun onSample(signature: String, nowMs: Long): Decision {
         if (signature != lastSample) {
@@ -123,6 +124,7 @@ class ScreenStabilityTracker(
     /** 응답이 실제로 화면에 반영되면 백오프를 푼다. */
     fun markSucceeded() {
         failures = 0
+        minRetryAfterMs = 0L
     }
 
     /**
@@ -136,12 +138,17 @@ class ScreenStabilityTracker(
      * 한 번 끊긴 화면에서 안내가 영영 오지 않는다 — 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬다.
      *
      * 대신 재시도는 점점 뜸해진다. [backoffMs] 참고.
+     *
+     * [retryAfterMs]는 서버가 안 값(QUOTA의 `retry_after_seconds`)이다 — 원인을 모르는 일반
+     * 실패는 추측(지수 백오프)만 할 수 있지만, 이건 Gemini가 준 실제 재시도 가능 시각이라
+     * 있으면 [backoffMs]가 그 값을 우선한다. 없으면(네트워크·완료검증 재질의 등) 기존 로직 그대로다.
      */
-    fun markFailed() {
+    fun markFailed(retryAfterMs: Long? = null) {
         failures++
         sentSignature = null
         sentAtMs = 0L
         stuckReported = false
+        minRetryAfterMs = retryAfterMs?.coerceAtLeast(0L) ?: 0L
     }
 
     /**
@@ -164,11 +171,21 @@ class ScreenStabilityTracker(
         if (requery) sentSignature = null
     }
 
-    /** 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다. */
+    /**
+     * 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다.
+     *
+     * 다만 [markFailed]가 서버의 `retry_after_seconds`를 받았으면 그 값이 하한이 된다 — 이
+     * 하한만 [RETRY_MAX_MS] 상한을 넘어설 수 있다. 상한의 원래 취지("원인 모를 침묵이 길어도
+     * 이 간격보다 뜸해지지 않는다")는 **기다리면 풀리는지조차 모를 때**의 추측이었는데, QUOTA는
+     * 서버가 정확한 재개 시각을 알려준 경우라 그 답을 무시하고 더 일찍 두드리면 아직 안 풀린
+     * 창에 다시 걸려 같은 429가 반복된다(2026-08-18 실기기 재현 — 5 RPM 모델에서 서버가 60초를
+     * 알려줬는데 30초 상한으로 재시도해 계속 막힘).
+     */
     fun backoffMs(): Long {
         if (failures <= 0) return 0L
         val shift = (failures - 1).coerceAtMost(MAX_BACKOFF_SHIFT)
-        return (RETRY_BASE_MS shl shift).coerceAtMost(RETRY_MAX_MS)
+        val exponential = (RETRY_BASE_MS shl shift).coerceAtMost(RETRY_MAX_MS)
+        return exponential.coerceAtLeast(minRetryAfterMs)
     }
 
     /** 세션이 바뀌면 이전 세션의 화면 기억을 끌고 가지 않는다. */
@@ -181,6 +198,7 @@ class ScreenStabilityTracker(
         failures = 0
         lastAttemptMs = 0L
         requestOutstanding = false
+        minRetryAfterMs = 0L
     }
 
     companion object {

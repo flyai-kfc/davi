@@ -205,9 +205,11 @@ class GuideAccessibilityService : AccessibilityService() {
             },
         )
         e2ePublisher = GuideE2ePublisher(this)
+        val authStore = AuthStore(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
         // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
         // 막을 수 있다(#77 리뷰). 앱의 1차 마스킹이 꺼진 요청은 서버가 구분할 수 없으므로
@@ -698,7 +700,13 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun retryThisScreen(signature: String, generation: Long, result: NextStepResult) {
         mainHandler.post {
-            stability.markFailed()
+            // QUOTA는 서버가 Gemini의 Retry-After를 그대로 넘긴 실제 재개 시각이다. 이걸 무시하고
+            // 지수 백오프(최대 30초)만 쓰면, 아직 안 풀린 rate limit 창에 다시 걸려 같은 429가
+            // 반복된다(2026-08-18 실기기 재현). 다른 실패(네트워크 등)는 이 값이 없어 기존 그대로다.
+            val retryAfterMs = (result as? NextStepResult.ApiFailure)
+                ?.error?.retryAfterSeconds
+                ?.let { it * 1_000L }
+            stability.markFailed(retryAfterMs)
             val notify = errorNotice.record(result)
             Log.i(
                 TAG,

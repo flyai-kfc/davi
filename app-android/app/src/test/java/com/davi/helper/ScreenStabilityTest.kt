@@ -230,6 +230,38 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `서버가 준 재시도 시각이 상한(30초)보다 길면 그 값을 쓴다`() {
+        // Gemini QUOTA의 retry_after_seconds. 5 RPM 모델은 60초가 흔하다(2026-08-18 실기기).
+        tracker.markFailed(60_000L)
+
+        assertEquals(60_000L, tracker.backoffMs())
+    }
+
+    @Test
+    fun `서버가 준 재시도 시각이 지수 백오프보다 짧으면 지수 백오프를 쓴다`() {
+        // 값 자체가 잘못되어도(예: 1초) 첫 재시도보다 급하게 다시 두드리지 않는다.
+        tracker.markFailed(1_000L)
+
+        assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
+    }
+
+    @Test
+    fun `재시도 시각 없이 실패하면 서버 힌트가 없던 것과 같다`() {
+        tracker.markFailed(null)
+
+        assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
+    }
+
+    @Test
+    fun `재시도 시각 힌트는 성공하면 풀린다`() {
+        tracker.markFailed(60_000L)
+        tracker.markSucceeded()
+        tracker.markFailed()
+
+        assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
+    }
+
+    @Test
     fun `진행 중인 요청이 있으면 새 화면을 보내지 않는다`() {
         // A가 도는 동안 B를 SEND로 내면, 호출자는 "보냈다"고 기록하는데 실제 요청은
         // in-flight 가드에 막혀 나가지 않는다 → B의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
@@ -307,6 +339,16 @@ class ScreenStabilityTrackerTest {
 
         assertEquals(Decision.WAIT, tracker.onSample("a", 200))
         assertEquals(Decision.SEND, tracker.onSample("a", 300))
+    }
+
+    @Test
+    fun `세션이 바뀌면 이전 재시도 시각 힌트도 끌고 가지 않는다`() {
+        tracker.markFailed(60_000L)
+
+        tracker.reset()
+        tracker.markFailed()
+
+        assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
     }
 
     @Test

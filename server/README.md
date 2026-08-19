@@ -149,21 +149,26 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 ## 실행 프로필
 
 `DAVI_ENV`는 서버의 실행 경계를 정한다. 값이 없으면 로컬·테스트 호환을 위해
-`development`다. 제품 배포는 반드시 `production`을 명시하고, #94 Azure 공유 서버는 제품 배포가
-아니므로 개발 토큰과 rate limit을 쓰는 `development`를 유지한다.
+`development`다. `beta`·`production`은 카카오 로그인 세션 토큰으로 실사용자를 받는 외부
+공개 프로필이며(#214), #94 Azure 공유 개발 서버는 실사용자 endpoint가 아니므로 개발 토큰과
+rate limit을 쓰는 `development`를 유지한다.
 
-| 설정 | development | production |
+| 설정 | development | beta / production |
 |---|---|---|
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
 | `DAVI_USE_STUB_LLM=false` | non-empty `GEMINI_API_KEY` 필수 | non-empty `GEMINI_API_KEY` 필수 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
-| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 `0.0.0.0` | loopback만 허용 |
+| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 32자 이상 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
+| `/v1/next-step` 등 추론 endpoint | dev 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
 검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
-토큰 없는 LAN 요청이 통과하지 않는다.
+토큰 없는 LAN 요청이 통과하지 않는다. beta·production은 바인딩 자체를 막지 않는 대신,
+세션 토큰이 없거나 무효한 요청과 카카오 회원번호별·전역 요청 제한(짧은 창 + 하루 상한)을
+`main.py` `_external_access_error`가 막는다 — 로그인(`/v1/auth/kakao`)만 이 검사 밖이며
+별도 리미터가 프로필과 무관하게 로그인 폭주를 막는다.
 모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
 
 `/health` 응답도 프로필에 따라 다르다.
@@ -174,7 +179,7 @@ development:
 {"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
 ```
 
-production:
+beta / production:
 
 ```json
 {"status":"ok"}

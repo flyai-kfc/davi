@@ -5,7 +5,12 @@ import pytest
 from app.config import Settings, settings
 from app.intent_resolution import get_intent_resolver
 from app.llm import get_llm_client
-from app.main import auth_rate_limiter, dev_rate_limiter
+from app.main import (
+    auth_rate_limiter,
+    dev_rate_limiter,
+    external_daily_rate_limiter,
+    external_rate_limiter,
+)
 
 
 def _validated_runtime_profile(**overrides: Any) -> Settings:
@@ -40,11 +45,15 @@ def isolate_runtime_state(monkeypatch):
     get_intent_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
+    external_rate_limiter.reset()
+    external_daily_rate_limiter.reset()
     yield
     get_llm_client.cache_clear()
     get_intent_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
+    external_rate_limiter.reset()
+    external_daily_rate_limiter.reset()
 
 
 @pytest.fixture

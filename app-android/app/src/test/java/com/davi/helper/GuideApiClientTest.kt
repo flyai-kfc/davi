@@ -103,6 +103,37 @@ class GuideApiClientTest {
         assertEquals(null, server.takeRequest().getHeader("X-Davi-Dev-Token"))
     }
 
+    @Test
+    fun `attaches the session token as a bearer authorization header`() {
+        val token = "session-token-value"
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+            ),
+        )
+
+        GuideApiClient(
+            server.url("/").toString(),
+            sessionToken = { token },
+        ).nextStep(sampleRequest(), trace())
+
+        assertEquals("Bearer $token", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `omits the authorization header when there is no valid session`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+            ),
+        )
+
+        GuideApiClient(server.url("/").toString(), sessionToken = { null })
+            .nextStep(sampleRequest(), trace())
+
+        assertEquals(null, server.takeRequest().getHeader("Authorization"))
+    }
+
     /**
      * scroll은 서버가 "누를 게 없을 때" 실제로 돌려주는 액션이다.
      * 앱 enum에 이 값이 없던 시절 이 응답이 오면 파싱이 통째로 터졌다(이슈 #17).

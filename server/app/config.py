@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     # 실행 프로필. 미설정 로컬/테스트는 development로 유지한다.
-    davi_env: Literal["development", "production"] = "development"
+    # beta는 카카오 로그인으로 실사용자를 받는 외부 공개 endpoint다(#214) — production과
+    # 마찬가지로 stub/개발 토큰을 금지하고 세션 인증을 요구하지만(main.py), 별도 Azure
+    # Container App·시크릿으로 운영해 앞으로 올 정식 production과 구분한다.
+    davi_env: Literal["development", "beta", "production"] = "development"
 
     # Gemini
     gemini_api_key: SecretStr = SecretStr("")
@@ -58,6 +61,18 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_per_source_requests: int = 10
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
+    # beta·production에서 세션 인증된 추론 endpoint(/v1/next-step 등)를 지키는 제한(#214).
+    # dev_rate_limit은 development에서만 돌고, 이 두 프로필엔 지금까지 어떤 제한도 없었다 —
+    # 카카오 회원번호(source)별 폭주와 전체 LLM 쿼터를 위 auth 리미터와 같은 방식으로 나눈다.
+    davi_external_rate_limit_requests: int = 15
+    davi_external_rate_limit_window_seconds: int = 60
+    davi_external_rate_limit_per_source_requests: int = 6
+    davi_external_rate_limit_per_source_window_seconds: int = 60
+    # 짧은 창과 별개로 하루 단위 상한도 둔다(창은 24시간 고정 — main.py). 짧은 창은 폭주를,
+    # 이 상한은 하루 동안의 누적 사용량을 막는다. 공급자 무료 티어 RPD(약 1,000)보다 낮게 둔다.
+    davi_external_daily_limit_requests: int = 900
+    davi_external_daily_limit_per_source_requests: int = 200
+
     @field_validator("gemini_api_key", mode="after")
     @classmethod
     def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
@@ -72,18 +87,21 @@ class Settings(BaseSettings):
         bind_host = self.davi_bind_host.strip().lower()
         model = self.davi_model.strip()
 
-        if self.davi_env == "production" and self.davi_use_stub_llm:
-            raise ValueError("production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
+        if self.davi_env != "development" and self.davi_use_stub_llm:
+            raise ValueError("beta·production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
         if not self.davi_use_stub_llm and not api_key:
             raise ValueError("실제 LLM을 사용하려면 GEMINI_API_KEY가 필요합니다")
         if not model:
             raise ValueError("DAVI_MODEL은 비어 있을 수 없습니다")
-        if self.davi_env == "production" and dev_access_token:
-            raise ValueError("production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env != "development" and dev_access_token:
+            raise ValueError("beta·production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
         if dev_access_token and len(dev_access_token) < 32:
             raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
-        if self.davi_env == "production" and bind_host not in {"127.0.0.1", "localhost", "::1"}:
-            raise ValueError("production은 loopback 주소에만 바인딩할 수 있습니다")
+        # beta·production의 외부 바인딩 자체는 더 이상 막지 않는다(#214). 이 프로필이 만들어진
+        # 시점(#59)엔 실사용자 인증이 없어 "loopback만"이 유일한 안전판이었지만, 지금은 카카오
+        # 로그인 세션 토큰이 그 자리를 대신한다(main.py `_external_access_error`) — 바인딩이
+        # 아니라 요청 자체를 인증한다. loopback으로 묶어 둘 이유가 없어진 development만
+        # 아래에서 별도로 계속 검사한다(공용 개발 endpoint는 세션 인증이 없어 여전히 필요).
         if (
             self.davi_env == "development"
             and bind_host not in {"127.0.0.1", "localhost", "::1"}
@@ -140,6 +158,27 @@ class Settings(BaseSettings):
                 "DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
                 "DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
             )
+        if self.davi_external_rate_limit_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_external_rate_limit_window_seconds <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
+        if self.davi_external_rate_limit_per_source_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
+        if self.davi_external_rate_limit_per_source_window_seconds <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 양수여야 합니다")
+        # 같은 불변식(#167 4차 리뷰 P2)을 외부 추론 리미터에도 적용한다 — 근거는 위 auth 창과 같다.
+        if (
+            self.davi_external_rate_limit_per_source_window_seconds
+            > self.davi_external_rate_limit_window_seconds
+        ):
+            raise ValueError(
+                "DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
+                "DAVI_EXTERNAL_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
+            )
+        if self.davi_external_daily_limit_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_DAILY_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_external_daily_limit_per_source_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_DAILY_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
         return self
 
     @property
