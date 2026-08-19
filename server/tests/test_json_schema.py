@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 
 import pytest
+from app.gemini_schema import build_response_schema
 from app.json_schema import build_json_schema
 from app.schemas import GuideAction
 from pydantic import BaseModel, Field
@@ -116,3 +117,27 @@ def test_guide_action_schema_accepts_a_null_direction():
     )
 
     assert action.direction is None
+
+
+def test_optional_field_description_carries_exactly_one_convention():
+    """한 프롬프트에 "생략" 과 "null" 이 함께 들어가면 안 된다 (PR #62 리뷰가 금지한 패턴).
+
+    무스키마 폴백에서는 이 description이 **유일한 지시**다. 강제하는 스키마가 없으므로
+    정반대 지시가 둘 있으면 모델이 어느 쪽이든 고르고, scroll에서 direction이 빠지면
+    direction_recovery 한 번을 더 태운 뒤 PARSE로 실패한다.
+    """
+
+    strict = build_json_schema(GuideAction)["properties"]["direction"]["description"]
+    gemini = build_response_schema(GuideAction)["properties"]["direction"]["description"]
+
+    assert "null" in strict and "생략" not in strict
+    assert "생략" in gemini and "null" not in gemini
+
+
+def test_model_declaration_does_not_pin_a_provider_convention():
+    """규약은 변환기가 붙인다. 선언에 한쪽을 박으면 다른 쪽 스키마와 어긋난다."""
+
+    for name in ("direction", "target_node_id"):
+        declared = GuideAction.model_fields[name].description or ""
+        assert "생략" not in declared
+        assert "null" not in declared

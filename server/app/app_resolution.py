@@ -158,7 +158,11 @@ class RemoteAppCandidateResolver(AppCandidateResolver):
                 raise self.provider.to_llm_error(error) from error
             try:
                 text = self.provider.generate_json(
-                    fallback_prompt(prompt, self.provider.contract_schema),
+                    fallback_prompt(
+                        prompt,
+                        self.provider.contract_schema,
+                        omit_optional=self.provider.omits_optional_fields,
+                    ),
                     with_schema=False,
                     attempt=2,
                     trigger="schema_recovery",

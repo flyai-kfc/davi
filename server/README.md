@@ -182,16 +182,27 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 Anthropic으로 나가는 사고를 막으려는 기본값이다. 품질이 더 필요하면 `DAVI_MODEL`로 올린다
 (`gemini-3.6-flash`, `gpt-5.6-terra`, `claude-sonnet-5`).
 
-Anthropic 경로는 **thinking을 보내지 않는다.** 우리 호출은 짧은 JSON 객체 하나를 뽑는
-일이라 thinking이 지연만 늘리고, 모델 세대마다 파라미터 규약이 갈려(구형은 `budget_tokens`,
-신형은 400) 코드에 분기를 만들 값이 없다.
+Anthropic 경로는 **thinking 파라미터를 보내지 않고, 대신 예산에 추론 몫을 얹는다.** 끄지
+않는 이유는 끄는 방법이 모델마다 다르고 **어떤 모델은 아예 못 끄기** 때문이다 —
+`claude-haiku-4-5`는 생략하면 thinking이 안 돌지만 `claude-sonnet-5`·`claude-opus-5`는
+생략해도 adaptive thinking이 기본으로 켜져 있고(기본 effort는 high),
+`thinking: {"type": "disabled"}`는 Sonnet 5는 받지만 Opus 5는 effort가 xhigh 이상이면 400,
+Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모양이 없어서, 어느 모델이 와도
+안 깨지는 쪽(예산에 얹기)을 골랐다. thinking이 안 도는 모델에서는 상한이 남을 뿐 비용은
+늘지 않는다 — 상한은 배정이 아니라 천장이다.
 
 **보이지 않는 추론 토큰이 출력 예산을 같이 먹는다.** thinking·reasoning 토큰이 예산을 다
 쓰면 응답이 잘려 PARSE 실패로 이어진다(2026-08-18 `gemini-3.6-flash` 실기기 재현). 그래서
 next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
 추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
-OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic은 0이다.
+OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
 모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+
+**Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
+상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이
+1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
+`DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
+느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
 
 `/health` 응답도 프로필에 따라 다르다.
 

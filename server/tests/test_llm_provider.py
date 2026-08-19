@@ -403,14 +403,16 @@ def test_output_budget_leaves_room_for_hidden_reasoning_tokens(set_runtime_profi
     )
     assert _built().max_output_tokens == 1024
 
-    # Anthropic은 thinking을 보내지 않으므로 정상 응답 몫만 있으면 된다.
+    # Anthropic은 thinking을 끌 수 없는 모델이 있어(sonnet-5·opus-5는 생략해도 adaptive
+    # thinking이 켜진다) 추론 몫을 미리 얹는다. 이게 없으면 slot-fill의 512를 thinking이 먹고
+    # stop_reason=max_tokens로 끝난다.
     set_runtime_profile(
         davi_use_stub_llm=False,
         davi_llm_provider="anthropic",
         gemini_api_key="",
         anthropic_api_key="server-side-key",
     )
-    assert _built().max_output_tokens == 1024
+    assert _built().max_output_tokens == 2048 + 1024
 
 
 def test_max_output_tokens_override_wins(set_runtime_profile):
@@ -448,3 +450,42 @@ def _built():
         operation="next_step",
         response_headroom=1024,
     )
+
+
+@pytest.mark.parametrize(
+    ("cls", "expected", "forbidden"),
+    [
+        (GeminiProvider, "선택 필드는 해당할 때만 포함하세요", "null을 넣으세요"),
+        (OpenAiProvider, "해당 없는 필드에는 null을 넣으세요", "해당할 때만"),
+        (AnthropicProvider, "해당 없는 필드에는 null을 넣으세요", "해당할 때만"),
+    ],
+)
+def test_schema_fallback_prompt_states_the_provider_own_convention(cls, expected, forbidden):
+    """무스키마 폴백에는 강제하는 것이 없어 프롬프트 문장이 유일한 지시다.
+
+    Gemini는 "해당 없음 = 생략", strict 모드는 "모든 필드 + null"이다. 한쪽 문장을 양쪽에
+    쓰면 프롬프트가 스키마와 정반대를 지시하게 된다.
+    """
+
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        if len(bodies) == 1:
+            return httpx.Response(400, json={})
+        body = {
+            GeminiProvider: lambda: {
+                "candidates": [
+                    {"finishReason": "STOP", "content": {"parts": [{"text": json.dumps(_ACTION)}]}}
+                ]
+            },
+            OpenAiProvider: lambda: _openai_body(json.dumps(_ACTION)),
+            AnthropicProvider: lambda: _anthropic_body(json.dumps(_ACTION)),
+        }[cls]()
+        return httpx.Response(200, json=body)
+
+    RemoteLlmClient(_provider(cls, handler)).reason(_request())
+
+    sent = json.dumps(bodies[1], ensure_ascii=False)
+    assert expected in sent
+    assert forbidden not in sent

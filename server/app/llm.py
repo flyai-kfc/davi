@@ -158,7 +158,11 @@ class RemoteLlmClient(LlmClient):
             if error.status_code != 400:
                 raise self.provider.to_llm_error(error) from error
             # 공급자가 스키마를 거부한 경우에만, 계약을 프롬프트로 옮겨 한 번 복구한다.
-            active_prompt = fallback_prompt(prompt, self.provider.contract_schema)
+            active_prompt = fallback_prompt(
+                prompt,
+                self.provider.contract_schema,
+                omit_optional=self.provider.omits_optional_fields,
+            )
             with_schema = False
             try:
                 response_text = call_once(active_prompt, trigger="schema_recovery")

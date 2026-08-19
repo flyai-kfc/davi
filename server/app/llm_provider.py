@@ -19,15 +19,28 @@
 
 ## 공급자별 결정
 
-- **Gemini** — 기존 동작 그대로. `thinkingConfig`로 thinking 상한을 주고 응답 예산은
-  `thinking 상한 + 여유분`이다(thinking 토큰이 maxOutputTokens를 같이 먹는다, 실측 #203 이전).
+- **Gemini** — **동작이 바뀐다.** 이전에는 세 호출부 어디도 `thinkingConfig`를 보내지 않았고
+  출력 상한이 1024/512/1024였다. 지금은 모든 호출에 `thinkingConfig`가 실리고 상한이
+  `thinking 상한 + 여유분`(기본 800 + 각 여유분)이 된다. thinking 토큰이 maxOutputTokens를
+  같이 먹어 응답이 잘리는 실패를 막으려는 것인데, 대가로 (a) thinking이 있는 모델의 dynamic
+  thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고 (b) 옛 1024 캡이 하던 "장문 폭주를
+  자른다"가 그만큼 느슨해진다. 아직 측정하지 않았다.
 - **OpenAI** — Responses API. `text.format`에 strict json_schema를 싣는다. thinking에 해당하는
   것은 `reasoning.effort`이고, 속도를 위해 기본을 낮게 둔다(`DAVI_OPENAI_REASONING_EFFORT`).
   reasoning 토큰도 `max_output_tokens`를 같이 먹으므로 effort가 켜져 있으면 여유분을 더 얹는다.
 - **Anthropic** — Messages API. `output_config.format`에 같은 strict json_schema를 싣는다.
-  **thinking은 보내지 않는다.** 우리 호출은 짧은 JSON 객체 하나를 뽑는 일이라 thinking이
-  지연만 늘리고, 모델 세대마다 파라미터 규약이 달라(구형은 `budget_tokens`, 신형은 400) 여기서
-  분기를 만들 값이 없다. 더 깊은 추론이 필요하면 모델을 올린다(haiku -> sonnet).
+  **thinking 파라미터를 보내지 않고, 대신 예산에 추론 몫을 얹는다.**
+
+  끄지 않는 이유는 "끄는 방법이 모델마다 다르고 어떤 모델은 아예 못 끄기" 때문이다. thinking
+  규약이 세대별로 갈린다 — `claude-haiku-4-5`는 생략하면 thinking이 돌지 않지만,
+  `claude-sonnet-5`·`claude-opus-5`는 **생략해도 adaptive thinking이 기본으로 켜져 있다**(기본
+  effort는 high). `thinking: {"type": "disabled"}`는 Sonnet 5에서는 받지만 Opus 5는 effort가
+  xhigh 이상이면 400이고, Fable 5·Mythos 5는 아예 거부한다. `output_config.effort`도 구형
+  모델에서는 안 통한다. 즉 **모든 모델에 안전한 단일 요청 모양이 없다.**
+
+  그래서 어느 모델이 와도 깨지지 않는 쪽을 고른다: 파라미터를 보내지 않고, 출력 상한에 추론
+  몫을 미리 얹는다. haiku처럼 thinking이 안 도는 모델에서는 상한이 남을 뿐 비용이 늘지 않는다
+  (상한은 배정이 아니라 천장이다). 지연을 줄이려면 모델을 내리는 쪽이 확실하다.
 """
 
 from __future__ import annotations
@@ -57,9 +70,9 @@ from .schemas import ErrorKind
 
 _DEFAULT_RETRY_AFTER_SECONDS = 60
 _REQUEST_TIMEOUT_SECONDS = 20.0
-# reasoning이 켜진 OpenAI 호출에서 max_output_tokens에 얹는 여유분. reasoning 토큰도 이 예산을
-# 같이 소모하므로, 다 써도 답 쓸 자리가 남게 한다(Gemini thinking 예산과 같은 이유).
-_OPENAI_REASONING_HEADROOM = 2048
+# 보이지 않는 추론에 얹는 여유분. reasoning·thinking 토큰도 출력 예산을 같이 소모하므로,
+# 다 써도 답 쓸 자리가 남게 한다(Gemini thinking 예산과 같은 이유).
+_REASONING_HEADROOM = 2048
 
 llm_logger = logging.getLogger(LLM_LOGGER_NAME)
 
@@ -131,6 +144,10 @@ class StructuredJsonProvider(ABC):
     name: ClassVar[ProviderName]
     label: ClassVar[str]
     api_key_setting: ClassVar[str]
+    # "해당 없음"을 필드 생략으로 표현하는가(Gemini), null로 표현하는가(strict 모드).
+    # 무스키마 폴백 프롬프트가 이 값으로 문장을 고른다 — 그 경로에는 강제하는 것이 없어서
+    # 프롬프트 문장과 스키마 표현이 어긋나면 그대로 잘못된 응답이 된다.
+    omits_optional_fields: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -312,6 +329,7 @@ class GeminiProvider(StructuredJsonProvider):
     name = ProviderName.GEMINI
     label = "Gemini"
     api_key_setting = "GEMINI_API_KEY"
+    omits_optional_fields = True
 
     _BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -504,7 +522,7 @@ def build_provider(
 
     if provider is ProviderName.OPENAI:
         effort = settings.davi_openai_reasoning_effort
-        reasoning_headroom = 0 if effort == "none" else _OPENAI_REASONING_HEADROOM
+        reasoning_headroom = 0 if effort == "none" else _REASONING_HEADROOM
         return OpenAiProvider(
             api_key=settings.openai_api_key.get_secret_value(),
             model=model,
@@ -520,8 +538,10 @@ def build_provider(
         model=model,
         operation=operation,
         contract=contract,
-        # thinking을 보내지 않으므로 정상 응답 몫만 있으면 된다(모듈 문서 참고).
-        max_output_tokens=override or response_headroom,
+        # thinking을 끌 수 없는 모델이 있으므로 추론 몫을 미리 얹는다(모듈 문서 참고).
+        # 이게 없으면 sonnet-5의 adaptive thinking이 slot-fill의 512를 먹고 stop_reason이
+        # max_tokens로 끝난다 — Gemini·OpenAI에서 막은 그 잘림이 여기만 무방비가 된다.
+        max_output_tokens=override or _REASONING_HEADROOM + response_headroom,
         http_client=http_client,
     )
 

@@ -71,8 +71,12 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 아래는 Gemini에서 실측한 것이지만 대부분 공급자와 무관하다. 공급자별로 갈리는 지점만 표시한다.
 - `responseSchema.properties[*].enum`에 **빈 문자열 금지**(400 `cannot be empty`). "해당 없음"은 빈 값이 아니라 **필드 생략**(required 제외)으로.
   단 **OpenAI·Anthropic strict 모드에는 "생략"이 없다** — 모든 속성이 `required`이고 "해당 없음"은
-  `null`이다. `json_schema.py`가 `X | None` 필드만 nullable로 만들고, 그 필드 description에
-  "해당 없으면 null" 지시를 덧붙인다(선언의 "생략한다"와 스키마가 어긋나지 않게).
+  `null`이다. 그래서 **"해당 없음"의 표현 규약을 모델 선언에 쓰지 않는다.** 선언에 한쪽을 박으면
+  다른 쪽 스키마와 정반대 지시가 한 프롬프트에 함께 들어간다(PR #62 리뷰가 금지한 패턴).
+  규약은 각 변환기가 자기 표현에 맞게 덧붙인다 — `gemini_schema.py`는 "이 필드를 생략한다",
+  `json_schema.py`는 "null을 넣는다". 무스키마 폴백 프롬프트(`prompt.fallback_prompt`)의
+  선택 필드 문장도 같은 이유로 공급자별로 갈린다. **그 경로에는 강제하는 것이 없어서 문장이
+  유일한 지시다.**
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
