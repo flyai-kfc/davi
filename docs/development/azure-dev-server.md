@@ -71,10 +71,15 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
    | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 | 항상 |
    | `DAVI-TEST-ACCESS-TOKEN` | 32자 이상의 외부 테스트 참가자 토큰 | **외부 테스트 기간에만** |
    | `DAVI-AUTH-JWT-SECRET` | 32자 이상의 세션 JWT 서명 비밀 | **카카오 로그인을 켤 때만** |
+   | `OPENAI-API-KEY` | 서버 전용 OpenAI API 키 | **공급자를 OpenAI로 바꿀 때만** |
 
-   마지막 두 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`·
-   `authJwtSecretSecretName` 기본값이 비어 있어서, 이름을 넘기지 않으면 Container App이 그
-   secret을 참조하지 않는다.
+   마지막 세 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`·
+   `authJwtSecretSecretName`·`openAiApiKeySecretName` 기본값이 비어 있어서, 이름을 넘기지 않으면
+   Container App이 그 secret을 참조하지 않는다.
+
+   `GEMINI-API-KEY`만 **공급자와 무관하게 항상 필요하다.** 이 secret은 조건 없이 배선되므로
+   OpenAI로 바꾼 뒤에도 지우면 안 된다. 서버는 고른 공급자의 키만 검사하지만(`config.py`),
+   Container App은 참조하는 secret 전부를 revision 생성 때 해석한다.
 
    `DAVI-AUTH-JWT-SECRET`은 **32자 이상이어야 한다.** 짧으면 서버가 기동을 거부해 revision이
    Healthy에 도달하지 못하고, 아래 "순서가 중요하다"와 같은 방식으로 이후 배포까지 막힌다.
@@ -98,6 +103,26 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
       `DAVI_AZURE_KAKAO_APP_ID`를 카카오 개발자 콘솔의 **앱 ID(숫자)**로. 앱 ID는 비밀이 아니며
       REST API 키·네이티브 앱 키가 아니다. 앱의 네이티브 키와 **같은 카카오 앱**이어야 한다.
    3. main에 아무 서버 변경이나 머지한다(또는 워크플로를 수동 실행).
+
+   **공급자를 OpenAI로 바꾸는 순서 (#259, 역시 같은 모양이다):**
+
+   1. Key Vault에 `OPENAI-API-KEY` secret을 만든다.
+   2. GitHub environment `davi-development`의 변수 두 개를 채운다 —
+      `DAVI_AZURE_LLM_PROVIDER`를 `openai`로, `DAVI_AZURE_OPENAI_KEY_SECRET_NAME`을
+      `OPENAI-API-KEY`로. **`DAVI_AZURE_MODEL`은 비워 둔다** — 서버가 공급자 기본 모델
+      `gpt-5.6-luna`를 고른다. 여기에 한 공급자의 모델 id를 박아 두면 다음에 공급자만 바꾼
+      배포가 그 id를 엉뚱한 공급자로 보내고, 400이 "스키마 거부"로 해석돼 무스키마 폴백까지
+      한 왕복 더 돈 뒤 실패한다. 품질을 올리려고 pin 할 때는 공급자와 짝을 맞춘다.
+   3. main에 아무 서버 변경이나 머지한다(또는 워크플로를 수동 실행).
+
+   **되돌리기는 변수 두 개를 비우고 다음 배포를 돌리는 것이다.** bicep 기본값이 `gemini`라
+   코드를 revert할 필요가 없다. secret은 마지막에 지운다.
+
+   키 없이 공급자만 바꾸면 서버가 기동을 거부해 revision이 Healthy에 못 가고 **이후 배포까지
+   막히므로**, 그 짝은 배포 워크플로의 변수 검증이 배포 전에 끊는다(카카오 앱 ID와 같은 이유).
+   배선 여부는 `/health`의 `provider`·`model`이 알리며, 배포 검증이 `provider`를 기대값과
+   등호로 대조한다. 모델은 pin 했을 때만 대조한다 — 공급자 기본 모델 표를 워크플로에 복제하면
+   서버 기본값이 바뀔 때 워크플로만 낡아서 정상 배포가 실패로 보인다.
 
    변수만 바꾸면 배포가 돌지 않는다 — 트리거 경로가 `server/**`·`infra/azure/**`·배포 워크플로
    yaml이라서다. 3번이 필요한 이유가 이것이고, 위 외부 테스트 절차도 마찬가지다.
@@ -220,7 +245,7 @@ User Access Administrator 권한이 필요하다.
    | `DAVI_AZURE_CONTAINER_IDENTITY_NAME` | `id-davi-server-dev` |
    | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-app` |
 
-   다음 세 변수는 **선택**이다. 비어 있는 것이 평소 상태이고, 배포 워크플로의 필수 변수
+   다음 여섯 변수는 **선택**이다. 비어 있는 것이 평소 상태이고, 배포 워크플로의 필수 변수
    검사에도 들어가지 않는다.
 
    | Variable (선택) | 값 | 언제 |
@@ -228,6 +253,9 @@ User Access Administrator 권한이 필요하다.
    | `DAVI_AZURE_TEST_TOKEN_SECRET_NAME` | `DAVI-TEST-ACCESS-TOKEN` | 외부 테스트 기간 |
    | `DAVI_AZURE_AUTH_JWT_SECRET_NAME` | `DAVI-AUTH-JWT-SECRET` | 카카오 로그인을 켤 때 |
    | `DAVI_AZURE_KAKAO_APP_ID` | 카카오 앱 ID(숫자) | 카카오 로그인을 켤 때 |
+   | `DAVI_AZURE_LLM_PROVIDER` | `openai` | 공급자를 바꿀 때 (비우면 `gemini`) |
+   | `DAVI_AZURE_OPENAI_KEY_SECRET_NAME` | `OPENAI-API-KEY` | 공급자가 `openai`일 때 (필수 짝) |
+   | `DAVI_AZURE_MODEL` | `gpt-5.6-terra` 같은 pin | **평소에는 비운다** (공급자 기본 모델) |
 
 4. organization의 Actions 사용 정책이 제한돼 있다면 `actions/checkout@v4`와 `azure/login@v2`를
    허용한다. workflow의 `id-token: write`는 OIDC token 발급에만 쓰며 repository contents 쓰기
@@ -286,7 +314,8 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
 - 검증된 active·healthy revision suffix가 `r<GitHub run ID>-<attempt>`이고 traffic이 100%다.
 - Container App 설정에는 Key Vault reference만 있고 secret 평문이 없다.
 - `/health`는 HTTPS 200이며 `development`, `stub_llm=false`다. 카카오 로그인을 켰다면
-  `kakao_auth_configured=true`이고, 켜지 않았다면 `false`다.
+  `kakao_auth_configured=true`이고, 켜지 않았다면 `false`다. `provider`는 `DAVI_AZURE_LLM_PROVIDER`와
+  같고(비웠다면 `gemini`), `model`은 pin 하지 않았다면 그 공급자의 기본 모델이다.
 - 토큰 없는 `/v1/next-step`은 401이고 유효 토큰을 쓴 익명 fixture 요청은 정상 응답한다.
 - Android debug 실기기에서 같은 endpoint로 목표 정리와 다음 안내를 각각 한 번 확인한다.
 - 앱·서버 로그에 URL 외 token, 목표, 화면 label, 발화, 모델 원문이 없는지 확인한다.
@@ -301,6 +330,6 @@ Network Security Config에 평문 예외가 생기지 않는다. release는 개�
   User-Agent, 요청 본문과 secret은 애플리케이션 로그에 남기지 않는다.
 - 배포 실패는 GitHub Actions의 OIDC login, Docker build/ACR push, Bicep deployment, 이번 배포의 정확한
   revision/image 상태, health 단계 순서로 본다. 이전 revision의 정상 응답은 성공으로 처리하지 않는다.
-  Gemini 요청만 실패하면 비식별 request ID와 Logical Request ID로 대조한다.
+  LLM 공급자 요청만 실패하면 비식별 request ID와 Logical Request ID로 대조한다.
 - 롤백은 문제 commit을 `main`에서 revert해 새 Actions run ID의 image/revision으로 다시 배포한다. 기존 ACR
   tag를 덮어쓰거나 닫힌 #95 브랜치를 재사용하지 않는다.
