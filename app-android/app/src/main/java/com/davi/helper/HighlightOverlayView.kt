@@ -258,6 +258,12 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 2차 리뷰 P1). 여기서 미는 것은 **읽는 중이라는 뷰 계층의 표시가 잠깐 창을 가져간 것**
      * 뿐이고, 그동안 display는 자기 안내를 계속 들고 있다(`visible`이 true다). 같은 이름의
      * 두 기계가 생긴 셈이라, "밀어 둔 안내"를 찾는 사람은 **미는 주체가 다르다**는 것부터 본다.
+     *
+     * **순서 의존이 하나 있다.** onset이 걷는 `hasTarget`을 [GuideDisplayState]는 모른다 —
+     * 저쪽의 `targetHidden`은 그대로라 `restoreTarget()`이 강조를 되살릴 수 없다. 지금
+     * 안전한 이유는 **화면이 움직여 읽는 중이 켜지는 경우 같은 샘플에서 `hideTarget()`이
+     * 먼저 돌아 `targetHidden`을 세우고, onset은 250ms 뒤라 언제나 그 뒤**이기 때문이다.
+     * 그 순서를 바꾸면 강조가 다음 안내까지 안 돌아온다(PR #298 3차 리뷰).
      */
     private var stashed: String? = null
 
