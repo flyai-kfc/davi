@@ -342,6 +342,8 @@
       괄호 안이 개정 전 값이다. 셋 다 세로 거리라 개정 규칙에서는 왼쪽 수가 기준이다.
     -->
     <dimen name="davi_stacked_button_height">72dp</dimen>
+    <!-- **⚠ 값이 옛 환산이다**(#265). 시안 r12인데 14는 x1.2다 — 개정 규칙에서 반지름은
+         1:1이라 **12**다. 메인 7의 36과 달리 캡슐 근거도 없다(높이 72의 절반은 36). -->
     <dimen name="davi_stacked_button_radius">14dp</dimen>
     <!--
       두 버튼 사이. **시안 29보다 좁다** — 아래 하단 안내와 같은 사정이다.
@@ -366,10 +368,16 @@
     <dimen name="davi_guiding_bottom_margin_top">20dp</dimen>
     <!--
       메인 10 다이얼로그. 252x168 r20 -> 폭은 카드 폭 규칙(좌우 여백 24dp)을 따르고
-      높이·반지름만 환산한다. 확인쌍은 오버레이(GD-3·4)와 같은 v2/chip/confirm-pair라
-      기존 view_davi_confirm_pair를 그대로 쓴다 — 메인 7의 캡슐쌍과는 다른 컴포넌트다.
+      **높이만 환산한다** — 반지름은 개정 규칙에서 1:1이다(2026-08-19, #244). 확인쌍은
+      오버레이(GD-3·4)와 같은 v2/chip/confirm-pair라 기존 view_davi_confirm_pair를 그대로
+      쓴다 — 메인 7의 캡슐쌍과는 다른 컴포넌트다.
+
+        높이   168 -> 202dp    <- 자기 상자라 x1.2, 개정 후에도 맞다
+        반지름  20 -> 24dp     <- **⚠ 개정 후엔 1:1이라 20**(#265)
     -->
     <dimen name="davi_dialog_height">202dp</dimen>
+    <!-- **⚠ 값이 옛 환산이다**(#265). 24는 시안 r20의 x1.2다 — 개정 규칙에서 반지름은
+         1:1이라 **20**이다. -->
     <dimen name="davi_dialog_radius">24dp</dimen>
     <!-- 메인 10 확인 문구. 시안 Cafe24 Bold 18 — 글자는 1:1로 쓴다(#197). -->
     <dimen name="davi_type_dialog">18sp</dimen>
