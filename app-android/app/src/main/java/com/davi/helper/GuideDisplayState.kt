@@ -72,8 +72,9 @@ class GuideDisplayState {
     private var targetHidden = false
 
     /**
-     * 지금 떠 있는 안내에서 눌림을 이미 받았는가(#238). [markVisible]이 함께 되돌린다 —
-     * 새 안내는 새 눌림을 받아야 하고, 옛 안내의 자리로 두 번 답하면 안 된다.
+     * 지금 떠 있는 안내에서 눌림을 이미 받았는가(#238). [markVisible]과 [restoreTarget]이
+     * 되돌린다 — 새 안내는 새 눌림을 받아야 하고, 같은 화면에서 강조가 되살아났다면 그 강조도
+     * 답을 줘야 한다. 옛 안내의 자리로 두 번 답하는 것만 막는다.
      */
     private var pressConsumed = false
 
@@ -272,6 +273,11 @@ class GuideDisplayState {
         val current = guide ?: return null
         if (guideSignature != currentSignature) return null
         targetHidden = false
+        // **눌림도 함께 재무장한다**(PR #264 재리뷰 1). 눌렀는데 화면이 안 바뀌어 강조가 되살아난
+        // 경우, 다시 눌러도 파동이 없고 내려가지도 않으면 "제대로 눌렀는지 모른 채 다시 누르는"
+        // 바로 그 사용자가 아무 답을 못 받는다. 다른 화면에서는 위 서명 대조가 이미 막으므로
+        // 여기서 푸는 것은 "같은 화면·같은 안내로 강조가 돌아왔다"일 때뿐이다.
+        pressConsumed = false
         return current
     }
 

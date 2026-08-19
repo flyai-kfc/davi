@@ -62,10 +62,16 @@ class PressMatchTest {
         assertFalse(PressMatch.byLabel("카메라", listOf("전화")))
     }
 
-    /** 한 글자는 다른 대상에도 흔해서 오탐이 된다(서버 완료 근거 판정의 같은 함정, #71). */
+    /**
+     * 한 글자짜리 label은 다른 대상에도 흔해서 오탐이 된다 — ×·＋ 같은 버튼 둘이 서로 맞는다
+     * (서버 완료 근거 판정의 같은 함정, #71).
+     *
+     * 완전 일치로 좁힌 뒤에는 **label 쪽이 짧을 때만** 이 하한이 일한다. 대상 label이 길고
+     * 이벤트 텍스트가 짧은 경우는 애초에 일치하지 않아 하한과 무관하다(PR #264 재리뷰 4).
+     */
     @Test
-    fun `너무 짧은 텍스트로는 맞추지 않는다`() {
-        assertFalse(PressMatch.byLabel("카메라", listOf("카")))
+    fun `한 글자짜리는 서로 같아도 맞추지 않는다`() {
+        assertFalse(PressMatch.byLabel("카", listOf("카")))
     }
 
     @Test

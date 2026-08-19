@@ -614,6 +614,37 @@ class GuideDisplayStateTest {
         assertEquals(pressBounds, state.pressTargetBounds())
     }
 
+    /**
+     * 눌렀는데 화면이 안 바뀌어 강조가 되살아난 경우다. 다시 눌러도 파동이 없고 내려가지도
+     * 않으면, "제대로 눌렀는지 모른 채 다시 누르는" 바로 그 사용자가 아무 답을 못 받는다
+     * (PR #264 재리뷰 1).
+     */
+    @Test
+    fun `강조가 되살아나면 눌림도 다시 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigA)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 다른 화면에서는 강조도 눌림도 되살아나지 않는다 — 재무장이 리뷰 2가 막은 경우
+     * (옛 자리로 두 번 답하기)를 다시 열면 안 된다.
+     */
+    @Test
+    fun `다른 화면에서는 눌림을 다시 받지 않는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigB)
+
+        assertNull(state.pressTargetBounds())
+    }
+
     /** 확인 화면은 가리킬 대상이 없다([GuideDisplayState.Content.bounds]가 null). */
     @Test
     fun `확인 화면에는 누를 대상이 없다`() {

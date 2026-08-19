@@ -262,7 +262,7 @@ Figma SSoT https://www.figma.com/design/00Kt3AYBSBsb7zdAp9ypKi/SSoT
   문구(현 구현 유지).
 - 데이터: 서버 `instruction`(동적), 대상 bounds(하이라이트 위치·크기).
 - **눌림 파동**(#238) — 안내한 대상을 **실제로 눌렀을 때** 그 자리에 성공 tone 링이 한 번
-  퍼지고 사라진다(약 380ms, `davi_overlay_press`). 동시에 하이라이트와 손 시연이 내려간다 —
+  퍼지고 사라진다(약 380ms, `davi_overlay_press`). 동시에 하이라이트가 내려간다 —
   "방금 눌렀다"는 신호이므로 화면이 바뀐 뒤에도 마저 퍼진다. **탭 계열 안내에서만** 준다.
   모션을 끈 기기에서는 그리지 않는다(정지 프레임도 두지 않는다 — 멈춘 링은 "여기가 대상"으로
   잘못 읽힌다). **시안에 없는 임시 요소**라 Figma `overlay/highlight`가 확정되면 교체 대상이다.

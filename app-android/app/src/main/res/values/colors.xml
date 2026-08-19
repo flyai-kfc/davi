@@ -45,6 +45,8 @@
       시각 표시일 뿐 터치를 막지 않는다(그리는 창이 FLAG_NOT_TOUCHABLE).
       값 조정은 #178. 다른 토큰의 별칭이 아니다 — 시안이 직접 지정한 유일한 오버레이 채움이다.
     -->
+    <color name="davi_overlay_scrim">#66000000</color>
+
     <!--
       overlay/press tone=success (#238). 안내한 대상을 실제로 눌렀을 때 그 자리에 한 번 퍼지는
       파동이다. 완료 확인 테두리와 같은 원색을 쓰지만 별칭을 따로 두는 이유는 다른 tone과 같다 —
@@ -52,8 +54,6 @@
       교체 대상"이라고 못박은 자리라 별칭이 특히 값을 한다.
     -->
     <color name="davi_overlay_press">@color/davi_success</color>
-
-    <color name="davi_overlay_scrim">#66000000</color>
 
     <!--
       눌림 상태 레이어(E2). **표면 밝기에 따라 방향이 갈린다**(#246) — 값 하나로 양쪽을
