@@ -8,7 +8,7 @@
   나간다 — davi_card_border_width와 같은 사정이고 같은 이유로 보정하지 않는다.
 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed">
+    android:color="@color/davi_state_layer_pressed_on_light">
     <!--
       **아래를 그림자 offset만큼 비운다.** 이쪽에는 그림자가 없지만, 주 버튼이 그만큼
       비워 두므로 여기도 같이 비워야 두 캡슐의 윗변과 높이가 맞는다. 비운 자리는 투명이다.

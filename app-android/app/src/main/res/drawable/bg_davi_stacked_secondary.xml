@@ -8,7 +8,7 @@
   보정 복잡도에 비해 얻는 게 작아 그대로 둔다(davi_card_border_width 주석과 같은 사정).
 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed">
+    android:color="@color/davi_state_layer_pressed_on_light">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="@color/davi_button_on_primary" />
