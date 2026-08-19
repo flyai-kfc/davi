@@ -84,6 +84,7 @@ object UiTreeSerializer {
     fun serialize(
         root: AccessibilityNodeInfo,
         windowTypes: Iterable<Int>? = null,
+        windowTitle: CharSequence? = null,
         masker: LabelMasker = labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
     ): Result {
         val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
@@ -96,6 +97,7 @@ object UiTreeSerializer {
         return Result(
             screen = Screen(
                 packageName = root.packageName?.toString().orEmpty(),
+                windowTitle = windowTitleOf(windowTitle, masker),
                 elements = if (truncated) ctx.elements.take(MAX_ELEMENTS) else ctx.elements,
                 currentPage = ctx.currentPage,
                 totalPages = ctx.totalPages,
@@ -229,6 +231,15 @@ object UiTreeSerializer {
             clickable = clickable ?: node.isClickable,
             editable = node.isEditable,
             focused = node.isFocused,
+            // 여기부터가 "지금 어떤 상태인가"다. clickable/editable은 뷰의 설정값이라 이걸 대신하지
+            // 못한다 — 비활성 버튼도 clickable=true로 오고, 스위치를 켜도 label이 그대로다(#271).
+            enabled = node.isEnabled,
+            checked = checkedState(checkable = node.isCheckable, checked = node.isChecked),
+            selected = node.isSelected,
+            showingHintText = hintTextState(
+                editable = node.isEditable,
+                showingHintText = node.isShowingHintText,
+            ),
             bounds = listOf(r.left, r.top, r.right, r.bottom),
             canScrollForward = scroll?.forward,
             canScrollBackward = scroll?.backward,
@@ -351,6 +362,31 @@ object UiTreeSerializer {
         val desc = node.contentDescription?.toString()?.trim()
         if (!desc.isNullOrEmpty()) return desc
         return null
+    }
+
+    /**
+     * 켤 수 없는 요소의 `isChecked=false`는 "꺼짐"이 아니라 **해당 없음**이다.
+     * 그 둘을 섞으면 모델이 화면의 모든 요소를 꺼진 토글로 읽는다.
+     */
+    internal fun checkedState(checkable: Boolean, checked: Boolean): Boolean? =
+        if (checkable) checked else null
+
+    /** 입력칸이 아닌 요소에는 hint 개념이 없다. 위와 같은 이유로 `null`을 돌려준다. */
+    internal fun hintTextState(editable: Boolean, showingHintText: Boolean): Boolean? =
+        if (editable) showingHintText else null
+
+    /**
+     * 창 제목을 화면 이름으로 쓴다(#269).
+     *
+     * **label과 정확히 같은 취급이다** — 정규화 → 1차 마스킹 → 길이 제한. 대화방 제목은 사람
+     * 이름이고 문서 뷰어는 파일명을 싣기 때문에, 마스킹을 건너뛸 근거가 없다.
+     * 제목이 없는 창이 흔하므로(11번가·TMAP·플레이스토어 실측) `null`이 정상 값이다.
+     */
+    internal fun windowTitleOf(rawTitle: CharSequence?, masker: LabelMasker): String? {
+        val normalized = rawTitle?.toString()?.replace(WHITESPACE, " ")?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return masker.mask(normalized).take(MAX_LABEL_CHARS)
     }
 
     /** Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수. */

@@ -387,6 +387,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val resolved = ActiveWindowResolver.resolve(this)
         activeWindowBounds = resolved?.bounds
+        val windowTitle = resolved?.title
         val root = resolved?.root
         if (root == null) {
             // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
@@ -413,7 +414,9 @@ class GuideAccessibilityService : AccessibilityService() {
         val windowTypes = runCatching { windows.map { it.type } }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
-        val result = runCatching { UiTreeSerializer.serialize(root, windowTypes) }.getOrElse {
+        val result = runCatching {
+            UiTreeSerializer.serialize(root, windowTypes, windowTitle)
+        }.getOrElse {
             Log.e(TAG, "serialize failed", it)
             scheduleSample(POLL_MS)
             return
