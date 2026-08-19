@@ -387,20 +387,36 @@ object UiTreeSerializer {
         own ?: descendant
 
     /**
-     * 라벨 병합과 **같은 경계**로 자손을 훑는다 — 같은 깊이, 그리고 중첩된 clickable 노드는
-     * 건너뛴다. 그 노드는 자기 요소로 따로 나가면서 자기 상태를 들고 가기 때문이다.
+     * 라벨 병합과 같은 깊이로 자손을 훑되, **clickable 자손은 자기 요소로 나갈 때만** 건너뛴다.
+     *
+     * 라벨은 그 노드가 자기 label로 가져가니 건너뛰는 것이 맞다. 그런데 **이름이 없어 요소로
+     * 나가지 못하는 clickable 노드**는 아무도 그 상태를 가져가지 않는다 — 건너뛰면 켬/끔이
+     * 화면에서 통째로 사라진다.
+     *
+     * 실측(#288 리뷰, SM-S921N / One UI 8.5 개발자 옵션): 표준 `SwitchPreference` 행이
+     * `LinearLayout(clickable) → [RelativeLayout → TextView 둘, LinearLayout → Switch]` 모양이고
+     * 그 `Switch`는 `clickable=true checkable=true`인데 text·content-desc가 **둘 다 없다.**
+     * 라벨은 TextView에서 행으로 합쳐지는데 상태만 갈 곳이 없었다.
      */
     private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int): Boolean? {
         if (depth >= MAX_MERGE_DEPTH) return null
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            if (!child.isVisibleToUser || child.isClickable) continue
+            if (!child.isVisibleToUser) continue
+            if (child.isClickable && emitsOwnElement(mergedLabel(child), child.isEditable)) continue
             ownCheckedState(child)?.let { return it }
             if (child.isEditable) continue
             descendantCheckedState(child, depth + 1)?.let { return it }
         }
         return null
     }
+
+    /**
+     * 그 노드가 자기 요소로 나가는가. 나가면 자기 상태를 들고 가므로 조상이 올릴 필요가 없고,
+     * 못 나가면 조상이 올려야 상태가 남는다. [walk]의 방출 조건과 같은 규칙이다.
+     */
+    internal fun emitsOwnElement(label: String, editable: Boolean): Boolean =
+        editable || label.isNotBlank()
 
     /**
      * 켤 수 없는 요소의 `isChecked=false`는 "꺼짐"이 아니라 **해당 없음**이다.

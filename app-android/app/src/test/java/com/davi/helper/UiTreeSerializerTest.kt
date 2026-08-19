@@ -162,6 +162,20 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `이름 없는 클릭 노드는 상태를 조상에 맡긴다`() {
+        // 실측(One UI 8.5 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
+        // 자기 요소로 못 나간다. 조상이 안 올리면 켬/끔이 화면에서 사라진다(#288 리뷰).
+        assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "", editable = false))
+        assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "   ", editable = false))
+    }
+
+    @Test
+    fun `이름이 있거나 입력칸이면 자기 상태를 자기가 들고 간다`() {
+        assertEquals(true, UiTreeSerializer.emitsOwnElement(label = "Wi-Fi", editable = false))
+        assertEquals(true, UiTreeSerializer.emitsOwnElement(label = "", editable = true))
+    }
+
+    @Test
     fun `hint 여부는 입력칸에만 있다`() {
         assertNull(UiTreeSerializer.hintTextState(editable = false, showingHintText = false))
         assertEquals(true, UiTreeSerializer.hintTextState(editable = true, showingHintText = true))
