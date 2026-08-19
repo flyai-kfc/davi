@@ -71,6 +71,13 @@ class GuideDisplayState {
      */
     private var targetHidden = false
 
+    /**
+     * 지금 떠 있는 안내에서 눌림을 이미 받았는가(#238). [markVisible]과 [restoreTarget]이
+     * 되돌린다 — 새 안내는 새 눌림을 받아야 하고, 같은 화면에서 강조가 되살아났다면 그 강조도
+     * 답을 줘야 한다. 옛 안내의 자리로 두 번 답하는 것만 막는다.
+     */
+    private var pressConsumed = false
+
     /** [showQuitConfirm]이 밀어 둔 직전 안내. ×를 누르면 여기서 되돌아온다. */
     private var stashed: Stash? = null
 
@@ -199,6 +206,40 @@ class GuideDisplayState {
     private fun markVisible(on: Boolean = true) {
         visible = on
         targetHidden = false
+        pressConsumed = false
+    }
+
+    /**
+     * 눌림을 받을 대상의 자리(#238). 눌림을 맞출 때와 파동을 그릴 때 같은 값을 쓴다.
+     *
+     * **탭 계열 안내에서만 돌려준다.** `scroll`도 컨테이너를 target으로 잡아 bounds가 있는데,
+     * 그 안 아무 항목이나 눌러도 중심 포함이라 맞아 버린다 — 스크롤하라고 했는데 항목을 잘못
+     * 누른 사용자에게 파동이 "잘 됐다"고 답하고, [hideTarget]이 손 시연까지 함께 내려 무엇을
+     * 해야 하는지가 화면에서 사라진다(PR #264 리뷰 1).
+     *
+     * **[targetHidden]을 보지 않는다.** 화면 전환이 빠른 앱에서는 폴링 샘플의 WAIT이 클릭
+     * 이벤트보다 먼저 들어와 강조가 이미 내려간다 — 그걸 조건으로 걸었더니 눌림을 통째로
+     * 놓쳤다(2026-08-19 SM-S921N 실측). 파동은 "방금 누른 곳"이라 강조가 내려간 뒤에도 유효하다.
+     *
+     * 판정 자체는 [PressMatch]가 한다 — 이 클래스는 무엇이 떠 있는지만 안다.
+     */
+    fun pressTargetBounds(): List<Int>? {
+        if (!visible || pressConsumed) return null
+        val current = guide ?: return null
+        if (current.actionType != ActionType.TAP && current.actionType != ActionType.TYPE) return null
+        return current.bounds?.takeIf { it.size == 4 }
+    }
+
+    /**
+     * 눌림을 하나 받았다고 표시한다(#238). **안내 하나당 한 번만** 받는다.
+     *
+     * 화면이 바뀌어도 `visible`은 안 내려간다 — [redisplay]의 서명 폐기가 `visible` 검사 뒤라,
+     * 새 응답의 [show]가 덮을 때까지 [guide]는 이전 화면의 자리를 들고 있다. 그 사이(SETTLE +
+     * 서버 왕복)에 사용자가 **같은 자리를 한 번 더** 누르면 아무것도 없는 곳에 파동이 뜬다
+     * (PR #264 리뷰 2). 안내가 새로 뜨면 [markVisible]이 풀어 준다.
+     */
+    fun consumePress() {
+        pressConsumed = true
     }
 
     /**
@@ -232,6 +273,11 @@ class GuideDisplayState {
         val current = guide ?: return null
         if (guideSignature != currentSignature) return null
         targetHidden = false
+        // **눌림도 함께 재무장한다**(PR #264 재리뷰 1). 눌렀는데 화면이 안 바뀌어 강조가 되살아난
+        // 경우, 다시 눌러도 파동이 없고 내려가지도 않으면 "제대로 눌렀는지 모른 채 다시 누르는"
+        // 바로 그 사용자가 아무 답을 못 받는다. 다른 화면에서는 위 서명 대조가 이미 막으므로
+        // 여기서 푸는 것은 "같은 화면·같은 안내로 강조가 돌아왔다"일 때뿐이다.
+        pressConsumed = false
         return current
     }
 

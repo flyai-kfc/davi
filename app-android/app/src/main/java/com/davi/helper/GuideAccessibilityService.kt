@@ -36,6 +36,12 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guideApiClient: GuideApiClient? = null
     private var e2ePublisher: GuideE2ePublisher? = null
 
+    /**
+     * 지금 안내 중인 대상의 label(#238). `source`가 회수된 순간에 눌림을 맞추는 유일한 축이다.
+     * 1차 마스킹을 거친 값이라 원본 개인정보가 아니다.
+     */
+    private var guidedTargetLabel: String? = null
+
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
 
@@ -122,6 +128,7 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            guidedTargetLabel = null
             errorNotice.reset()
             lastDecision = null
             if (goal == null) {
@@ -195,6 +202,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             GuideSession.confirmRejected()
                             overlay?.clear()
                             display.reset()
+                            guidedTargetLabel = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
                             stability.markFailed()
@@ -281,6 +289,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
         if (GuideSession.active() == null) return
 
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
         scheduleSample(SETTLE_MS)
     }
 
@@ -319,6 +328,44 @@ class GuideAccessibilityService : AccessibilityService() {
             TAG,
             "screen on, resuming (session active=${GuideSession.isActive} requery=$requeried)",
         )
+    }
+
+    /**
+     * 안내한 대상을 사용자가 **실제로 눌렀는지** 보고, 맞으면 눌림을 알리고 강조를 내린다(#238).
+     *
+     * 화면 서명이 바뀌기 전이라 [ScreenStabilityTracker]는 아직 아무것도 모르는 구간이다.
+     * #225가 닫은 것이 그 **뒤** 구간이고 여기가 그 앞이다.
+     *
+     * **정체 감지는 여전히 시간 기반이다.** 이 이벤트는 표시에만 쓰고 진행 판정에 쓰지 않는다 —
+     * 목록 끝에서 이벤트가 오지 않는 것이 `HANDOFF.md` §3에서 이 길을 접은 이유이고, 그 제약은
+     * 변하지 않았다(`../CLAUDE.md`의 "조작 이벤트에 의존하지 않는다").
+     */
+    private fun onTargetPressed(event: AccessibilityEvent) {
+        val bounds = display.pressTargetBounds() ?: return
+        if (!pressMatchesTarget(event, bounds)) return
+        display.consumePress()
+        Log.i(TAG, "press on target")
+        overlay?.pressFeedback(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
+        display.hideTarget()?.let { draw(it) }
+    }
+
+    /**
+     * 두 축으로 맞춘다 — 좌표가 정확하지만 **항상 있지는 않다**([PressMatch]).
+     *
+     * **이벤트 텍스트는 비교에만 쓰고 어디에도 남기지 않는다.** 원본이라 개인정보일 수 있어
+     * 로그·전송 경로에 들어가면 안 된다(1차 마스킹은 직렬화 경로에만 걸려 있다).
+     */
+    private fun pressMatchesTarget(event: AccessibilityEvent, bounds: List<Int>): Boolean {
+        val clicked = Rect()
+        event.source?.getBoundsInScreen(clicked)
+        if (!clicked.isEmpty) {
+            return PressMatch.byBounds(bounds, clicked.centerX(), clicked.centerY())
+        }
+        val candidates = buildList {
+            event.text.forEach { item -> item?.toString()?.let { add(it) } }
+            event.contentDescription?.toString()?.let { add(it) }
+        }
+        return PressMatch.byLabel(guidedTargetLabel, candidates)
     }
 
     private fun scheduleSample(delayMs: Long) {
@@ -830,6 +877,7 @@ class GuideAccessibilityService : AccessibilityService() {
             screen.elements.firstOrNull { it.nodeId == nodeId }
         }
         val bounds = target?.bounds?.takeIf { it.size == 4 }
+        guidedTargetLabel = target?.label?.takeIf { it.isNotBlank() }
         if (bounds == null) {
             // 화면에 없는 node_id를 고르는 것은 경량 모델의 전형적 실수다. 안내문은 그대로 띄우되
             // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.
@@ -961,6 +1009,8 @@ class GuideAccessibilityService : AccessibilityService() {
                 eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                // 안내한 대상을 실제로 눌렀는지 보려고 받는다(#238). 진행 판정에는 쓰지 않는다.
+                eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
     }
 }

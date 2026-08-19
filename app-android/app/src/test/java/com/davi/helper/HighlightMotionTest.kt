@@ -150,6 +150,53 @@ class HighlightMotionTest {
         }
     }
 
+    // --- 눌림 파동(#238) ---------------------------------------------------------
+
+    /**
+     * 퍼지면서 옅어져야 "퍼진다"로 읽힌다. 둘 중 하나만 변하면 링이 커지기만 하거나
+     * 제자리에서 깜빡일 뿐이다.
+     */
+    @Test
+    fun `파동은 퍼지면서 옅어진다`() {
+        val frames = SAMPLE_PHASES.map { HighlightMotion.pressFrame(it, SPREAD) }
+        frames.zipWithNext { a, b ->
+            assertTrue("번짐이 줄었다: ${a.spread} -> ${b.spread}", b.spread >= a.spread)
+            assertTrue("진하기가 늘었다: ${a.alpha} -> ${b.alpha}", b.alpha <= a.alpha)
+        }
+    }
+
+    /** 끝에서 0이 아니면 디졸브가 뚝 잘려 오히려 깜빡임으로 보인다. */
+    @Test
+    fun `파동은 끝에서 완전히 사라진다`() {
+        assertEquals(0, HighlightMotion.pressFrame(1f, SPREAD).alpha)
+    }
+
+    /** 시작 순간에는 대상에 붙어 있다 — 누른 자리에서 퍼져 나가야 한다. */
+    @Test
+    fun `파동은 대상에서 시작한다`() {
+        assertEquals(0f, HighlightMotion.pressFrame(0f, SPREAD).spread, TOLERANCE)
+    }
+
+    /** 애니메이터가 경계를 살짝 넘겨도 그릴 수 있는 값이어야 한다. */
+    @Test
+    fun `파동 진행도는 범위 밖에서도 안전하다`() {
+        listOf(-0.5f, 1.5f).forEach {
+            val frame = HighlightMotion.pressFrame(it, SPREAD)
+            assertTrue("진행도 $it 알파 ${frame.alpha}", frame.alpha in 0..255)
+            assertTrue("진행도 $it 번짐 ${frame.spread}", frame.spread in 0f..SPREAD)
+        }
+    }
+
+    /**
+     * 브리딩과 주기를 공유하지 않는다. 저쪽은 무한 반복이고 이쪽은 조작 한 번에 대한
+     * 응답이라, 1.6초를 그대로 쓰면 화면이 바뀐 뒤까지 파동이 남는다.
+     */
+    @Test
+    fun `파동은 브리딩 주기를 따르지 않는다`() {
+        assertNotEquals(ReadingBorder.PERIOD_MS, HighlightMotion.PRESS_DURATION_MS)
+        assertTrue(HighlightMotion.PRESS_DURATION_MS < ReadingBorder.PERIOD_MS)
+    }
+
     private companion object {
         const val BASE = 4f
         const val SPREAD = 8f

@@ -19,6 +19,7 @@ class GuideDisplayStateTest {
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
+    private val pressBounds = listOf(10, 20, 110, 220)
     private val scrollText = "아래쪽으로 스크롤해 주세요"
     private val confirmText = "다 됐어요! 해결되셨나요?"
     private val errorText = "인터넷 연결이 원활하지 않아요."
@@ -547,5 +548,117 @@ class GuideDisplayStateTest {
 
         assertNull(content?.bounds)
         assertEquals("확인을 누르세요\n$stuck", content?.text)
+    }
+
+    // ── 눌림 감지(#238) ──────────────────────────────────────────────
+
+    /** 눌림을 맞출 때도 파동을 그릴 때도 이 자리를 쓴다. */
+    @Test
+    fun `탭 안내가 떠 있으면 대상 자리를 돌려준다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /** 입력 안내도 필드를 먼저 눌러야 하므로 눌림을 받는다. */
+    @Test
+    fun `입력 안내도 눌림을 받는다`() {
+        state.show(sigA, pressBounds, "입력칸을 누르세요", ActionType.TYPE)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * scroll도 컨테이너를 target으로 잡아 bounds가 있는데, 그 안 항목을 잘못 눌러도 중심
+     * 포함이라 맞아 버린다 — 파동이 "잘 됐다"고 답하고 손 시연까지 함께 내려간다(PR #264 리뷰 1).
+     */
+    @Test
+    fun `스크롤 안내에서는 눌림을 받지 않는다`() {
+        state.show(sigA, pressBounds, scrollText, ActionType.SCROLL, SwipeDirection.DOWN)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /**
+     * 화면 전환이 빠르면 WAIT이 클릭 이벤트보다 먼저 들어와 강조가 이미 내려가 있다.
+     * 그때도 자리는 알려줘야 한다 — 파동은 "방금 누른 곳"이라 여전히 참이다(실측 회귀).
+     */
+    @Test
+    fun `강조가 내려간 뒤에도 대상 자리는 남는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.hideTarget()
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 화면이 바뀌어도 visible은 안 내려가므로, 같은 자리를 한 번 더 누르면 아무것도 없는 곳에
+     * 파동이 뜬다. 안내 하나당 한 번만 받는다(PR #264 리뷰 2).
+     */
+    @Test
+    fun `눌림은 안내 하나당 한 번만 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 새 안내는 새 눌림을 받아야 한다. */
+    @Test
+    fun `새 안내가 뜨면 눌림을 다시 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+
+        state.show(sigA, pressBounds, "다음을 누르세요", ActionType.TAP)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 눌렀는데 화면이 안 바뀌어 강조가 되살아난 경우다. 다시 눌러도 파동이 없고 내려가지도
+     * 않으면, "제대로 눌렀는지 모른 채 다시 누르는" 바로 그 사용자가 아무 답을 못 받는다
+     * (PR #264 재리뷰 1).
+     */
+    @Test
+    fun `강조가 되살아나면 눌림도 다시 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigA)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 다른 화면에서는 강조도 눌림도 되살아나지 않는다 — 재무장이 리뷰 2가 막은 경우
+     * (옛 자리로 두 번 답하기)를 다시 열면 안 된다.
+     */
+    @Test
+    fun `다른 화면에서는 눌림을 다시 받지 않는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigB)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 확인 화면은 가리킬 대상이 없다([GuideDisplayState.Content.bounds]가 null). */
+    @Test
+    fun `확인 화면에는 누를 대상이 없다`() {
+        state.showConfirm(sigA, confirmText)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 오버레이가 걷힌 동안에는 맞출 대상도 없다. */
+    @Test
+    fun `오버레이가 지워졌으면 대상 자리가 없다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.onCleared()
+
+        assertNull(state.pressTargetBounds())
     }
 }

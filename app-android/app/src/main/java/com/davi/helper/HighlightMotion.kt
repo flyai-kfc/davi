@@ -94,6 +94,26 @@ object HighlightMotion {
         return (baseAlpha * falloff).toInt().coerceIn(0, 255)
     }
 
+    /**
+     * 눌림 파동 한 프레임(#238). 사용자가 안내한 대상을 **실제로 눌렀을 때** 한 번 퍼진다.
+     *
+     * 브리딩([frame])과 달리 위상이 아니라 **진행도**를 받는다 — 반복이 아니라 1회 재생이고,
+     * 시작 시점이 사용자 조작에 매여 있어 읽는 중 테두리와 위상을 공유할 수 없다.
+     *
+     * 퍼지면서 옅어진다. 끝에서 알파가 확실히 0이어야 뚝 끊기지 않는다.
+     */
+    data class PressFrame(val spread: Float, val alpha: Int)
+
+    /** [progress] 0..1. [maxSpread]는 강조 후광 거리에 [PRESS_SPREAD_RATIO]를 곱한 값이다. */
+    fun pressFrame(progress: Float, maxSpread: Float): PressFrame {
+        val t = progress.coerceIn(0f, 1f)
+        val fade = (1f - t) * (1f - t)
+        return PressFrame(
+            spread = maxSpread * t,
+            alpha = (PRESS_ALPHA_MAX * fade).toInt().coerceIn(0, 255),
+        )
+    }
+
     // ── 조정 지점 ─────────────────────────────────────────────────────────────
     // ReadingBorder의 규약을 따른다 — dp가 아니라 시간·비율·투명도라 dimens.xml로 빼지 않는다.
     // 확정 디자인이 다시 잡을 자리라 정밀하게 맞추지 않는다.
@@ -111,5 +131,16 @@ object HighlightMotion {
     // 강조 구실을 못 했고, 마이크 뒤 글로우(184)에 맞춰 올렸다.
     private const val HALO_ALPHA_MIN = 0
     private const val HALO_ALPHA_MAX = 200
+
+    // 눌림 파동(#238). 주기를 브리딩과 공유하지 않는 유일한 값이다 — 저쪽은 무한 반복이고
+    // 이쪽은 조작 한 번에 대한 응답이라, 1.6초를 그대로 쓰면 화면이 바뀐 뒤까지 남는다.
+    // 눌렀다는 사실을 알리는 데 필요한 만큼만 짧게 둔다.
+    const val PRESS_DURATION_MS = 380L
+
+    /** 강조 후광 거리의 몇 배까지 퍼지는가. 강조보다 넓게 나가야 "퍼진다"로 읽힌다. */
+    const val PRESS_SPREAD_RATIO = 1.6f
+
+    // 시작 순간이 가장 진하다. 강조 후광 최대(200)보다 높게 둬서 그 위에 얹혀도 묻히지 않는다.
+    private const val PRESS_ALPHA_MAX = 220
     // ─────────────────────────────────────────────────────────────────────────
 }
