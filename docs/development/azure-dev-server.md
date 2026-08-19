@@ -54,10 +54,25 @@ Resource Group의 **Contributor + User Access Administrator** 또는 Owner가 �
    Secret을 만드는 사람에게는 vault 범위의 `Key Vault Secrets Officer`가 필요하다. 기반 Bicep은
    runtime identity에 읽기 권한만 부여하며 특정 팀원 계정을 템플릿에 고정하지 않는다.
 
-   | Secret name | 값 |
-   |---|---|
-   | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 |
-   | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 |
+   | Secret name | 값 | 필수 |
+   |---|---|---|
+   | `GEMINI-API-KEY` | 서버 전용 Gemini API 키 | 항상 |
+   | `DAVI-DEV-ACCESS-TOKEN` | 32자 이상의 별도 개발 토큰 | 항상 |
+   | `DAVI-TEST-ACCESS-TOKEN` | 32자 이상의 외부 테스트 참가자 토큰 | **외부 테스트 기간에만** |
+
+   마지막 행은 **평소에는 만들지 않는다.** `dev-server.bicep`의 `testAccessTokenSecretName`
+   기본값이 비어 있어서, 파라미터를 넘기지 않으면 Container App이 이 secret을 참조하지 않는다.
+   외부 테스트를 열 때 **secret을 먼저 만들고** 배포에 파라미터를 넘긴다:
+
+   ```bash
+   az deployment group create ... --parameters testAccessTokenSecretName=DAVI-TEST-ACCESS-TOKEN
+   ```
+
+   순서를 거꾸로 하면 — 즉 secret 없이 파라미터를 넘기면 — Container Apps가 revision을 만들 때
+   `keyVaultUrl`을 해석하지 못해 새 revision이 Healthy에 도달하지 못하고, 배포 워크플로의
+   revision·health 검증이 실패한다. 그때는 공용 개발 서버가 이전 revision에 묶이고
+   **이후 배포까지 함께 막힌다.** 테스트가 끝나면 파라미터를 빼고 secret을 지우면 폐기가 끝난다
+   (팀 개발 토큰은 그대로 살아 있다).
 
 Container App은 versionless Key Vault URI를 참조한다. secret 갱신은 Container Apps가 동기화하지만
 팀 debug APK의 개발 토큰도 함께 교체해야 한다. 새 dev vault는 purge protection을 켜지 않고 Azure가

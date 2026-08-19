@@ -52,6 +52,25 @@ def test_container_app_reads_secrets_only_through_managed_identity() -> None:
     assert "identity: containerIdentity.id" in template
     assert "name: 'GEMINI_API_KEY'\n              secretRef: 'gemini-api-key'" in template
     assert "name: 'DAVI_DEV_ACCESS_TOKEN'\n              secretRef: 'dev-access-token'" in template
+    assert (
+        "name: 'DAVI_TEST_ACCESS_TOKEN'\n              secretRef: 'test-access-token'" in template
+    )
+
+
+def test_external_test_token_secret_is_optional_so_deploys_do_not_depend_on_it() -> None:
+    """secret을 만들기 전에 머지해도 배포가 깨지지 않아야 한다.
+
+    Container Apps는 revision을 만들 때 `keyVaultUrl`을 해석한다. 없는 secret을 조건 없이
+    참조하면 새 revision이 Healthy에 도달하지 못하고, 배포 워크플로의 revision·health 검증이
+    실패해 **이후 배포까지 막힌다**(PR #257 리뷰). 그래서 기본값을 비우고 양쪽에 가드를 건다.
+    """
+
+    template = _text("infra/azure/dev-server.bicep")
+
+    assert "param testAccessTokenSecretName string = ''" in template
+    # secret 항목과 env 항목 **양쪽**에 가드가 걸려야 한 쪽만 남는 반쪽 배선이 안 생긴다.
+    assert template.count("empty(testAccessTokenSecretName)") == 2
+    assert "@minLength(1)\n@description('외부 테스트 참가자용" not in template
 
 
 def test_development_key_vault_uses_short_recoverable_retention() -> None:

@@ -41,9 +41,8 @@ param geminiApiKeySecretName string = 'GEMINI-API-KEY'
 @minLength(1)
 param devAccessTokenSecretName string = 'DAVI-DEV-ACCESS-TOKEN'
 
-@minLength(1)
-@description('외부 테스트 참가자용 둘째 토큰. 개발 토큰과 병행하며 테스트가 끝나면 이것만 폐기한다.')
-param testAccessTokenSecretName string = 'DAVI-TEST-ACCESS-TOKEN'
+@description('외부 테스트 참가자용 둘째 토큰의 Key Vault secret 이름. **비우면 아예 배선하지 않는다**(기본값). Container Apps는 revision을 만들 때 keyVaultUrl을 해석하므로, 없는 secret을 참조하면 revision이 Healthy에 도달하지 못해 이후 배포까지 막힌다. 그래서 secret 생성과 이 템플릿의 머지 순서에 의존하지 않도록 선택으로 둔다. 테스트 기간에만 이 파라미터를 넘기고, 끝나면 빼는 것으로 폐기가 끝난다.')
+param testAccessTokenSecretName string = ''
 
 var commonTags = {
   environment: 'development'
@@ -99,23 +98,29 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: containerIdentity.id
         }
       ]
-      secrets: [
-        {
-          name: 'gemini-api-key'
-          keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${geminiApiKeySecretName}'
-          identity: containerIdentity.id
-        }
-        {
-          name: 'dev-access-token'
-          keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${devAccessTokenSecretName}'
-          identity: containerIdentity.id
-        }
-        {
-          name: 'test-access-token'
-          keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${testAccessTokenSecretName}'
-          identity: containerIdentity.id
-        }
-      ]
+      secrets: concat(
+        [
+          {
+            name: 'gemini-api-key'
+            keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${geminiApiKeySecretName}'
+            identity: containerIdentity.id
+          }
+          {
+            name: 'dev-access-token'
+            keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${devAccessTokenSecretName}'
+            identity: containerIdentity.id
+          }
+        ],
+        empty(testAccessTokenSecretName)
+          ? []
+          : [
+              {
+                name: 'test-access-token'
+                keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${testAccessTokenSecretName}'
+                identity: containerIdentity.id
+              }
+            ]
+      )
     }
     template: {
       revisionSuffix: revisionSuffix
@@ -127,7 +132,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: [
+          env: concat([
             {
               name: 'DAVI_ENV'
               value: 'development'
@@ -164,11 +169,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'DAVI_DEV_ACCESS_TOKEN'
               secretRef: 'dev-access-token'
             }
+          ], empty(testAccessTokenSecretName) ? [] : [
             {
               name: 'DAVI_TEST_ACCESS_TOKEN'
               secretRef: 'test-access-token'
             }
-          ]
+          ])
           probes: [
             {
               type: 'Liveness'
