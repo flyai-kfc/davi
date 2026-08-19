@@ -311,6 +311,15 @@ android {
 
     buildTypes {
         debug {
+            // debug와 release를 한 기기에 함께 설치할 수 있게 한다(#58). 같은 applicationId면
+            // 서명 주체가 달라 설치가 서로를 밀어내고, 접근성 서비스·권한 상태도 서로 덮어쓴다.
+            // 첫 Play 내부 테스트에서 debug 앱이 깔린 기기가 실제로 설치 실패했다(2026-08-19).
+            //
+            // **namespace는 그대로 com.davi.helper다.** 접근성 서비스 클래스 이름은 namespace
+            // 기준이라 suffix가 붙어도 바뀌지 않고, 그래서 dumpsys로 서비스를 찾는 스크립트가
+            // 계속 동작한다(dev-install.ps1의 $serviceClass가 그 전제로 쓰여 있다).
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             buildConfigField("String", "SERVER_URL", debugServerUrl.asBuildConfigString())
             buildConfigField("String", "DEV_ACCESS_TOKEN", debugAccessToken.asBuildConfigString())
             buildConfigField("boolean", "DOGFOOD_OPT_IN", dogfoodOptIn.toString())
