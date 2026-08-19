@@ -425,13 +425,6 @@ class GuideAccessibilityService : AccessibilityService() {
         lastDecision = decision
         updateReading()
 
-        // 안내한 뒤 화면이 실제로 바뀌었는지를 마지막 스텝에 적는다(C11 개정). 흔들리는 동안
-        // (WAIT)에는 적지 않는다 — 덜 그려진 트리의 시그니처를 "바뀌었다"로 세면 #32가 요청에서
-        // 막은 것을 이력에서 되살린다.
-        if (decision != ScreenStabilityTracker.Decision.WAIT) {
-            GuideSession.observeScreenChange(session.generation, signature)
-        }
-
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
@@ -488,9 +481,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
                 // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
                 //
-                // **스냅샷을 여기서 다시 뜬다.** 위 [session]은 이 샘플 처음의 값이라, 방금
-                // observeScreenChange가 확정한 마지막 스텝의 `screen_changed`가 들어 있지 않다 —
-                // 그대로 보내면 그 값이 한 요청씩 늦는다.
+                // 보내기 직전에 마지막 스텝의 `screen_changed`를 확정하고(C11 개정), **스냅샷을
+                // 그 뒤에 다시 뜬다** — 위 [session]은 이 샘플 처음의 값이라 방금 적은 값이
+                // 들어 있지 않고, 그대로 보내면 한 요청씩 늦는다.
+                GuideSession.observeScreen(session.generation, signature)
                 val sending = GuideSession.active() ?: return
                 if (requestNextStep(result.screen, signature, sending)) {
                     stability.markSent(signature, now)
@@ -504,9 +498,6 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 다시 그리면서 우리 창을 만져 스스로를 깨우기 때문이다(ControlOverlay 참고).
                 if (!GuideSession.awaitingConfirm) {
                     Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                    // 안내가 듣지 않았다는 사실을 스텝에 남긴다. 다음 요청은 화면이 바뀐 뒤에야
-                    // 나가지만(#39), 그때 모델이 이 스텝을 보고 다른 수를 고를 수 있다.
-                    GuideSession.observeScreenStuck(session.generation, signature)
                     showStuckNotice(signature)
                 }
                 scheduleSample(POLL_MS)

@@ -291,47 +291,32 @@ object GuideSession {
     }
 
     /**
-     * 안정된 화면을 하나 봤다. 마지막 스텝의 "그래서 화면이 바뀌었는가"를 여기서 확정한다.
+     * **요청을 보내기 직전에** 마지막 스텝의 "그래서 화면이 바뀌었는가"를 적는다.
      *
-     * **새 신호를 만들지 않는다.** 화면이 바뀐 사실은 이미 시그니처 홀드가 판정하고 있고,
-     * 여기서는 그 결과를 스텝에 적어 둘 뿐이다 — 조작 이벤트에 기대지 않는다는 제약은
-     * 그대로다(`../CLAUDE.md`).
+     * 판정 시점이 여기인 이유: 이 값이 서버에 닿는 순간이 곧 요청을 보내는 순간이고, 그때가
+     * 앱이 답을 확실히 아는 유일한 시점이다. 시간으로 끊으면(예: 정체 판정 7초) **느린 사용자를
+     * 실패로 적는다** — 시니어가 안내 한 줄을 읽고 따라 하는 데 7초는 흔하다. 2026-08-19
+     * SM-S921N에서 실제로 그 상태를 봤다.
      *
-     * 흔들리는 동안(WAIT)에는 부르지 않는다. 덜 그려진 트리의 시그니처로 "바뀌었다"를 적으면
-     * #32가 요청에서 막은 것을 이력에서 되살린다.
+     * **새 신호를 만들지 않는다.** 화면이 바뀐 사실은 시그니처 홀드가 이미 판정한 것이고
+     * (`ScreenSignature`), 여기서는 그 결과를 스텝에 옮겨 적을 뿐이다 — 조작 이벤트에 기대지
+     * 않는다는 제약은 그대로다(`../CLAUDE.md`).
+     *
+     * **true는 되돌리지 않는다.** 한 번 바뀐 화면이 다시 그 화면으로 돌아와도(A→B→A) 그 안내가
+     * 먹혔다는 사실은 그대로다. 회귀 자체를 가리는 것은 내용 서명의 몫이다(#270 서브 4).
+     * 반대로 false는 true로 덮인다 — 같은 화면에서 다시 묻는 동안(재시도·미검증 done)은 false,
+     * 사용자가 결국 진행하면 true다.
      */
     @Synchronized
-    fun observeScreenChange(generation: Long, screenSignature: String) {
-        val pending = pendingStep(generation) ?: return
-        if (screenSignature == lastStepSignature) return
-        replaceLastStep(pending.copy(screenChanged = true))
-    }
-
-    /**
-     * 안내한 그 화면이 정체로 판정됐다([ScreenStabilityTracker.Decision.STUCK]). 마지막 스텝을
-     * "화면이 그대로였다"로 닫는다.
-     *
-     * 이 값은 **화면이 결국 바뀐 뒤의 요청**에 실려 서버에 닿는다. 정체 중에는 서버를 다시
-     * 부르지 않기 때문이고(#39), 그게 이 신호를 늦게라도 보내야 하는 이유이기도 하다 —
-     * 듣지 않은 안내를 모델이 알아야 다른 수를 고른다.
-     */
-    @Synchronized
-    fun observeScreenStuck(generation: Long, screenSignature: String) {
-        val pending = pendingStep(generation) ?: return
-        if (screenSignature != lastStepSignature) return
-        replaceLastStep(pending.copy(screenChanged = false))
-    }
-
-    /** 아직 화면 변화가 확정되지 않은 마지막 스텝. 없으면 null이라 호출자는 아무것도 안 한다. */
-    private fun pendingStep(generation: Long): GuideStep? {
-        if (!isCurrent(generation)) return null
-        if (lastStepSignature == null) return null
-        return steps.lastOrNull()?.takeIf { it.screenChanged == null }
-    }
-
-    private fun replaceLastStep(step: GuideStep) {
+    fun observeScreen(generation: Long, screenSignature: String) {
+        if (!isCurrent(generation)) return
+        val stepSignature = lastStepSignature ?: return
+        val last = steps.lastOrNull() ?: return
+        if (last.screenChanged == true) return
+        val changed = screenSignature != stepSignature
+        if (last.screenChanged == changed) return
         steps.removeLast()
-        steps.addLast(step)
+        steps.addLast(last.copy(screenChanged = changed))
     }
 
     /**

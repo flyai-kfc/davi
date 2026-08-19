@@ -206,70 +206,85 @@ class GuideSessionTest {
 
     // --- 화면이 바뀌었는가 (#270) -------------------------------------------------
     //
-    // 스텝은 안내를 표시할 때 생기고, 이 값은 그다음 관측에서 확정된다. 새 신호를 만들지 않고
-    // 시그니처 홀드와 정체 판정의 결과를 적어 둘 뿐이다.
+    // 스텝은 안내를 표시할 때 생기고, 이 값은 **다음 요청을 보내기 직전에** 확정된다.
+    // 시간으로 끊으면 느린 사용자가 실패로 적힌다 — 시니어에게 7초는 흔하다.
 
     @Test
-    fun `다른 화면이 안정되면 마지막 스텝이 바뀐 것으로 닫힌다`() {
+    fun `다른 화면에서 물으면 마지막 스텝이 바뀐 것으로 닫힌다`() {
         GuideSession.start("카카오톡 열기")
         record(screenSignature = SIGNATURE)
 
-        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
 
         assertEquals(true, steps().single().screenChanged)
     }
 
+    /** 같은 화면에서 다시 묻는 중(재시도·미검증 done)이라는 뜻이다. */
     @Test
-    fun `같은 화면을 다시 봐도 아직 판정하지 않는다`() {
+    fun `같은 화면에서 다시 물으면 그대로였던 것으로 적힌다`() {
         GuideSession.start("카카오톡 열기")
         record(screenSignature = SIGNATURE)
 
-        GuideSession.observeScreenChange(currentGeneration(), SIGNATURE)
-
-        assertNull(steps().single().screenChanged)
-    }
-
-    @Test
-    fun `안내한 화면이 정체되면 그대로였던 것으로 닫힌다`() {
-        GuideSession.start("카카오톡 열기")
-        record(screenSignature = SIGNATURE)
-
-        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), SIGNATURE)
 
         assertEquals(false, steps().single().screenChanged)
     }
 
-    /** 한 번 닫힌 판정은 뒤집지 않는다 — 그 안내 뒤에 일어난 일은 이미 관측했다. */
+    /** 느린 사용자를 실패로 적지 않는다 — 결국 진행했으면 그것이 사실이다. */
     @Test
-    fun `이미 닫힌 스텝은 다시 판정하지 않는다`() {
+    fun `그대로였던 스텝도 화면이 바뀌면 바뀐 것으로 덮인다`() {
         GuideSession.start("카카오톡 열기")
         record(screenSignature = SIGNATURE)
-        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), SIGNATURE)
 
-        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
 
-        assertEquals(false, steps().single().screenChanged)
+        assertEquals(true, steps().single().screenChanged)
     }
 
-    /** 다른 화면의 정체는 그 안내에 대한 답이 아니다. */
+    /** A→B→A로 돌아와도 그 안내가 먹혔다는 사실은 그대로다. 회귀는 내용 서명의 몫(#270 서브 4). */
     @Test
-    fun `다른 화면의 정체는 마지막 스텝을 닫지 않는다`() {
+    fun `한 번 바뀐 스텝은 되돌아와도 true로 남는다`() {
         GuideSession.start("카카오톡 열기")
         record(screenSignature = SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
 
-        GuideSession.observeScreenStuck(currentGeneration(), OTHER_SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), SIGNATURE)
 
-        assertNull(steps().single().screenChanged)
+        assertEquals(true, steps().single().screenChanged)
+    }
+
+    /** 새 스텝이 쌓이면 이전 스텝의 판정은 그대로 굳는다. */
+    @Test
+    fun `이전 스텝의 판정은 새 스텝이 쌓여도 굳는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
+
+        record(screenSignature = OTHER_SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
+
+        assertEquals(listOf(true, false), steps().map { it.screenChanged })
     }
 
     @Test
     fun `스텝이 없으면 화면 관측은 아무것도 하지 않는다`() {
         GuideSession.start("카카오톡 열기")
 
-        GuideSession.observeScreenChange(currentGeneration(), OTHER_SIGNATURE)
-        GuideSession.observeScreenStuck(currentGeneration(), SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
 
         assertTrue(steps().isEmpty())
+    }
+
+    @Test
+    fun `이전 세대의 화면 관측은 스텝을 건드리지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+        val stale = currentGeneration()
+
+        GuideSession.observeScreen(stale + 1, OTHER_SIGNATURE)
+
+        assertNull(steps().single().screenChanged)
     }
 
     // --- 늦게 도착한 응답 (PR #44 리뷰) ------------------------------------------
