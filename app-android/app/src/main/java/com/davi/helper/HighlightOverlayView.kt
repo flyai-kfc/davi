@@ -610,23 +610,36 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 사각형이 커졌다 작아졌다 해서 대상이 흔들려 보인다. 자리는 고정하고 두께·투명도만
      * 변해야 "숨 쉰다"로 읽힌다.
      */
+    /**
+     * 이 뷰가 화면에서 차지한 사각형. **아무것도 물리지 않는다** — 무엇을 뺄지는 호출자가 정한다.
+     *
+     * 한 자리에 모으는 이유는 이 파일이 반복해서 세운 원칙이다 — 두 곳이 각자 세우면 원점
+     * 보정이 한 번 더 바뀔 때 한쪽만 고쳐진다([reservedHeight] KDoc, PR #229 리뷰).
+     * 예전 `drawableBounds()`가 이 역할을 겸했는데, 물림이 잘못 붙어 있어 지우면서 역할까지
+     * 같이 사라졌었다(PR #255 리뷰).
+     */
+    private fun viewBounds() = GuideBoxLayout.Bounds(
+        left = locationOnScreen[0].toFloat(),
+        top = locationOnScreen[1].toFloat(),
+        right = (locationOnScreen[0] + width).toFloat(),
+        bottom = (locationOnScreen[1] + height).toFloat(),
+    )
+
     private fun highlightBounds(): GuideBoxLayout.Bounds {
         // **자를 때 선 두께를 물리지 않는다.** 이 함수가 돌려주는 것이 바깥변이라, 잉크의
         // 바깥이 화면 끝에 딱 맞아야 한다. 획 절반을 물린 범위에 대고 자르면 절반을 두 번
         // 빼서 가장자리 대상에서 강조가 2dp 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이
         // 인용한 #147의 찌그러짐과 같은 방향이다.
         // 중심선으로 되돌리는 것은 그리는 쪽의 `+ half`가 한다.
-        // **View.left·View.top을 가리지 않게 이름을 가른다**(PR #239 리뷰). 아래 식에서
-        // width·height는 진짜 View 속성이라, 같은 식에 View 속성과 화면 좌표가 섞인다 —
-        // 지역 변수를 지우면 조용히 View.left로 넘어가 컴파일은 되고 값만 틀린다.
-        val originX = locationOnScreen[0].toFloat()
-        val originY = locationOnScreen[1].toFloat()
+        // 자를 범위는 [viewBounds]가 준다 — 화면 좌표와 View 속성을 같은 식에서 섞지 않는다
+        // (PR #239 리뷰가 짚은 `View.left` 가림이 구조적으로 사라진다).
+        val view = viewBounds()
         val out = highlightExpand + highlightStroke
         return GuideBoxLayout.Bounds(
-            left = (target.left - out).coerceAtLeast(originX),
-            top = (target.top - out).coerceAtLeast(originY),
-            right = (target.right + out).coerceAtMost(originX + width),
-            bottom = (target.bottom + out).coerceAtMost(originY + height),
+            left = (target.left - out).coerceAtLeast(view.left),
+            top = (target.top - out).coerceAtLeast(view.top),
+            right = (target.right + out).coerceAtMost(view.right),
+            bottom = (target.bottom + out).coerceAtMost(view.bottom),
         )
     }
 
@@ -710,7 +723,6 @@ class HighlightOverlayView(context: Context) : View(context) {
         )
     }
 
-
     /**
      * 안내창이 앉을 수 있는 범위 — **뷰 사각형에서 시스템 바 인셋을 뺀다**(#169).
      *
@@ -738,12 +750,7 @@ class HighlightOverlayView(context: Context) : View(context) {
      * **화면 좌표에서 겹치는 만큼만** 자른다.
      */
     private fun boxBounds(): GuideBoxLayout.Bounds {
-        val view = GuideBoxLayout.Bounds(
-            left = locationOnScreen[0].toFloat(),
-            top = locationOnScreen[1].toFloat(),
-            right = (locationOnScreen[0] + width).toFloat(),
-            bottom = (locationOnScreen[1] + height).toFloat(),
-        )
+        val view = viewBounds()
         val safe = safeBounds() ?: return view
         return GuideBoxLayout.Bounds(
             left = maxOf(view.left, safe.left),
