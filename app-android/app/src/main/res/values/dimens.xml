@@ -280,8 +280,6 @@
       그 복잡도에 비해 얻는 게 0.75dp라 그대로 둔다.
     -->
     <dimen name="davi_card_border_width">1.5dp</dimen>
-    <dimen name="davi_button_padding_h">20dp</dimen>
-    <dimen name="davi_button_elevation">2dp</dimen>
     <!--
       메인 7 최종 확인의 캡슐 버튼쌍(#196). 시안 `v2/button/pair` — 오버레이의
       `v2/chip/confirm-pair`와 **별개 컴포넌트**다(캡슐 vs r14, 흰/빨강 vs 빨강/초록).
@@ -768,6 +766,34 @@
     <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
     <dimen name="davi_onboarding_button_margin_top">42dp</dimen>
     <dimen name="davi_onboarding_hint_margin_top">24dp</dimen>
+
+    <!--
+      온보딩 1 로그인(#266). 시안 SSoT › SCREENS › 온보딩 v2 › 「온보딩 1 — 로고 · 시작하기」
+      프레임 300x620 · 2026-08-18 실측. **ON-2와 같은 자다**(개정 규칙 #244).
+
+        객체 자기 크기 x1.2   아바타 96 -> 115
+        세로 거리 1:1         상태바 아래(y34) 기준으로 잰다
+        반지름·글자 1:1
+
+      **버튼은 ON-2 토큰을 그대로 쓴다**(288x72) — 시안이 둘 다 v2/button 240x60이다.
+      값을 다시 만들면 마스터가 바뀔 때 한쪽만 고쳐진다.
+    -->
+    <!--
+      **모서리 반지름 토큰이 없다.** 아바타의 모양은 에셋(ic_davi_logo)의 클립이 갖는
+      스퀘어클이라 코너 반지름으로 표현되지 않는다 — 크기만 주면 곡선이 함께 스케일된다.
+      "시안 r36을 1:1로 쓰나 비율로 쓰나"라는 물음 자체가 여기서는 성립하지 않는다.
+    -->
+    <dimen name="davi_login_avatar_size">115dp</dimen>
+    <!-- 아바타 위. 시안 y170에서 상태바 34를 뺀다 — 세로 거리라 1:1. -->
+    <dimen name="davi_login_avatar_margin_top">136dp</dimen>
+    <!-- 아바타 하단 266 -> 앱명 279, 앱명 하단 321 -> 부제 334. 둘 다 13이다. -->
+    <dimen name="davi_login_title_margin_top">13dp</dimen>
+    <!-- 부제 하단 360 -> 카카오 426. -->
+    <dimen name="davi_login_button_margin_top">66dp</dimen>
+    <!-- 카카오 하단 486 -> 스킵 502. -->
+    <dimen name="davi_login_button_gap">16dp</dimen>
+    <!-- 스킵 하단 562 -> 프레임 바닥 620. -->
+    <dimen name="davi_login_bottom_margin">58dp</dimen>
     <!-- 글자는 환산하지 않는다(1:1). 카드 제목 20 · 버튼 라벨 18 · 본문과 안내 17. -->
     <dimen name="davi_type_onboarding_title">20sp</dimen>
     <dimen name="davi_type_onboarding_button">18sp</dimen>

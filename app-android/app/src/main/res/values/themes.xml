@@ -179,41 +179,33 @@
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
 
-    <!-- 버튼 (E1 button, E2 눌림=state layer ripple) — Figma button 컴포넌트와 1:1 -->
-    <style name="Widget.Davi.Button" parent="Widget.Material3.Button">
-        <item name="android:minHeight">@dimen/davi_size_touch_target</item>
-        <item name="android:textSize">@dimen/davi_type_body_lg</item>
-        <item name="android:textStyle">bold</item>
-        <item name="android:paddingLeft">@dimen/davi_button_padding_h</item>
-        <item name="android:paddingRight">@dimen/davi_button_padding_h</item>
-        <item name="android:stateListAnimator">@null</item>
-        <item name="android:elevation">@dimen/davi_button_elevation</item>
-    </style>
     <!--
-      backgroundTint=@null: Material3 테마는 <Button>을 MaterialButton으로 인플레이트하고
-      backgroundTint(colorPrimary)가 android:background를 덮는다 — Secondary가 Primary처럼
-      빨갛게 나온 실기기 실측(#123). null이어야 커스텀 배경 drawable이 그대로 보인다.
+      **`Widget.Davi.Button` 체인을 지웠다**(#266). `Widget.Davi.Button` → `.Primary` →
+      `bg_davi_button_primary`가 어디서도 안 쓰였다 — 직전까지 Kakao·Secondary가 상속해서
+      살아 있었는데, 이 화면이 두 스타일을 ON-2 쪽으로 옮기면서 참조가 끊겼다.
+      남겨 두면 다음 사람이 "기본 버튼 스타일"인 줄 알고 새 화면에서 상속한다.
+      (`bg_davi_button_primary` drawable 정리는 #263이 받는다.)
+
+      ON-1 버튼 둘은 **ON-2 권한 버튼을 상속한다.** 시안이 셋 다 `v2/button` 240x60이고,
+      그림자 offset·라벨 여백·C1 두-네임스페이스 처리가 같다 — 값을 복제하면 마스터가 바뀔 때
+      한쪽만 고쳐진다(버튼 크기 토큰을 재사용한 것과 같은 이유).
+      **이름이 상속을 따라간다** — 점 표기 암시 상속이 실제 부모와 어긋나지 않게 둔다.
     -->
-    <style name="Widget.Davi.Button.Primary">
-        <item name="android:background">@drawable/bg_davi_button_primary</item>
-        <item name="backgroundTint">@null</item>
-        <item name="android:textColor">@color/davi_button_on_primary</item>
-    </style>
-    <style name="Widget.Davi.Button.Secondary">
-        <item name="android:background">@drawable/bg_davi_button_secondary</item>
-        <item name="backgroundTint">@null</item>
-        <item name="android:textColor">@color/davi_text_primary</item>
-    </style>
-    <!-- button/oauth-kakao (docs/SCREENS.md ON-1). 심벌 아이콘은 Figma 확정 시 공식 리소스로. -->
-    <style name="Widget.Davi.Button.Kakao">
+    <style name="Widget.Davi.OnboardingButton.Kakao">
         <item name="android:background">@drawable/bg_davi_button_kakao</item>
-        <item name="backgroundTint">@null</item>
         <item name="android:textColor">@color/davi_button_on_kakao</item>
+        <item name="android:textSize">@dimen/davi_type_body_lg</item>
+    </style>
+    <style name="Widget.Davi.OnboardingButton.Skip">
+        <item name="android:background">@drawable/bg_davi_button_secondary</item>
+        <item name="android:textColor">@color/davi_text_primary</item>
+        <item name="android:textSize">@dimen/davi_type_body_lg</item>
     </style>
 
     <!--
-      메인 7 최종 확인의 캡슐 버튼쌍(#196). Widget.Davi.Button을 상속하지 않는다 —
-      그쪽은 minHeight 56 · 20sp · elevation을 갖는데 여기는 72dp · 18sp · 그림자 없음이다.
+      메인 7 최종 확인의 캡슐 버튼쌍(#196). 자기 기하를 직접 갖는다 — 72dp · 18sp ·
+      그림자 없음이라 다른 버튼과 공유할 몸통이 없다. (예전에는 "Widget.Davi.Button을
+      상속하지 않는다"고 적혀 있었는데, 그 스타일은 #266에서 죽어서 지웠다.)
 
       **서체는 Pretendard다.** C1이 "다비가 입으로 하는 말만 Cafe24"인데 버튼 라벨은
       사용자가 누르는 대답이라 본문 서체가 맞다. 시안 인스턴스가 Cafe24로 덮여 있으나
