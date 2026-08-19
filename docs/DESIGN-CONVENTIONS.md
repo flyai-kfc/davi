@@ -194,8 +194,8 @@ Pretendard는 로컬 설치 폰트라 **에이전트(원격 실행)는 어느 �
 **시안에 눌림 상태가 없다.** Figma 담당자 회신(2026-08-18)으로 정한 값이고, 안드로이드 기본
 리플이 쓰는 방식이다 — 값 하나로 밝은 표면과 어두운 표면을 함께 만족시킬 수 없다.
 
-    밝은 표면   davi_state_layer_pressed          검정 12%
-    어두운 표면 davi_state_layer_pressed_on_dark  흰색 20%
+    밝은 표면   davi_state_layer_pressed_on_light  검정 12%
+    어두운 표면 davi_state_layer_pressed_on_dark   흰색 20%
 
 **어두운 표면에 검정을 덮으면 거의 안 보인다** — 주 버튼(`#A50014`)에서 대비가 1.18이다
 (스펙 좌표계: `(145,0,18)`). 흰 20%면 1.37로 밝은 표면의 1.32보다 낫다.
