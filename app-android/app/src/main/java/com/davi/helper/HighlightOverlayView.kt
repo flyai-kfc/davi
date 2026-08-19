@@ -617,14 +617,17 @@ class HighlightOverlayView(context: Context) : View(context) {
         // 물려 놓았고, 거기에 대고 자르면 절반을 두 번 빼서 가장자리 대상에서 강조가 2dp
         // 안으로 밀린다(PR #239 재리뷰 1) — 위 KDoc이 인용한 #147의 찌그러짐과 같은 방향이다.
         // 중심선으로 되돌리는 것은 그리는 쪽의 `+ half`가 한다.
-        val left = locationOnScreen[0].toFloat()
-        val top = locationOnScreen[1].toFloat()
+        // **View.left·View.top을 가리지 않게 이름을 가른다**(PR #239 리뷰). 아래 식에서
+        // width·height는 진짜 View 속성이라, 같은 식에 View 속성과 화면 좌표가 섞인다 —
+        // 지역 변수를 지우면 조용히 View.left로 넘어가 컴파일은 되고 값만 틀린다.
+        val originX = locationOnScreen[0].toFloat()
+        val originY = locationOnScreen[1].toFloat()
         val out = highlightExpand + highlightStroke
         return GuideBoxLayout.Bounds(
-            left = (target.left - out).coerceAtLeast(left),
-            top = (target.top - out).coerceAtLeast(top),
-            right = (target.right + out).coerceAtMost(left + width),
-            bottom = (target.bottom + out).coerceAtMost(top + height),
+            left = (target.left - out).coerceAtLeast(originX),
+            top = (target.top - out).coerceAtLeast(originY),
+            right = (target.right + out).coerceAtMost(originX + width),
+            bottom = (target.bottom + out).coerceAtMost(originY + height),
         )
     }
 
