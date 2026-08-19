@@ -13,6 +13,36 @@
       "test_class": "com.davi.helper.e2e.SamsungClockAlarmGeminiTest",
       "description": "진단용으로 삼성 시계 알람 목록부터 실제 Gemini 안내를 따라 테스트 알람을 만들고 삭제한다.",
       "requirements": "Samsung Clock 12.4.10.10의 한국어 UI로 검증됨"
+    },
+    {
+      "id": "kakaotalk-photo-presend-full-journey",
+      "test_class": "com.davi.helper.e2e.KakaoTalkPhotoPreSendGeminiTest",
+      "description": "실제 Gemini 안내로 카카오톡 나와의 채팅방에서 사진 한 장을 골라 전송 직전 상태까지 가고, 전송은 하드 경계로 막는다.",
+      "requirements": "카카오톡 26.7.1 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+    },
+    {
+      "id": "tworld-bill-view-full-journey",
+      "test_class": "com.davi.helper.e2e.TworldBillGeminiTest",
+      "description": "실제 Gemini 안내로 T월드에서 이번 달 요금안내서를 열어 청구 요금을 확인하고, 납부·결제는 하드 경계로 막는다.",
+      "requirements": "T월드 6.1.13 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+    },
+    {
+      "id": "kakaot-taxi-precall-full-journey",
+      "test_class": "com.davi.helper.e2e.KakaoTaxiPreCallGeminiTest",
+      "description": "실제 Gemini 안내로 카카오 T에서 택시 도착지를 SK텔레콤 보라매사옥으로 정해 호출 직전 상태까지 가고, 호출·예약은 하드 경계로 막는다.",
+      "requirements": "카카오 T(com.kakao.taxi) 설치·로그인 필요 — 2026-08-19 두 검증 기기 모두 미설치"
+    },
+    {
+      "id": "baemin-gimbap-preorder-full-journey",
+      "test_class": "com.davi.helper.e2e.BaeminPreOrderGeminiTest",
+      "description": "실제 Gemini 안내로 배달의민족에서 김밥 메뉴 하나를 장바구니에 담아 주문 직전 상태까지 가고, 주문·결제는 하드 경계로 막은 뒤 장바구니를 비운다.",
+      "requirements": "배달의민족 16.18.0 설치·로그인·배달 주소 설정 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+    },
+    {
+      "id": "adot-calendar-add-event-full-journey",
+      "test_class": "com.davi.helper.e2e.AdotCalendarEventGeminiTest",
+      "description": "실제 Gemini 안내로 에이닷 캘린더에 8월 20일 테스트 일정(DAVI_E2E_설문조사)을 추가·저장하고, 정리에서 그 일정만 삭제한다.",
+      "requirements": "에이닷 4.4.3 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
     }
   ]
 }
