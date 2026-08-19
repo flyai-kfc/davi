@@ -41,6 +41,10 @@ param geminiApiKeySecretName string = 'GEMINI-API-KEY'
 @minLength(1)
 param devAccessTokenSecretName string = 'DAVI-DEV-ACCESS-TOKEN'
 
+@minLength(1)
+@description('외부 테스트 참가자용 둘째 토큰. 개발 토큰과 병행하며 테스트가 끝나면 이것만 폐기한다.')
+param testAccessTokenSecretName string = 'DAVI-TEST-ACCESS-TOKEN'
+
 var commonTags = {
   environment: 'development'
   project: 'davi'
@@ -106,6 +110,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${devAccessTokenSecretName}'
           identity: containerIdentity.id
         }
+        {
+          name: 'test-access-token'
+          keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${testAccessTokenSecretName}'
+          identity: containerIdentity.id
+        }
       ]
     }
     template: {
@@ -154,6 +163,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DAVI_DEV_ACCESS_TOKEN'
               secretRef: 'dev-access-token'
+            }
+            {
+              name: 'DAVI_TEST_ACCESS_TOKEN'
+              secretRef: 'test-access-token'
             }
           ]
           probes: [

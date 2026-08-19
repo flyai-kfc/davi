@@ -277,3 +277,70 @@ def test_production_next_step_logs_only_safe_metadata(
     assert all(secret_instruction not in message for message in messages)
     assert all(secret_token not in message for message in messages)
     assert all("시계" not in message for message in messages)
+
+
+def test_test_access_token_is_accepted_alongside_the_dev_token(monkeypatch):
+    """테스터에게 나눠 준 토큰도 같은 헤더로 통과한다. 앱은 값만 다르게 실으면 된다."""
+
+    dev_token = "d" * 32
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(dev_token))
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    with_dev = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": dev_token},
+    )
+    with_test = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": test_token},
+    )
+    with_wrong = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": "w" * 32},
+    )
+
+    assert with_dev.status_code == 200
+    assert with_test.status_code == 200
+    assert with_wrong.status_code == 401
+
+
+def test_test_access_token_alone_opens_the_gate(monkeypatch):
+    """테스트 기간에 개발 토큰을 비우고 테스트 토큰만 두는 운용도 막지 않는다."""
+
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(""))
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    allowed = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": test_token},
+    )
+    denied = client.post("/v1/next-step", json=_next_step_payload())
+
+    assert allowed.status_code == 200
+    # 토큰이 하나라도 설정되면 loopback 예외는 닫힌다 — TestClient도 토큰을 내야 한다.
+    assert denied.status_code == 401
+
+
+def test_matched_token_kind_is_logged_without_the_token_value(monkeypatch, caplog):
+    """테스트 기간에 참가자 트래픽과 팀 트래픽을 로그에서 갈라 보기 위한 필드다."""
+
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.davi.requests"):
+        client.post(
+            "/v1/next-step",
+            json=_next_step_payload(),
+            headers={"X-Davi-Dev-Token": test_token},
+        )
+
+    events = _request_events(caplog)
+    finished = next(event for event in events if event["event"] == "request_finished")
+    assert finished["access_token_kind"] == "test"
+    assert test_token not in json.dumps(events)

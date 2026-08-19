@@ -221,3 +221,46 @@ def test_llm_thinking_budget_allows_zero():
     configured = _settings(davi_gemini_thinking_budget=0)
 
     assert configured.davi_gemini_thinking_budget == 0
+
+
+def test_test_access_token_must_be_long_enough():
+    with pytest.raises(ValidationError, match="DAVI_TEST_ACCESS_TOKEN"):
+        _settings(davi_test_access_token="short")
+
+
+def test_production_rejects_the_test_access_token():
+    with pytest.raises(ValidationError, match="DAVI_TEST_ACCESS_TOKEN"):
+        _settings(
+            davi_env="production",
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_test_access_token="t" * 32,
+        )
+
+
+def test_test_access_token_must_differ_from_the_dev_token():
+    """폐기 범위를 나누려고 둘로 나눈 것이라, 같은 값이면 나눈 의미가 사라진다."""
+
+    with pytest.raises(ValidationError, match="달라야"):
+        _settings(
+            davi_dev_access_token="s" * 32,
+            davi_test_access_token="s" * 32,
+        )
+
+
+def test_lan_bind_accepts_either_access_token():
+    configured = _settings(
+        davi_bind_host="0.0.0.0",
+        davi_dev_access_token="",
+        davi_test_access_token="t" * 32,
+    )
+
+    assert configured.access_tokens == {"test": "t" * 32}
+
+    with pytest.raises(ValidationError, match="DAVI_TEST_ACCESS_TOKEN"):
+        _settings(davi_bind_host="0.0.0.0", davi_dev_access_token="", davi_test_access_token="")
+
+
+def test_access_tokens_omits_unset_tokens():
+    assert _settings().access_tokens == {}
+    assert _settings(davi_dev_access_token="d" * 32).access_tokens == {"dev": "d" * 32}

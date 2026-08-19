@@ -157,6 +157,7 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
 | `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
+| `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
 | `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 `0.0.0.0` | loopback만 허용 |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
@@ -203,6 +204,20 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
 `DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
 느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
+
+### 테스트 참가자 토큰
+
+외부 테스트 기간에는 `DAVI_TEST_ACCESS_TOKEN`을 하나 더 둔다. 서버는 개발 토큰과 이
+토큰을 **둘 다** 받아들이고, 헤더는 기존 `X-Davi-Dev-Token` 하나 그대로다 — 그래서 **앱은
+고칠 것이 없다.** 참가자 빌드의 `local.properties`에 `DAVI_DEBUG_ACCESS_TOKEN=<테스트 토큰>`을
+넣으면 된다.
+
+하나로 합치지 않고 둘로 둔 이유는 **폐기 시점이 다르기 때문**이다. 테스트가 끝나면 이 토큰만
+지우면 되고 팀의 개발 토큰은 그대로 살아 있다. 값이 새더라도 폐기 범위가 참가자로 제한된다.
+같은 값을 쓰면 그 구분이 사라지므로 기동 때 거부한다.
+
+어느 토큰으로 들어왔는지는 요청 로그의 `access_token_kind`(`dev`/`test`)로 갈라 볼 수 있다.
+토큰 값 자체는 어떤 프로필에서도 로그에 남기지 않는다.
 
 `/health` 응답도 프로필에 따라 다르다.
 
