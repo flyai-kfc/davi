@@ -279,12 +279,38 @@ function Restore-AccessibilityState {
     else { Write-Warning '접근성 복구가 중단됐고 되돌리기도 실패했다. 기기 설정에서 접근성을 직접 확인할 것.' }
 }
 
+# dumpsys accessibility의 섹션 하나(`라벨:{...}`)를 통째로 잘라낸다.
+# **한 줄만 보면 안 된다** — 바인딩된 서비스가 둘 이상이면 두 번째부터 줄이 바뀌어서(#302 실측),
+# 한 줄 정규식은 첫 서비스만 본다. debug/release가 함께 켜진 기기에서 우리 서비스가 둘째 자리에
+# 붙으면 멀쩡히 바인딩된 것을 "안 붙었다"로 읽고, 토글 사이클을 몇 번 돌려도 순서가 바뀌지 않아
+# 설정 화면만 계속 열린다.
+# 섹션은 전부 `이름:{` 꼴이라 다음 섹션 머리 직전까지가 한 블록이다.
+function Get-DumpsysSection {
+    param([string]$Dump, [string]$Label)
+    $pattern = "(?ms)^\s*$([regex]::Escape($Label))\s*:\{(.*?)(?=^\s*[A-Za-z][A-Za-z0-9 ]*:\{|\z)"
+    $match = [regex]::Match($Dump, $pattern)
+    if ($match.Success) { return $match.Groups[1].Value }
+    return ''
+}
+
+# 패키지 접두어로 비교하면 com.davi.helper가 com.davi.helper.debug에도 걸린다(#302).
+# 완전 컴포넌트로 본다. 단 dumpsys는 클래스가 applicationId로 시작하면 축약형(`pkg/.Cls`)으로
+# 찍으므로 두 형태를 모두 받는다 — 접미어가 없는 release는 축약형, 붙은 debug는 완전형이다(실측).
+function Test-SectionHasService {
+    param([string]$Section)
+    if ($Section.Contains($service)) { return $true }
+    if ($serviceClass.StartsWith("$package.")) {
+        $short = "$package/" + $serviceClass.Substring($package.Length)
+        if ($Section.Contains($short)) { return $true }
+    }
+    return $false
+}
+
 # 목록에 값이 있어도 실제로 바인딩되지 않는 경우가 있다. 그 둘을 구분해야 한다.
 function Test-ServiceBound {
     $state = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
-    $escaped = [regex]::Escape($package)
-    if ($state -match "Crashed services:.*$escaped") { return 'crashed' }
-    if ($state -match "Bound services:.*$escaped") { return 'bound' }
+    if (Test-SectionHasService (Get-DumpsysSection $state 'Crashed services')) { return 'crashed' }
+    if (Test-SectionHasService (Get-DumpsysSection $state 'Bound services')) { return 'bound' }
     return 'unbound'
 }
 
