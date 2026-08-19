@@ -540,7 +540,12 @@
     <dimen name="davi_glow_card_bleed_bottom">-48dp</dimen>
 
     <!--
-      메인 1 홈(#231). 시안 프레임 300x620 · **크기 x1.2 · 반지름과 선 두께와 글자는 1:1**.
+      메인 1 홈(#231). 시안 프레임 300x620.
+
+      **환산은 두 가지로 갈린다**(2026-08-19 규칙 확정) — 그림·컴포넌트의 **자기 크기**는
+      x1.2(안 그러면 눌린다), **세로 거리**(여백·간격)는 1:1이다. 프레임 620이 기기 화면
+      높이와 대응하지 않으므로 세로 거리를 가로 배율로 비례할 근거가 없다 — 남는 세로는
+      환산이 아니라 가중치가 먹는다. 반지름·선 두께·글자도 1:1이다.
 
       캐릭터 높이는 시안 배율 0.247을 환산한 값이다(729 x 0.247 x 1.2 = 216). 시안 표의
       폭 221은 빈 자리를 포함한 상자이고 높이가 배율과 정확히 맞아, 높이를 따르고 폭은
@@ -556,15 +561,15 @@
     <dimen name="davi_type_home_title">34sp</dimen>
     <dimen name="davi_type_home_caption">16sp</dimen>
     <dimen name="davi_home_cane_height">216dp</dimen>
-    <!-- 캐릭터 위 여백. 시안에는 없는 값이다 — 실기기에서 부제에 너무 붙어 보여
-         내렸다(2026-08-18 디자인 담당). -->
+    <!-- 캐릭터 위 여백. **시안에 없는 값이라 환산 대상이 아니다** — 실기기에서 부제에
+         너무 붙어 보여 내렸다(2026-08-18 디자인 담당). -->
     <dimen name="davi_home_cane_margin_top">18dp</dimen>
     <dimen name="davi_home_bubble_min_height">86dp</dimen>
     <dimen name="davi_home_bubble_radius">24dp</dimen>
     <dimen name="davi_home_bubble_stroke">1.5dp</dimen>
-    <!-- 캐릭터가 말풍선 상단을 파고드는 깊이(시안 20). 겹침은 말풍선의 음수 위 마진이
-         만든다 — 배지·메인 8 캐릭터와 같은 수법이다. -->
-    <dimen name="davi_home_bubble_overlap">-24dp</dimen>
+    <!-- 캐릭터가 말풍선 상단을 파고드는 깊이(시안 20, 세로 거리라 1:1). 겹침은 말풍선의
+         음수 위 마진이 만든다 — 배지·메인 8 캐릭터와 같은 수법이다. -->
+    <dimen name="davi_home_bubble_overlap">-20dp</dimen>
     <!--
       말풍선 **아랫변**에서 마이크 윗변까지(시안 40). 시안의 "마이크 상단에서 112 위"는
       말풍선 **윗변** 기준이고, 말풍선 높이 72를 빼면 40이다.
@@ -573,32 +578,32 @@
       공간을 나눠 가지면 여기 적은 값과 무관하게 벌어진다(고치기 전 실측 73dp, 2026-08-18).
       그래서 홈에서는 space_home_mid를 걷고 열 아래 여백을 마이크 자리로 못 박는다.
     -->
-    <dimen name="davi_home_bubble_margin_bottom">48dp</dimen>
-    <!-- 홈에서 열이 비워 두는 아래 자리 = 마이크 여백(98) + 마이크(91). -->
-    <dimen name="davi_home_control_reserve">189dp</dimen>
-    <dimen name="davi_home_subtitle_margin_top">10dp</dimen>
+    <dimen name="davi_home_bubble_margin_bottom">40dp</dimen>
+    <!-- 홈에서 열이 비워 두는 아래 자리 = 마이크 여백(82) + 마이크(91). -->
+    <dimen name="davi_home_control_reserve">173dp</dimen>
+    <dimen name="davi_home_subtitle_margin_top">8dp</dimen>
     <!--
       홈에서만 마이크가 올라간다(#231). 아래에 "· 눌러서 말하기 ·"가 들어가기 때문이다.
-      시안 관계식에서 그대로 나온다 — 캡션 아래 33 · 캡션 높이 · 마이크↔캡션 28을 더하면
-      마이크 하단 82가 된다(40 + 21 + 34 ≈ 95, 시안 82 x1.2 = 98).
+      값은 시안 그대로다(세로 거리는 1:1) — 캡션 아래 33 · 캡션 높이 · 마이크↔캡션 28을
+      더하면 마이크 하단 82가 맞는다.
 
       **글로우도 같은 만큼 따라 올라가야 한다** — 마이크 기하에서 나온 값이라
       혼자 두면 후광만 제자리에 남는다(davi_mic_margin_bottom 주석의 파생 관계).
-        davi_home_glow_margin_bottom = davi_glow_mic_margin_bottom(-2) + 66
+        davi_home_glow_margin_bottom = davi_glow_mic_margin_bottom(-2) + (82 - 32)
     -->
-    <dimen name="davi_home_mic_margin_bottom">98dp</dimen>
-    <dimen name="davi_home_glow_margin_bottom">64dp</dimen>
-    <dimen name="davi_home_caption_margin_bottom">40dp</dimen>
+    <dimen name="davi_home_mic_margin_bottom">82dp</dimen>
+    <dimen name="davi_home_glow_margin_bottom">48dp</dimen>
+    <dimen name="davi_home_caption_margin_bottom">33dp</dimen>
     <!--
       폭죽의 자리. **글자에 붙이지 않고 화면 오른쪽 가장자리에 붙인다** — 제목이 가운데
       정렬이라 글자의 오른쪽 끝이 문구마다 달라진다(2026-08-18 디자인 담당).
 
-      가로: 잉크 오른쪽 끝이 시안 x267, 프레임 폭 300 → 오른쪽에서 33 → 39.6dp.
+      가로: 잉크 오른쪽 끝이 시안 x267, 프레임 폭 300 → 오른쪽에서 33 → 39.6dp(가로는 x1.2).
             열이 이미 24dp를 물고 있어 남는 16dp만 준다.
-      세로: 제목 윗변 y82에서 잉크 윗변 y106까지 24 → 29dp.
+      세로: 제목 윗변 y82에서 잉크 윗변 y106까지 24 → **24dp**(세로 거리는 1:1).
     -->
     <dimen name="davi_home_sparkle_margin_end">16dp</dimen>
-    <dimen name="davi_home_sparkle_margin_top">29dp</dimen>
+    <dimen name="davi_home_sparkle_margin_top">24dp</dimen>
 
     <!--
       ON-2 권한 화면(#236). 시안 프레임 300×620 · **크기 x1.2 · 반지름과 선 두께와 글자는 1:1**.
