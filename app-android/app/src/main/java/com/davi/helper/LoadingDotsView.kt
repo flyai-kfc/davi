@@ -20,6 +20,11 @@ import androidx.core.content.res.use
  * 깜빡 스쳐 산만하므로 일정 시간 뒤에만 띄우는데, 이 지연을 프레임 경과 시간으로 재면
  * 모션 끄기(프레임 한 장)에서 점이 영영 안 나온다(#144에서 실제로 겪었다). 핸들러는
  * 프레임과 무관하게 발화하므로 그 함정이 구조적으로 없다.
+ *
+ * 그래서 **모션 끄기에서도 지연이 똑같이 적용된다** — 정지 프레임이 delay 뒤에 나온다.
+ * 이전의 "모션 꺼짐이면 지연 건너뛰기"는 프레임이 더 안 온다는 구현 제약을 피하는 우회였지
+ * 즉시 표시가 목적이 아니었고, 빠른 응답에 정지 그림이 깜빡 스치는 것도 지연이 막으려는
+ * 산만함 그대로다(#148에서 의도한 변화).
  */
 class LoadingDotsView @JvmOverloads constructor(
     context: Context,
@@ -66,12 +71,20 @@ class LoadingDotsView @JvmOverloads constructor(
     private val staggerSeconds =
         resources.getInteger(R.integer.davi_motion_dots_stagger_ms) / MILLIS_PER_SECOND
     private val delayMs = resources.getInteger(R.integer.davi_motion_dots_delay_ms).toLong()
-    private val delaySeconds = delayMs / MILLIS_PER_SECOND
 
     private var elapsedSeconds = 0f
     private var delayElapsed = false
+
+    /**
+     * 점이 처음 보인 순간의 프레임 시각. 핸들러(벽시계)와 프레임 시계는 다른 시계라,
+     * delay 상수를 빼는 대신 **드러난 순간의 프레임 시각**을 빼야 첫 프레임이 정확히
+     * 시안의 정지 화면이 된다 — 메인 스레드가 밀려 핸들러가 늦게 발화해도 어긋나지 않는다.
+     */
+    private var shownAtSeconds = 0f
+
     private val showDots = Runnable {
         delayElapsed = true
+        shownAtSeconds = elapsedSeconds
         invalidate()
     }
 
@@ -79,24 +92,16 @@ class LoadingDotsView @JvmOverloads constructor(
         this.elapsedSeconds = elapsedSeconds
     }
 
-    override fun onMotionLifecycleChanged(running: Boolean) {
-        if (running) armDelay() else removeCallbacks(showDots)
-    }
-
-    /**
-     * 다시 대기 상태로 들어갈 때 지연·주기를 처음부터 다시 센다. 안 되돌리면 두 번째 대기부터
-     * 점이 지연 없이 곧장 튀어나온다.
-     */
-    fun restart() {
-        elapsedSeconds = 0f
-        armDelay()
-        invalidate()
-    }
-
-    private fun armDelay() {
-        removeCallbacks(showDots)
-        delayElapsed = false
-        postDelayed(showDots, delayMs)
+    // 지연은 구동 조건 전이마다 처음부터 다시 센다 — 대기에 다시 들어갈 때(GONE→VISIBLE)
+    // 점이 지연 없이 곧장 튀어나오지 않게. driver도 같은 전이에서 재시작돼 주기도 0부터다.
+    override fun onMotionLifecycleChanged(active: Boolean) {
+        if (active) {
+            removeCallbacks(showDots)
+            delayElapsed = false
+            postDelayed(showDots, delayMs)
+        } else {
+            removeCallbacks(showDots)
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -114,7 +119,7 @@ class LoadingDotsView @JvmOverloads constructor(
         // 지연 구간에는 아무것도 그리지 않는다 — 이때 화면에는 "잠시만요" 문구만 있다.
         if (!delayElapsed) return
 
-        val animationSeconds = LoadingDotsMotion.animationSecondsAt(elapsedSeconds, delaySeconds)
+        val animationSeconds = LoadingDotsMotion.animationSecondsAt(elapsedSeconds, shownAtSeconds)
         // 가장 큰 점 기준으로 한 칸씩. 점이 작아져도 중심은 그대로라 자리가 흔들리지 않는다.
         val step = dotSizeMax + dotSpacing
         val rowWidth = step * LoadingDotsMotion.DOT_COUNT - dotSpacing

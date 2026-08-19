@@ -32,7 +32,7 @@ abstract class MotionView @JvmOverloads constructor(
         invalidate()
     }
 
-    private var motionRunning = false
+    private var motionActive = false
 
     /**
      * 한 프레임분 상태를 갱신한다. 그리기는 하지 않는다 — 호출 뒤 [invalidate]가 따라온다.
@@ -46,11 +46,12 @@ abstract class MotionView @JvmOverloads constructor(
      * 구동 조건(부착·가시·창 가시)이 참↔거짓으로 **바뀔 때** 한 번씩 불린다. 지연 타이머처럼
      * "다시 보이기 시작한 순간"에 되돌려야 하는 부수 상태가 여기 걸린다(#148).
      *
-     * 기준이 driver의 실제 루프가 아니라 **조건**인 이유: 모션이 꺼져 있으면 루프는 돌지 않지만
-     * (정지 프레임 한 장) 부수 상태는 여전히 전이를 따라가야 한다 — 안 그러면 모션 끄기에서
-     * 지연이 영영 arm되지 않는다.
+     * `active`는 "프레임이 흐른다"가 아니라 **조건이 참이다**라는 뜻이다. 모션이 꺼져 있으면
+     * 루프는 돌지 않지만(정지 프레임 한 장) 부수 상태는 여전히 전이를 따라가야 한다 —
+     * 안 그러면 모션 끄기에서 지연이 영영 arm되지 않는다. 프레임 단위 상태는 여기가 아니라
+     * [onMotionFrame]에 걸 것.
      */
-    protected open fun onMotionLifecycleChanged(running: Boolean) {}
+    protected open fun onMotionLifecycleChanged(active: Boolean) {}
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -82,11 +83,13 @@ abstract class MotionView @JvmOverloads constructor(
     }
 
     private fun setRunning(shouldRun: Boolean) {
+        // 전이일 때만 움직인다. 모션 끄기에서는 driver.running이 서지 않아 start()의 중복
+        // 가드가 안 걸리므로, 여기서 거르지 않으면 조건 유지 중의 가시성 이벤트마다 정지
+        // 프레임이 재방출돼 [onMotionFrame]의 "한 번만" 계약이 깨진다.
+        if (shouldRun == motionActive) return
+        motionActive = shouldRun
         // driver 먼저 — 모션 끄기의 정지 프레임 한 장이 흐른 뒤에 전이 훅이 온다.
         if (shouldRun) driver.start() else driver.stop()
-        if (shouldRun != motionRunning) {
-            motionRunning = shouldRun
-            onMotionLifecycleChanged(shouldRun)
-        }
+        onMotionLifecycleChanged(shouldRun)
     }
 }

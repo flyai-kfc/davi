@@ -45,15 +45,15 @@ object LoadingDotsMotion {
         min + (max - min) * progress.coerceIn(0f, 1f)
 
     /**
-     * 점이 보이기 시작한 뒤의 경과 시간. 지연 구간을 빼야 **첫 프레임이 시안의 정지 화면과
-     * 같아진다** — 빼지 않으면 점이 주기 중간에서 튀어나온다. 지연 자체는 뷰의 핸들러가
-     * 센다(#148 — [LoadingDotsView] 머리 주석).
+     * 점이 보이기 시작한 뒤의 경과 시간. 드러난 순간의 시각을 빼야 **첫 프레임이 시안의
+     * 정지 화면과 같아진다** — 빼지 않으면 점이 주기 중간에서 튀어나온다. 언제 드러나는가는
+     * 뷰의 핸들러가 정한다(#148 — [LoadingDotsView] 머리 주석).
      *
      * 모션이 꺼져 있으면 [MotionDriver]가 `elapsed=0`인 프레임 한 장만 흘리므로 결과가
      * 자연히 0 — 시간 0의 모습이 곧 시안이 그려 둔 정지 화면이다. 별도 분기가 필요 없다.
      */
-    fun animationSecondsAt(elapsedSeconds: Float, delaySeconds: Float): Float =
-        (elapsedSeconds - delaySeconds).coerceAtLeast(0f)
+    fun animationSecondsAt(elapsedSeconds: Float, shownAtSeconds: Float): Float =
+        (elapsedSeconds - shownAtSeconds).coerceAtLeast(0f)
 
     private const val TWO_PI = (2.0 * PI).toFloat()
 }
