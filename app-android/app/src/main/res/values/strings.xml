@@ -2,7 +2,8 @@
     <string name="app_name">다비 도우미</string>
     <string name="accessibility_service_description">화면을 읽어 다음에 무엇을 누르면 되는지 화면 위에 표시해 드립니다. 화면 내용은 개인정보를 가린 뒤에만 사용됩니다.</string>
 
-    <!-- ON-1 로그인 (docs/SCREENS.md). 임시 문구 — 확정은 W8. 로그인은 스킵 가능하다. -->
+    <!-- ON-1 로그인 (docs/SCREENS.md). **문구는 v2 시안 확정분이다**(#266) — 더는 임시가
+         아니다. 로그인은 스킵 가능하다(스킵 버튼은 추후 지운다, SCREENS.md ON-1). -->
     <string name="login_tagline">디지털 동반자 다비랑 함께해요!</string>
     <!-- 로고 아래 제목. **app_name과 따로 둔다** — 그쪽은 런처 이름과 알림 제목이 쓰는
          값이라(AndroidManifest · GuideNotifier) 화면 문구로 재사용하면 둘이 묶인다. -->

@@ -40,7 +40,6 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
-                android:minHeight="0dp"
                 android:paddingBottom="@dimen/davi_login_bottom_margin">
 
                 <!--
@@ -102,8 +101,9 @@
                     android:layout_weight="1" />
 
                 <!--
-                  진행 중 표시. 시안에 없는 상태라 평소 gone이라 자리를 안 차지하고,
-                  뜰 때만 카카오 버튼을 밀어내린다.
+                  진행 중 표시. 시안에 없는 상태다. **위 가변 여백 아래에 둔다** — 그래서
+                  평소 배율에서는 이게 떠도 여백이 그만큼 줄어들 뿐 버튼은 안 움직인다.
+                  여백이 다 접힌 뒤(큰 배율)에야 버튼을 밀어내린다.
                 -->
                 <TextView
                     android:id="@+id/login_status"
@@ -118,7 +118,7 @@
 
                 <Button
                     android:id="@+id/btn_kakao_login"
-                    style="@style/Widget.Davi.Button.Kakao"
+                    style="@style/Widget.Davi.OnboardingButton.Kakao"
                     android:layout_width="@dimen/davi_onboarding_button_width"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/davi_login_button_margin_top"
@@ -131,7 +131,7 @@
                 -->
                 <Button
                     android:id="@+id/btn_login_skip"
-                    style="@style/Widget.Davi.Button.Secondary"
+                    style="@style/Widget.Davi.OnboardingButton.Skip"
                     android:layout_width="@dimen/davi_onboarding_button_width"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/davi_login_button_gap"
