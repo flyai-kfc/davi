@@ -53,7 +53,7 @@ class HighlightOverlayView(context: Context) : View(context) {
          *
          * @param lines 이미 접힌 줄들. 받는 쪽은 다시 접지 않는다.
          *
-         * @param reading 이 창이 GD-1 "읽는 중"인가. 글자 크기가 달라서(20 / 18) 받는 쪽도
+         * @param reading 이 창이 "읽는 중"인가(GD-1·GD-2r 둘 다). 글자 크기가 달라서(20 / 18) 받는 쪽도
          * 알아야 한다. **판정은 여기 한 곳에서만 한다** — 그리는 쪽이 따로 판정하면 접은
          * 폭과 그린 폭이 어긋나고, 화면만 봐서는 어느 쪽이 틀렸는지 알 수 없다.
          *
@@ -237,8 +237,12 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val confirmFrame get() = confirmKind == GuideDisplayState.ConfirmKind.DONE
 
     /**
-     * 지금 안내창에 든 문구가 [R.string.overlay_reading]인가. 서버 안내가 도착하면
-     * [setGuide]가 덮으므로 저절로 내려간다.
+     * 지금 안내창을 **읽는 중 표시가 가져갔는가.** 서버 안내가 도착하면 [setGuide]가 덮으므로
+     * 저절로 내려간다.
+     *
+     * **문구가 하나가 아니다**(#314) — GD-1은 [R.string.overlay_reading], GD-2r은
+     * [R.string.overlay_reading_mid_guide]다. "이 플래그가 서면 문구는 overlay_reading"으로
+     * 읽으면 GD-2r에서 조용히 어긋난다.
      */
     private var readingWindow = false
 
@@ -277,7 +281,7 @@ class HighlightOverlayView(context: Context) : View(context) {
             // 떠 있던 안내는 밀어 둔다 — 읽는 중이 안내 없이 끝나면 되돌린다.
             // **이 판정이 곧 GD-1/GD-2r 구분이다**(#314) — 밀어 둘 안내가 있으면 사용자가
             // 방금 무언가를 누른 뒤이고(GD-2r), 없으면 첫 안내 전이다(GD-1). 새 조건을 만들지 않는다.
-            val midGuide = instruction.isNotEmpty()
+            val midGuide = ReadingWindow.isMidGuide(hasPendingGuide = instruction.isNotEmpty())
             if (midGuide) stashed = instruction
             instruction = context.getString(
                 if (midGuide) R.string.overlay_reading_mid_guide else R.string.overlay_reading,

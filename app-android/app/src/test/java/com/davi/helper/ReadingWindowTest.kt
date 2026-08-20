@@ -31,6 +31,17 @@ class ReadingWindowTest {
     }
 
     /**
+     * **GD-1 / GD-2r 갈래 고정**(#314). 창에 안내가 떠 있으면 사용자가 방금 무언가를 누른
+     * 뒤라 GD-2r이고, 비어 있으면 세션이 막 시작한 GD-1이다. 뒤집히면 증상이 실기기에서만
+     * 드러나는 종류라(두 번째 구간부터 문구가 안 바뀐다) 여기서 고정한다.
+     */
+    @Test
+    fun midGuide_isDecidedByPendingGuide() {
+        assertTrue(ReadingWindow.isMidGuide(hasPendingGuide = true))
+        assertFalse(ReadingWindow.isMidGuide(hasPendingGuide = false))
+    }
+
+    /**
      * **회귀 고정** — 읽는 중이 끊기지 않은 채로 두 구간을 지난다.
      *
      * 켜짐 → 예약 → 창 가져감 → **서버 안내 도착(창을 안내가 가져감)** → 화면이 또 움직임.
