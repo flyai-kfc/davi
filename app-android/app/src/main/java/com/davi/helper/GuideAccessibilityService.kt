@@ -527,7 +527,7 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1). 판정은 [ReadingBorder]에 있고 여기서는
+     * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1·GD-2r). 판정은 [ReadingBorder]에 있고 여기서는
      * 값을 모아 넘기기만 한다. 멱등이라 같은 값으로 반복 호출해도 안전하다.
      */
     private fun updateReading() {

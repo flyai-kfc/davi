@@ -21,14 +21,20 @@ object GuideBoxStyle {
      * 구 버전은 22sp `#1A1A1A` 왼쪽 정렬이었다. 색이 순검정이 아닌 이유는 채움이 핑크
      * 그라디언트라서다 — 시안이 분홍 계열 먹색으로 잡았다.
      *
-     * **읽는 중(GD-1)만 20sp**다. 그쪽은 문구가 짧고 점과 함께 서므로 시안이 키웠다 —
+     * **읽는 중만 20sp**다(GD-1·GD-2r 둘 다). 그쪽은 문구가 짧고 점과 함께 서므로 시안이 키웠다 —
      * 크기를 바꾸는 것은 [readingTextPaint].
      */
     fun textPaint(context: Context): Paint = basePaint(context).apply {
         textSize = context.resources.getDimension(R.dimen.davi_overlay_text_instruction)
     }
 
-    /** GD-1 "화면을 읽고 있어요" 전용. 위와 색·서체는 같고 크기만 20sp다. */
+    /**
+     * **읽는 중 창 전용**(GD-1·GD-2r). 위와 색·서체는 같고 크기만 20sp다.
+     *
+     * **문구를 이름으로 박지 않는다**(#314) — 두 자리가 문구는 다르고 페인트는 같다.
+     * `davi_overlay_text_reading`을 GD-1 문구 길이만 보고 조정하면 **더 긴 GD-2r 문구의
+     * 접힘까지 함께 바뀐다.**
+     */
     fun readingTextPaint(context: Context): Paint = basePaint(context).apply {
         textSize = context.resources.getDimension(R.dimen.davi_overlay_text_reading)
     }

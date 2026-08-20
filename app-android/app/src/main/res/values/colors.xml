@@ -30,7 +30,7 @@
     <color name="davi_overlay_box">#FFFFFF</color>
     <color name="davi_overlay_on_box">#1A1A1A</color>
     <!--
-      overlay/frame-border tone=reading (GD-1). Figma SSoT에 아직 이 토큰이 없어 raw 값을
+      overlay/frame-border tone=reading (GD-1·GD-2r). Figma SSoT에 아직 이 토큰이 없어 raw 값을
       새로 심지 않고 포인트 색을 별칭으로 문다 — 확정 디자인이 오면 Figma에 변수를 먼저
       만들고 이 한 줄만 바꾼다. 강조 사각형과 색이 같지만 투명도로 층이 갈린다(ReadingBorder).
     -->

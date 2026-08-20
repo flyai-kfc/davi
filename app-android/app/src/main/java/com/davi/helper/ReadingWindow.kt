@@ -23,4 +23,18 @@ object ReadingWindow {
      */
     fun shouldArmOnset(windowTaken: Boolean, onsetPending: Boolean): Boolean =
         !windowTaken && !onsetPending
+
+    /**
+     * 이 읽는 구간이 **안내 중에 들어온 것인가**(GD-2r). 아니면 첫 안내 전이다(GD-1).
+     *
+     * [hasPendingGuide]는 지금 창에 서버 안내가 떠 있는가다. 떠 있으면 **사용자가 방금
+     * 무언가를 눌러 화면이 움직인 뒤**라 GD-2r이고, 비어 있으면 세션이 막 시작한 GD-1이다.
+     * **새 조건을 만들지 않는다** — 밀어 둘 안내가 있는가와 같은 판정이다(#314).
+     *
+     * 한 줄인데도 여기 있는 이유는 [shouldArmOnset]과 같다. 이 판정이 뒤집히면 증상이
+     * **"두 번째 구간부터 문구가 안 바뀐다"** 라 실기기에서 두 번 전환해야 드러나고 CI는
+     * 초록이다. `restoreOrClear`·`setGuide`·`clearTarget`의 문구 초기화 순서를 바꾸는
+     * 사람이 여기서 걸린다.
+     */
+    fun isMidGuide(hasPendingGuide: Boolean): Boolean = hasPendingGuide
 }
