@@ -72,7 +72,7 @@
     -->
     <dimen name="davi_overlay_hand_outline">2dp</dimen>
     <!--
-      읽는 중 테두리(GD-1). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
+      읽는 중 테두리(GD-1·GD-2r). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
       확정 디자인이 모양을 다시 잡을 자리라 정합을 정밀하게 맞추지 않는다.
       radius는 기기 화면 코너 곡률의 근사치다.
     -->
@@ -176,7 +176,7 @@
     <dimen name="davi_overlay_dot_size_max">9dp</dimen>
     <dimen name="davi_overlay_dot_size_min">5dp</dimen>
     <dimen name="davi_overlay_dot_spacing">7dp</dimen>
-    <!-- 점 셋이 앉을 자리(GD-1). 지름 9 + 아래 여백 18. 확인쌍과 같은 자리를 쓰지만 둘은
+    <!-- 점 셋이 앉을 자리(GD-1·GD-2r). 지름 9 + 아래 여백 18. 확인쌍과 같은 자리를 쓰지만 둘은
          동시에 뜨지 않는다 — 읽는 중과 확인 대기는 배타적이다(ReadingBorder). -->
     <dimen name="davi_overlay_dots_row">27dp</dimen>
     <!-- 확인쌍: 높이 56 캡슐 · gap 12. 폭은 창을 따르고 높이·반경만 고정한다. -->
@@ -189,7 +189,13 @@
     <dimen name="davi_overlay_confirm_inset">24dp</dimen>
     <dimen name="davi_overlay_confirm_gap">12dp</dimen>
     <dimen name="davi_overlay_confirm_shadow_y">3dp</dimen>
-    <!-- 안내 문구: GD-1 20sp · GD-2 18sp · 확인창 18sp. 전부 Pretendard Bold 가운데. -->
+    <!--
+      안내 문구: **읽는 중(GD-1·GD-2r) 20sp** · GD-2 18sp · 확인창 18sp.
+      전부 Pretendard Bold 가운데.
+
+      **20sp를 GD-1 문구 길이만 보고 조정하지 않는다**(#314) — 같은 페인트가 더 긴 GD-2r
+      문구(`overlay_reading_mid_guide`)도 접는다. 근거는 `GuideBoxStyle.readingTextPaint`.
+    -->
     <dimen name="davi_overlay_text_reading">20sp</dimen>
     <dimen name="davi_overlay_text_instruction">18sp</dimen>
 
