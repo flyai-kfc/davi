@@ -12,8 +12,8 @@ from app.prompt import (
     TOGGLE_STATE_INSTRUCTION,
     build_prompt,
 )
-from app.reasoning import _screen_signature
 from app.schemas import NextStepRequest, Screen, UiElement
+from app.signature import screen_signature
 
 
 def _request(**screen_fields) -> NextStepRequest:
@@ -162,7 +162,7 @@ def _switch_screen(checked: bool) -> Screen:
 def test_signature_changes_when_only_the_switch_flips():
     """이 화면에서 바뀌는 것은 checked 하나뿐이다 — label도 role도 그대로다."""
 
-    assert _screen_signature(_switch_screen(False)) != _screen_signature(_switch_screen(True))
+    assert screen_signature(_switch_screen(False)) != screen_signature(_switch_screen(True))
 
 
 def test_signature_changes_when_only_the_button_becomes_enabled():
@@ -172,7 +172,7 @@ def test_signature_changes_when_only_the_button_becomes_enabled():
             elements=[UiElement(node_id="n1", label="다음", clickable=True, enabled=enabled)],
         )
 
-    assert _screen_signature(screen(False)) != _screen_signature(screen(True))
+    assert screen_signature(screen(False)) != screen_signature(screen(True))
 
 
 def test_signature_changes_when_the_input_gets_filled():
@@ -188,7 +188,7 @@ def test_signature_changes_when_the_input_gets_filled():
             ],
         )
 
-    assert _screen_signature(screen(True)) != _screen_signature(screen(False))
+    assert screen_signature(screen(True)) != screen_signature(screen(False))
 
 
 def test_signature_leaves_the_window_title_out():
@@ -201,7 +201,7 @@ def test_signature_leaves_the_window_title_out():
     def screen(title: str) -> Screen:
         return Screen(package_name="com.android.settings", window_title=title)
 
-    assert _screen_signature(screen("연결")) == _screen_signature(screen("배터리"))
+    assert screen_signature(screen("연결")) == screen_signature(screen("배터리"))
 
 
 def test_signature_is_stable_for_a_client_that_fills_nothing():
@@ -211,4 +211,4 @@ def test_signature_is_stable_for_a_client_that_fills_nothing():
         package_name="com.example.app",
         elements=[UiElement(node_id="n1", label="다음", clickable=True)],
     )
-    assert _screen_signature(screen) == _screen_signature(screen.model_copy(deep=True))
+    assert screen_signature(screen) == screen_signature(screen.model_copy(deep=True))

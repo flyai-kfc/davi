@@ -26,7 +26,7 @@ from .schemas import (
     SwipeDirection,
     UiElement,
 )
-from .signature import screen_signature as _screen_signature
+from .signature import screen_signature
 
 _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
 
@@ -332,5 +332,5 @@ def next_step(
         # 설정 문자열이 아니라 **실제로 호출된 모델 id**여야 한다.
         model=settings.resolved_model,
         verified=verified,
-        screen_signature=_screen_signature(masked.screen),
+        screen_signature=screen_signature(masked.screen),
     )

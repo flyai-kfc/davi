@@ -402,6 +402,7 @@ pytest
 | `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
 | `app/kakao_auth.py` | 카카오 access token 검증과 세션 JWT 발급·검증. 토큰 원문 비로그. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
+| `app/signature.py` | 화면 구조 서명. 응답에 실리는 값과 프롬프트가 대조하는 값을 한 벌로 유지. |
 | `app/reasoning.py` | 실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |

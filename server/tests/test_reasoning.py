@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from app.llm import LlmClient
-from app.reasoning import _screen_signature, next_step
+from app.reasoning import next_step
 from app.schemas import (
     ActionType,
     GuideAction,
@@ -16,6 +16,7 @@ from app.schemas import (
     Screen,
     UiElement,
 )
+from app.signature import screen_signature
 
 
 class _CapturingLlmClient(LlmClient):
@@ -48,7 +49,7 @@ def test_screen_signature_changes_with_focus_and_ime_state():
         elements=[UiElement(node_id="n1", role="EditText", editable=True, focused=True)],
     )
 
-    assert _screen_signature(before) != _screen_signature(ready)
+    assert screen_signature(before) != screen_signature(ready)
 
 
 def _step(

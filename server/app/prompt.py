@@ -173,11 +173,17 @@ STEP_SCREEN_RETURNED = "지금 화면이 그때와 구조가 같음"
 # **가드가 아니라 상태 문장이다.** label을 뺀 서명은 구조·좌표가 같고 내용만 바뀐 화면을
 # 구분하지 못하고, C11이 이 값을 "화면 동일성의 보편적 근거로 재사용하지 않는다"고 못박아 뒀다.
 # 가드로 막으면 오탐이 곧 정상 안내 차단이지만, 상태로 주면 모델이 무시할 수 있다(#272 후보 A).
-# 마지막 문장이 그 한계를 모델에게 그대로 말해 주는 자리다.
+#
+# **유보를 지시보다 앞에 둔다.** [SCROLL_END_INSTRUCTION]이 지시형인 것은 그 관측이
+# 확실해서이고(`can_scroll_forward=False`), 이 값은 그렇지 않다. 불확실한 관측에 대한 이
+# 저장소의 형태는 [FOCUSED_INPUT_INSTRUCTION]·[UNCHANGED_STEP_INSTRUCTION]의
+# "…만으로 …단정하지 마세요"다. 유보를 맨 뒤 부록으로 밀면 오탐 한 번에 맞는 안내가
+# 버려진다(#307 리뷰).
 RETURNED_SCREEN_INSTRUCTION = (
-    f'이력 줄에 "{STEP_SCREEN_RETURNED}"이라고 적혀 있으면 그 안내를 했던 화면으로 돌아와 '
-    "있다는 뜻입니다. 그 안내를 그대로 반복하면 같은 자리를 맴돌 수 있으니 다른 방법을 "
-    "고르세요. 구조만 비교한 것이라 화면 속 내용은 다를 수 있습니다."
+    f'이력 줄의 "{STEP_SCREEN_RETURNED}"은 그 안내를 했던 화면과 지금 화면의 구조가 같다는 '
+    "관측입니다. 구조만 비교한 것이라 내용이 다른 화면일 수도 있으니 현재 화면 요소를 먼저 "
+    "확인하세요. 정말 같은 자리로 돌아온 것이면 그 안내를 그대로 반복하지 말고 다른 방법을 "
+    "고르세요."
 )
 
 
@@ -288,10 +294,27 @@ def _step_line(step: GuideStep, current: str) -> str:
     notes = []
     if step.screen_changed is not None:
         notes.append(STEP_CHANGED if step.screen_changed else STEP_UNCHANGED)
-    if step.structure_signature == current:
+    if _returned_to(step, current):
         notes.append(STEP_SCREEN_RETURNED)
     outcome = f" — {' · '.join(notes)}" if notes else ""
     return f"- {where}{step.instruction.strip()!r}라고 안내함{target}{outcome}"
+
+
+def _returned_to(step: GuideStep, current: str) -> bool:
+    """그 안내를 했던 화면으로 **돌아와** 있는가.
+
+    **"돌아왔다"의 성립 요건은 "한 번 떠났다"이고, 그 증거가 `screen_changed`다**(#307 리뷰).
+    서명만 보면 화면을 떠난 적 없는 스텝에도 붙는데, 그건 `화면이 그대로임`과 거의 확정적으로
+    함께 뜬다 — 정적인 화면에서는 기기 서명도 서버 서명도 같이 그대로이기 때문이다. 그러면
+    "그것만으로 안내가 틀렸다고 단정하지 마세요"([UNCHANGED_STEP_INSTRUCTION])를 바로 다음 줄이
+    무조건 지시로 덮어, 느린 사용자가 안내를 읽는 중에 맞는 안내가 버려진다.
+
+    `None`(앱이 아직 판정 못 함)에도 붙이지 않는다 — 떠났다는 근거가 없다.
+    앱은 `false`를 `true`로 덮되 `true`는 되돌리지 않으므로(`GuideSession.observeScreen`),
+    A(아직 안 함) → 결국 진행 → B → A 회귀도 그때는 `true`라 놓치지 않는다.
+    """
+
+    return step.screen_changed is True and step.structure_signature == current
 
 
 def _history_instruction(req: NextStepRequest, current: str) -> str:
@@ -305,7 +328,7 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
     context = ""
     if any(step.screen_changed is False for step in history):
         context += f"{UNCHANGED_STEP_INSTRUCTION}\n"
-    if any(step.structure_signature == current for step in history):
+    if any(_returned_to(step, current) for step in history):
         context += f"{RETURNED_SCREEN_INSTRUCTION}\n"
     return context
 

@@ -1,3 +1,4 @@
+from app.llm import StubLlmClient
 from app.prompt import (
     ACTIONABLE_RESULT_INSTRUCTION,
     EVIDENCE_INSTRUCTION,
@@ -22,6 +23,7 @@ from app.prompt import (
     build_prompt,
     fallback_prompt,
 )
+from app.reasoning import next_step
 from app.schemas import (
     ActionType,
     GuideAction,
@@ -706,29 +708,92 @@ def test_step_history_is_silent_when_the_screen_never_came_back():
     assert RETURNED_SCREEN_INSTRUCTION not in prompt
 
 
-def test_returned_screen_is_marked_even_when_the_change_is_unknown():
-    """두 꼬리는 다른 것을 본다 — 앞은 안내 직후, 뒤는 지금. 하나만 있어도 그것만 적는다."""
+def test_returned_screen_needs_evidence_that_we_ever_left():
+    """ "돌아왔다"의 성립 요건은 "한 번 떠났다"다(#307 리뷰).
 
-    prompt = build_prompt(_back_on(screen_changed=None))
-
-    assert f"— {STEP_SCREEN_RETURNED}" in prompt
-    assert STEP_CHANGED not in prompt
-
-
-def test_returned_screen_sentence_admits_that_only_structure_was_compared():
-    """label을 뺀 서명이라 내용만 바뀐 화면을 구분하지 못한다(C11).
-
-    가드가 아니라 상태로 주는 이유가 이것이고, 그 한계를 모델에게도 말해 줘야 오탐을
-    모델이 무시할 수 있다.
+    서명만 보면 화면을 떠난 적 없는 스텝에도 붙는데, 그건 `화면이 그대로임`과 거의 확정적으로
+    함께 뜬다 — 그러면 "단정하지 마세요"를 바로 다음 줄이 무조건 지시로 덮는다.
     """
 
-    assert "구조만 비교한 것이라" in RETURNED_SCREEN_INSTRUCTION
-    assert "다른 방법을 고르세요" in RETURNED_SCREEN_INSTRUCTION
+    unchanged = build_prompt(_back_on(screen_changed=False))
+    unknown = build_prompt(_back_on(screen_changed=None))
+
+    assert STEP_UNCHANGED in unchanged
+    assert STEP_SCREEN_RETURNED not in unchanged
+    assert RETURNED_SCREEN_INSTRUCTION not in unchanged
+    assert STEP_SCREEN_RETURNED not in unknown
+    assert RETURNED_SCREEN_INSTRUCTION not in unknown
 
 
-def test_prompt_compares_the_same_signature_the_response_carries():
-    """두 벌이 되면 앱이 echo한 서명과 프롬프트가 대조하는 서명이 조용히 갈린다."""
+def test_returned_screen_sentence_puts_the_caveat_before_the_steer():
+    """label을 뺀 서명이라 내용만 바뀐 화면을 구분하지 못한다(C11).
 
-    from app.reasoning import _screen_signature
+    가드가 아니라 상태로 주는 이유가 이것이고, 유보를 맨 뒤 부록으로 밀면 오탐 한 번에
+    맞는 안내가 버려진다. `SCROLL_END_INSTRUCTION`이 지시형인 것은 그 관측이 확실해서다.
+    """
 
-    assert _screen_signature is screen_signature
+    sentence = RETURNED_SCREEN_INSTRUCTION
+
+    assert "구조만 비교한 것이라" in sentence
+    assert "다른 방법을 고르세요" in sentence
+    assert sentence.index("구조만 비교한 것이라") < sentence.index("다른 방법을 고르세요")
+
+
+def test_returned_screen_ignores_steps_that_never_became_a_line():
+    """줄이 안 만들어진 빈 문장 스텝을 세면 프롬프트에 없는 것을 설명하게 된다."""
+
+    screen = Screen(package_name="com.example.app")
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[_step(instruction=" ", structure_signature=screen_signature(screen))],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_marks_every_match_but_explains_once():
+    """꼬리는 줄마다, 설명은 한 번. 설명이 줄 수만큼 반복되면 이력이 설명에 묻힌다."""
+
+    screen = Screen(package_name="com.example.app")
+    signature = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(instruction="첫 번째 안내", structure_signature=signature),
+            _step(instruction="두 번째 안내", structure_signature=signature),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert prompt.count(STEP_SCREEN_RETURNED) == 3  # 줄 둘 + 설명 문장의 인용 하나
+    assert prompt.count(RETURNED_SCREEN_INSTRUCTION) == 1
+
+
+def test_history_marker_uses_the_signature_the_response_carried():
+    """응답에 실린 서명이 다음 요청의 스텝으로 돌아와 마커가 걸리는지 관통으로 본다.
+
+    두 벌이 되면 앱이 echo한 서명과 프롬프트가 대조하는 서명이 조용히 갈린다. 2차 마스킹이
+    서명 입력을 건드리지 않는다는 것도 여기서 함께 잡힌다 — 응답 쪽은 마스킹된 화면으로
+    계산되고 이 프롬프트는 원본 화면으로 계산된다.
+    """
+
+    screen = Screen(
+        package_name="com.example.app",
+        elements=[UiElement(node_id="n1", label="시작", clickable=True)],
+    )
+    first = next_step(NextStepRequest(goal="다음 항목 보기", screen=screen), StubLlmClient())
+    echoed = _step(
+        instruction=first.action.instruction,
+        screen_hint=first.action.screen_summary,
+        structure_signature=first.screen_signature,
+    )
+
+    prompt = build_prompt(NextStepRequest(goal="다음 항목 보기", screen=screen, steps=[echoed]))
+
+    assert STEP_SCREEN_RETURNED in prompt
