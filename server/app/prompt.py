@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from .schemas import GuideStep, NextStepRequest, Screen, SwipeDirection, UiElement
+from .signature import screen_signature
 
 # 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
@@ -160,10 +161,32 @@ UNCHANGED_STEP_INSTRUCTION = (
     "같은 안내가 여러 번 반복됐다면 다른 방법을 고르세요."
 )
 
+# 돌아온 화면 표시. **값은 이미 다 있었다** — 스텝의 `structure_signature`는 그 안내가 나간
+# 화면의 서명(응답 echo)이고, 서버는 현재 화면 서명을 응답에 실으려고 이미 계산한다.
+# 둘을 대조하는 코드만 없었다.
+#
+# 이걸 붙이는 이유는 실측이다(2026-08-20 SM-S921N, 카카오T). 안내 → 모달 → '아니요' →
+# 같은 안내의 2-사이클이 났는데, 이력에 그 반복이 세 줄로 적혀 있는데도 모델이 같은 선택을
+# 되풀이했다. 그 세션은 모델 요약이 모달과 홈을 **같은 이름으로** 뭉개, 이력만 봐서는 맴돈다는
+# 것이 드러나지 않았다. 서명은 요약과 달리 모델이 짓는 값이 아니라 관측이다.
+STEP_SCREEN_RETURNED = "지금 화면이 그때와 구조가 같음"
+# **가드가 아니라 상태 문장이다.** label을 뺀 서명은 구조·좌표가 같고 내용만 바뀐 화면을
+# 구분하지 못하고, C11이 이 값을 "화면 동일성의 보편적 근거로 재사용하지 않는다"고 못박아 뒀다.
+# 가드로 막으면 오탐이 곧 정상 안내 차단이지만, 상태로 주면 모델이 무시할 수 있다(#272 후보 A).
+# 마지막 문장이 그 한계를 모델에게 그대로 말해 주는 자리다.
+RETURNED_SCREEN_INSTRUCTION = (
+    f'이력 줄에 "{STEP_SCREEN_RETURNED}"이라고 적혀 있으면 그 안내를 했던 화면으로 돌아와 '
+    "있다는 뜻입니다. 그 안내를 그대로 반복하면 같은 자리를 맴돌 수 있으니 다른 방법을 "
+    "고르세요. 구조만 비교한 것이라 화면 속 내용은 다를 수 있습니다."
+)
+
 
 def build_prompt(req: NextStepRequest) -> str:
     """마스킹된 현재 화면을 다음 한 단계 안내 프롬프트로 만든다."""
 
+    # 이력 대조에 쓸 현재 화면 서명. 응답에 실리는 값과 **같은 함수**여야 다음 요청의
+    # 스텝 서명과 맞물린다(`signature.screen_signature` 모듈 문서 참고).
+    current = screen_signature(req.screen)
     context = (
         f"{_page_context(req)}{_scroll_context(req)}{_end_instruction(req)}"
         f"{_swipe_legend(req)}{_input_context(req)}{_state_context(req)}"
@@ -178,8 +201,8 @@ def build_prompt(req: NextStepRequest) -> str:
 목표: {req.goal}
 {_screen_line(req)}
 {context}{STEP_HISTORY_HEADER}
-{_recent_step_lines(req)}
-{_history_instruction(req)}현재 화면 요소:
+{_recent_step_lines(req, current)}
+{_history_instruction(req, current)}현재 화면 요소:
 {_screen_elements(req)}
 
 현재 화면과 목표를 근거로 다음 한 걸음을 결정하세요."""
@@ -213,7 +236,7 @@ def fallback_prompt(
     )
 
 
-def _recent_step_lines(req: NextStepRequest) -> str:
+def _recent_step_lines(req: NextStepRequest, current: str) -> str:
     """스텝 이력을 **스텝당 문장 한 줄**로 편다(C11 · #305).
 
     wire는 구조화, 프롬프트는 문장이다 — 자연어 이력이 구조화 나열보다 우세하다는 보고가
@@ -232,7 +255,7 @@ def _recent_step_lines(req: NextStepRequest) -> str:
     `performed`·`content_signature`는 아직 앱이 채우지 않는다(#270 서브 3·4).
     """
 
-    recent = "\n".join(_step_line(step) for step in _history(req))
+    recent = "\n".join(_step_line(step, current) for step in _history(req))
     return recent or "- 없음"
 
 
@@ -242,7 +265,7 @@ def _history(req: NextStepRequest) -> list[GuideStep]:
     return [step for step in req.steps[-MAX_HISTORY:] if step.instruction.strip()]
 
 
-def _step_line(step: GuideStep) -> str:
+def _step_line(step: GuideStep, current: str) -> str:
     """스텝 하나를 한 줄로.
 
     **세 값 모두 요소 줄과 같은 `!r` 표기다.** 안내문만 큰따옴표로 감싸 눈에 띄게 하려던 초안은
@@ -252,28 +275,39 @@ def _step_line(step: GuideStep) -> str:
 
     구분은 따옴표가 아니라 **조사가 한다** — `…에서` · `…라고 안내함` · `(대상 …)`. `!r`은 값이
     무엇이든 모호하지 않은 리터럴을 만들므로 안쪽 따옴표는 이스케이프되어 경계가 남는다.
+
+    꼬리에는 관측 둘이 `·`로 붙는다 — 앱이 본 화면 변화(`screen_changed`)와, 서버가 스텝 서명을
+    현재 화면과 대조해 얻은 "돌아와 있음". **둘은 다른 것을 말한다**: 앞은 그 안내 직후를,
+    뒤는 지금을 본다. A→B→A에서는 앞이 `화면이 바뀜`이고 뒤가 붙는다.
     """
 
     hint = (step.screen_hint or "").strip()
     label = (step.target_label or "").strip()
     where = f"{hint!r}에서 " if hint else ""
     target = f"(대상 {label!r})" if label else ""
-    if step.screen_changed is None:
-        outcome = ""
-    else:
-        outcome = f" — {STEP_CHANGED if step.screen_changed else STEP_UNCHANGED}"
+    notes = []
+    if step.screen_changed is not None:
+        notes.append(STEP_CHANGED if step.screen_changed else STEP_UNCHANGED)
+    if step.structure_signature == current:
+        notes.append(STEP_SCREEN_RETURNED)
+    outcome = f" — {' · '.join(notes)}" if notes else ""
     return f"- {where}{step.instruction.strip()!r}라고 안내함{target}{outcome}"
 
 
-def _history_instruction(req: NextStepRequest) -> str:
-    """`화면이 그대로임`이 실제로 적힌 이력에만 그 관측을 어떻게 읽을지 말해 준다.
+def _history_instruction(req: NextStepRequest, current: str) -> str:
+    """이력 줄에 **실제로 적힌** 꼬리만 설명한다.
 
     조건을 다는 이유는 [_end_instruction]과 같다 — 관측된 것이 없으면 없는 상태를 설명하는
     문장이 된다. 줄이 만들어지지 않은 스텝을 세지 않으려고 [_history]를 함께 쓴다.
     """
 
-    unchanged = any(step.screen_changed is False for step in _history(req))
-    return f"{UNCHANGED_STEP_INSTRUCTION}\n" if unchanged else ""
+    history = _history(req)
+    context = ""
+    if any(step.screen_changed is False for step in history):
+        context += f"{UNCHANGED_STEP_INSTRUCTION}\n"
+    if any(step.structure_signature == current for step in history):
+        context += f"{RETURNED_SCREEN_INSTRUCTION}\n"
+    return context
 
 
 def _screen_line(req: NextStepRequest) -> str:

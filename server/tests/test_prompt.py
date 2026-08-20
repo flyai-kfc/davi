@@ -8,12 +8,14 @@ from app.prompt import (
     PAGE_FIRST,
     PAGE_LAST,
     PAGE_ONLY_ONE,
+    RETURNED_SCREEN_INSTRUCTION,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     STEP_CHANGED,
     STEP_HISTORY_HEADER,
+    STEP_SCREEN_RETURNED,
     STEP_UNCHANGED,
     SWIPE_DIRECTION_LEGEND,
     UNCHANGED_STEP_INSTRUCTION,
@@ -30,6 +32,7 @@ from app.schemas import (
     SwipeDirection,
     UiElement,
 )
+from app.signature import screen_signature
 
 _SIGNATURE = "0" * 64
 
@@ -668,3 +671,64 @@ def test_step_history_escapes_a_value_that_carries_both_quote_marks():
     prompt = build_prompt(_with_steps(_step(target_label='"확인"과 김철수\'s 폰')))
 
     assert "(대상 '\"확인\"과 김철수\\'s 폰')" in prompt
+
+
+def _back_on(**overrides) -> NextStepRequest:
+    """이력의 스텝이 **지금 화면에서** 나갔던 요청. 서명이 맞물려야 대조가 걸린다."""
+
+    screen = Screen(package_name="com.example.app")
+    return NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[_step(structure_signature=screen_signature(screen), **overrides)],
+    )
+
+
+def test_step_history_marks_the_step_whose_screen_we_are_back_on():
+    """A→B→A를 이력에서 보이게 한다(2026-08-20 카카오T 루프 실측).
+
+    값은 이미 다 있었다 — 스텝의 `structure_signature`와 서버가 계산하는 현재 화면 서명.
+    둘을 대조하는 코드만 없었다.
+    """
+
+    prompt = build_prompt(_back_on())
+
+    assert f"— {STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+
+
+def test_step_history_is_silent_when_the_screen_never_came_back():
+    """관측된 것이 없으면 없는 상태를 설명하지 않는다 — [_end_instruction]과 같은 규칙."""
+
+    prompt = build_prompt(_with_steps(_step()))
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_is_marked_even_when_the_change_is_unknown():
+    """두 꼬리는 다른 것을 본다 — 앞은 안내 직후, 뒤는 지금. 하나만 있어도 그것만 적는다."""
+
+    prompt = build_prompt(_back_on(screen_changed=None))
+
+    assert f"— {STEP_SCREEN_RETURNED}" in prompt
+    assert STEP_CHANGED not in prompt
+
+
+def test_returned_screen_sentence_admits_that_only_structure_was_compared():
+    """label을 뺀 서명이라 내용만 바뀐 화면을 구분하지 못한다(C11).
+
+    가드가 아니라 상태로 주는 이유가 이것이고, 그 한계를 모델에게도 말해 줘야 오탐을
+    모델이 무시할 수 있다.
+    """
+
+    assert "구조만 비교한 것이라" in RETURNED_SCREEN_INSTRUCTION
+    assert "다른 방법을 고르세요" in RETURNED_SCREEN_INSTRUCTION
+
+
+def test_prompt_compares_the_same_signature_the_response_carries():
+    """두 벌이 되면 앱이 echo한 서명과 프롬프트가 대조하는 서명이 조용히 갈린다."""
+
+    from app.reasoning import _screen_signature
+
+    assert _screen_signature is screen_signature
