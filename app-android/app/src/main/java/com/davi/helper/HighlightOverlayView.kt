@@ -133,7 +133,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val controlRow = GuideBoxStyle.controlRow(context)
     private val dotsRow = resources.getDimension(R.dimen.davi_overlay_dots_row)
 
-    // ── 읽는 중 테두리(GD-1) ──────────────────────────────────────────────────
+    // ── 읽는 중 테두리(GD-1·GD-2r) ────────────────────────────────────────────
     private val readingInset = resources.getDimension(R.dimen.davi_overlay_reading_inset)
     private val readingStroke = resources.getDimension(R.dimen.davi_overlay_reading_stroke)
     private val readingGlow = resources.getDimension(R.dimen.davi_overlay_reading_glow)
@@ -836,7 +836,7 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 상자 아래에 비워 둘 높이. **계산과 그리기가 이 함수 하나를 본다** — 두 곳이 각자
      * 조건을 세면 값이 셋이 되는 순간 갈린다(PR #229 리뷰).
      *
-     * 확인쌍은 컨트롤 행, 읽는 중(GD-1)은 문구 아래 점 셋의 자리다. 조작 안내는 종료 X가
+     * 확인쌍은 컨트롤 행, 읽는 중(GD-1·GD-2r)은 문구 아래 점 셋의 자리다. 조작 안내는 종료 X가
      * 모서리로 가서 아무것도 비우지 않는다(v2, #178).
      */
     private fun reservedHeight(): Float = when {

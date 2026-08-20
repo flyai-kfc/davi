@@ -32,7 +32,7 @@ class GuideBoxView @JvmOverloads constructor(
     private val readingPaint = GuideBoxStyle.readingTextPaint(context)
 
     /**
-     * GD-1 "읽는 중"이면 글자가 20sp다(그 외 18sp). **스스로 판정하지 않는다** — 줄을 접은
+     * "읽는 중"(GD-1·GD-2r)이면 글자가 20sp다(그 외 18sp). **스스로 판정하지 않는다** — 줄을 접은
      * 쪽([HighlightOverlayView])이 알려준다. 두 곳이 각자 판정하면 접은 폭과 그린 폭이 어긋난다.
      */
     private var reading = false
