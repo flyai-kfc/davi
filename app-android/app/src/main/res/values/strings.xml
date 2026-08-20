@@ -118,6 +118,15 @@
       문구 아래에 점 셋이 함께 뜬다(대화 화면 "잠시만요"와 같은 뷰·같은 리듬).
     -->
     <string name="overlay_reading">화면을 읽고 있어요</string>
+    <!--
+      GD-2r 안내 중 화면 읽는 중(#314). **GD-1과 같은 창인데 문구만 다르다** — 두 자리는
+      사용자가 방금 한 일이 다르다. GD-1은 아직 아무것도 안 했으니 다비의 상태를 알리면 되고,
+      여기는 **방금 무언가를 누른 직후**라 사용자가 지금 무엇을 할지가 필요하다.
+
+      **사용자가 이 구간에 자꾸 다른 것을 눌러서 나왔다**(2026-08-20 사용자 관찰). 그러면
+      화면이 또 바뀌어 읽는 구간이 다시 시작되고 안내가 더 늦어진다 — 증상이 원인을 키운다.
+    -->
+    <string name="overlay_reading_mid_guide">잠시만 기다려 주세요</string>
     <string name="guide_service_off">안내 기능이 꺼져서 안내를 멈췄어요.</string>
     <string name="guide_permission_lost">권한이 꺼져 있어요.\n다시 켜 주세요.</string>
     <string name="notification_channel_guide_status">안내 상태</string>

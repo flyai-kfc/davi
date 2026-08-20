@@ -275,8 +275,13 @@ class HighlightOverlayView(context: Context) : View(context) {
         readingVisible = true
         if (!readingWindow) {
             // 떠 있던 안내는 밀어 둔다 — 읽는 중이 안내 없이 끝나면 되돌린다.
-            if (instruction.isNotEmpty()) stashed = instruction
-            instruction = context.getString(R.string.overlay_reading)
+            // **이 판정이 곧 GD-1/GD-2r 구분이다**(#314) — 밀어 둘 안내가 있으면 사용자가
+            // 방금 무언가를 누른 뒤이고(GD-2r), 없으면 첫 안내 전이다(GD-1). 새 조건을 만들지 않는다.
+            val midGuide = instruction.isNotEmpty()
+            if (midGuide) stashed = instruction
+            instruction = context.getString(
+                if (midGuide) R.string.overlay_reading_mid_guide else R.string.overlay_reading,
+            )
             readingWindow = true
             // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
             hasTarget = false
