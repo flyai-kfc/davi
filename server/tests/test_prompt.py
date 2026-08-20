@@ -785,7 +785,9 @@ def test_history_marker_uses_the_signature_the_response_carried():
 
     screen = Screen(
         package_name="com.example.app",
-        elements=[UiElement(node_id="n1", label="시작", clickable=True)],
+        # 실제로 치환되는 label이어야 "마스킹이 서명 입력을 안 건드린다"가 진짜로 걸린다 —
+        # 안 바뀌는 label이면 마스킹 전후가 값으로 같아 주장할 조건 자체가 없다(#307 재리뷰).
+        elements=[UiElement(node_id="n1", label="010-1234-5678", clickable=True)],
     )
     first = next_step(NextStepRequest(goal="다음 항목 보기", screen=screen), StubLlmClient())
     echoed = _step(

@@ -310,8 +310,14 @@ def _returned_to(step: GuideStep, current: str) -> bool:
     무조건 지시로 덮어, 느린 사용자가 안내를 읽는 중에 맞는 안내가 버려진다.
 
     `None`(앱이 아직 판정 못 함)에도 붙이지 않는다 — 떠났다는 근거가 없다.
-    앱은 `false`를 `true`로 덮되 `true`는 되돌리지 않으므로(`GuideSession.observeScreen`),
-    A(아직 안 함) → 결국 진행 → B → A 회귀도 그때는 `true`라 놓치지 않는다.
+
+    **그래도 회귀를 놓치지 않는다.** 앱의 `GuideSession.observeScreen`은 `false`를 `true`로
+    덮되 `true`는 되돌리지 않는데, 이 갱신은 **마지막 스텝에만** 걸린다(새 스텝이 붙으면 이전
+    값은 굳는다). 그럼에도 성립하는 불변식은 "화면 X에서 마지막으로 기록된 스텝은 X를 떠나는
+    순간 반드시 `true`가 된다"는 것이다 — 그 스텝은 새 스텝이 붙기 전까지 마지막이고, 새 스텝은
+    응답에서만 생기며, 그 요청이 X에서 나갔으면 새 스텝도 X 위의 스텝이고 Y≠X에서 나갔으면
+    보내기 직전 `observeScreen`이 X 스텝을 `true`로 올린다. 그래서 X로 돌아오면 X의 스텝 중
+    최소 하나가 `true` + 서명 일치다(#307 리뷰에서 카카오T 2-사이클로 트레이스).
     """
 
     return step.screen_changed is True and step.structure_signature == current
