@@ -1,6 +1,8 @@
 package com.davi.helper
 
 import android.content.Intent
+import android.graphics.Rect
+import android.speech.SpeechRecognizer
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -9,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -64,29 +67,101 @@ class ClarificationFlowDeviceTest {
         assertEquals(View.VISIBLE, current.findViewById<View>(R.id.btn_mic).visibility)
         assertEquals(View.GONE, current.findViewById<View>(R.id.btn_close).visibility)
         assertFalse(current.findViewById<View>(R.id.btn_mic).isEnabled)
+        val micToneArmed = ConversationActivity::class.java.getDeclaredField("micToneArmed")
+        micToneArmed.isAccessible = true
+        assertTrue("직접 말하기도 공통 청취 진입점에서 차임을 무장한다", micToneArmed.getBoolean(current))
+    }
+
+    @Test
+    fun allThreeOptionsAndFallbackActionsAreVisibleWithoutScrolling() {
+        val current = launchConversation()
+        showClarification(current, questionCount = 1, optionCount = 3)
+
+        val viewport = current.findViewById<View>(R.id.clarification_choices)
+        val viewportBounds = Rect()
+        assertTrue(
+            "viewport is outside screen: y=${viewport.y}, height=${viewport.height}, " +
+                "parentHeight=${(viewport.parent as View).height}, visibility=${viewport.visibility}",
+            viewport.getGlobalVisibleRect(viewportBounds),
+        )
+        listOf(
+            R.id.btn_option_1,
+            R.id.btn_option_2,
+            R.id.btn_option_3,
+            R.id.btn_direct_speak,
+            R.id.btn_unknown,
+        ).forEach { id ->
+            val bounds = Rect()
+            val action = current.findViewById<View>(id)
+            assertTrue("action $id is not visible", action.getGlobalVisibleRect(bounds))
+            assertTrue("action $id is below the viewport", bounds.bottom <= viewportBounds.bottom)
+        }
+    }
+
+    @Test
+    fun directSpeechTimeoutReturnsToSameQuestionWithoutCancellingSession() {
+        val current = launchConversation()
+        showClarification(current, questionCount = 2)
+
+        instrumentation.runOnMainSync {
+            current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+            val handleSpeechError = ConversationActivity::class.java.getDeclaredMethod(
+                "handleSpeechError",
+                Int::class.javaPrimitiveType,
+            )
+            handleSpeechError.isAccessible = true
+            handleSpeechError.invoke(current, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+        }
+        instrumentation.waitForIdleSync()
+
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.clarification_choices).visibility)
+        assertEquals(
+            current.getString(R.string.clarification_progress, 1, 2),
+            current.findViewById<TextView>(R.id.question_progress).text.toString(),
+        )
+        assertEquals(VoiceDialogueSession.Stage.CLARIFYING, voiceSession(current).stage)
+
+        instrumentation.runOnMainSync {
+            current.findViewById<Button>(R.id.btn_option_1).performClick()
+        }
+        instrumentation.waitForIdleSync()
+        assertEquals(
+            current.getString(R.string.clarification_progress, 2, 2),
+            current.findViewById<TextView>(R.id.question_progress).text.toString(),
+        )
     }
 
     private fun launchConversation(): ConversationActivity {
         val intent = Intent(instrumentation.targetContext, ConversationActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            .putExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, true)
+            .putExtra(EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER, true)
         return (instrumentation.startActivitySync(intent) as ConversationActivity).also {
             activity = it
             instrumentation.waitForIdleSync()
         }
     }
 
-    private fun showClarification(current: ConversationActivity, questionCount: Int) {
+    private fun voiceSession(current: ConversationActivity): VoiceDialogueSession {
+        val sessionField = ConversationActivity::class.java.getDeclaredField("voiceSession")
+        sessionField.isAccessible = true
+        return sessionField.get(current) as VoiceDialogueSession
+    }
+
+    private fun showClarification(
+        current: ConversationActivity,
+        questionCount: Int,
+        optionCount: Int = 2,
+    ) {
         instrumentation.runOnMainSync {
-            val sessionField = ConversationActivity::class.java.getDeclaredField("voiceSession")
-            sessionField.isAccessible = true
-            val session = sessionField.get(current) as VoiceDialogueSession
+            val session = voiceSession(current)
             session.start()
             val pending = requireNotNull(session.nextRequest("사진 보내기"))
             val questions = listOf(
                 ClarificationQuestion(
                     "q1",
                     "어느 방식으로 보낼까요?",
-                    listOf("카카오톡", "문자"),
+                    listOf("카카오톡", "문자", "이메일").take(optionCount),
                     true,
                 ),
                 ClarificationQuestion(

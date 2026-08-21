@@ -48,7 +48,8 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 
 `/v1/intent/slot-fill`은 규칙 기반 슬롯 분류를 이식하지 않는다. 첫 요청은 최초 `utterance`와
 무작위 `session_id`를 보낸다. 서버는 충분하면 즉시 ready, 부족하면 앱이 로컬에서 진행할 최대
-두 질문을 한 번에 돌려준다. `conversation_history`는 이전 앱 호환을 위해 남아 있지만 #316 앱은
+두 질문과 질문별 보기 0~3개를 한 번에 돌려준다. 근거 있는 보기가 없으면 빈 배열이 정상이다.
+`conversation_history`는 이전 앱 호환을 위해 남아 있지만 #316 앱은
 질문별 답을 `clarification_answers`로 모아 두 번째이자 마지막 요청에 보낸다.
 
 ```json

@@ -86,6 +86,21 @@ class SlotFillApiClientTest {
     }
 
     @Test
+    fun `accepts clarification question without suggested options`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"needs_clarification","message":"어떻게 하고 싶으세요?","clarification":{"questions":[{"id":"q1","prompt":"어떻게 하고 싶으세요?","options":[],"allow_freeform":true}]}}""",
+            ),
+        )
+
+        val result = SlotFillApiClient(server.url("/").toString()).resolve(sampleRequest(), trace())
+
+        assertTrue(result is SlotFillResult.Success)
+        result as SlotFillResult.Success
+        assertTrue(result.state.clarification?.questions?.single()?.options?.isEmpty() == true)
+    }
+
+    @Test
     fun `rejects status and goal combinations that drift from server contract`() {
         val invalidBodies = listOf(
             """{"status":"needs_clarification","message":"질문","goal":"잘못된 목표"}""",

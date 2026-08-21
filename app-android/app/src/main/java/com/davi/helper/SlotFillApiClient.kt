@@ -132,7 +132,7 @@ class SlotFillApiClient(
                     ) {
                         "clarification question is blank"
                     }
-                    require(question.options.size in 1..MAX_CLARIFICATION_OPTIONS) {
+                    require(question.options.size <= MAX_CLARIFICATION_OPTIONS) {
                         "clarification option count is out of range"
                     }
                     require(

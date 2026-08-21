@@ -140,6 +140,7 @@ def test_response_contract_has_no_fixed_slot_or_action_taxonomy():
     question_schema = clarification_schema["properties"]["questions"]["items"]
     assert question_schema["propertyOrdering"] == ["id", "prompt", "options", "allow_freeform"]
     assert "allow_freeform" in question_schema["required"]
+    assert "minItems" not in question_schema["properties"]["options"]
 
 
 @pytest.mark.parametrize(
@@ -168,6 +169,28 @@ def test_stub_is_only_a_keyless_contract_smoke():
     assert state.goal == "카메라 앱 열어줘"
 
 
+def test_stub_clamps_combined_utterance_and_answers_to_goal_contract():
+    request = SlotFillRequest.model_validate(
+        {
+            "utterance": "가" * 500,
+            "session_id": str(uuid.uuid4()),
+            "clarification_answers": [
+                {
+                    "question_id": "q1",
+                    "prompt": "어디로 보낼까요?",
+                    "answer": "나" * 500,
+                    "source": "freeform",
+                }
+            ],
+        }
+    )
+
+    state = resolve_intent(request, StubIntentResolver())
+
+    assert state.status == "ready"
+    assert len(state.goal) == 500
+
+
 def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     request = _request(
         "보호자",
@@ -188,6 +211,8 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "답변 위치만 보고 의미 없는 현재 답변" in prompt
     assert "고유명이나 구체적인 개인정보를 만들어내지 마세요" in prompt
     assert "allow_freeform은 true" in prompt
+    assert "0~3개" in prompt
+    assert "빈 배열" in prompt
 
 
 def test_prompt_treats_unknown_or_declined_details_as_unavailable_without_reasking():
@@ -272,6 +297,27 @@ def test_first_response_carries_at_most_two_grounded_choice_questions():
     assert len(state.clarification.questions) == 2
     assert all(len(question.options) <= 3 for question in state.clarification.questions)
     assert all(question.allow_freeform for question in state.clarification.questions)
+
+
+def test_clarification_question_without_grounded_options_is_valid():
+    state = SlotFillState.model_validate(
+        {
+            "status": "needs_clarification",
+            "message": "어떻게 하고 싶으세요?",
+            "clarification": {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "prompt": "어떻게 하고 싶으세요?",
+                        "options": [],
+                        "allow_freeform": True,
+                    }
+                ]
+            },
+        }
+    )
+
+    assert state.clarification.questions[0].options == []
 
 
 def test_finalization_prompt_includes_answers_and_forbids_more_questions():

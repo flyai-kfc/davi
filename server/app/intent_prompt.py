@@ -34,8 +34,9 @@ def build_intent_prompt(request: SlotFillRequest) -> str:
         phase_rules = """- 현재 정보만으로 안내 목표가 충분하면 ready와 goal을 쓰세요.
 - 꼭 필요한 정보가 부족하면 needs_clarification으로 하고 clarification에 질문을 한두 개
   한꺼번에 계획하세요. 앱은 이 계획을 한 화면에 한 질문씩 보여 주고 답을 로컬에 모읍니다.
-- 각 질문 id는 q1, q2 순서로 쓰고 prompt는 한 문장, options는 서로 다른 보기 1~3개로
-  만드세요. 모든 질문의 allow_freeform은 true여야 합니다.
+- 각 질문 id는 q1, q2 순서로 쓰고 prompt는 한 문장으로 만드세요. options는 대화가 뒷받침하는
+  서로 다른 보기만 0~3개로 쓰고, 근거 있는 보기가 없으면 빈 배열로 두세요. 모든 질문의
+  allow_freeform은 true여야 합니다.
 - 보기는 사용자 발화가 뒷받침하는 일반 앱 종류나 행위 유형만 사용하세요. 대화에 없는 사람 이름,
   앱 이름, 장소, 계정, 연락처 같은 고유명이나 구체적인 개인정보를 만들어내지 마세요.
 - message에는 첫 질문의 prompt를 그대로 써서 구버전 앱도 질문을 읽을 수 있게 하세요."""

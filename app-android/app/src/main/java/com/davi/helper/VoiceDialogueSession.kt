@@ -207,7 +207,7 @@ class VoiceDialogueSession(
             questions.map { it.id }.distinct().size == questions.size &&
             questions.all { question ->
                 question.id.isNotBlank() && question.prompt.isNotBlank() &&
-                    question.options.size in 1..MAX_OPTIONS &&
+                    question.options.size <= MAX_OPTIONS &&
                     question.options.all { it.isNotBlank() } &&
                     question.options.distinct().size == question.options.size &&
                     question.allowFreeform

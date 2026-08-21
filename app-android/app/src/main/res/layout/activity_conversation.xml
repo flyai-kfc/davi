@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   대화 화면 (docs/SCREENS.md MA-1~4 + 실패 — 임시 와이어프레임 디자인, #123).
-  상태 6개가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
+  대화 상태 전부가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
   고정 배치 — 루트 스크롤 컨벤션은 폼형 화면에만 적용한다(app-android/CLAUDE.md).
 
   **마이크는 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
@@ -377,8 +377,7 @@
             android:id="@+id/clarification_choices"
             layout="@layout/view_davi_clarification_choices"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="196"
+            android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/davi_card_gap" />
 
         <!--

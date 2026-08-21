@@ -7,10 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceDialogueSessionTest {
-    private fun question(id: String, prompt: String) = ClarificationQuestion(
+    private fun question(
+        id: String,
+        prompt: String,
+        options: List<String> = listOf("카카오톡", "문자"),
+    ) = ClarificationQuestion(
         id = id,
         prompt = prompt,
-        options = listOf("카카오톡", "문자"),
+        options = options,
         allowFreeform = true,
     )
 
@@ -91,6 +95,27 @@ class VoiceDialogueSessionTest {
             ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
             final.pending.request.clarificationAnswers.single().source,
         )
+    }
+
+    @Test
+    fun `question without options remains answerable by freeform`() {
+        val session = VoiceDialogueSession { SESSION_ID }
+        session.start()
+        val first = requireNotNull(session.nextRequest("도움이 필요해"))
+        val question = question("q1", "어떻게 하고 싶으세요?", options = emptyList())
+
+        val outcome = session.applyResponse(
+            first,
+            SlotFillState(
+                IntentDialogueStatus.NEEDS_CLARIFICATION,
+                question.prompt,
+                clarification = ClarificationPlan(listOf(question)),
+            ),
+        )
+
+        assertTrue(outcome is VoiceDialogueSession.Outcome.Clarify)
+        val final = session.answerCurrent(ClarificationAnswerSource.FREEFORM, "화면을 크게 보고 싶어요")
+        assertTrue(final is VoiceDialogueSession.AnswerOutcome.FinalRequest)
     }
 
     @Test

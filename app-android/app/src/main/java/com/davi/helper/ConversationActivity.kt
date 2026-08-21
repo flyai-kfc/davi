@@ -29,8 +29,14 @@ import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
+/** 계측이 앱 화면만 검증할 때 쓰는 debug 전용 진입점. release에서는 항상 무시된다. */
+internal const val EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY =
+    "com.davi.helper.extra.INSTRUMENTATION_SKIP_ACCESSIBILITY"
+internal const val EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER =
+    "com.davi.helper.extra.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER"
+
 /**
- * 음성 대화 화면 — 홈(MA-1)부터 최종 확인(MA-4)·실패까지 상태 6개를 한 레이아웃에서
+ * 음성 대화 화면 — 홈(MA-1)부터 구체화·안전 종료·최종 확인·실패까지 한 레이아웃에서
  * 렌더한다(#123, 임시 와이어프레임 디자인). 음성 파이프라인은 기존 개발 화면
  * (debug MainActivity)에서 이식 — 발화·질문·goal은 화면과 메모리에만 두고 logcat에
  * 넘기지 않는다. ○ 확인 시 GuideSession을 시작하고 런처로 나간다(안내는 런처에서 시작).
@@ -163,7 +169,7 @@ class ConversationActivity : AppCompatActivity() {
         override fun onFinalResult(text: String) {
             runOnUiThread {
                 val state = uiState
-                if (state is ConversationUiState.Listening && state.clarification) {
+                if (state is ConversationUiState.Listening && state.clarification != null) {
                     submitClarificationAnswer(ClarificationAnswerSource.FREEFORM, text)
                 } else {
                     submitVoiceTurn(text)
@@ -315,7 +321,9 @@ class ConversationActivity : AppCompatActivity() {
         // **예전에는 오버레이 권한도 같이 봤다**(#212 이전). 그쪽만 회수되는 갈래가 있어서
         // 여기서 세션을 끊어야 했는데 — 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
         // 안내만 안 그려졌다 — 그 권한을 걷어내며 그 갈래 자체가 없어졌다.
-        if (!canStartGuide()) {
+        val instrumentationUiTest = BuildConfig.DEBUG &&
+            intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, false)
+        if (!canStartGuide() && !instrumentationUiTest) {
             // 접근성 회수는 onUnbind도 정리하지만, 그 콜백보다 이 화면이 먼저 살아나는 경합이
             // 있어 여기서도 끊는다. 두 번 불려도 GuideSession.stop()은 멱등이다.
             GuideSession.stop()
@@ -568,18 +576,23 @@ class ConversationActivity : AppCompatActivity() {
                 else -> resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve)
             },
         )
-        // 배지 위 여백도 이 화면만 얕다 — 세로로 쌓는 것이 많아 배율이 커지면 아래가
-        // 화면 밖으로 나간다. 위를 줄여 그 자리를 아래에 준다.
+        // 세로 조작을 쌓는 안내·구체화 화면은 배지 위 여백이 얕다. 구체화는 세 보기와
+        // 직접 말하기·모름을 기본 글꼴에서 한 화면에 모두 보여야 하므로, 일반 72dp를 쓰면
+        // 선택 영역 전체가 실기기 화면 아래로 밀린다(#316 리뷰).
         binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
             topMargin = resources.getDimensionPixelSize(
-                if (model.guidingVisible) R.dimen.davi_badge_margin_top_guiding
+                if (model.guidingVisible || model.clarificationVisible) {
+                    R.dimen.davi_badge_margin_top_guiding
+                }
                 else R.dimen.davi_badge_margin_top,
             )
         }
-        // 카드 위 패딩도 이 화면만 얕다 — 근거는 davi_card_padding_top_guiding 주석.
+        // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible) R.dimen.davi_card_padding_top_guiding
+                if (model.guidingVisible || model.clarificationVisible) {
+                    R.dimen.davi_card_padding_top_guiding
+                }
                 else R.dimen.davi_card_padding_top_davi,
             ),
         )
@@ -762,11 +775,11 @@ class ConversationActivity : AppCompatActivity() {
         setState(
             ConversationUiState.Listening(
                 question = state.outcome.question.prompt,
-                clarification = true,
+                clarification = state.outcome,
             ),
         )
         GuideTelemetry.voiceState("listening_clarification_freeform")
-        speechHelper().start()
+        startListeningTurn()
     }
 
     private fun submitClarificationAnswer(source: ClarificationAnswerSource, answer: String) {
@@ -861,8 +874,10 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
-        setState(ConversationUiState.Clarifying(outcome, speaking = true))
+        val speaking = shouldSpeakClarification(outcome)
+        setState(ConversationUiState.Clarifying(outcome, speaking = speaking))
         GuideTelemetry.voiceState("clarification_question")
+        if (!speaking) return
         speak(
             outcome.question.prompt,
             onFinished = {
@@ -911,6 +926,14 @@ class ConversationActivity : AppCompatActivity() {
 
     private fun handleSpeechError(error: Int) {
         GuideTelemetry.voiceState("recognition_error", error)
+        val listening = uiState as? ConversationUiState.Listening ?: return
+        listening.clarification?.let { clarification ->
+            // 직접 말하기 실패는 질문을 취소한 것이 아니다. 원발화와 앞 답을 세션에 둔 채
+            // 같은 선택 화면으로 돌아가 보기 또는 모름 답을 계속 고를 수 있게 한다.
+            speechRecognizerHelper?.stop()
+            setState(ConversationUiState.Clarifying(clarification, speaking = false))
+            return
+        }
         voiceSession.cancel()
         voiceRequestTracker.reset()
         appResolutionRequestTracker.reset()
@@ -1058,11 +1081,15 @@ class ConversationActivity : AppCompatActivity() {
      * **두 번째 구간에는 화면 신호만 준다.** 흐림이 다시 덮였다 걷히는 것은 조용하지만 소리는
      * 안 조용하고, 그 구간의 사용자는 이미 붙잡혀 있어 "언제 말하나"를 다시 알릴 필요가 없다.
      *
-     * 세 곳에서 부른다(첫 발화·바지인·후속 질문). **`speechHelper().start()`를 직접 부르지
+     * 두 곳에서 부른다(최초 목표 발화·구체화 직접 발화). **`speechHelper().start()`를 직접 부르지
      * 않는다** — 그러면 그 턴만 차임이 안 무장돼 조용히 갈린다.
      */
     private fun startListeningTurn() {
         micToneArmed = true
+        if (
+            BuildConfig.DEBUG &&
+            intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER, false)
+        ) return
         speechHelper().start()
     }
 
@@ -1091,7 +1118,6 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private companion object {
-
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
         const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
 

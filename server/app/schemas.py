@@ -354,7 +354,6 @@ class ClarificationQuestion(BaseModel):
     options: list[
         Annotated[str, Field(min_length=1, max_length=MAX_CLARIFICATION_OPTION_LENGTH)]
     ] = Field(
-        min_length=1,
         max_length=MAX_CLARIFICATION_OPTIONS,
     )
     allow_freeform: bool = Field(

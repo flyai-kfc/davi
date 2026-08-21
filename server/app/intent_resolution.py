@@ -141,7 +141,10 @@ class StubIntentResolver(IntentResolver):
             for answer in request.clarification_answers
             if answer.source is not ClarificationAnswerSource.UNKNOWN_OR_DECLINED
         ]
-        goal = ", ".join([request.utterance, *details])
+        # 원발화와 답은 각각 wire 상한 안이어도 합치면 goal 상한을 넘을 수 있다. 스텁은
+        # 의미 품질을 주장하지 않는 CI 대역이므로, 계약 바깥 값을 만들어 500으로 죽는 대신
+        # 공개 goal 상한에서 결정론적으로 자른다.
+        goal = ", ".join([request.utterance, *details])[:MAX_VOICE_TEXT_LENGTH]
         return SlotFillState(
             status=IntentDialogueStatus.READY,
             message="목표를 정리했어요. 내용을 확인한 뒤 시작해 주세요.",
