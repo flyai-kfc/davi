@@ -278,9 +278,15 @@ jobs:
               exit 1
             fi
           }
-          assert_present_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단 검사 문자열이 낡았다'
+          # **순서가 메시지를 정한다 — 누출이 먼저 이름을 얻어야 한다.** 셋 다 자체 종료
+          # 게이트라 어느 것이 먼저 걸리든 스텝은 죽고, 순서는 *어느 메시지를 보여줄지*만
+          # 정한다. 빈 관문 검사를 앞에 두면 base-config가 통째로 `true`가 된 정책 회귀가
+          # `빈 관문: … 검사 문자열이 낡았다`로 찍혀, 받는 사람이 사고 대신 AGP 출력을 뒤진다
+          # (PR #354 리뷰). ①·③은 두 방향이 서로 다른 산출물을 봐서 이 문제가 없다 —
+          # 한 파일을 두 방향으로 보는 건 여기뿐이다. 정리한다고 되돌리지 말 것.
           assert_absent_in_config 'cleartextTrafficPermitted="true"' '평문 트래픽 허용이 HTTPS 전용 설정에 새어 들어갔다'
           assert_absent_in_config '<domain-config' 'HTTPS endpoint인데 domain-config 예외가 생겼다'
+          assert_present_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단 검사 문자열이 낡았다'
 
       - name: debug 임의 HTTPS endpoint 거부
         env:
