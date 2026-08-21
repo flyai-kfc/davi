@@ -79,6 +79,9 @@ cd server && ruff check . && ruff format --check . && pytest
 
 앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화가
 끝난다(`-Status`는 아무것도 바꾸지 않고 상태만 본다). 특수 권한은 접근성 하나다(#212).
+**Windows에서 실기기 루프를 자주 돈다면** 그 위에 `scripts/dev-driver.ps1`이 있다 — 서버 기동·
+서버 URL 교체·기기 조작·관측을 같은 진입점에서 하고, 판정·설치는 위 스크립트에 위임한다
+(`scripts/README.md`). 맥에서는 안 돈다.
 Android Studio는 디버거·Layout Inspector가 필요할 때만 쓴다. Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
 개발 PC에 따라 Gradle CLI가 `Unable to establish loopback connection`으로 실패할 수 있다.
 원인은 AF_UNIX 소켓 임시 폴더이고 `app-android/scripts/dev-install.ps1`이 이를 흡수한다 —

@@ -39,6 +39,13 @@ class GuideDisplayState {
      *
      * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
+     *
+     * [targetSuppressed]는 **강조·손 시연을 그리지 말라는 명시 신호**다(PR #343 리뷰 P1).
+     * 예전에는 `copy(bounds = null, direction = null)`이 그 뜻을 겸했는데, 가장자리 제스처
+     * (#222)의 강조 선·손은 [actionType]에서 파생돼 그 규약을 조용히 비껴갔다 — 지우는 쪽
+     * 코드만 봐서는 새는 걸 알 수 없는 모양이라, 억제를 값 하나로 명시하고 그리는 쪽
+     * (`HighlightOverlayView.setGuide`)이 이 값을 직접 본다. 새 억제 경로는 bounds·direction을
+     * 지울 것이 아니라 **이 값을 세우면 된다.**
      */
     data class Content(
         val bounds: List<Int>?,
@@ -46,6 +53,7 @@ class GuideDisplayState {
         val actionType: ActionType? = null,
         val direction: SwipeDirection? = null,
         val confirm: ConfirmKind? = null,
+        val targetSuppressed: Boolean = false,
     )
 
     private var guide: Content? = null
@@ -251,13 +259,22 @@ class GuideDisplayState {
      * 흔들렸을 뿐인 화면에서 안내가 통째로 깜빡이면 읽던 사람이 놓친다.
      *
      * 확인 화면은 가리킬 대상이 없어([Content.bounds]가 null) 여기서 할 일이 없다.
+     *
+     * 가장자리 제스처(#222)는 bounds·direction 없이 [Content.actionType]만으로 강조 선·손을
+     * 그리므로, 내릴 것이 있는지의 판정에 그 표([EdgeGesture.specFor])도 함께 본다. 억제는
+     * [Content.targetSuppressed]로 명시한다 — bounds만 지우면 그리는 쪽이 actionType에서
+     * 다시 세운다(PR #343 리뷰 P1).
      */
     fun hideTarget(): Content? {
         val current = guide ?: return null
         if (!visible || targetHidden) return null
-        if (current.bounds == null && current.direction == null) return null
+        if (current.bounds == null && current.direction == null &&
+            EdgeGesture.specFor(current.actionType) == null
+        ) {
+            return null
+        }
         targetHidden = true
-        return current.copy(bounds = null, direction = null)
+        return current.copy(bounds = null, direction = null, targetSuppressed = true)
     }
 
     /**
@@ -348,6 +365,8 @@ class GuideDisplayState {
         }
         // 다른 화면이면 [restoreTarget]과 같은 규칙을 따른다 — 문구만 남기고 강조는 그리지 않는다.
         // 여기서 숨김을 풀면 restoreTarget이 막은 "이전 화면의 강조를 새 화면 위에"가 되살아난다.
-        return updated.copy(bounds = null, direction = null)
+        // 억제는 [Content.targetSuppressed]로 명시한다 — bounds·direction만 지우면 가장자리
+        // 제스처의 선·손이 actionType에서 되살아나 그 사고가 이 경로로 돌아온다(PR #343 리뷰 P1).
+        return updated.copy(bounds = null, direction = null, targetSuppressed = true)
     }
 }

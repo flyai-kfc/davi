@@ -651,6 +651,7 @@ class GuideAccessibilityService : AccessibilityService() {
             content.actionType,
             content.direction,
             content.confirm,
+            content.targetSuppressed,
         )
     }
 
@@ -1000,7 +1001,13 @@ class GuideAccessibilityService : AccessibilityService() {
             ),
         )
 
-        if (bounds == null) {
+        val edge = EdgeGesture.specFor(action.actionType)
+        if (edge != null) {
+            // **miss가 아니다**(#222). 이 둘은 가리킬 노드가 애초에 없고 강조 좌표를 앱이 만든다.
+            // W로 찍으면 실기기 검증에서 진짜 miss와 섞여, 고칠 것이 없는 줄을 매번 다시 쫓는다
+            // (HANDOFF §9가 "유일한 MISS"로 적어 둔 자리가 여기다).
+            Log.i(TAG, "edge gesture edge=${edge.edge} finger=${edge.fingerDirection}")
+        } else if (bounds == null) {
             // 화면에 없는 node_id를 고르는 것은 경량 모델의 전형적 실수다. 안내문은 그대로 띄우되
             // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.
             Log.w(TAG, "highlight miss target=${action.targetNodeId ?: "-"}")

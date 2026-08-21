@@ -257,8 +257,10 @@ class GuideDisplayStateTest {
 
         state.show(sigB, null, "설정을 누르세요.")
 
+        // 다른 화면의 정체라 억제 신호가 함께 선다(PR #343 리뷰 P1) — 이 테스트의 주제는
+        // 접미사 규칙이고, 신호 자체는 위 가장자리 제스처 테스트들이 고정한다.
         assertEquals(
-            GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck"),
+            GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck", targetSuppressed = true),
             state.stuckContent(stuck, sigA),
         )
     }
@@ -457,9 +459,37 @@ class GuideDisplayStateTest {
         state.show(sigA, listOf(1, 2, 3, 4), scrollText, ActionType.SCROLL, SwipeDirection.DOWN)
 
         assertEquals(
-            GuideDisplayState.Content(null, scrollText, ActionType.SCROLL, null),
+            GuideDisplayState.Content(null, scrollText, ActionType.SCROLL, null, targetSuppressed = true),
             state.hideTarget(),
         )
+    }
+
+    /**
+     * 가장자리 제스처는 bounds·direction 없이 actionType만으로 선·손을 그린다(#222) —
+     * `copy(bounds = null, direction = null)` 규약만으로는 못 내리고, 명시 신호가 있어야
+     * 사용자가 셰이드를 끌어내리기 시작한 화면 위에 선·손이 남지 않는다(PR #343 리뷰 P1-1).
+     */
+    @Test
+    fun `가장자리 제스처도 흔들리는 동안 시연이 내려간다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        val hidden = state.hideTarget()
+
+        assertEquals(true, hidden?.targetSuppressed)
+        assertEquals(ActionType.OPEN_QUICK_SETTINGS, hidden?.actionType)
+        assertNull(state.hideTarget())
+    }
+
+    /** 잠깐 흔들렸을 뿐 같은 화면이면 가장자리 시연도 억제 없이 돌아온다. */
+    @Test
+    fun `가장자리 제스처 시연은 같은 화면에서 되살아난다`() {
+        val shown = state.show(sigA, null, "화면 맨 아래에서 위로 쓸어올리세요", ActionType.OPEN_APP_DRAWER)
+        state.hideTarget()
+
+        val restored = state.restoreTarget(sigA)
+
+        assertEquals(shown, restored)
+        assertEquals(false, restored?.targetSuppressed)
     }
 
     /** 샘플마다 같은 내용을 다시 그리면 조작 오버레이가 자기 창을 만져 스스로를 깨운다. */
@@ -548,6 +578,28 @@ class GuideDisplayStateTest {
 
         assertNull(content?.bounds)
         assertEquals("확인을 누르세요\n$stuck", content?.text)
+    }
+
+    /**
+     * bounds를 지우는 것만으로는 actionType에서 파생되는 가장자리 선·손이 살아남아, 이전
+     * 화면의 시연이 새 화면 위에 그려진다(PR #343 리뷰 P1-2). 억제는 명시 신호로 나간다.
+     */
+    @Test
+    fun `다른 화면의 정체는 가장자리 시연도 그리지 않는다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        val content = state.stuckContent(stuck, sigB)
+
+        assertEquals(true, content?.targetSuppressed)
+        assertEquals("화면 맨 위에서 아래로 쓸어내리세요\n$stuck", content?.text)
+    }
+
+    /** 같은 화면의 정체는 시연을 그대로 둔다 — 억제 신호가 서면 안 된다. */
+    @Test
+    fun `같은 화면의 정체는 가장자리 시연을 남긴다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        assertEquals(false, state.stuckContent(stuck, sigA)?.targetSuppressed)
     }
 
     // ── 눌림 감지(#238) ──────────────────────────────────────────────

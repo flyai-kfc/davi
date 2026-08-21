@@ -3,6 +3,7 @@ package com.davi.helper
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -75,6 +76,9 @@ class OverlayController(
      * [confirm]이 있으면 확인 화면이다 — 컨트롤 행이 확인쌍이 되고 종류에 맞는 크롬이 함께
      * 켜진다(완료 확인은 성공 tone 테두리, 종료 확인은 전면 스크림). 읽는 중 테두리와 달리
      * **안내창과 한 몸이라** [clear]가 같이 지운다.
+     *
+     * [targetSuppressed]는 강조·손 시연을 그리지 말라는 명시 신호다
+     * ([GuideDisplayState.Content.targetSuppressed], PR #343 리뷰 P1).
      */
     fun showGuide(
         bounds: Rect?,
@@ -83,12 +87,13 @@ class OverlayController(
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
         confirm: GuideDisplayState.ConfirmKind? = null,
+        targetSuppressed: Boolean = false,
     ) {
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid, actionType, direction)
+        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed)
     }
 
     fun clear() {
@@ -165,15 +170,17 @@ class OverlayController(
 /**
  * 두 오버레이의 창 속성을 **한 곳에서** 만든다. 차이는 `FLAG_NOT_TOUCHABLE`과 크기뿐이다.
  *
- * **아래 실측값은 구 창 타입(`TYPE_APPLICATION_OVERLAY`)에서 잰 것이고, 타입 교체(#56) 후
- * 2026-08-18에 다시 쟀다 — 움직이지 않았다.** 표시 창은 여전히
- * `frame=[0,103][1080,2340] parent=[0,103][1080,2340]`이다(SM-S921N `dumpsys window`).
- * 그래서 아래 두 문단은 그대로 유효하다.
+ * **표시 창 프레임의 이력** — 구 창 타입(`TYPE_APPLICATION_OVERLAY`)과 타입 교체(#56) 후
+ * 재실측(2026-08-18) 모두 `frame=[0,103][1080,2340]`(SM-S921N `dumpsys window`, 상태표시줄
+ * 인셋 반영)이었고, **#222가 컷아웃 모드를 ALWAYS로 올린 뒤 API 30+에서는 `[0,0]`이다**
+ * (2026-08-21 실측 — 가장자리 선이 y=0에 붙었다). 크기가 지정된 조작 창은 내내 `[0,0]`이다.
  *
- * **flags를 맞춰도 두 창의 부모 프레임은 같아지지 않는다**(#139 `dumpsys window` 실측) —
- * MATCH_PARENT인 표시 창은 부모가 `[0,103]`(상태표시줄 인셋)인데 크기가 지정된 조작 창은
- * `[0,0]`이었다. 그래서 창 사이에 좌표를 넘길 때는 **화면 좌표**를 쓴다. 이 대칭은 좌표
- * 보장이 아니라 **동작 대칭**(터치·포커스·인셋 정책)을 위한 것이다.
+ * **두 창의 프레임이 지금 검증 기기에서 같은 것은 우연이지 보장이 아니다.** 프레임은 창마다
+ * 시스템이 정하는 값이고(#139 실측 — flags를 맞춰도 같아지지 않았다), 컷아웃 게이트 밖인
+ * API 28~29에서는 표시 창이 여전히 `[0,103]`이다(아래 `create`의 R 게이트). 그래서 창 사이에
+ * 좌표를 넘길 때는 **화면 좌표**를 쓴다는 규약(#139)은 그대로다 — 로컬 좌표로 되돌리면
+ * 프레임이 갈리는 구성에서 안내창이 그 차이만큼 밀린다. 이 대칭은 좌표 보장이 아니라
+ * **동작 대칭**(터치·포커스·인셋 정책)을 위한 것이다.
  *
  * **조작 창이 `[0,0]`이라는 가정의 검증된 범위**(#169, 2026-08-17·18 SM-S921N / One UI 8.5):
  * 런처 홈 · 시계 앱 · 펼친 셰이드 · 3버튼 내비에서 안내창이 계산된 자리에 그대로 앉았다.
@@ -206,6 +213,33 @@ internal object OverlayWindowParams {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            // **표시 창만 컷아웃 위까지 올린다**(#222). 기본 모드에서는 세로 방향에서 창이
+            // 컷아웃을 피해 잡혀 프레임이 `[0,103][1080,2340]`이었다(SM-S921N 실측) — 위만
+            // 103px 잘리고 아래는 안 잘린다. 가장자리 제스처의 상단 선이 "화면 맨 위"를
+            // 가리켜야 하는데 그 자리가 상태표시줄 아래로 밀렸다. ALWAYS로 두면 `[0,0]`이 되고
+            // 2026-08-21 실측에서 선이 y=0에 붙었다.
+            //
+            // **조작 창에는 주지 않는다.** 저쪽 프레임이 움직이면 안내창 자리가 통째로 103px
+            // 밀린다 — 두 창의 부모 프레임이 다르다는 것이 화면 좌표를 넘기는 이유였다
+            // ([HighlightOverlayView.GuideBoxListener]).
+            //
+            // **안내창이 시스템 바를 침범하지는 않는다**(#169 유지). 안내창이 앉을 범위는
+            // 창 프레임이 아니라 디스플레이 인셋에서 오므로(`boxBounds`) 이 변경과 무관하다.
+            //
+            // **곁가지로 읽는 중 테두리·종료 스크림도 화면 끝까지 간다.** 시안이 전면인 쪽이라
+            // 되돌릴 이유가 없지만, 그 확정은 #178 몫이고 여기서 앞당긴 것은 아니다.
+            //
+            // **API 30(R)부터만 올린다**(PR #343 리뷰 P3). 컷아웃 모드 자체는 P부터 있지만,
+            // 안내창을 상태표시줄 밖에 잡아 두는 가드(`safeBounds`)가 API 30 미만에서는 null이라
+            // 그 시절엔 **창 프레임이 컷아웃을 피해 잡히는 것 자체가 상단 가드**였다. 28~29
+            // 컷아웃 기기에서 이 창을 위로 올리면 두 가드가 동시에 사라져, 하단 강조로 위로
+            // 밀린 안내창이 상태표시줄에 걸치고 그 밴드의 스와이프를 조작 창이 흡수한다(#169와
+            // 같은 모양 — 셰이드 내리기를 가르치는 앱이 셰이드 내리기를 막는다). 그 기기에서는
+            // 상단 선이 상태표시줄 아래(#222 이전 동작)로 남는 쪽을 감수한다.
+            if (!touchable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
         }
     }
 }

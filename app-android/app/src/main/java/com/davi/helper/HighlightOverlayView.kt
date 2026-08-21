@@ -51,6 +51,10 @@ class HighlightOverlayView(context: Context) : View(context) {
          * `[0,103]`(상태표시줄 인셋 반영)인데 크기가 지정된 조작 창은 `[0,0]`이었다. 로컬 좌표를
          * 넘기면 조작 창이 그 차이만큼(103px) 위로 밀린다.
          *
+         * #222가 표시 창을 컷아웃 위까지 올려 API 30+에서는 표시 창도 `[0,0]`이지만(2026-08-21
+         * 실측), 그 일치는 이 기기의 우연이다 — API 28~29는 여전히 `[0,103]`이고(컷아웃 게이트,
+         * `OverlayWindowParams`), 프레임은 창마다 시스템이 정한다. 화면 좌표 규약은 그대로다.
+         *
          * @param lines 이미 접힌 줄들. 받는 쪽은 다시 접지 않는다.
          *
          * @param reading 이 창이 "읽는 중"인가(GD-1·GD-2r 둘 다). 글자 크기가 달라서(20 / 18) 받는 쪽도
@@ -155,6 +159,16 @@ class HighlightOverlayView(context: Context) : View(context) {
     // ── 방향 제스처 시연(GD-2, #152) ──────────────────────────────────────────
     /** 시연할 방향. null이면 그리지 않는다 — 판정은 [GestureMotion.isDemonstrated]가 한다. */
     private var gestureDirection: SwipeDirection? = null
+
+    /**
+     * 가장자리 제스처면 그 사양(#222). null이면 스크롤 시연이거나 시연이 없다.
+     *
+     * **이 값이 곧 두 경로의 분기다** — 서 있으면 손이 화면 변에서 출발하고 강조는 앱이 만든
+     * 가장자리 선이며, 없으면 지금까지대로 화면 가운데에서 안내창을 피해 그린다.
+     */
+    private var edgeGesture: EdgeGesture.Spec? = null
+
+    private val edgeLine = resources.getDimension(R.dimen.davi_overlay_edge_line)
 
     private val handSize = resources.getDimension(R.dimen.davi_overlay_hand_size)
     private val handTravel = resources.getDimension(R.dimen.davi_overlay_hand_travel)
@@ -290,6 +304,10 @@ class HighlightOverlayView(context: Context) : View(context) {
             // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
             hasTarget = false
             gestureDirection = null
+            // 가장자리 선도 함께 걷는다. 변 자체는 안 움직이지만 **읽는 중이라는 것은 셰이드가
+            // 이미 내려오는 중이라는 뜻**이라, 그 위에 "여기서 시작하세요"가 남으면 이미 한
+            // 동작을 다시 시키는 그림이 된다.
+            edgeGesture = null
             // **[avoid]는 걷지 않는다** — 셋 중 이것만 남는 이유가 있다. 위 둘은 *떠난 화면의
             // 좌표를 가리키는* 값이라 되살리면 엉뚱한 곳을 가리키지만, avoid는 가리키는 값이
             // 아니라 "이 영역을 덮지 마라"다. 특히 타이핑 안내의 IME는 hard 회피고(#38 5번:
@@ -429,18 +447,38 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (!breathing.isStarted) breathing.start()
     }
 
-    /** 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다. */
+    /**
+     * 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다.
+     *
+     * [targetSuppressed]가 서면 **강조·손 시연을 무엇도 그리지 않는다** — 문구만 남는 억제
+     * 상태다([GuideDisplayState.hideTarget]·`stuckContent`). bounds·direction이 지워진 것만
+     * 믿으면 가장자리 제스처(#222)가 [actionType]에서 되살아나므로 신호를 직접 본다
+     * (PR #343 리뷰 P1). [actionType] 자체는 남긴다 — 안내창 회피(IME hard 판정)가 쓴다.
+     */
     fun setGuide(
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
+        targetSuppressed: Boolean = false,
     ) {
-        hasTarget = bounds != null
+        hasTarget = bounds != null && !targetSuppressed
         // 방향 제스처만 시연한다(#152). 판정은 GestureMotion이 하고 여기서는 결과만 든다.
-        gestureDirection = direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
+        //
+        // **가장자리 제스처는 서버 값을 거치지 않는다**(#222). 방향이 액션 종류로 정해져 있어
+        // [GestureMotion.fingerDirectionFor]를 태울 것이 없고, 태우면 없는 값을 뒤집게 된다.
+        edgeGesture = if (targetSuppressed) null else EdgeGesture.specFor(actionType)
+        gestureDirection = if (targetSuppressed) {
+            null
+        } else {
+            edgeGesture?.fingerDirection
+                ?: direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
+        }
         if (bounds != null) target.set(bounds)
+        // 가장자리 선는 서버 target을 덮는다 — 이 액션에 노드가 올 일은 없지만, 와도 가리킬 것은
+        // "손을 대는 자리"지 그 노드가 아니다.
+        syncEdgeTarget()
         this.instruction = instruction.trim()
         readingWindow = false
         // 새 안내가 왔으면 밀어 둔 옛 안내는 버린다 — 되돌릴 이유가 사라졌다(#295).
@@ -477,6 +515,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         stashed = null
         pressWave.cancel()
         gestureDirection = null
+        edgeGesture = null
         instruction = ""
         avoid = emptyList()
         syncBreathing()
@@ -518,9 +557,11 @@ class HighlightOverlayView(context: Context) : View(context) {
     /**
      * 방향 제스처 시연 — 손이 **손가락 방향**으로 밀린다.
      *
-     * **안내창을 피해 놓는다**(2026-08-17 요청). 화면 정중앙이 기본이지만 안내창이 그 자리를
-     * 쓰면 글이 손에 가리므로, 위/아래 남은 공간 중 넓은 쪽으로 옮긴다
-     * ([GestureMotion.verticalCenterFor]).
+     * **자리를 정하는 규칙이 둘이고 [edgeGesture]가 가른다**(#222).
+     * - 스크롤: 화면 정중앙이 기본이되 안내창이 그 자리를 쓰면 위/아래 남은 공간 중 넓은 쪽으로
+     *   옮긴다([GestureMotion.verticalCenterFor], 2026-08-17 요청).
+     * - 가장자리(퀵세팅·앱 서랍): 강조한 선 위에서 출발한다. 여기서는 손이 비키지 않고
+     *   **안내창이 비킨다** — 시작 지점이 고정인 것 자체가 가르치려는 내용이라서다.
      *
      * **방향을 여기서 보정하지 않는다.** [gestureDirection]은 이미 보정을 마친 손가락 방향이다
      * (보정 자리는 `GuideAccessibilityService`, 규칙은 [GestureMotion.fingerDirectionFor]).
@@ -537,17 +578,42 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (alpha <= 0f) return
 
         val travel = GestureMotion.travelFor(direction, handTravel)
-        // 손이 훑는 세로 폭 — 세로 이동이면 이동 거리까지, 가로 이동이면 손 높이만.
-        val bandHeight = abs(travel.dy) + handSize
-        // 안내창은 화면 좌표라 이 뷰의 로컬 좌표로 옮겨서 본다.
-        val box = layout?.box
-        val centerY = GestureMotion.verticalCenterFor(
-            canvasTop = 0f,
-            canvasBottom = height.toFloat(),
-            bandHeight = bandHeight,
-            boxTop = box?.let { it.top - layoutOriginY },
-            boxBottom = box?.let { it.bottom - layoutOriginY },
-        )
+        val spec = edgeGesture
+        val centerX: Float
+        val centerY: Float
+        if (spec == null) {
+            // 스크롤 — 어디서 시작해도 되므로 화면 가운데에서, 안내창만 세로로 피해 그린다.
+            // 손이 훑는 세로 폭 — 세로 이동이면 이동 거리까지, 가로 이동이면 손 높이만.
+            val bandHeight = abs(travel.dy) + handSize
+            // 안내창은 화면 좌표라 이 뷰의 로컬 좌표로 옮겨서 본다.
+            val box = layout?.box
+            centerX = GestureMotion.horizontalCenterFor(0f, width.toFloat(), handSize)
+            centerY = GestureMotion.verticalCenterFor(
+                canvasTop = 0f,
+                canvasBottom = height.toFloat(),
+                bandHeight = bandHeight,
+                boxTop = box?.let { it.top - layoutOriginY },
+                boxBottom = box?.let { it.bottom - layoutOriginY },
+            )
+        } else {
+            // 가장자리 — 시작 지점이 고정인 것이 이 제스처의 전부라 **안내창을 피해 옮기지 않는다.**
+            // 비키는 쪽은 안내창이다([handSweep]가 회피로 넘긴다).
+            //
+            // 선을 로컬 좌표로 다시 잡는다 — [target]은 화면 좌표라 원점 보정을 한 번 더 타야
+            // 하는데, 같은 비율에서 다시 세우면 그 의존이 아예 없어진다.
+            val band = EdgeGesture.bandFor(spec, 0f, 0f, width.toFloat(), height.toFloat(), edgeLine)
+            centerX = GestureMotion.horizontalCenterFor(
+                canvasLeft = 0f,
+                canvasRight = width.toFloat(),
+                handWidth = handSize,
+                anchorLeft = band.left,
+                anchorRight = band.right,
+            )
+            centerY = GestureMotion.edgeCenterFor(
+                EdgeGesture.startEdgeY(spec, 0f, height.toFloat()),
+                travel,
+            )
+        }
 
         // 애니메이터가 꺼진 기기에서는 출발점에 잔상을 함께 깔아 방향을 읽히게 한다
         // (PR #159 리뷰 5번 — 한 장만으로는 어느 쪽으로 가라는 것인지 알 수 없다).
@@ -556,12 +622,13 @@ class HighlightOverlayView(context: Context) : View(context) {
                 canvas,
                 composed,
                 travel,
+                centerX,
                 centerY,
                 GestureMotion.STATIC_GHOST_PROGRESS,
                 GestureMotion.staticGhostAlpha(),
             )
         }
-        drawHandAt(canvas, composed, travel, centerY, GestureMotion.progressAt(phase), alpha)
+        drawHandAt(canvas, composed, travel, centerX, centerY, GestureMotion.progressAt(phase), alpha)
     }
 
     /**
@@ -574,12 +641,13 @@ class HighlightOverlayView(context: Context) : View(context) {
         canvas: Canvas,
         composed: Bitmap,
         travel: GestureMotion.Travel,
+        centerX: Float,
         centerY: Float,
         progress: Float,
         alpha: Float,
     ) {
-        // 이동 구간의 절반을 중심에 두어, 손이 [centerY]를 지나가며 움직인다.
-        val cx = width / 2f - travel.dx / 2f + travel.dx * progress
+        // 이동 구간의 절반을 중심에 두어, 손이 ([centerX], [centerY])를 지나가며 움직인다.
+        val cx = centerX - travel.dx / 2f + travel.dx * progress
         val cy = centerY - travel.dy / 2f + travel.dy * progress
 
         // 합성 그림 안에서 손 중심이 들어가 있는 만큼 빼야 손 중심이 (cx, cy)에 온다.
@@ -657,10 +725,10 @@ class HighlightOverlayView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         // 스크림(GD-4)도 테두리와 같은 이유로 translate 앞이다 — 뷰가 차지한 범위를 덮는다.
-        // 그 범위가 곧 화면 전체는 아니다: 이 창은 상태표시줄 아래에서 시작해서(`[0,103]` 실측)
-        // 상태표시줄은 안 덮인다. 시안은 전면이라 그 차이는 #178에서 본다.
-        // **창 타입 교체(#56) 후 재실측해도 그대로다** — `frame=[0,103][1080,2340]`
-        // (2026-08-18 SM-S921N). 타입이 프레임을 옮기지 않았으므로 이 근거는 유효하다.
+        // 그 범위는 API 30+에서 화면 전체다 — #222가 이 창을 컷아웃 위까지 올려 `[0,0]`부터
+        // 시작하므로(2026-08-21 실측) **상태표시줄도 덮인다.** 시안(전면)과 같은 방향이지만
+        // 그 확정은 #178 몫이다. API 28~29는 컷아웃 게이트 밖이라(`OverlayWindowParams`의 R
+        // 게이트) 여전히 상태표시줄 아래(`[0,103]`)에서 시작해 안 덮인다.
         // **터치는 막지 않는다.** 이 창이 FLAG_NOT_TOUCHABLE이고, 뒤집으면 "대신 조작하지
         // 않는다"(SPEC §2)와 부딪친다. 막을 이유도 없다 — 이 화면은 ○/× 말고는 사라지지
         // 않으므로 아래 앱을 만져도 답할 자리가 남는다.
@@ -668,8 +736,9 @@ class HighlightOverlayView(context: Context) : View(context) {
         // 읽는 중 테두리는 **뷰 로컬 좌표**라 아래 translate 앞에서 그린다. 창이 밀려 놓이는
         // 기기에서도 뷰가 실제로 차지한 사각형을 따라가야 잘리지 않는다.
         drawReadingBorder(canvas)
-        // 손은 **화면 중앙**에 그린다(#152 결정) — 대상이 아니라 화면 기준이므로 읽는 중
-        // 테두리와 같이 뷰 로컬 좌표를 쓴다. 아래 translate 앞이어야 하는 이유가 같다.
+        // 손은 **화면 기준**으로 그린다(#152 결정) — 스크롤이면 화면 중앙, 가장자리 제스처면
+        // 화면 변이고, 어느 쪽도 대상 노드 기준이 아니다. 그래서 읽는 중 테두리와 같이 뷰 로컬
+        // 좌표를 쓴다. 아래 translate 앞이어야 하는 이유가 같다.
         drawGestureHand(canvas)
         if (!hasTarget && instruction.isEmpty() && pressProgress < 0f) return
 
@@ -685,7 +754,11 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (locationOnScreen[0] != layoutOriginX || locationOnScreen[1] != layoutOriginY) relayout()
         canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
 
-        if (hasTarget) {
+        if (hasTarget && edgeGesture != null) {
+            // 가장자리 제스처는 **면이 아니라 선**이다(2026-08-21 요청). 아래 사각형 경로와
+            // 배타적이다 — 둘 다 그리면 선 위에 테두리가 겹쳐 도로 상자가 된다.
+            drawEdgeLine(canvas)
+        } else if (hasTarget) {
             // 자리는 [highlightBounds]가 정한다 — **레이아웃도 같은 사각형을 피한다.**
             // 근거(후광을 안 섞는 이유·가장자리 클램프)는 그 KDoc에 있다.
             //
@@ -734,6 +807,52 @@ class HighlightOverlayView(context: Context) : View(context) {
 
         // 강조와 독립이다 — 강조가 내려간 뒤에도 남은 파동은 마저 퍼진다.
         drawPressWave(canvas)
+    }
+
+    /**
+     * 시작 지점을 **변에 걸린 선 하나**로 그린다(#222, 2026-08-21 요청).
+     *
+     * **사각형이 아닌 이유는 뜻이 다르기 때문이다.** 강조 사각형은 "이 안을 눌러라"인데 여기서
+     * 가리키는 것은 누를 영역이 아니라 손을 대고 끌기 시작하는 **경계**다. 면으로 그리면
+     * 시니어가 그 안을 탭하고, 탭으로는 셰이드가 안 열린다.
+     *
+     * **색·후광·브리딩은 강조와 같은 것을 쓴다**([HighlightMotion]) — 배워야 할 기호를 늘리지
+     * 않으려는 것이라, 달라지는 것은 겹을 쌓는 방향뿐이다. 사각형은 바깥으로 넓혀 가며 쌓지만
+     * 선은 **제자리에서 굵어지며** 쌓는다. 그래서 획의 절반이 화면 밖으로 나가 잘리고, 남은
+     * 절반이 화면 안쪽으로 번진다 — 화면 밖에서 손이 들어온다는 뜻이 그림에 그대로 남는다.
+     */
+    private fun drawEdgeLine(canvas: Canvas) {
+        val spec = edgeGesture ?: return
+        val frame = HighlightMotion.frame(readingPhase, edgeLine, highlightGlowSpread)
+        // 끝을 둥글게 — 퀵세팅은 화면 절반에서 끊기므로 각지게 자르면 잘린 상자로 되읽힌다.
+        // 사각형 경로는 drawRoundRect라 cap을 보지 않으므로 되돌릴 필요가 없다.
+        //
+        // **cap은 선 구간 밖으로 획 절반만큼 나간다 — 의도된 범위다**(PR #343 리뷰). 퀵세팅의
+        // 안쪽 끝(x = 폭 × 0.5)에서 후광까지 12px이 알림창 절반으로 넘어간 것을 실측했다
+        // (2026-08-21, 획 528~ / 구간 경계 540). 잘라내면 각진 끝으로 되돌아가고, 12px은
+        // 시작 위치를 오독시킬 크기가 아니다. [highlightBounds]·안내창 회피가 이 돌출을 안
+        // 치는 것도 같은 크기라 무해하다. 화면 변 쪽 끝의 돌출은 화면 밖이라 캔버스가 자른다.
+        strokePaint.strokeCap = Paint.Cap.ROUND
+        highlightGlowPaint.strokeCap = Paint.Cap.ROUND
+        // 획은 중심선에 칠해지므로 절반을 안으로 물려야 잉크의 바깥이 변에 맞는다.
+        val y = when (spec.edge) {
+            EdgeGesture.Edge.TOP -> target.top + edgeLine / 2f
+            EdgeGesture.Edge.BOTTOM -> target.bottom - edgeLine / 2f
+        }
+        if (frame.glowBaseAlpha > 0) {
+            for (ring in 0 until HighlightMotion.GLOW_RING_COUNT) {
+                val alpha = HighlightMotion.ringAlphaAt(ring, frame.glowBaseAlpha)
+                if (alpha <= 0) continue
+                // 바깥으로 옮기는 대신 **그 자리에서 굵힌다.** 옮기면 변 밖으로 통째로 나가
+                // 후광이 통째로 잘린다.
+                highlightGlowPaint.strokeWidth =
+                    edgeLine + 2f * HighlightMotion.ringOffsetAt(ring, frame.glowSpread)
+                highlightGlowPaint.alpha = alpha
+                canvas.drawLine(target.left, y, target.right, y, highlightGlowPaint)
+            }
+        }
+        strokePaint.strokeWidth = frame.coreStroke
+        canvas.drawLine(target.left, y, target.right, y, strokePaint)
     }
 
     /**
@@ -845,10 +964,71 @@ class HighlightOverlayView(context: Context) : View(context) {
         else -> 0f
     }
 
+    /**
+     * 가장자리 제스처의 강조 사각형을 앱이 만들어 [target]에 넣는다(#222).
+     *
+     * **서버가 줄 수 없는 좌표다.** 이 액션들에는 가리킬 노드가 애초에 없어 `highlight miss`로
+     * 빠졌다(HANDOFF §9의 "유일한 MISS"). 그래서 앱이 화면 변에서 좌표를 세운다.
+     *
+     * **표현은 기존 강조를 그대로 재사용한다**(#222 정하고 갈 것 1). 같은 색·같은 후광·같은
+     * 브리딩이고 자리만 다르다 — 새 표현을 하나 더 두면 시니어가 배워야 할 기호가 늘고, "빨간
+     * 것이 지금 볼 곳"이라는 규칙은 대상이 노드든 변이든 그대로 성립한다. 강조로 흘려보내면
+     * 안내창 회피([GuideBoxLayout]의 `target`)도 공짜로 따라온다.
+     *
+     * 좌표계는 [target]의 규약대로 **화면 좌표**다.
+     */
+    private fun syncEdgeTarget() {
+        val spec = edgeGesture ?: return
+        if (width == 0 || height == 0) return
+        val view = viewBounds()
+        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeLine)
+        target.set(band.left, band.top, band.right, band.bottom)
+        hasTarget = true
+    }
+
+    /**
+     * 손이 훑고 지나가는 자리. 가장자리 제스처에서만 있고, **안내창이 이만큼을 비켜 간다**(#222).
+     *
+     * 스크롤은 손이 안내창을 피해 움직이지만([GestureMotion.verticalCenterFor]) 가장자리 제스처는
+     * 시작 지점이 고정이라 손이 비킬 수 없다. 회피의 방향이 뒤집힌 셈이고, 그래서 **절대 회피**다 —
+     * 가리면 "어디서 시작하는가"라는 이 안내의 알맹이가 통째로 안 보인다.
+     *
+     * 손 그림은 세로로 길어 실제 폭이 [handSize]보다 좁다. 넉넉히 잡아 두는 쪽이 안전하므로
+     * 정사각으로 친다 — 회피는 넓게 잡아 손해 볼 것이 여백뿐이다.
+     */
+    private fun handSweep(): GuideBoxLayout.Avoid? {
+        val spec = edgeGesture ?: return null
+        if (width == 0 || height == 0) return null
+        val view = viewBounds()
+        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeLine)
+        val centerX = GestureMotion.horizontalCenterFor(
+            canvasLeft = view.left,
+            canvasRight = view.right,
+            handWidth = handSize,
+            anchorLeft = band.left,
+            anchorRight = band.right,
+        )
+        val edgeY = EdgeGesture.startEdgeY(spec, view.top, view.bottom)
+        val travel = GestureMotion.travelFor(spec.fingerDirection, handTravel)
+        val half = handSize / 2f
+        val reach = edgeY + travel.dy
+        return GuideBoxLayout.Avoid(
+            GuideBoxLayout.Bounds(
+                left = (centerX - half).coerceAtLeast(view.left),
+                top = (minOf(edgeY, reach) - half).coerceAtLeast(view.top),
+                right = (centerX + half).coerceAtMost(view.right),
+                bottom = (maxOf(edgeY, reach) + half).coerceAtMost(view.bottom),
+            ),
+            hard = true,
+        )
+    }
+
     private fun relayout() {
         getLocationOnScreen(locationOnScreen)
         layoutOriginX = locationOnScreen[0]
         layoutOriginY = locationOnScreen[1]
+        // 창 크기·자리가 바뀌면 가장자리 선도 따라가야 한다 — 아래 계산이 그 사각형을 회피한다.
+        syncEdgeTarget()
 
         // 크기가 없으면 폭을 모르니 접을 수 없다. onSizeChanged가 다시 부른다.
         applyLayout(
@@ -873,7 +1053,8 @@ class HighlightOverlayView(context: Context) : View(context) {
                     measure = { text, maxWidth ->
                         paint.breakText(text, true, maxWidth, null)
                     },
-                    avoid = avoid,
+                    // 손이 훑는 자리를 회피에 얹는다(#222). 가장자리 제스처가 아니면 없다.
+                    avoid = avoid + listOfNotNull(handSweep()),
                     // **종료 X가 모서리로 갔으므로 조작 안내에서는 칩 자리를 비우지 않는다**
                     // (v2, #178). 그대로 두면 글자 아래에 72dp가 빈 채로 남는다. 확인쌍은
                     // 여전히 창 아래에 앉으므로 확인 화면에서만 비운다.
