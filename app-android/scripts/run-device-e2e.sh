@@ -203,6 +203,12 @@ fi
 ./gradlew "${APP_INSTALL_ARGS[@]}" :app:installDebug
 ./gradlew :e2e-driver:installDebug :e2e-driver:installDebugAndroidTest
 
+# 갓 설치된 앱은 첫 실행에서 알림 권한 다이얼로그를 띄운다. 그게 대화 화면을 덮으면 드라이버가
+# 마이크 화면을 못 찾아 시나리오가 davi_conversation_not_ready로 0단계 종료된다(2026-08-21 실측).
+# 접근성·오버레이와 달리 이건 평범한 런타임 권한이라 실행기가 미리 부여해도 되는 성격이다.
+# Android 12 이하에는 이 권한이 없어 실패하므로 결과를 보지 않는다.
+"${ADB_DEVICE[@]}" shell pm grant "${SERVICE%%/*}" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+
 "${ADB_DEVICE[@]}" logcat -c
 restore_davi_accessibility
 

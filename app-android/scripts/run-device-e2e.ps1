@@ -222,6 +222,18 @@ try {
     }
     finally { Pop-Location }
 
+    # 갓 설치된 앱은 첫 실행에서 알림 권한 다이얼로그를 띄운다. 그게 대화 화면을 덮으면
+    # 드라이버가 마이크 화면을 못 찾아 davi_conversation_not_ready로 0단계 종료된다
+    # (2026-08-21 실측). 접근성·오버레이와 달리 평범한 런타임 권한이라 실행기가 미리 부여한다.
+    # Android 12 이하에는 이 권한이 없어 실패하므로 결과를 보지 않는다.
+    $appPackage = $service.Split('/')[0]
+    try {
+        Invoke-AdbCapture @('shell', 'pm', 'grant', $appPackage, 'android.permission.POST_NOTIFICATIONS') '알림 권한 부여' | Out-Null
+    }
+    catch {
+        # 권한이 없는 버전에서는 grant가 실패한다. 다이얼로그도 뜨지 않으므로 그대로 진행한다.
+    }
+
     Invoke-AdbChecked @('logcat', '-c') 'logcat 초기화'
     Restore-DaviAccessibility
 
