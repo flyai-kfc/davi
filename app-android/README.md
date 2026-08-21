@@ -138,9 +138,11 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 오프라인 선호 힌트를 보낸다. 최초 사용 때 `RECORD_AUDIO`를 요청하며 영구 거부 뒤에는 앱 설정으로
 이동한다.
 
-인식된 현재 발화와 이전에 끝난 user/assistant 쌍을 `/v1/intent/slot-fill`에 보낸다. 서버가
-`needs_clarification`이면 `message`를 화면에 표시하고 Android TTS로 읽은 뒤 자동으로 다음 발화를
-듣는다. `ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
+최초 인식 발화를 `/v1/intent/slot-fill`에 보낸다. 서버가 `needs_clarification`이면 최대 두 질문과
+각 최대 세 보기를 받아 한 화면에 한 질문씩 표시하고 첫 질문을 Android TTS로 읽는다. 보기 선택은
+서버를 호출하지 않으며 `직접 말하기`와 `모르거나 답변하지 않기`를 항상 함께 제공한다. 답을 메모리에
+모은 뒤 원발화와 함께 두 번째 요청 한 번으로 최종화한다. 문답 중에는 취소 버튼을 두지 않는다.
+`ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
 기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 앱 하나를
 확정하거나 goal을 다시 쓰지 않는다. `launchable` 후보가 하나 이상이면 원래 goal의 최종 확인으로,
 하나도 없거나 index가 불안정하거나 후보 요청이 실패하면 “이 과정에 필요한 앱이 설치되어 있지 않을
@@ -155,9 +157,10 @@ index는 `QUERY_ALL_PACKAGES`를 쓰지 않고 현재 접근 가능한 profile�
 profile·package의 launcher activity가 여러 개여도 한 앱으로 판정한다. 전체 목록과 기기에서만 발견한
 package·label·component·profile은 서버·파일·상세 로그에 나가지 않는다.
 
-대화는 무작위 UUID별 최대 5왕복을 프로세스 메모리에만 두고 화면 이탈·재시작 때 폐기한다. 늦은
-응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고, 발화·질문·goal·
-대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 이전 턴은 의미 보존을 위해 서버와
+대화는 무작위 UUID별 원발화·최대 두 질문·답을 프로세스 메모리에만 두고 화면 이탈·재시작 때
+폐기한다. 두 번째 응답이 `unable_to_finalize`이면 재시작/홈 안전 종료 화면을 보이고 세 번째 요청을
+하지 않는다. 늦은 응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고,
+발화·질문·답·goal·대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 답은 의미 보존을 위해 서버와
 Gemini에 전달된다는 내부 도그푸딩 경계는 `../SPEC.md` §4에 명시돼 있다.
 
 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)는 접근성 서비스 연결 시
@@ -355,7 +358,7 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 - `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
-- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal 전달까지
+- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, 첫 LLM 질문 TTS, 로컬 답 수집, 완성 goal 전달까지
   연결된다. 앱은 고정 슬롯을 조합하거나 음성만으로 안내를 자동 시작하지 않는다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.

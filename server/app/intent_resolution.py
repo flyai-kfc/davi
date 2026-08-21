@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 from .config import settings
 from .errors import LlmError
 from .gemini_response import strip_json_fence
-from .intent_prompt import build_intent_prompt, build_intent_repair_prompt
+from .intent_prompt import build_intent_prompt
 from .llm_provider import (
     ProviderCallError,
     ResponseContract,
@@ -26,10 +26,11 @@ from .llm_provider import (
     build_provider,
 )
 from .observability import LLM_LOGGER_NAME, log_event
-from .prompt import fallback_prompt
 from .schemas import (
     MAX_INTENT_MESSAGE_LENGTH,
     MAX_VOICE_TEXT_LENGTH,
+    ClarificationAnswerSource,
+    ClarificationPlan,
     ErrorKind,
     IntentDialogueStatus,
     SlotFillRequest,
@@ -52,16 +53,20 @@ class _IntentDialogueDecision(BaseModel):
         max_length=MAX_INTENT_MESSAGE_LENGTH,
         description="현재 대화만으로 질문 필요 여부를 판단한 짧은 한국어 근거 한 문장",
     )
-    status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
+    status: IntentDialogueStatus = Field(description="추가 질문, 목표 준비 완료 또는 안전 종료")
     message: str = Field(
         min_length=1,
         max_length=MAX_INTENT_MESSAGE_LENGTH,
-        description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
+        description="TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장",
     )
     goal: str | None = Field(
         default=None,
         max_length=MAX_VOICE_TEXT_LENGTH,
         description="ready일 때 기존 안내 세션에 넘길 구체적인 목표",
+    )
+    clarification: ClarificationPlan | None = Field(
+        default=None,
+        description="needs_clarification일 때 최대 두 개의 질문과 각 최대 세 개 보기",
     )
 
     @field_validator("decision_basis", "message")
@@ -84,14 +89,29 @@ class _IntentDialogueDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_status_and_goal(self) -> Self:
-        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION and self.goal is not None:
-            raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
-        if self.status is IntentDialogueStatus.READY and self.goal is None:
-            raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION:
+            if self.goal is not None:
+                raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
+            if self.clarification is None:
+                raise ValueError("추가 질문 상태에는 clarification이 필요하다")
+            if self.message != self.clarification.questions[0].prompt:
+                raise ValueError("message는 첫 구체화 질문과 같아야 한다")
+        elif self.status is IntentDialogueStatus.READY:
+            if self.goal is None:
+                raise ValueError("준비 완료 상태에는 goal이 필요하다")
+            if self.clarification is not None:
+                raise ValueError("준비 완료 상태에는 clarification이 없어야 한다")
+        elif self.goal is not None or self.clarification is not None:
+            raise ValueError("안전 종료 상태에는 goal과 clarification이 없어야 한다")
         return self
 
     def to_wire_state(self) -> SlotFillState:
-        return SlotFillState(status=self.status, message=self.message, goal=self.goal)
+        return SlotFillState(
+            status=self.status,
+            message=self.message,
+            goal=self.goal,
+            clarification=self.clarification,
+        )
 
 
 INTENT_DIALOGUE_CONTRACT = ResponseContract.of(_OPERATION, _IntentDialogueDecision)
@@ -99,8 +119,8 @@ INTENT_DIALOGUE_CONTRACT = ResponseContract.of(_OPERATION, _IntentDialogueDecisi
 INTENT_DIALOGUE_SCHEMA = INTENT_DIALOGUE_CONTRACT.gemini_schema
 
 
-class _RecoverableIntentContractError(Exception):
-    """원문을 보존하지 않고 한 번만 교정할 수 있는 계약 위반."""
+class _IntentContractViolation(Exception):
+    """원문을 로그에 남기지 않고 고정 reason code로만 다루는 계약 위반."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -116,10 +136,19 @@ class StubIntentResolver(IntentResolver):
     """키 없는 스모크용 대역. 의미 품질이나 질문 필요 여부를 주장하지 않는다."""
 
     def resolve(self, request: SlotFillRequest) -> SlotFillState:
+        details = [
+            answer.answer
+            for answer in request.clarification_answers
+            if answer.source is not ClarificationAnswerSource.UNKNOWN_OR_DECLINED
+        ]
+        # 원발화와 답은 각각 wire 상한 안이어도 합치면 goal 상한을 넘을 수 있다. 스텁은
+        # 의미 품질을 주장하지 않는 CI 대역이므로, 계약 바깥 값을 만들어 500으로 죽는 대신
+        # 공개 goal 상한에서 결정론적으로 자른다.
+        goal = ", ".join([request.utterance, *details])[:MAX_VOICE_TEXT_LENGTH]
         return SlotFillState(
             status=IntentDialogueStatus.READY,
             message="목표를 정리했어요. 내용을 확인한 뒤 시작해 주세요.",
-            goal=request.utterance,
+            goal=goal,
         )
 
 
@@ -131,6 +160,7 @@ class RemoteIntentResolver(IntentResolver):
 
     def resolve(self, request: SlotFillRequest) -> SlotFillState:
         prompt = build_intent_prompt(request)
+        finalizing = bool(request.clarification_answers)
         try:
             response_text = self.provider.generate_json(
                 prompt,
@@ -138,40 +168,29 @@ class RemoteIntentResolver(IntentResolver):
                 attempt=1,
                 trigger="initial",
             )
+        except LlmError as error:
+            if finalizing and error.kind is ErrorKind.PARSE:
+                return self._safe_end_state()
+            raise
         except ProviderCallError as error:
-            if error.status_code != 400:
-                raise self.provider.to_llm_error(error) from error
-            try:
-                response_text = self.provider.generate_json(
-                    fallback_prompt(
-                        prompt,
-                        self.provider.contract_schema,
-                        omit_optional=self.provider.omits_optional_fields,
-                    ),
-                    with_schema=False,
-                    attempt=2,
-                    trigger="schema_recovery",
-                )
-            except ProviderCallError as fallback_error:
-                raise self.provider.to_llm_error(fallback_error) from fallback_error
-            return self._parse_final_state(response_text)
+            raise self.provider.to_llm_error(error) from error
 
         try:
-            return self._parse_state(response_text)
-        except _RecoverableIntentContractError as error:
-            self._log_contract_recovery(error.reason, action="retry")
-            try:
-                repaired_text = self.provider.generate_json(
-                    build_intent_repair_prompt(prompt, error.reason),
-                    with_schema=True,
-                    attempt=2,
-                    trigger="contract_recovery",
-                )
-            except ProviderCallError as repair_error:
-                raise self.provider.to_llm_error(repair_error) from repair_error
-            return self._parse_final_state(repaired_text)
+            return self._parse_state(response_text, finalizing=finalizing)
+        except _IntentContractViolation as error:
+            self._log_contract_recovery(error.reason, action="safe_end" if finalizing else "fail")
+            if finalizing:
+                return self._safe_end_state()
+            raise LlmError(
+                ErrorKind.PARSE,
+                "응답이 음성 목표 대화 계약과 맞지 않음",
+            ) from error
+        except LlmError as error:
+            if finalizing and error.kind is ErrorKind.PARSE:
+                return self._safe_end_state()
+            raise
 
-    def _parse_state(self, response_text: str) -> SlotFillState:
+    def _parse_state(self, response_text: str, *, finalizing: bool) -> SlotFillState:
         try:
             payload = json.loads(strip_json_fence(response_text))
         except (ValueError, TypeError) as error:
@@ -191,34 +210,41 @@ class RemoteIntentResolver(IntentResolver):
             except ValidationError as error:
                 self._raise_or_recover(normalized, error)
             self._log_contract_recovery("status_goal_mismatch", action="normalize")
-            return decision.to_wire_state()
+            state = decision.to_wire_state()
+            return self._finalize_or_return(state, finalizing=finalizing)
 
         try:
             decision = _IntentDialogueDecision.model_validate(normalized)
         except ValidationError as error:
             self._raise_or_recover(normalized, error)
-        return decision.to_wire_state()
+        state = decision.to_wire_state()
+        return self._finalize_or_return(state, finalizing=finalizing)
 
-    def _parse_final_state(self, response_text: str) -> SlotFillState:
-        """두 번째 공급자 호출은 다시 교정하지 않고 실패로 닫는다."""
+    def _finalize_or_return(self, state: SlotFillState, *, finalizing: bool) -> SlotFillState:
+        """답을 받은 뒤에는 세 번째 질문 대신 서버가 안전 종료로 닫는다."""
 
-        try:
-            return self._parse_state(response_text)
-        except _RecoverableIntentContractError as error:
-            self._log_contract_recovery(error.reason, action="fail")
-            raise LlmError(
-                ErrorKind.PARSE,
-                "응답이 음성 목표 대화 계약과 맞지 않음",
-            ) from error
+        if not finalizing and state.status is IntentDialogueStatus.UNABLE_TO_FINALIZE:
+            raise _IntentContractViolation("phase_status_mismatch")
+        if not finalizing or state.status is not IntentDialogueStatus.NEEDS_CLARIFICATION:
+            return state
+        self._log_contract_recovery("clarification_after_finalization", action="safe_end")
+        return self._safe_end_state()
+
+    @staticmethod
+    def _safe_end_state() -> SlotFillState:
+        return SlotFillState(
+            status=IntentDialogueStatus.UNABLE_TO_FINALIZE,
+            message="목표를 충분히 구체화하지 못했어요. 처음부터 다시 말씀해 주세요.",
+        )
 
     def _raise_or_recover(
         self,
         payload: dict[str, Any],
         error: ValidationError,
     ) -> Never:
-        reason = _recoverable_contract_reason(payload, error)
+        reason = _contract_violation_reason(payload, error)
         if reason is not None:
-            raise _RecoverableIntentContractError(reason) from error
+            raise _IntentContractViolation(reason) from error
         self._raise_parse_error("invalid_intent_dialogue", error)
 
     def _raise_parse_error(self, reason: str, error: Exception) -> Never:
@@ -248,7 +274,7 @@ class RemoteIntentResolver(IntentResolver):
         )
 
 
-def _recoverable_contract_reason(
+def _contract_violation_reason(
     payload: dict[str, Any],
     error: ValidationError,
 ) -> str | None:
@@ -258,8 +284,21 @@ def _recoverable_contract_reason(
         goal = payload.get("goal")
         if goal is None or (isinstance(goal, str) and not goal.strip()):
             return "status_goal_mismatch"
+    if (
+        payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
+        and payload.get("clarification") is None
+    ):
+        return "status_clarification_mismatch"
+    if payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION:
+        clarification = payload.get("clarification")
+        questions = clarification.get("questions") if isinstance(clarification, dict) else None
+        first_prompt = (
+            questions[0].get("prompt") if questions and isinstance(questions[0], dict) else None
+        )
+        if first_prompt != payload.get("message"):
+            return "status_clarification_mismatch"
 
-    recoverable_fields = {"decision_basis", "message", "goal"}
+    relevant_fields = {"decision_basis", "message", "goal", "clarification"}
     for detail in error.errors(
         include_url=False,
         include_context=False,
@@ -268,7 +307,7 @@ def _recoverable_contract_reason(
         location = detail.get("loc", ())
         field = location[0] if location else None
         error_type = detail.get("type")
-        if field not in recoverable_fields:
+        if field not in relevant_fields:
             continue
         if error_type == "string_too_long":
             return f"{field}_too_long"

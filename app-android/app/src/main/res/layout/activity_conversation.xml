@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   대화 화면 (docs/SCREENS.md MA-1~4 + 실패 — 임시 와이어프레임 디자인, #123).
-  상태 6개가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
+  대화 상태 전부가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
   고정 배치 — 루트 스크롤 컨벤션은 폼형 화면에만 적용한다(app-android/CLAUDE.md).
 
   **마이크는 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
@@ -372,6 +372,20 @@
                 android:importantForAccessibility="no" />
         </LinearLayout>
         </FrameLayout>
+
+        <!--
+          구체화에서는 질문 카드의 176dp 하한을 먼저 보존하고, 선택 영역이 남은 높이를 받는다.
+          기본 배율에서는 다섯 조작이 한 화면에 보이고, 2.0x처럼 내용이 넘칠 때만 include 안의
+          ScrollView가 스크롤한다. wrap_content로 두면 선택 영역만 줄지 않아 질문 카드가 패딩보다
+          작게 눌리고, 질문 한 줄조차 표시할 수 없게 된다(#326 리뷰).
+        -->
+        <include
+            android:id="@+id/clarification_choices"
+            layout="@layout/view_davi_clarification_choices"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="@dimen/davi_card_gap" />
 
         <!--
           시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
