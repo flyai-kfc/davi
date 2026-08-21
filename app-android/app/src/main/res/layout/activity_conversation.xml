@@ -616,4 +616,16 @@
         </LinearLayout>
     </FrameLayout>
 
+    <!--
+      [프로토타입 #277] 인식 준비 중 화면 전체를 덮는 흐림.
+      실제로 듣기 시작하면(micReady) 걷히고, 그때 띠링이 함께 울린다.
+    -->
+    <View
+        android:id="@+id/preparing_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#66FFFFFF"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
 </FrameLayout>
