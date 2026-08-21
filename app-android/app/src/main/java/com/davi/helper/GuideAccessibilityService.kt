@@ -468,6 +468,9 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         if (rootUnavailable) {
             rootUnavailable = false
+            // root가 없던 시간은 화면을 관측한 시간이 아니다. 정체·읽기 불가 타이머 양쪽에서
+            // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
+            stability.markResumed(SystemClock.uptimeMillis(), requery = false)
             GuideTelemetry.rootState("recovered")
         }
 
@@ -486,7 +489,8 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
-        val decision = stability.onSample(signature, now)
+        val hasLabeledElement = result.screen.hasLabeledElement()
+        val decision = stability.onSample(signature, now, hasLabeledElement)
         lastDecision = decision
         updateReading()
 
@@ -494,11 +498,18 @@ class GuideAccessibilityService : AccessibilityService() {
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
         // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
-        // 단 **안정 판정 뒤에만** — 과도기(WAIT) 샘플의 서명으로 폐기하면 #32의 덜 그려진
-        // 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1).
-        display.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)?.let {
-            Log.i(TAG, "redisplay guide")
-            draw(it)
+        // 단 **안정 판정 뒤에만** — 과도기(WAIT)나 label 없는 UNREADABLE의 서명으로 폐기하면
+        // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
+        when (val redisplay = display.redisplay(signature, decision.isStableForGuideRedisplay())) {
+            GuideDisplayState.RedisplayResult.Unchanged -> Unit
+            GuideDisplayState.RedisplayResult.Clear -> {
+                Log.i(TAG, "clear unreadable guide")
+                overlay?.clear()
+            }
+            is GuideDisplayState.RedisplayResult.Show -> {
+                Log.i(TAG, "redisplay guide")
+                draw(redisplay.content)
+            }
         }
 
         // 화면이 흔들리는 동안에는 강조가 **이미 사라진 대상**을 가리킨다(#225). 자리만 내리고
@@ -518,7 +529,11 @@ class GuideAccessibilityService : AccessibilityService() {
         when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
                 // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).
-                Log.d(TAG, "settling pkg=${result.screen.packageName} elements=${result.screen.elements.size}")
+                Log.d(
+                    TAG,
+                    "settling pkg=${result.screen.packageName} " +
+                        "elements=${result.screen.elements.size} labeled=$hasLabeledElement",
+                )
                 scheduleSample(SETTLE_MS)
             }
 
@@ -544,6 +559,25 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
                 }
                 sendStableScreen(result.screen, signature, now, session.generation)
+                scheduleSample(POLL_MS)
+            }
+
+            ScreenStabilityTracker.Decision.UNREADABLE -> {
+                // label 없는 화면은 서버에 보내지 않는다. 다만 영구 빈 WebView·카메라에서도
+                // 읽는 중 표시가 무한히 돌면 안 되므로 로컬 안내로 빠져나갈 길을 준다(#350).
+                // 완료·종료 확인은 화면을 따라다니는 더 강한 상태라 덮지 않는다.
+                if (!GuideSession.awaitingConfirm) {
+                    display.showUnreadableNotice(
+                        signature,
+                        getString(R.string.guide_screen_unreadable),
+                    )?.let {
+                        Log.w(
+                            TAG,
+                            "screen unreadable for ${ScreenStabilityTracker.UNREADABLE_AFTER_MS}ms",
+                        )
+                        draw(it)
+                    }
+                }
                 scheduleSample(POLL_MS)
             }
 
@@ -947,7 +981,11 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
                     // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 확신 있는 경로와 같은
                     // 화면이고 문구만 다르다. 문구 확정은 #29.
-                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
+                    Log.w(
+                        TAG,
+                        "done retry cap perScreen=${GuideSession.MAX_UNVERIFIED_DONE} " +
+                            "total=${GuideSession.MAX_UNVERIFIED_DONE_TOTAL}, asking user",
+                    )
                     draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_unsure)))
                     updateReading()
                 }
@@ -955,7 +993,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 GuideSession.DoneOutcome.NOTICE_ONLY -> {
                     // 사용자가 이미 아니라고 답한 화면인데 완료 신호가 상한까지 반복됐다.
                     // 같은 질문을 다시 하지 않으면서 재질의도 멈춘다 — 문구만 남기고 칩으로 넘긴다.
-                    Log.w(TAG, "done after reject x${GuideSession.MAX_UNVERIFIED_DONE}, notice only")
+                    Log.w(TAG, "done retry cap after reject, notice only")
                     draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
                 }
 

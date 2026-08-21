@@ -653,7 +653,7 @@ class GuideSessionTest {
         assertTrue(GuideSession.awaitingConfirm)
     }
 
-    /** 상한 뒤에 또 와도(화면이 바뀌어 재질의된 경우) 재시도로 되돌아가지 않는다. */
+    /** 같은 화면에서 상한 뒤에 또 와도 재시도로 되돌아가지 않는다. */
     @Test
     fun `상한 이후의 미검증 done도 사용자에게 넘긴다`() {
         GuideSession.start("카메라 열기")
@@ -663,6 +663,65 @@ class GuideSessionTest {
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
             GuideSession.onDone(generation, false, SIGNATURE),
+        )
+    }
+
+    /** 스플래시가 쓴 횟수 때문에 다음 실화면의 확인 창이 일찍 뜨면 안 된다(#350). */
+    @Test
+    fun `화면이 바뀌면 미검증 done 재시도 예산을 새로 준다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
+            assertEquals(
+                GuideSession.DoneOutcome.RETRY,
+                GuideSession.onDone(generation, false, SIGNATURE),
+            )
+        }
+
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+        )
+    }
+
+    /** 단일 직전 서명 카운터는 A↔B마다 0이 되어 호출을 무한히 열었다(PR #352 리뷰). */
+    @Test
+    fun `화면이 번갈아 나와도 화면별 done 예산은 누적된다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, SIGNATURE),
+        )
+    }
+
+    @Test
+    fun `매번 다른 화면이어도 전체 done 예산에서 멈춘다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        repeat(GuideSession.MAX_UNVERIFIED_DONE_TOTAL - 1) { index ->
+            assertEquals(
+                GuideSession.DoneOutcome.RETRY,
+                GuideSession.onDone(generation, false, "signature-$index"),
+            )
+        }
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, "signature-last"),
         )
     }
 

@@ -25,6 +25,15 @@ class GuideDisplayStateTest {
     private val errorText = "인터넷 연결이 원활하지 않아요."
     private val otherErrorText = "지금은 이용하는 분이 많아요."
 
+    /** 내용 재표시만 보는 기존 테스트용. 오버레이 제거 신호는 해당 회귀 테스트에서 직접 본다. */
+    private fun redisplayContent(signature: String, screenStable: Boolean): GuideDisplayState.Content? =
+        when (val result = state.redisplay(signature, screenStable)) {
+            GuideDisplayState.RedisplayResult.Unchanged,
+            GuideDisplayState.RedisplayResult.Clear,
+            -> null
+            is GuideDisplayState.RedisplayResult.Show -> result.content
+        }
+
     // ── 안내 중 서버 오류(#29) ─────────────────────────────────────────
 
     /** 오류는 기존 안내를 덮는다. 걷히면 다음 성공 응답이 새 안내로 다시 덮는다. */
@@ -85,7 +94,28 @@ class GuideDisplayStateTest {
         state.showError(sigA, errorText)
         state.onCleared()
 
-        assertNull(state.redisplay(sigB, true))
+        assertNull(redisplayContent(sigB, true))
+    }
+
+    @Test
+    fun `읽기 불가 안내는 빈 화면 시그니처가 흔들려도 한 번만 그린다`() {
+        assertEquals(
+            GuideDisplayState.Content(null, errorText),
+            state.showUnreadableNotice(sigA, errorText),
+        )
+
+        assertNull(state.showUnreadableNotice(sigB, errorText))
+    }
+
+    @Test
+    fun `읽기 불가 안내는 오버레이 청소 뒤 다시 그린다`() {
+        state.showUnreadableNotice(sigA, errorText)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, errorText),
+            state.showUnreadableNotice(sigB, errorText),
+        )
     }
 
     @Test
@@ -94,7 +124,7 @@ class GuideDisplayStateTest {
 
         state.onCleared() // 사용자가 '안내 중지'를 찾아 우리 앱을 열었다(root=null 청소)
 
-        assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA, true))
+        assertEquals(GuideDisplayState.Content(null, capNotice), redisplayContent(sigA, true))
     }
 
     /** 이전 화면의 안내가 다른 화면 위에 그려지면 안 된다(2차 리뷰 P1, #61 P1과 같은 계급). */
@@ -103,7 +133,7 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        assertNull(state.redisplay(sigB, true))
+        assertNull(redisplayContent(sigB, true))
     }
 
     /** 다른 화면을 본 순간 이전 안내는 폐기된다 — 원래 화면에 돌아와도 안 되살린다. */
@@ -112,9 +142,9 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        state.redisplay(sigB, true) // 폐기 지점
+        redisplayContent(sigB, true) // 폐기 지점
 
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
     }
 
     @Test
@@ -125,7 +155,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(listOf(0, 0, 10, 10), "카메라를 누르세요."),
-            state.redisplay(sigA, true),
+            redisplayContent(sigA, true),
         )
     }
 
@@ -134,7 +164,7 @@ class GuideDisplayStateTest {
     fun `떠 있는 동안에는 재표시하지 않는다`() {
         state.showCapNotice(sigA, capNotice)
 
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
     }
 
     @Test
@@ -142,9 +172,9 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        state.redisplay(sigA, true)
+        redisplayContent(sigA, true)
 
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
     }
 
     /** 상한 안내는 행동 지시가 아니라서 "한 번 더 해 보세요"가 붙으면 앞뒤가 안 맞는다. */
@@ -173,13 +203,13 @@ class GuideDisplayStateTest {
 
         state.reset()
 
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
         assertNull(state.stuckContent(stuck, sigA))
     }
 
     @Test
     fun `안내가 없으면 재표시도 정체 알림도 없다`() {
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
         assertNull(state.stuckContent(stuck, sigA))
     }
 
@@ -194,7 +224,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
-            state.redisplay(sigA, true),
+            redisplayContent(sigA, true),
         )
     }
 
@@ -221,7 +251,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
-            state.redisplay(sigB, true),
+            redisplayContent(sigB, true),
         )
     }
 
@@ -231,12 +261,12 @@ class GuideDisplayStateTest {
         state.showConfirm(sigA, confirmText)
         state.onCleared()
 
-        state.redisplay(sigB, true)
+        redisplayContent(sigB, true)
         state.onCleared()
 
         assertEquals(
             GuideDisplayState.Content(null, confirmText, confirm = GuideDisplayState.ConfirmKind.DONE),
-            state.redisplay(sigA, true),
+            redisplayContent(sigA, true),
         )
     }
 
@@ -299,7 +329,7 @@ class GuideDisplayStateTest {
         // 문구만 사라지면 안 된다(PR #226 리뷰 1).
         assertEquals(
             GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck"),
-            state.redisplay(sigA, true),
+            redisplayContent(sigA, true),
         )
     }
 
@@ -323,7 +353,7 @@ class GuideDisplayStateTest {
 
         assertEquals(
             GuideDisplayState.Content(null, quitText, confirm = GuideDisplayState.ConfirmKind.QUIT),
-            state.redisplay(sigB, true),
+            redisplayContent(sigB, true),
         )
     }
 
@@ -387,7 +417,7 @@ class GuideDisplayStateTest {
 
         state.dismissQuitConfirm(sigB)
 
-        assertNull(state.redisplay(sigA, true))
+        assertNull(redisplayContent(sigA, true))
     }
 
     /** 되살릴 안내가 애초에 없었으면 화면이 달라도 폐기 판정에 걸리지 않는다(둘 다 null이다). */
@@ -406,7 +436,7 @@ class GuideDisplayStateTest {
 
         state.onCleared()
 
-        assertEquals(GuideDisplayState.Content(null, "새 안내"), state.redisplay(sigB, true))
+        assertEquals(GuideDisplayState.Content(null, "새 안내"), redisplayContent(sigB, true))
     }
 
     // --- 안정화 상태 머신과의 결합(4차 리뷰 P1) ---------------------------------
@@ -419,9 +449,56 @@ class GuideDisplayStateTest {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()
 
-        assertNull(state.redisplay(sigB, false)) // 과도기 — 재표시도 폐기도 없음
+        assertNull(redisplayContent(sigB, false)) // 과도기 — 재표시도 폐기도 없음
 
-        assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA, true))
+        assertEquals(GuideDisplayState.Content(null, capNotice), redisplayContent(sigA, true))
+    }
+
+    @Test
+    fun `읽기 불가 화면은 보존 안내를 폐기하지 않고 원래 화면에서 복구한다`() {
+        val tracker = ScreenStabilityTracker(unreadableAfterMs = 100)
+        state.showCapNotice(sigA, capNotice)
+        state.onCleared()
+
+        fun sync(signature: String, at: Long, labeled: Boolean): GuideDisplayState.Content? {
+            val decision = tracker.onSample(signature, at, hasLabeledElement = labeled)
+            val redisplayed = redisplayContent(signature, decision.isStableForGuideRedisplay())
+            return if (decision == ScreenStabilityTracker.Decision.UNREADABLE) {
+                state.showUnreadableNotice(signature, errorText) ?: redisplayed
+            } else {
+                redisplayed
+            }
+        }
+
+        assertNull(sync(sigB, 0, labeled = false))
+        assertEquals(GuideDisplayState.Content(null, errorText), sync(sigB, 100, labeled = false))
+        assertNull(sync(sigA, 200, labeled = true))
+        assertEquals(GuideDisplayState.Content(null, capNotice), sync(sigA, 300, labeled = true))
+    }
+
+    @Test
+    fun `읽기 불가 뒤 다른 안정 화면이면 보존 안내도 함께 폐기한다`() {
+        state.showCapNotice(sigA, capNotice)
+        state.onCleared()
+        state.showUnreadableNotice(sigB, errorText)
+
+        assertEquals(
+            GuideDisplayState.RedisplayResult.Clear,
+            state.redisplay("stable-c", screenStable = true),
+        )
+        assertEquals(
+            GuideDisplayState.RedisplayResult.Unchanged,
+            state.redisplay(sigA, screenStable = true),
+        )
+    }
+
+    @Test
+    fun `읽기 불가 안내에서 연 종료 확인은 화면이 바뀌어도 우선 보존한다`() {
+        state.showUnreadableNotice(sigA, errorText)
+        val confirming = state.showQuitConfirm("안내를 그만 볼까요?")
+        state.onCleared()
+
+        assertEquals(confirming, redisplayContent(sigB, screenStable = true))
     }
 
     /** 리뷰가 요구한 시퀀스: A 안내 → clear → 과도기 B(WAIT) → A(WAIT) → A(IDLE) 재표시. */
@@ -430,13 +507,13 @@ class GuideDisplayStateTest {
         val tracker = ScreenStabilityTracker()
         // 서비스 sampleScreen의 배선 그대로: 판정을 먼저 얻고, WAIT가 아닐 때만 재표시/폐기.
         fun sync(signature: String, at: Long): GuideDisplayState.Content? {
-            val decision = tracker.onSample(signature, at)
-            return state.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)
+            val decision = tracker.onSample(signature, at, hasLabeledElement = true)
+            return redisplayContent(signature, decision.isStableForGuideRedisplay())
         }
 
         // A 안정 → 요청 → 응답으로 상한 안내 표시(서비스의 SEND→applyAction에 해당)
-        tracker.onSample(sigA, 0)
-        tracker.onSample(sigA, 100)
+        tracker.onSample(sigA, 0, hasLabeledElement = true)
+        tracker.onSample(sigA, 100, hasLabeledElement = true)
         tracker.markSent(sigA, 100)
         tracker.markFinished()
         state.showCapNotice(sigA, capNotice)
@@ -547,7 +624,7 @@ class GuideDisplayStateTest {
         state.hideTarget()
         state.onCleared()
 
-        assertEquals(shown, state.redisplay(sigA, screenStable = true))
+        assertEquals(shown, redisplayContent(sigA, screenStable = true))
         assertNull(state.restoreTarget(sigA))
     }
 
