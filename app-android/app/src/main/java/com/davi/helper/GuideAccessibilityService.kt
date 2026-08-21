@@ -287,11 +287,17 @@ class GuideAccessibilityService : AccessibilityService() {
      * 연속된 이벤트는 한 번으로 합쳐지고, 마지막 이벤트 뒤 [SETTLE_MS]가 지나야 샘플을 뜬다.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !isInteresting(event.eventType)) return
+        if (event == null) return
 
         // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
+        // **필터보다 먼저 본다** — 계측이 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다.
         if (GuideSession.active() == null) return
+
+        val interesting = isInteresting(event.eventType)
+        // 계측(임시). release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
+        GuideScreenLog.event(event, interesting)
+        if (!interesting) return
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
         scheduleSample(SETTLE_MS)
@@ -429,6 +435,8 @@ class GuideAccessibilityService : AccessibilityService() {
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
         val decision = stability.onSample(signature, now)
+        // 계측(임시). IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
+        GuideScreenLog.sample(decision.name, result.screen.elements.size, signature)
         lastDecision = decision
         updateReading()
 
