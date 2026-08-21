@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from pingpong_eval.cli import DEFAULT_SCENARIOS, load_scenarios
 from pingpong_eval.models import (
     Exposure,
@@ -142,7 +141,6 @@ def test_429는_기다렸다_다시_보낸다(monkeypatch):
     """공유 서버 요청 상한은 실패가 아니라 정상 경로다."""
 
     import httpx
-
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     calls = {"n": 0}
@@ -177,7 +175,6 @@ def test_429는_기다렸다_다시_보낸다(monkeypatch):
 
 def test_401은_토큰_안내로_끝난다():
     import httpx
-
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     adapter = SlotFillHttpAdapter(
@@ -212,7 +209,6 @@ def test_사용자_LLM은_429를_재시도한다(monkeypatch):
     """분당 한도는 정상 경로다 — 한 번의 429로 실행 전체가 죽으면 안 된다(실측)."""
 
     import httpx
-
     from pingpong_eval.llm import GeminiClient
 
     calls = {"n": 0}

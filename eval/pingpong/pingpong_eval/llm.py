@@ -170,8 +170,7 @@ def _strip_fence(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[-1]
-        if stripped.endswith("```"):
-            stripped = stripped[:-3]
+        stripped = stripped.removesuffix("```")
     return stripped.strip()
 
 

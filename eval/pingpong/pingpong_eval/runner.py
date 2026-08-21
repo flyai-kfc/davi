@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 
+from .metrics import transcript_metrics
 from .models import (
     PingpongStatus,
     Round,
@@ -15,7 +16,6 @@ from .models import (
     StopReason,
     Transcript,
 )
-from .metrics import transcript_metrics
 from .sut import PingpongAdapter, PingpongError
 from .user_sim import UserSimulator
 

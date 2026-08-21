@@ -122,7 +122,7 @@ def _parse(body: dict[str, Any], latency_ms: int) -> PingpongTurn:
     has_other = next(
         (bool(body[key]) for key in _OTHER_KEYS if key in body),
         # 선택지가 없으면 자유 발화뿐이므로 '기타'는 언제나 열려 있는 셈이다.
-        True if not options else False,
+        not options,
     )
     return PingpongTurn(
         status=status,

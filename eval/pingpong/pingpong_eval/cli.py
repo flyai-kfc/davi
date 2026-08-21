@@ -193,7 +193,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     meta = {
-        "실행시각": datetime.now().isoformat(timespec="seconds"),
+        "실행시각": datetime.now().astimezone().isoformat(timespec="seconds"),
         "시나리오파일": str(args.scenarios),
         "시나리오수": len(scenarios),
         "사용자모델": user_client.model,
@@ -214,7 +214,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "seed": args.seed,
         "max_rounds": args.max_rounds,
     }
-    out_dir = Path(args.out) / datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(args.out) / datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     path = write_run(out_dir, results, meta)
     print(f"\n보고서: {path}")
     print(json.dumps(_headline(results), ensure_ascii=False, indent=2))

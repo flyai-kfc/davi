@@ -8,6 +8,18 @@ from pathlib import Path
 from .metrics import summarize
 from .models import ScenarioResult
 
+_SUMMARY_HEADERS = [
+    "구간",
+    "건수",
+    "충족",
+    "부분",
+    "실패",
+    "평균 라운드",
+    "상한도달",
+    "슬롯 정확률",
+    "위반",
+]
+
 
 def write_run(out_dir: Path, results: list[ScenarioResult], meta: dict) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -36,8 +48,11 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         f"- 사용자 LLM: {meta.get('사용자모델')} / 평가자 LLM: {meta.get('평가자모델')}"
         + (f" (경유: {meta['평가자경유']})" if meta.get("평가자경유") else ""),
         f"- 핑퐁: {meta.get('핑퐁')} (davi {meta.get('davi_sha', '?')})",
-        f"- 채점 비용: 입력 {meta.get('평가자_입력토큰', 0)} · 출력 {meta.get('평가자_출력토큰', 0)} 토큰 "
-        f"→ 약 {meta.get('평가자_추정크레딧', 0)} 크레딧 (추정)",
+        (
+            f"- 채점 비용: 입력 {meta.get('평가자_입력토큰', 0)} · "
+            f"출력 {meta.get('평가자_출력토큰', 0)} 토큰 "
+            f"→ 약 {meta.get('평가자_추정크레딧', 0)} 크레딧 (추정)"
+        ),
         "",
         "## 전체",
         "",
