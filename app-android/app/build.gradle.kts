@@ -244,7 +244,8 @@ val releaseServerUrl =
 // 상수로 두지 않는 이유는 기밀성이 아니라 **회전**이다: 팀 전체가 공유하는 Gemini 쿼터에
 // 물려 있어 기간 제한 임시 capability로 다뤄야 하고(내부 테스트 시작 직전 서버에 적용, 종료
 // 즉시 서버에서 무효화·회전 — local.properties 삭제는 폐기가 아니다), 상수면 회전마다 커밋과
-// 재배포가 필요해진다. 접근 통제·비용 상한·로그 정책의 나머지는 #214가 정한다.
+// 재배포가 필요해진다. beta·production의 세션 접근 통제·분·일 단위 비용 상한·비식별 로그
+// 정책은 #214의 서버 경계가 담당한다. 이 값은 development 공유 서버의 별도 임시 경계다.
 // 값이 비어도 여기서 던지지 않는다 — debug 빌드까지 같이 깨진다. release에서만 아래
 // verifyReleaseConfiguration이 실패로 만든다.
 val releaseAccessToken = localSetting("DAVI_RELEASE_ACCESS_TOKEN")

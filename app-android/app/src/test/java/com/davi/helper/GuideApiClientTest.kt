@@ -223,6 +223,22 @@ class GuideApiClientTest {
     }
 
     @Test
+    fun `parses external daily rate limit scope`() {
+        server.enqueue(
+            MockResponse().setResponseCode(429).setBody(
+                """{"kind":"QUOTA","message":"request limit exceeded","retry_after_seconds":86400,"rate_limit_scope":"daily"}""",
+            ),
+        )
+
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace())
+
+        assertTrue(result is NextStepResult.ApiFailure)
+        result as NextStepResult.ApiFailure
+        assertEquals(RateLimitScope.DAILY, result.error.rateLimitScope)
+        assertEquals(86_400, result.error.retryAfterSeconds)
+    }
+
+    @Test
     fun `does not trust malformed or mismatched response trace headers`() {
         server.enqueue(
             MockResponse()

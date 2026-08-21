@@ -369,7 +369,8 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
 - `GuideApiClient` — 서버의 JSON 계약을 직렬화·파싱하고 Logical Request ID/attempt header를
-  전송한다. 서버 오류는 `ApiError.kind`, 연결 오류는 `network_error`로 분류하며 앱을 종료하지 않는다.
+  전송한다. 서버 오류는 `ApiError.kind`와 선택 `rate_limit_scope`로 분류해 짧은 혼잡과 24시간
+  한도를 구분하고, 연결 오류는 `network_error`로 분류하며 앱을 종료하지 않는다.
 - `OverlayController` — 오버레이 **둘**을 소유한다(#126). **표시 오버레이**(`HighlightOverlayView`)는
   강조 테두리와 화면 가장자리 테두리를 그리고 터치를 아래 앱으로 통과시키며, **조작 오버레이**
   (`ControlOverlay`)는 안내창과 칩이 살고 그 영역의 터치를 받는다. 화면 가장자리 테두리는 두 tone을

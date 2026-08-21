@@ -50,6 +50,7 @@ from .schemas import (
     ErrorKind,
     NextStepRequest,
     NextStepResponse,
+    RateLimitScope,
     SlotFillRequest,
     SlotFillState,
 )
@@ -258,8 +259,18 @@ def _external_access_error(request: Request) -> JSONResponse | None:
         return _external_auth_error(request)
     try:
         kakao_user_id = verify_session_token(token)
-    except AuthError:
-        return _external_auth_error(request)
+    except AuthError as error:
+        if error.kind is ErrorKind.AUTH:
+            return _external_auth_error(request)
+        # 설정·인프라 실패를 토큰 만료로 위장하면 앱이 정상 세션까지 지우고 로그인을 반복한다.
+        # 기동 검증이 보통 이 경로를 막더라도, 이 경계 자체가 오류 종류를 보존해야 한다.
+        request.state.error_kind = error.kind.value
+        body = ApiError(
+            kind=error.kind,
+            message=error.message,
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(status_code=error.http_status, content=body.model_dump())
 
     # 출처는 카카오 회원번호다 — device_id·IP가 아니라 인증된 사용자 단위로 제한한다.
     source = str(kakao_user_id)
@@ -271,7 +282,7 @@ def _external_access_error(request: Request) -> JSONResponse | None:
         global_window_seconds=settings.davi_external_rate_limit_window_seconds,
     )
     if not decision.allowed:
-        return _external_rate_limit_response(request, decision, scope="burst")
+        return _external_rate_limit_response(request, decision, scope=RateLimitScope.BURST)
 
     daily_decision = external_daily_rate_limiter.check(
         source,
@@ -281,7 +292,7 @@ def _external_access_error(request: Request) -> JSONResponse | None:
         global_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
     )
     if not daily_decision.allowed:
-        return _external_rate_limit_response(request, daily_decision, scope="daily")
+        return _external_rate_limit_response(request, daily_decision, scope=RateLimitScope.DAILY)
 
     return None
 
@@ -304,16 +315,17 @@ def _external_rate_limit_response(
     request: Request,
     decision: RateLimitDecision,
     *,
-    scope: str,
+    scope: RateLimitScope,
 ) -> JSONResponse:
     retry_after = decision.retry_after_seconds or 1
     scope_label = "SOURCE" if decision.limited_scope == "source" else "GLOBAL"
-    request.state.error_kind = f"EXTERNAL_{scope.upper()}_LIMIT_{scope_label}"
+    request.state.error_kind = f"EXTERNAL_{scope.value.upper()}_LIMIT_{scope_label}"
     request.state.retry_after_seconds = retry_after
     error = ApiError(
         kind=ErrorKind.QUOTA,
         message="request limit exceeded",
         retry_after_seconds=retry_after,
+        rate_limit_scope=scope,
         request_id=request.state.request_id,
     )
     return JSONResponse(

@@ -299,18 +299,26 @@ class ErrorKind(StrEnum):
     BAD_REQUEST = "BAD_REQUEST"
 
 
+class RateLimitScope(StrEnum):
+    """외부 공개 프로필의 QUOTA가 짧은 창인지 24시간 창인지 구분한다."""
+
+    BURST = "burst"
+    DAILY = "daily"
+
+
 class ApiError(BaseModel):
     """앱이 사용자 안내를 분기하는 근거(C8).
 
     `message`는 **디버그용**이다. 시니어에게 그대로 보여주지 않는다 —
-    사용자 문구는 앱이 `kind`를 보고 만든다("사용량 한도" vs "인터넷 불량").
+    사용자 문구는 앱이 `kind`와 선택 `rate_limit_scope`를 보고 만든다.
     """
 
     kind: ErrorKind
     message: str
-    # QUOTA에서 "잠시 후 다시" 와 "오늘 한도 소진"을 구분하려면 필요하다.
-    # 무료 티어 RPD 리셋은 한국시간 17:00(HANDOFF §10).
+    # 공급자 QUOTA의 실제 재개 시각 또는 자체 제한 창의 남은 시간이다.
     retry_after_seconds: int | None = None
+    # 외부 공개 프로필의 자체 제한에만 채운다. 공급자 QUOTA와 기존 development 제한은 null이다.
+    rate_limit_scope: RateLimitScope | None = None
     # 도그푸딩 로그 대조용.
     request_id: str | None = None
 

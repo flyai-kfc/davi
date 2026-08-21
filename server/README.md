@@ -117,6 +117,7 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 저장하지 않는다. `session_id`는 모델 입력에도 넣지 않는다. 키 없는 개발·CI에서는
 `StubIntentResolver`가 현재 발화를 그대로 ready goal로 돌려 계약만 검증하며 의미 품질을 주장하지 않는다.
 두 trace header와 development auth/rate limit, `ApiError`는 `/v1/next-step`과 같은 경계를 쓴다.
+beta·production의 자체 제한은 `rate_limit_scope=burst|daily`를 함께 내려 앱이 대기 성격을 구분한다.
 
 ### 목표 앱 후보와 기기 대조
 

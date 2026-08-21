@@ -40,7 +40,9 @@ class MainActivity : AppCompatActivity() {
     private var destroyed = false
 
     private val authStore: AuthStore by lazy { AuthStore(this) }
-    private var loginRecoveryStarted = false
+    private val sessionLoginRecovery: SessionLoginRecovery by lazy {
+        SessionLoginRecovery(this, authStore, ::cancelVoiceDialogue)
+    }
 
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
@@ -258,7 +260,7 @@ class MainActivity : AppCompatActivity() {
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
             AppResolutionCoordinator.Outcome.SessionAuthenticationRequired ->
-                returnToLogin()
+                sessionLoginRecovery.start()
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -317,7 +319,7 @@ class MainActivity : AppCompatActivity() {
                     result is SlotFillResult.ApiFailure &&
                     result.sessionAuthenticationRequired
                 ) {
-                    returnToLogin()
+                    sessionLoginRecovery.start()
                     return
                 }
                 if (voiceSession.fail(pending)) {
@@ -328,19 +330,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    private fun returnToLogin() {
-        if (loginRecoveryStarted || destroyed) return
-        loginRecoveryStarted = true
-        authStore.clearSession()
-        cancelVoiceDialogue()
-        startActivity(
-            Intent(this, LoginActivity::class.java)
-                .putExtra(LoginActivity.EXTRA_SESSION_AUTHENTICATION_REQUIRED, true)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
-        )
-        finish()
     }
 
     private fun speakClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
@@ -478,14 +467,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun errorMessageFor(result: SlotFillResult): Int = when (result) {
-        is SlotFillResult.ApiFailure -> when (result.error.kind) {
-            ApiErrorKind.QUOTA -> R.string.voice_server_busy
-            ApiErrorKind.NETWORK -> R.string.voice_network_error
-            ApiErrorKind.AUTH,
-            ApiErrorKind.SERVER,
-            ApiErrorKind.PARSE,
-            ApiErrorKind.BAD_REQUEST,
-            -> R.string.voice_server_error
+        is SlotFillResult.ApiFailure -> when (bucketOf(result.error)) {
+            ApiErrorBucket.BUSY -> R.string.voice_server_busy
+            ApiErrorBucket.DAILY_LIMIT -> R.string.voice_daily_limit
+            ApiErrorBucket.NETWORK -> R.string.voice_network_error
+            ApiErrorBucket.SERVER -> R.string.voice_server_error
         }
         is SlotFillResult.NetworkFailure -> R.string.voice_network_error
         is SlotFillResult.HttpFailure,

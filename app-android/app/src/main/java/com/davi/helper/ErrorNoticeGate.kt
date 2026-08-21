@@ -36,6 +36,13 @@ class ErrorNoticeGate(private val minFailures: Int = DEFAULT_MIN_FAILURES) {
             return false
         }
         consecutiveFailures++
+        // 일일 한도는 다음 재시도가 최대 24시간 뒤다. 첫 실패를 숨기면 안내가 이유 없이 멈춘다.
+        if (
+            result is NextStepResult.ApiFailure &&
+            bucketOf(result.error) == ApiErrorBucket.DAILY_LIMIT
+        ) {
+            return true
+        }
         return consecutiveFailures >= minFailures
     }
 

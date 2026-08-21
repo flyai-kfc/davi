@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 
 import pytest
-from app.schemas import ActionType, ErrorKind, ScrollAxis, SwipeDirection
+from app.schemas import ActionType, ErrorKind, RateLimitScope, ScrollAxis, SwipeDirection
 
 CONTRACT_KT = (
     Path(__file__).resolve().parents[2]
@@ -64,6 +64,7 @@ def contract_source() -> str:
         ("SwipeDirection", SwipeDirection),
         ("ScrollAxis", ScrollAxis),
         ("ApiErrorKind", ErrorKind),
+        ("RateLimitScope", RateLimitScope),
     ],
 )
 def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_enum) -> None:

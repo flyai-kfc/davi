@@ -7,9 +7,10 @@
 
 import app.main as main_module
 from app.config import settings
-from app.kakao_auth import issue_session_token
+from app.kakao_auth import AuthError, issue_session_token
 from app.llm import StubLlmClient
 from app.main import app
+from app.schemas import ErrorKind
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -180,6 +181,7 @@ def test_external_burst_limit_blocks_same_user_then_recovers_for_another(
     assert first.status_code == 200
     assert limited.status_code == 429
     assert limited.json()["kind"] == "QUOTA"
+    assert limited.json()["rate_limit_scope"] == "burst"
     assert limited.json()["retry_after_seconds"] >= 1
     assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
     assert other_user.status_code == 200
@@ -232,3 +234,30 @@ def test_external_daily_limit_blocks_within_the_same_burst_window(set_runtime_pr
     assert first.status_code == 200
     assert limited.status_code == 429
     assert limited.json()["kind"] == "QUOTA"
+    assert limited.json()["rate_limit_scope"] == "daily"
+
+
+def test_external_auth_preserves_server_failure_without_bearer_challenge(
+    set_runtime_profile, monkeypatch
+):
+    """인증 설정 장애는 세션 무효가 아니므로 앱에 재로그인을 요구하지 않는다."""
+
+    _beta_profile(set_runtime_profile)
+    _configure_auth(monkeypatch)
+    monkeypatch.setattr(
+        main_module,
+        "verify_session_token",
+        lambda _token: (_ for _ in ()).throw(
+            AuthError(ErrorKind.SERVER, "auth configuration unavailable", 503)
+        ),
+    )
+
+    response = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"Authorization": "Bearer syntactically-present"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["kind"] == "SERVER"
+    assert "WWW-Authenticate" not in response.headers

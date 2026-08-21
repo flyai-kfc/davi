@@ -60,6 +60,7 @@
     <string name="voice_permission_open_settings">휴대폰 설정에서 \'다비\'를 찾아 마이크를 켜 주세요.</string>
     <string name="voice_network_error">인터넷 연결이 원활하지 않아요.\n연결을 확인하고 다시 해 주세요.</string>
     <string name="voice_server_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 해 주세요.</string>
+    <string name="voice_daily_limit">하루 이용 한도에 도달했어요.\n시간이 지난 뒤 다시 이용해 주세요.</string>
     <string name="voice_server_error">하려는 일을 정리하지 못했어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 주세요.</string>
     <string name="guide_screen_unreadable">이 화면은 내용을 읽을 수 없어요.\n다른 화면으로 이동하거나 ×를 눌러 안내를 그만 봐 주세요.</string>
@@ -104,6 +105,7 @@
     -->
     <string name="guide_error_network">인터넷 연결이 원활하지 않아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
     <string name="guide_error_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
+    <string name="guide_error_daily_limit">하루 이용 한도에 도달했어요.\n시간이 지난 뒤 다시 이용해 주세요.</string>
     <string name="guide_error_server">안내에 잠시 문제가 생겼어요.\n곧 다시 안내해 드릴게요.</string>
     <!--
       안내창을 못 쓰는 순간의 문구다(#29).

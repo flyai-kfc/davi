@@ -239,13 +239,22 @@ data class ApiError(
     val kind: ApiErrorKind,
     val message: String,
     @SerialName("retry_after_seconds") val retryAfterSeconds: Int? = null,
+    @SerialName("rate_limit_scope") val rateLimitScope: RateLimitScope? = null,
     @SerialName("request_id") val requestId: String? = null,
 )
+
+/** 서버 `RateLimitScope`와 값이 같아야 한다. null은 공급자·development의 기존 QUOTA다. */
+@Serializable
+enum class RateLimitScope {
+    @SerialName("burst") BURST,
+    @SerialName("daily") DAILY,
+}
 
 /**
  * 서버 `ErrorKind`와 **값이 정확히 같아야 한다**(위 [ActionType]과 같은 이유).
  *
- * 앱은 이 값을 보고 사용자 안내를 가른다 — "사용량 한도"와 "인터넷 불량"은 다르게 말해야 한다.
+ * 앱은 이 값과 [ApiError.rateLimitScope]를 보고 사용자 안내를 가른다 — 짧은 사용량 제한·24시간
+ * 한도·인터넷 불량은 다르게 말해야 한다.
  * `message`는 디버그용이므로 어르신께 그대로 보여주지 않는다(C8).
  * 이름은 이전 PoC의 `LlmException(kind)` 계보를 그대로 따른다(HANDOFF §4).
  */

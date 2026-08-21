@@ -143,8 +143,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   갈 수 있는가**다. 카카오 인증에 성공해도 세션을 교환할 `SERVER_URL`이 placeholder면
   `login_error_server`로 끝나므로, 그 빌드는 버튼을 띄우지 않는다. 진입점(scheme·handler
   activity)은 키와 함께 켜 두어 주소가 정해지는 순간 조건만 참이 되게 했고, **#248로 그 순간이
-  왔다** — release `SERVER_URL`이 Azure 실주소라 `LOGIN_ENABLED`가 켜진다. #214에는 접근 통제·
-  비용·로그 정책이 남아 있다.
+  왔다** — release `SERVER_URL`이 Azure 실주소라 `LOGIN_ENABLED`가 켜진다. #214는 beta·production
+  추론 API의 세션 JWT, 분·일 단위 비용 상한, 비식별 로그 정책까지 코드와 계약에 반영한다.
 - 서버가 준 action을 그대로 실행하되, **사용자 대신 탭하지 않는다.**
 
 ## UI 컨벤션 (확정 2026-07-24)

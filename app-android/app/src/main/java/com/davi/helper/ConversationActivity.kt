@@ -113,7 +113,9 @@ class ConversationActivity : AppCompatActivity() {
     private var destroyed = false
 
     private val authStore: AuthStore by lazy { AuthStore(this) }
-    private var loginRecoveryStarted = false
+    private val sessionLoginRecovery: SessionLoginRecovery by lazy {
+        SessionLoginRecovery(this, authStore, ::cancelVoiceDialogue)
+    }
 
     // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
     // 안내 세션은 **밖에서** 끝난다(사용자가 대상 앱에서 완료 · 권한 소실 · 다른 종료 경로).
@@ -838,7 +840,7 @@ class ConversationActivity : AppCompatActivity() {
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
             AppResolutionCoordinator.Outcome.SessionAuthenticationRequired ->
-                returnToLogin()
+                sessionLoginRecovery.start()
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -903,7 +905,7 @@ class ConversationActivity : AppCompatActivity() {
                     result is SlotFillResult.ApiFailure &&
                     result.sessionAuthenticationRequired
                 ) {
-                    returnToLogin()
+                    sessionLoginRecovery.start()
                     return
                 }
                 if (voiceSession.fail(pending)) {
@@ -913,20 +915,6 @@ class ConversationActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    /** 만료·무효 세션은 일반 서버 오류로 숨기지 않고 로그인 화면에서 복구한다. */
-    private fun returnToLogin() {
-        if (loginRecoveryStarted || destroyed) return
-        loginRecoveryStarted = true
-        authStore.clearSession()
-        cancelVoiceDialogue()
-        startActivity(
-            Intent(this, LoginActivity::class.java)
-                .putExtra(LoginActivity.EXTRA_SESSION_AUTHENTICATION_REQUIRED, true)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
-        )
-        finish()
     }
 
     private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
@@ -1073,8 +1061,9 @@ class ConversationActivity : AppCompatActivity() {
      * 도달하지 않는다(실제 표시는 개발판 글자 입력 화면).
      */
     private fun errorMessageFor(result: SlotFillResult): Int = when (result) {
-        is SlotFillResult.ApiFailure -> when (bucketOf(result.error.kind)) {
+        is SlotFillResult.ApiFailure -> when (bucketOf(result.error)) {
             ApiErrorBucket.BUSY -> R.string.voice_server_busy
+            ApiErrorBucket.DAILY_LIMIT -> R.string.voice_daily_limit
             ApiErrorBucket.NETWORK -> R.string.voice_network_error
             ApiErrorBucket.SERVER -> R.string.voice_server_error
         }

@@ -20,7 +20,8 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **음성 목표 정리** — 고정 슬롯·문자열 조건 없이 LLM 구조화 출력으로 질문 필요/goal 준비를 판정.
 - **목표 앱 후보** — 전체 설치 목록 없이 일반 후보 최대 5개를 만들고 기기의 ID/status 피드백을
   무상태로 판정한다. 기기에서만 발견한 앱 정보는 받지 않는다(#102·#128).
-- **에러 분류** — QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST. 앱이 사용자에게 다르게 안내하도록.
+- **에러 분류** — QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST. 앱이 사용자에게 다르게 안내한다.
+  외부 공개 프로필의 QUOTA는 `rate_limit_scope=burst|daily`로 짧은 창과 24시간 창을 구분한다.
 - **카카오 로그인 검증·세션 발급**(`kakao_auth.py`, #165) — 앱이 받아 온 카카오 access token을
   검증(발급처 `app_id` 대조)하고 카카오 회원번호를 담은 **무상태 세션 JWT**를 발급한다.
   사용자 DB 없음. 인증 전 공개 endpoint라 dev 게이트와 별개로 **모든 프로필에서 도는**
@@ -134,7 +135,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 | C5 | **`current_page`/`total_pages`를 `UiElement`에서 `Screen`으로 올린다.** | 화면 단위 상태다. 요소마다 들고 있으면 HANDOFF §2 버린 길("페이지마다 노드가 따로 있어 아무거나 집으면 틀린 값")을 서버에서 재현하는 구조가 된다. dot 자체는 `role="page_dot"` 요소로 남긴다. |
 | C6 | **`ActionType.WAIT` 제거.** | HANDOFF에 근거가 없다(관찰된 것: tap / scroll+dir / open_quick_settings / done, 텍스트 입력으로 type). 정체 처리는 앱의 시간 기반 폴링 담당이라 LLM 액션일 이유가 없다. |
 | C7 | **요청에 `client_version` 추가.** 스키마 버전 필드는 두지 않는다. | 파괴적 변경은 `/v1/` 경로로 충분하다. 진짜 문제는 비대칭 — 서버는 즉시 바뀌고 앱은 기기에 설치된 채 낡는다. 서버가 낡은 앱을 알아채야 한다. |
-| C8 | **`ApiError`에 `retry_after_seconds`(선택)와 `request_id` 추가. `message`는 디버그용이며 사용자에게 그대로 노출하지 않는다.** | QUOTA에서 "잠시 후 다시" vs "오늘 한도 소진"(RPD 리셋 한국시간 17:00, `HANDOFF.md` §10)을 구분하려면 필요하다. 사용자 문구는 앱이 `kind`로 만든다. `request_id`는 도그푸딩 로그 대조용. |
+| C8 | **`ApiError`에 `retry_after_seconds`(선택)와 `request_id`를 두고, 외부 공개 프로필 자체 제한에는 `rate_limit_scope=burst|daily`를 싣는다. `message`는 디버그용이며 사용자에게 그대로 노출하지 않는다.** | QUOTA에서 "잠시 후 다시"와 최대 24시간 기다리는 일일 한도를 `retry_after_seconds`만 추측해 가르면 공급자 제한과 섞인다. 앱은 `kind`와 선택 scope로 사용자 문구를 만들고, `request_id`는 도그푸딩 로그 대조에 쓴다. |
 | C9 | **`ActionType`에 `open_app_drawer` 추가** (2026-07-28). 아래 "보류"에 있던 전역 제스처 중 **근거가 나온 하나만** 올린다. | 실기기 관통에서 막혔다: `com.kakao.talk`이 설치돼 있는데 홈에 아이콘이 없어 33초 동안 같은 스크롤 안내가 8회 반복됐다. 홈 트리(노드 28개) 실측에서 앱서랍으로 가는 요소는 **없다** — 위로 쓸어올리는 제스처라 어떤 노드로도 표현되지 않는다. 즉 모델의 선택지에 정답이 존재하지 않았다. |
 | C10 | **`Screen`에 `has_scrollable_element`(선택) 추가.** True/False/None 세 상태를 구분한다. | 요소를 훑어 유추하면 "스크롤 요소가 없다"와 "앱이 아직 안 채웠다"가 섞인다. 삼성 런처 홈은 `scrollable` 노드가 0개인데 그 침묵을 모델이 "넘길 수 있다"로 읽었다(위와 같은 실측). **없다는 것도 상태다**(루트 `CLAUDE.md`: 지식이 아니라 상태를 준다). 이름은 "화면이 스크롤된다"가 아니라 관찰한 사실 그대로다 — 트리에 스크롤 노드가 없어도 실제로는 넘어가는 화면이 있다(런처 페이징). |
 | C11 | **앱이 안내 이력을 스텝 레코드 `steps`로 세션 안에 최대 10개 보관해 다음 요청에 보내고, 응답 `GuideAction.screen_summary`가 그 화면이 무엇인지 한 줄로 말한다**(2026-08-19 개정, #270 — 이전 안은 문장 이력 `recent_instructions`와 구조 이력 `recent_actions` 둘로 나뉘어 있었다). 스텝 하나 = 안내 하나이고, 값은 **응답 echo 6개**(instruction·action_type·direction·target_label·screen_hint·structure_signature)와 **앱 관측 3개**(screen_changed·performed·content_signature)뿐이다. 서버는 무상태이고, 프롬프트 문장은 서버가 스텝에서 조립한다. | 나뉘어 있던 동안 모델은 "무엇을 안내했는지"만 알고 **그래서 화면이 바뀌었는지**를 몰랐다. 구조 이력은 반복 카운트가 걷히며 소비자가 사라져 빈 계약이었다(#251). 접근성 트리 전용 에이전트의 검증된 관례가 스텝 레코드이고(AndroidWorld T3A, arXiv:2405.14573), 자연어 이력이 구조화 나열보다 우세하다는 보고가 있다(GUI-Rise, arXiv:2510.27210) — 그래서 **wire는 구조화, 프롬프트는 문장**이다. 화면 정체성을 창 제목이 아니라 모델 요약으로 정한 근거는 서드파티 실측이다(2026-08-19 SM-S921N): 카카오T 택시 흐름 5화면의 창 제목이 null/'카카오 T' 둘뿐, 배민 주문 흐름 6화면이 전부 '배달의민족'인 반면, 같은 화면 13건 요약 생성에서 11건이 정확했고 치명 오답은 0이었다. `device_id`는 기기와 세션을 혼동하고 서버 캐시는 TTL·멀티워커·세션 누출을 만든다. #44의 generation 격리와 함께 이력을 비우면 같은 목표 재시작도 분리된다. 서명은 label을 포함하지 않아 시계·배터리 변동과 원문 label 해시의 재식별 위험을 피한다. |
