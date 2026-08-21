@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .metrics import summarize
+from .metrics import batch_of, in_batch, summarize
 from .models import ScenarioResult
 
 _SUMMARY_HEADERS = [
@@ -29,7 +29,7 @@ def write_run(out_dir: Path, results: list[ScenarioResult], meta: dict) -> Path:
     with (out_dir / "transcripts.jsonl").open("w", encoding="utf-8") as handle:
         for result in results:
             handle.write(result.model_dump_json() + "\n")
-    summary = summarize(results)
+    summary = summarize(results, batch=batch_of(meta))
     (out_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -87,8 +87,16 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         "",
         _table(["id", "난이도", "도달", "질문", "자유입력", "종료", "최종 goal"]),
     ]
+    batch = batch_of(meta)
     for result in results:
-        achievement = result.judge.achievement.value if result.judge else "-"
+        # 다른 배치(다른 평가자 모델·시나리오 해시)의 채점은 위 집계에서 빠졌다 —
+        # 표에서도 이번 수치처럼 보이면 안 된다.
+        if in_batch(result, batch):
+            achievement = result.judge.achievement.value
+        elif result.judge is not None:
+            achievement = "다른 배치"
+        else:
+            achievement = "-"
         # 모델이 만든 문장이라 표를 깨는 문자가 올 수 있다 — 구분자와 줄바꿈만 걷는다.
         goal = " ".join((result.transcript.final_goal or "-").replace("|", "/").split())
         lines.append(

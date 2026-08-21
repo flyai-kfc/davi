@@ -531,6 +531,93 @@ def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch
     assert summary["전체"]["충족"] == 0
 
 
+def test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않는다(monkeypatch, tmp_path):
+    """옛 모델 점수 2건 중 1건만 재채점하면, 나머지 1건은 저장은 유지하되
+    집계에서 빠지고 표에 '다른 배치'로 드러나야 한다(리뷰 실측 재현)."""
+
+    import json
+
+    from pingpong_eval import cli
+    from pingpong_eval.models import (
+        Achievement,
+        JudgeBatch,
+        JudgeResult,
+        ScenarioResult,
+        StopReason,
+        Transcript,
+    )
+
+    class _OkJudge:
+        model = "새모델"
+        base_url = None
+        input_tokens = 0
+        output_tokens = 0
+
+        def parse(self, prompt, response_model, system=None):
+            return response_model(
+                achievement=Achievement.PARTIAL,
+                reason="새 채점",
+                slot_scores=[],
+                violations=[],
+            )
+
+    monkeypatch.setattr(cli, "ClaudeJudge", _OkJudge)
+
+    digest = cli.scenario_digest(ROOT / DEFAULT_SCENARIOS)
+    first, second = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[:2]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "meta.json").write_text(
+        json.dumps({"시나리오해시": digest}), encoding="utf-8"
+    )
+    with (run_dir / "transcripts.jsonl").open("w", encoding="utf-8") as handle:
+        for scenario in (first, second):
+            handle.write(
+                ScenarioResult(
+                    scenario_id=scenario.id,
+                    difficulty=scenario.difficulty,
+                    factors=scenario.factors,
+                    transcript=Transcript(
+                        scenario_id=scenario.id,
+                        opening="사진 보내줘",
+                        stop_reason=StopReason.READY,
+                    ),
+                    judge=JudgeResult(
+                        achievement=Achievement.FULL,
+                        reason="옛 채점",
+                        slot_scores=[],
+                        violations=[],
+                    ),
+                    judge_batch=JudgeBatch(model="옛모델", scenario_digest=digest),
+                ).model_dump_json()
+                + "\n"
+            )
+
+    code = cli.main(
+        [
+            "judge",
+            str(run_dir),
+            "--scenarios",
+            str(ROOT / DEFAULT_SCENARIOS),
+            "--only",
+            first.id,
+        ]
+    )
+    assert code == 0
+
+    lines = (run_dir / "transcripts.jsonl").read_text(encoding="utf-8").splitlines()
+    saved = {r.scenario_id: r for r in map(ScenarioResult.model_validate_json, lines)}
+    assert saved[first.id].judge.reason == "새 채점"
+    assert saved[first.id].judge_batch.model == "새모델"
+    assert saved[second.id].judge.reason == "옛 채점"  # 저장은 지워지지 않는다
+    assert saved[second.id].judge_batch.model == "옛모델"
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["전체"]["부분"] == 1  # 이번 배치의 새 점수만
+    assert summary["전체"]["충족"] == 0  # 옛 배치의 충족이 섞이지 않는다
+    assert "다른 배치" in (run_dir / "report.md").read_text(encoding="utf-8")
+
+
 def test_judge는_시나리오에_없는_id를_건너뛰고_실패로_센다(monkeypatch, tmp_path):
     """드리프트를 알고 진행한 복구 경로가 KeyError로 죽으면 안 된다."""
 

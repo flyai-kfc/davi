@@ -18,8 +18,8 @@ from pathlib import Path
 
 from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
-from .metrics import transcript_metrics
-from .models import ScenarioFile, ScenarioResult, StopReason, Transcript
+from .metrics import in_batch, transcript_metrics
+from .models import JudgeBatch, ScenarioFile, ScenarioResult, StopReason, Transcript
 from .report import write_run
 from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
@@ -129,11 +129,13 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print(f"준비 실패: {error}", file=sys.stderr)
         return 1
 
+    batch = JudgeBatch(model=judge_client.model, scenario_digest=current)
     judge_failures = 0
     for result in picked:
         # 재채점 대상의 이전 채점은 재시도 전에 비운다 — 실패했는데 남아 있으면
         # 옛 점수가 이번 채점(meta의 현재 평가자 모델·해시)으로 집계된다.
         result.judge = None
+        result.judge_batch = None
         scenario = scenarios.get(result.scenario_id)
         if scenario is None:
             # 드리프트를 알고 진행했거나 해시가 없는 옛 실행이면 여기 올 수 있다.
@@ -149,8 +151,24 @@ def cmd_judge(args: argparse.Namespace) -> int:
             print(f"[{result.scenario_id}] 채점 실패: {error}", file=sys.stderr)
             judge_failures += 1
             continue
+        result.judge_batch = batch
         print(
             f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}"
+        )
+
+    # 선택 밖 결과에 다른 배치(다른 평가자 모델·시나리오 해시)의 채점이 남아 있으면
+    # 저장은 유지하되 집계에서 빠진다 — 조용히 섞이는 것도, 조용히 사라지는 것도 안 된다.
+    stale = sum(
+        1
+        for r in results
+        if r.judge is not None and not in_batch(r, (batch.model, batch.scenario_digest))
+    )
+    if stale:
+        print(
+            f"다른 배치에서 채점된 {stale}건은 이번 집계에서 제외했다"
+            "(보고서 시나리오별 표에 '다른 배치'로 표시). 같은 수치로 합치려면 "
+            "같은 평가자·시나리오로 다시 채점한다.",
+            file=sys.stderr,
         )
 
     meta.update(
@@ -198,6 +216,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     user = UserSimulator(user_client, rng=random.Random(args.seed))
     results = []
     openings: list[str] = []
+    digest = scenario_digest(args.scenarios)
     judge_failures = 0
 
     for scenario in scenarios:
@@ -240,6 +259,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         if judge_client is not None:
             try:
                 result.judge = run_judge(judge_client, scenario, result.transcript)
+                result.judge_batch = JudgeBatch(
+                    model=judge_client.model, scenario_digest=digest
+                )
             except LlmError as error:
                 print(f"[{scenario.id}] 채점 실패: {error}", file=sys.stderr)
                 judge_failures += 1
@@ -253,7 +275,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     meta = {
         "실행시각": datetime.now().astimezone().isoformat(timespec="seconds"),
         "시나리오파일": str(args.scenarios),
-        "시나리오해시": scenario_digest(args.scenarios),
+        "시나리오해시": digest,
         "시나리오수": len(scenarios),
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,

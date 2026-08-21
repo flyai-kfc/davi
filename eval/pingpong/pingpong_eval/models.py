@@ -204,10 +204,27 @@ class JudgeResult(BaseModel):
     violations: list[Violation]
 
 
+class JudgeBatch(BaseModel):
+    """이 judge가 나온 채점 배치(평가자 모델·시나리오 해시).
+
+    평가자 모델이나 시나리오 파일이 다른 채점을 한 수치로 섞으면 '비교 가능한 수치'라는
+    하니스의 계약이 깨진다 — 집계는 같은 배치만 한다. ``JudgeResult``에 두지 않는 이유는
+    그 모델이 평가자 LLM의 구조화 출력 스키마로 그대로 나가기 때문이다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str
+    scenario_digest: str
+
+
 class ScenarioResult(BaseModel):
     scenario_id: str
     difficulty: Difficulty
     factors: list[str]
     transcript: Transcript
     judge: JudgeResult | None = None
+    # judge와 함께 채워지고 함께 비워진다. judge가 있는데 배치가 없으면 출처 미상이라
+    # 집계에서 빠진다(이 필드가 생기기 전의 채점).
+    judge_batch: JudgeBatch | None = None
     metrics: dict = Field(default_factory=dict)
