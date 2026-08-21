@@ -10,10 +10,7 @@ import androidx.test.uiautomator.UiDevice
  * 수신자 위험을 함께 줄이기 위해서다.
  */
 internal class KakaoTalkPhotoPreSendScenario : GuidedScenario<KakaoTalkPhotoPreSendScenario.State> {
-    data class State(
-        val launcherPackage: String,
-        var attachSurfaceSeen: Boolean = false,
-    )
+    data class State(val launcherPackage: String)
 
     override val id: String = "kakaotalk-photo-presend-full-journey"
     override val start: GuidedScenarioStart = GuidedScenarioStart.DAVI_TO_ANDROID_HOME
@@ -23,7 +20,7 @@ internal class KakaoTalkPhotoPreSendScenario : GuidedScenario<KakaoTalkPhotoPreS
     override val handlesPersonalData: Boolean = true
 
     private lateinit var robot: KakaoTalkRobot
-    private var boundaryState: State? = null
+    private var boundaryRobot: KakaoTalkRobot? = null
 
     override val hardBoundaries: List<GuidedHardBoundary>
         get() = listOf(
@@ -31,17 +28,18 @@ internal class KakaoTalkPhotoPreSendScenario : GuidedScenario<KakaoTalkPhotoPreS
                 codePrefix = "kakao_send",
                 packages = setOf(KakaoTalkRobot.PACKAGE),
                 labelFragments = KakaoTalkRobot.SEND_FRAGMENTS,
-                // 사진 첨부 화면에 들어온 뒤부터는 전송 컨트롤이 식별돼야 한다.
-                controlRequired = { boundaryState?.attachSurfaceSeen == true },
+                // 모델이 선택한 label이 아니라 실제 사진 선택 표시를 기준으로 fail-closed 한다.
+                controlRequired = { boundaryRobot?.hasPhotoSelectionEvidence() == true },
             ),
         )
 
     override fun prepare(device: UiDevice): State {
         robot = KakaoTalkRobot(device)
+        boundaryRobot = robot
         robot.forceStop()
         val launcherPackage = device.launcherPackageName
             ?: throw GuidedScenarioFailure("launcher_package_missing")
-        return State(launcherPackage).also { boundaryState = it }
+        return State(launcherPackage)
     }
 
     override fun goal(state: State): String =
@@ -59,9 +57,6 @@ internal class KakaoTalkPhotoPreSendScenario : GuidedScenario<KakaoTalkPhotoPreS
         }
         if (decision.screenPackage != KakaoTalkRobot.PACKAGE) {
             return GuidedDecisionAssessment(deviationCodes = listOf("unexpected_package"))
-        }
-        if (GuardedControlSafety.containsBlockedLabel(decision.requestTargetLabel(), ATTACH_FRAGMENTS)) {
-            state.attachSurfaceSeen = true
         }
         return GuidedDecisionAssessment()
     }
@@ -82,21 +77,18 @@ internal class KakaoTalkPhotoPreSendScenario : GuidedScenario<KakaoTalkPhotoPreS
     }
 
     override fun isGoalSatisfied(device: UiDevice, state: State): Boolean =
-        state.attachSurfaceSeen && robot.isPreSendReady()
+        robot.isPreSendReady()
 
     override fun cleanup(device: UiDevice, state: State?) {
         // 전송 전이라 만든 데이터가 없다. 앱을 내려 사진 선택·입력 상태만 버린다.
         val cleanupRobot = if (::robot.isInitialized) robot else KakaoTalkRobot(device)
         cleanupRobot.forceStop()
-        boundaryState = null
+        boundaryRobot = null
     }
 
     private companion object {
         const val LAUNCHER_SEARCH_TEXT = "카카오톡"
         const val CHAT_SEARCH_TEXT = "나와의 채팅"
         val LAUNCHER_APP_FRAGMENTS = setOf("카카오톡", "kakaotalk")
-
-        /** 사진 첨부 진입으로 보는 대상 label 조각 — + 첨부, 앨범, 사진, 전체보기. */
-        val ATTACH_FRAGMENTS = setOf("앨범", "사진", "첨부", "전체보기", "더보기")
     }
 }

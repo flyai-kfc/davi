@@ -6,13 +6,17 @@ import androidx.test.uiautomator.UiDevice
  * 카카오톡 pre-send 시나리오의 사전 조건·독립 검증·정리만 담당한다.
  *
  * 시나리오는 아무것도 전송하지 않고 끝나므로 지울 데이터가 없다 — 정리는 앱 종료로 선택·입력
- * 상태를 버리는 것까지다. selector는 2026-08-19 기준 실기기(카카오톡 26.7.1) 미검증이라 화면
- * 문구 기반의 성긴 판정만 둔다.
+ * 상태를 버리는 것까지다. selector는 2026-08-21 실기기(카카오톡 26.7.1)에서 양성·음성
+ * 상태를 확인했지만 화면 문구 기반이라 성긴 판정만 둔다.
  */
 internal class KakaoTalkRobot(private val device: UiDevice) {
     fun forceStop() = GuidedAppOps.forceStop(device, PACKAGE)
 
     fun isForeground(): Boolean = GuidedAppOps.isForeground(device, PACKAGE)
+
+    /** 사진이 실제로 선택됐다는 live UI 증거. 전송 경계를 fail-closed로 바꾸는 기준이기도 하다. */
+    fun hasPhotoSelectionEvidence(): Boolean =
+        isForeground() && GuidedAppOps.hasVisibleLabelLike(device, PHOTO_SELECTION_FRAGMENT)
 
     /**
      * 사진을 고른 채 전송 직전에 서 있는가.
@@ -24,12 +28,14 @@ internal class KakaoTalkRobot(private val device: UiDevice) {
     fun isPreSendReady(): Boolean =
         isForeground() &&
             GuardedControlGuard.liveBlockedControlBoxes(device, SEND_FRAGMENTS).isNotEmpty() &&
-            GuidedAppOps.hasVisibleLabelLike(device, "선택")
+            hasPhotoSelectionEvidence()
 
     companion object {
         const val PACKAGE = "com.kakao.talk"
 
         /** 채팅 전송·사진 전송 버튼이 쓰는 label 조각. 차단과 pre-send 판정이 같은 집합을 쓴다. */
         val SEND_FRAGMENTS = setOf("전송", "보내기", "send")
+
+        private const val PHOTO_SELECTION_FRAGMENT = "선택"
     }
 }
