@@ -69,8 +69,13 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"structure_signature\":\"${"b".repeat(64)}\""))
         assertTrue(body.contains("\"screen_hint\":\"런처 홈 화면\""))
         assertTrue(body.contains("\"screen_changed\":true"))
-        // 아직 관측하지 않는 둘은 explicitNulls=false라 아예 실리지 않는다(#270 서브 3·4).
-        assertFalse(body.contains("\"performed\""))
+        assertTrue(body.contains("\"performed\":true"))
+        // null인 performed(귀속 미확인)는 explicitNulls=false라 키째 생략된다 — 서버 기본값
+        // None과 맞물리는 침묵 규약이다. 두 번째 스텝이 그 생략을 고정한다(값이 있는 스텝은
+        // 하나뿐이므로 키도 한 번만 나타나야 한다).
+        assertEquals(1, Regex("\"performed\"").findAll(body).count())
+        // 아직 관측하지 않는 content_signature도 같은 규칙으로 실리지 않는다(#270 서브 4).
+        assertFalse(body.contains("\"content_signature\""))
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -224,6 +229,14 @@ class GuideApiClientTest {
                 screenHint = "런처 홈 화면",
                 structureSignature = "b".repeat(64),
                 screenChanged = true,
+                performed = true,
+            ),
+            GuideStep(
+                instruction = "'연결'을 눌러 주세요.",
+                actionType = ActionType.TAP,
+                targetLabel = "연결",
+                screenHint = "설정 앱의 메뉴 목록 화면",
+                structureSignature = "c".repeat(64),
             ),
         ),
         clientVersion = "0.1.0",

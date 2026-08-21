@@ -14,6 +14,48 @@ package com.davi.helper
 object PressMatch {
 
     /**
+     * 눌림 판정의 세 갈래(#319). 축마다 확신의 방향이 다르다 — 좌표 축은 양쪽을 다 확신하고,
+     * 텍스트 폴백 축은 일치만 확신한다([byLabel] KDoc: 틀리면 미탐이지 오탐이 아니다).
+     */
+    enum class Verdict {
+        /** 안내한 대상을 눌렀다. */
+        ON_TARGET,
+
+        /**
+         * 안내한 대상이 아닌 곳을 눌렀다. **좌표 축에서만 나온다** — 클릭된 노드의 위치를
+         * 정확히 알 때만 "다른 곳"을 확신할 수 있다. 텍스트 불일치는 이 값이 되지 못한다.
+         *
+         * 알려진 오탐 경로 하나: 대상이 `clickable=false`면(#311) 탭이 클릭 가능한 조상에서
+         * 발화해 중심이 대상 밖일 수 있다 — 시킨 대로 눌렀는데 이 값이 나온다.
+         */
+        OFF_TARGET,
+
+        /** 판정 불가. source 없는 불일치가 여기로 온다 — 미탐일 수 있어 단정하지 않는다. */
+        UNKNOWN,
+    }
+
+    /**
+     * 클릭 이벤트 하나를 세 갈래로 가른다. [clickedCenter]는 `event.source`가 준 클릭 노드의
+     * 중심이고, source가 회수됐으면 null이다(#238 — 그때만 텍스트 폴백).
+     *
+     * 대상 bounds가 기형(size≠4)이면 [Verdict.UNKNOWN]이다 — 위치를 모르는 것이지
+     * "다른 곳"이 아니다.
+     */
+    fun judge(
+        targetBounds: List<Int>,
+        clickedCenter: Pair<Int, Int>?,
+        targetLabel: String?,
+        candidates: List<String>,
+    ): Verdict {
+        if (targetBounds.size != 4) return Verdict.UNKNOWN
+        if (clickedCenter != null) {
+            val (x, y) = clickedCenter
+            return if (byBounds(targetBounds, x, y)) Verdict.ON_TARGET else Verdict.OFF_TARGET
+        }
+        return if (byLabel(targetLabel, candidates)) Verdict.ON_TARGET else Verdict.UNKNOWN
+    }
+
+    /**
      * 클릭된 노드의 **중심**이 대상 사각형 안인가.
      *
      * 사각형이 정확히 같기를 요구하지 않는다 — 우리가 지목한 것은 컨테이너인데 클릭 이벤트는

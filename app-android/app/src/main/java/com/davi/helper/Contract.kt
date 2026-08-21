@@ -138,8 +138,8 @@ data class GuideAction(
  * [contentSignature]). 앱은 나르기만 하고 해석하지 않는다. [targetLabel]만 `target_node_id`로
  * 현재 화면에서 찾아 붙이는데, 강조를 그리려고 어차피 하는 조회다.
  *
- * [performed]와 [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 3·4). 필드를 먼저
- * 두는 것은 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
+ * [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 4). 필드를 먼저 두는 것은
+ * 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
  */
 @Serializable
 data class GuideStep(
@@ -154,6 +154,11 @@ data class GuideStep(
     @SerialName("structure_signature") val structureSignature: String,
     /** 그 안내 뒤 화면이 실제로 바뀌었는가. `null`은 아직 모른다는 뜻이다. */
     @SerialName("screen_changed") val screenChanged: Boolean? = null,
+    /**
+     * 안내한 대상을 사용자가 실제로 눌렀는가(`PressMatch`, #319). `false`는 좌표 축의 확신
+     * 불일치(다른 노드를 누름)에서만 나오고, `null`은 귀속 미확인이다 — 이벤트가 안 왔거나,
+     * source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다.
+     */
     val performed: Boolean? = null,
     @SerialName("content_signature") val contentSignature: String? = null,
 )

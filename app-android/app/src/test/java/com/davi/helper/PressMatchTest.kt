@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -90,6 +91,67 @@ class PressMatchTest {
     @Test
     fun `여러 텍스트 중 하나만 맞아도 된다`() {
         assertTrue(PressMatch.byLabel("카메라", listOf("사진", "카메라")))
+    }
+
+    // --- 3상태 판정(#319) --------------------------------------------------------
+
+    @Test
+    fun `좌표가 대상 안이면 눌림이다`() {
+        assertEquals(
+            PressMatch.Verdict.ON_TARGET,
+            PressMatch.judge(BOUNDS, 60 to 120, "카메라", emptyList()),
+        )
+    }
+
+    /** 좌표 축은 "다른 곳"도 확신한다 — 여기서만 OFF_TARGET이 나온다. */
+    @Test
+    fun `좌표가 대상 밖이면 다른 곳을 누른 것이다`() {
+        assertEquals(
+            PressMatch.Verdict.OFF_TARGET,
+            PressMatch.judge(BOUNDS, 300 to 400, "카메라", listOf("전화")),
+        )
+    }
+
+    /** 좌표가 있으면 텍스트는 보지 않는다 — 텍스트가 맞아도 좌표가 밖이면 다른 곳이다. */
+    @Test
+    fun `좌표가 있으면 텍스트보다 좌표를 믿는다`() {
+        assertEquals(
+            PressMatch.Verdict.OFF_TARGET,
+            PressMatch.judge(BOUNDS, 300 to 400, "카메라", listOf("카메라")),
+        )
+    }
+
+    @Test
+    fun `좌표가 없어도 텍스트가 맞으면 눌림이다`() {
+        assertEquals(
+            PressMatch.Verdict.ON_TARGET,
+            PressMatch.judge(BOUNDS, null, "카메라", listOf("카메라")),
+        )
+    }
+
+    /**
+     * 텍스트 불일치는 미탐일 수 있다 — 마스킹된 label이면 대상을 눌렀어도 안 맞는다.
+     * 그래서 OFF_TARGET이 아니라 UNKNOWN이다.
+     */
+    @Test
+    fun `좌표 없는 불일치는 다른 곳이 아니라 모름이다`() {
+        assertEquals(
+            PressMatch.Verdict.UNKNOWN,
+            PressMatch.judge(BOUNDS, null, "카메라", listOf("전화")),
+        )
+        assertEquals(
+            PressMatch.Verdict.UNKNOWN,
+            PressMatch.judge(BOUNDS, null, "카메라", emptyList()),
+        )
+    }
+
+    /** 대상 위치를 모르는 것이지 "다른 곳"이 아니다. */
+    @Test
+    fun `망가진 대상 좌표는 모름이다`() {
+        assertEquals(
+            PressMatch.Verdict.UNKNOWN,
+            PressMatch.judge(listOf(10, 20, 110), 60 to 120, "카메라", listOf("카메라")),
+        )
     }
 
     private companion object {

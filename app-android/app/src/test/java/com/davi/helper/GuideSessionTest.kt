@@ -33,13 +33,14 @@ class GuideSessionTest {
 
     private fun sampleStep(
         instruction: String = "화면을 넘기세요.",
+        actionType: ActionType = ActionType.SCROLL,
         targetLabel: String? = "카카오톡",
         screenHint: String? = "런처 홈 화면",
         structureSignature: String = "a".repeat(64),
     ) = GuideStep(
         instruction = instruction,
-        actionType = ActionType.SCROLL,
-        direction = SwipeDirection.UP,
+        actionType = actionType,
+        direction = SwipeDirection.UP.takeIf { actionType == ActionType.SCROLL },
         targetLabel = targetLabel,
         screenHint = screenHint,
         structureSignature = structureSignature,
@@ -49,8 +50,13 @@ class GuideSessionTest {
     private fun record(
         generation: Long = currentGeneration(),
         instruction: String = "화면을 넘기세요.",
+        actionType: ActionType = ActionType.SCROLL,
         screenSignature: String = SIGNATURE,
-    ) = GuideSession.recordStep(generation, screenSignature, sampleStep(instruction = instruction))
+    ) = GuideSession.recordStep(
+        generation,
+        screenSignature,
+        sampleStep(instruction = instruction, actionType = actionType),
+    )
 
     @Test
     fun `시작하면 공백을 제거한 목표가 남는다`() {
@@ -285,6 +291,195 @@ class GuideSessionTest {
         GuideSession.observeScreen(stale + 1, OTHER_SIGNATURE)
 
         assertNull(steps().single().screenChanged)
+    }
+
+    // --- 안내한 대상을 눌렀는가 (#319) -------------------------------------------
+    //
+    // 판정 시점은 클릭 이벤트가 온 순간이다. 이벤트가 안 오면 영원히 null(귀속 미확인)이고
+    // 그것이 설계된 퇴화 경로다 — 미탐은 "안 누름"이 아니다.
+
+    @Test
+    fun `대상을 누르면 마지막 스텝에 적힌다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertEquals(true, steps().single().performed)
+    }
+
+    /** 좌표 축의 확신 불일치 — 다른 노드를 눌렀다는 기록이다. */
+    @Test
+    fun `다른 곳을 누르면 false로 적힌다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+
+        GuideSession.observePress(currentGeneration(), onTarget = false)
+
+        assertEquals(false, steps().single().performed)
+    }
+
+    /** 빗맞은 뒤 대상을 제대로 누르면 그것이 사실이다 — observeScreen의 false→true와 같은 결. */
+    @Test
+    fun `빗맞은 스텝도 대상을 누르면 true로 덮인다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+        GuideSession.observePress(currentGeneration(), onTarget = false)
+
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertEquals(true, steps().single().performed)
+    }
+
+    @Test
+    fun `한 번 눌린 스텝은 빗맞아도 true로 남는다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        GuideSession.observePress(currentGeneration(), onTarget = false)
+
+        assertEquals(true, steps().single().performed)
+    }
+
+    /**
+     * 화면이 바뀐 스텝에는 적지 않는다 — 다음 응답까지 옛 대상 bounds가 무장 상태로 남아,
+     * 새 화면의 탭이 옛 스텝에 귀속되는 오탐 창을 닫는다.
+     */
+    @Test
+    fun `화면이 바뀐 스텝에는 눌림을 적지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(screenSignature = SIGNATURE)
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
+
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertNull(steps().single().performed)
+    }
+
+    @Test
+    fun `스텝이 없으면 눌림 관측은 아무것도 하지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertTrue(steps().isEmpty())
+    }
+
+    @Test
+    fun `이전 세대의 눌림 관측은 스텝을 건드리지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+        val stale = currentGeneration()
+
+        GuideSession.observePress(stale + 1, onTarget = true)
+
+        assertNull(steps().single().performed)
+    }
+
+    @Test
+    fun `새 스텝의 눌림은 비어서 시작한다`() {
+        GuideSession.start("카카오톡 열기")
+        record()
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        record(instruction = "설정을 누르세요.")
+
+        assertEquals(listOf(true, null), steps().map { it.performed })
+    }
+
+    // --- 눌림 확인 재질의 토큰 (#319) ---------------------------------------------
+    //
+    // 눌림 하나에 토큰 하나 — 재질의도 눌림당 최대 1회다(#39 호출량 규율의 유일한 예외).
+    // tap 스텝만 무장한다: type의 눌림 확인은 "입력칸을 눌렀다"까지고 그 뒤 무변화는
+    // 입력 중인 정상 상태다.
+
+    @Test
+    fun `tap 대상을 누르면 재질의 토큰이 생긴다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertTrue(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    /** 소비는 한 번뿐이다 — 같은 눌림으로 재질의가 두 번 나가면 상한이 무너진다. */
+    @Test
+    fun `재질의 토큰은 한 번만 소비된다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertTrue(GuideSession.consumePressRequery(currentGeneration()))
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    @Test
+    fun `type 스텝의 눌림은 기록되지만 토큰은 만들지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TYPE)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertEquals(true, steps().single().performed)
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    @Test
+    fun `빗맞음은 재질의 토큰을 만들지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = false)
+
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    /** 토큰은 그 안내의 눌림에 매인 근거다 — 새 안내가 나가면 소멸한다. */
+    @Test
+    fun `새 안내가 나가면 재질의 토큰이 사라진다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        record(instruction = "설정을 누르세요.")
+
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    /**
+     * "눌렀는데 화면이 그대로"라는 근거는 화면이 바뀌는 순간 깨진다. 응답이 스텝을 못 남기는
+     * 경로(폐기·미검증 done)에서도 토큰이 다음 화면으로 새지 않아야 한다.
+     */
+    @Test
+    fun `화면이 바뀌면 재질의 토큰이 사라진다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP, screenSignature = SIGNATURE)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        GuideSession.observeScreen(currentGeneration(), OTHER_SIGNATURE)
+
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    @Test
+    fun `세션이 바뀌면 재질의 토큰이 사라진다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        GuideSession.stop()
+        GuideSession.start("카카오톡 열기")
+
+        assertFalse(GuideSession.consumePressRequery(currentGeneration()))
+    }
+
+    @Test
+    fun `이전 세대는 재질의 토큰을 소비할 수 없다`() {
+        GuideSession.start("카카오톡 열기")
+        record(actionType = ActionType.TAP)
+        GuideSession.observePress(currentGeneration(), onTarget = true)
+
+        assertFalse(GuideSession.consumePressRequery(currentGeneration() + 1))
+        assertTrue(GuideSession.consumePressRequery(currentGeneration()))
     }
 
     // --- 늦게 도착한 응답 (PR #44 리뷰) ------------------------------------------
