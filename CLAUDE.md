@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `app-android/` | Kotlin/Android | 기기측 실행기: 트리 직렬화·1차 마스킹·오버레이·정체 감지 | `app-android/CLAUDE.md` |
 | `server/` | Python 3.12/FastAPI | 추론 오케스트레이터: 프롬프트·모델 호출·완료 검증·2차 마스킹 | `server/CLAUDE.md` |
-| `eval/` | Python | 회귀 평가 하니스 + 픽스처 | `eval/CLAUDE.md` |
+| `eval/` | Python | 회귀 평가 하니스 + 픽스처, 핑퐁 성능 하니스(`eval/pingpong/`) | `eval/CLAUDE.md` |
 | `reference/` | — | 이전 PoC (read-only, gitignore) | — |
 
 스택별 세부 규칙(빌드·린트·의존성)은 각 폴더 CLAUDE.md에 있다. 여기 루트에는 공통만 둔다.

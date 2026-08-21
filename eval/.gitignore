@@ -6,6 +6,8 @@ venv/
 .ruff_cache/
 .env
 .env.*
+# 예시 파일에는 비밀값이 없고 설정 항목의 목록 노릇을 한다.
+!.env.example
 
 # 실행 산출물(JSON 결과·리포트). 픽스처는 커밋하되 runs는 아님.
 runs/
