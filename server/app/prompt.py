@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from .schemas import GuideStep, NextStepRequest, SwipeDirection, UiElement
+from .screen_view import scrollable_is_only_obscured, visible_elements
 
 # 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
@@ -61,6 +62,11 @@ SWIPE_DIRECTION_LEGEND = (
 )
 
 SCROLLABLE_OBSERVED = "스크롤: 스크롤 가능한 요소가 관측되었습니다"
+# 관측은 실제로 있었으므로 "관측되지 않았다"로 뒤집지 않는다 — 사실에 단서만 붙인다.
+# 판단("그러니 모달을 닫아라")은 넣지 않는다. 문구가 값을 끌어당긴 전례가 있다(C17 · #109).
+SCROLLABLE_OBSERVED_BUT_COVERED = (
+    "스크롤: 스크롤 가능한 요소가 관측되었지만 지금은 다른 요소에 가려져 있습니다"
+)
 SCROLLABLE_NOT_OBSERVED = (
     "스크롤: 스크롤 가능한 요소가 관측되지 않았습니다(화면을 넘길 수 없다는 뜻은 아닙니다)"
 )
@@ -347,7 +353,12 @@ def _scroll_context(req: NextStepRequest) -> str:
     observed = req.screen.has_scrollable_element
     if observed is None:
         return ""
-    context = f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
+    if not observed:
+        context = f"{SCROLLABLE_NOT_OBSERVED}\n"
+    elif scrollable_is_only_obscured(req.screen.elements):
+        context = f"{SCROLLABLE_OBSERVED_BUT_COVERED}\n"
+    else:
+        context = f"{SCROLLABLE_OBSERVED}\n"
 
     open_directions, ended_directions = _scroll_reach(_visible_elements(req))
     if open_directions:
@@ -452,42 +463,18 @@ def _input_context(req: NextStepRequest) -> str:
     return context
 
 
-def obscured_observation_unreliable(elements: list[UiElement]) -> bool:
-    """이 화면의 `obscured` 관측을 통째로 불신할지. **프롬프트와 가드가 같은 판정을 봐야 한다.**
-
-    근거: 무언가를 가리는 쪽(모달·시트)은 **자기 자신이 항상 보인다** — 덮는 요소가 가려질 수는
-    없다. 그래서 "요소 전부가 가려졌다"는 화면은 실제로 존재하지 않고, 그렇게 관측됐다면 앱의
-    기하 판정이 오작동한 것이다(PR #336 본문 "남은 것"의 과잉 판정 시나리오).
-
-    이 판정을 프롬프트(요소 목록 폴백)만 보고 가드가 안 보면, 폴백으로 실린 요소를 모델이
-    골랐을 때 가드가 전부 거부해 **백오프 → 같은 프롬프트 → 같은 거부**의 뺑뺑이가 된다 —
-    스크롤 줄이 목록에 없는 id를 가리키던 것과 같은 모양의 모순을 다시 만드는 셈이다.
-    """
-
-    return bool(elements) and all(element.obscured is True for element in elements)
-
-
 def _visible_elements(req: NextStepRequest) -> list[UiElement]:
-    """모델에게 보여 줄 요소. **가려진 것은 빼고 준다**(PR #336 리뷰).
+    """모델에게 보여 줄 요소. 판정은 `screen_view`가 들고 **가드레일과 공유한다**.
 
     빼는 이유는 토큰이 아니라 **선택지**다. 실측 화면에서 가려진 요소가 53개 중 39개였고,
     그것들이 목록의 대부분을 차지한 채 모델에게 오답 후보로 제시된다. 골라 봐야 가드가 요청을
     실패로 닫고, 앱은 백오프 후 **같은 프롬프트로** 다시 물어 같은 함정을 다시 밟는다.
 
-    가드(`reasoning._reject_obscured_target`)는 그대로 둔다 — 낡은 앱의 미관측과 경계 사례를
-    받는 안전망이라 여기서 뺐다고 없앨 것이 아니다.
-
-    `None`(미관측)은 뺄 근거가 없으므로 그대로 싣는다(C10의 세 상태 규약).
-
-    **전부 가려졌다고 관측된 화면은 원본을 그대로 준다.** 그런 화면은 실존하지 않아 관측
-    오작동의 신호이고([obscured_observation_unreliable]), 그대로 지우면 모델이 "요소 없음"을
-    받아 멀쩡한 화면에서 안내가 통째로 죽는다. 실패 모드를 "화면이 비어 보임"이 아니라
-    "틀린 후보가 섞임"에 묶어 두는 선택이다 — 후자는 가드와 재질의로 회복할 수 있다.
+    **프롬프트 안에서 요소를 훑는 곳은 전부 이 목록을 봐야 한다.** 한 곳만 전체를 보면 그
+    자리가 목록에 없는 것을 가리켜 모순이 된다(리뷰 2R에서 실제로 셋이 남아 있었다).
     """
 
-    if obscured_observation_unreliable(req.screen.elements):
-        return req.screen.elements
-    return [element for element in req.screen.elements if element.obscured is not True]
+    return visible_elements(req.screen.elements)
 
 
 def _screen_elements(req: NextStepRequest) -> str:

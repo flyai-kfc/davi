@@ -194,7 +194,9 @@ object UiTreeSerializer {
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
         // 직렬화는 폴링마다 돌고 안정·정체 판정이 그 시간 위에 얹혀 있다(PR #336 리뷰).
-        val painted = kids.map { hasPaintedContent(it, 0) }
+        // **형제가 있어야 읽히는 값이다.** 안드로이드 트리는 단일 자식 래퍼 사슬이 흔한데,
+        // 거기서 계산하면 사슬 깊이만큼 안 쓰는 순회(깊이 6, `getChild()` IPC)가 폴링마다 생긴다.
+        val painted = if (kids.size < 2) emptyList() else kids.map { hasPaintedContent(it, 0) }
         for ((index, child) in kids.withIndex()) {
             // 이 자식보다 **위에 그려지고 내용이 있는** 형제만 가림으로 친다.
             // 내용 조건이 없으면 빈 투명 오버레이(실측: draw=5)가 시트를 가린 것으로 잡힌다.

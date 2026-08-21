@@ -12,8 +12,14 @@ from __future__ import annotations
 import pytest
 from app.errors import LlmError
 from app.llm import LlmClient
-from app.prompt import FOCUSED_INPUT_INSTRUCTION, build_prompt
-from app.reasoning import next_step
+from app.prompt import (
+    FOCUSED_INPUT_INSTRUCTION,
+    SCROLLABLE_NOT_OBSERVED,
+    SCROLLABLE_OBSERVED,
+    SCROLLABLE_OBSERVED_BUT_COVERED,
+    build_prompt,
+)
+from app.reasoning import _no_scroll_target_reason, _verify_done, next_step
 from app.schemas import (
     ActionType,
     ErrorKind,
@@ -303,3 +309,95 @@ def test_scroll_filling_also_stands_down_when_every_element_is_obscured():
     )
 
     assert _guide(scroll, _all_obscured_screen()).target_node_id == "n2"
+
+
+def _covered_list_screen() -> Screen:
+    """스크롤 안 되는 모달이 스크롤 목록을 덮은 화면.
+
+    `has_scrollable_element`는 화면 단위 관측이라 앱이 **가려진 노드까지 세서** 채운다.
+    그래서 관측 사실만 남고 목록에는 그 요소가 없다.
+    """
+
+    return Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[
+            UiElement(node_id="n1", label="닫기", role="View", clickable=True, obscured=False),
+            _scrollable("n27", obscured=True),
+        ],
+    )
+
+
+def test_scroll_observation_line_says_the_scrollable_is_covered():
+    """미끼를 없앤다 — 목록에 스크롤 요소가 없는데 "스크롤 가능하다"고만 말하면 안 된다."""
+
+    prompt = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=_covered_list_screen()))
+
+    assert SCROLLABLE_OBSERVED_BUT_COVERED in prompt
+    assert SCROLLABLE_OBSERVED not in prompt
+    # 관측은 실제로 있었으므로 "관측되지 않았다"로 뒤집으면 거짓이 된다.
+    assert SCROLLABLE_NOT_OBSERVED not in prompt
+
+
+def test_scroll_observation_line_is_unchanged_when_the_scrollable_is_visible():
+    screen = Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[_scrollable("n2", obscured=False)],
+    )
+    prompt = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=screen))
+
+    assert SCROLLABLE_OBSERVED in prompt
+    assert SCROLLABLE_OBSERVED_BUT_COVERED not in prompt
+
+
+def test_failure_reason_says_covered_not_already_at_the_end():
+    """후보가 가려져서 빈 것을 "이미 끝"으로 적으면 실기기 로그가 엉뚱한 데를 판다."""
+
+    reason = _no_scroll_target_reason(_covered_list_screen(), SwipeDirection.DOWN)
+
+    assert "가려져" in reason
+    assert "이미 끝" not in reason
+
+
+def test_completion_evidence_cannot_lean_on_a_hidden_label():
+    """모델이 볼 수 없었던 label로 완료가 통과되면 검증이 느슨해진다."""
+
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(node_id="n1", label="닫기", role="View", clickable=True, obscured=False),
+            UiElement(node_id="n2", label="주문이 완료되었습니다", role="View", obscured=True),
+        ],
+    )
+    done = GuideAction(
+        expected_result="주문이 완료된 화면",
+        screen_summary="배달 앱 화면",
+        evidence="주문이 완료되었습니다",
+        action_type=ActionType.DONE,
+        instruction="주문이 끝났어요.",
+    )
+
+    request = NextStepRequest(goal="치킨을 주문한다", screen=screen)
+
+    assert _verify_done(done, request) is False
+
+
+def test_completion_evidence_still_passes_on_a_visible_label():
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(node_id="n1", label="주문이 완료되었습니다", role="View", obscured=False),
+        ],
+    )
+    done = GuideAction(
+        expected_result="주문이 완료된 화면",
+        screen_summary="배달 앱 화면",
+        evidence="주문이 완료되었습니다",
+        action_type=ActionType.DONE,
+        instruction="주문이 끝났어요.",
+    )
+
+    request = NextStepRequest(goal="치킨을 주문한다", screen=screen)
+
+    assert _verify_done(done, request) is True

@@ -18,7 +18,6 @@ from .config import settings
 from .errors import LlmError
 from .llm import LlmClient
 from .masking import MaskingPolicy, active_masking_policy
-from .prompt import obscured_observation_unreliable
 from .schemas import (
     ActionType,
     ErrorKind,
@@ -28,6 +27,11 @@ from .schemas import (
     Screen,
     SwipeDirection,
     UiElement,
+)
+from .screen_view import (
+    has_scroll_metadata,
+    obscured_observation_unreliable,
+    visible_elements,
 )
 
 _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
@@ -66,8 +70,10 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
     가리키면 화면이 그대로고 → 정체 판정 → **정체에서는 서버를 다시 부르지 않으므로**(#39)
     회복 경로가 없다. 실패로 닫으면 앱이 백오프 후 같은 화면을 다시 물어본다(`retryThisScreen`).
 
-    프롬프트에도 같은 사실을 싣지만(`prompt.OBSCURED_ELEMENT_INSTRUCTION`) 그건 지시일 뿐이라
-    여기서 한 번 더 막는다. 실측에서 모델은 시트 뒤의 '치킨' 버튼을 골랐다.
+    프롬프트는 가려진 요소를 **목록에서 뺀다**(`prompt._visible_elements`). 그래도 여기서 한 번
+    더 막는 이유는 미관측(`None`)과 경계 사례가 새기 때문이고, 무엇보다 **프롬프트를 거치지
+    않고 대상이 정해지는 자리**가 있기 때문이다(`_resolve_scroll` 2단이 대상을 직접 채운다).
+    실측에서 모델은 시트 뒤의 '치킨' 버튼을 골랐다.
 
     **다른 대상을 대신 고르지 않는다** — 가드는 교정이지 재선택이 아니다(`_resolve_scroll`과
     같은 경계). 무엇을 눌러야 하는지는 가려지지 않은 요소를 보고 모델이 다시 정할 일이다.
@@ -191,15 +197,7 @@ def _observed_scroll_state(screen: Screen) -> bool:
 
     if screen.has_scrollable_element is not None:
         return True
-    return any(_has_scroll_metadata(element) for element in screen.elements)
-
-
-def _has_scroll_metadata(element: UiElement) -> bool:
-    return (
-        element.can_scroll_forward is not None
-        or element.can_scroll_backward is not None
-        or element.scroll_axis is not None
-    )
+    return any(has_scroll_metadata(element) for element in screen.elements)
 
 
 def _scroll_candidates(screen: Screen, direction: SwipeDirection | None) -> list[UiElement]:
@@ -258,9 +256,20 @@ def _no_scroll_target_reason(screen: Screen, direction: SwipeDirection | None) -
     화면의 `scroll right`가 "right 방향은 이미 끝"으로 나가 네 번째 상황이 첫 칸에 섞인다.
     """
 
+    # **"가려짐"을 "이미 끝"보다 먼저 본다.** 후보가 가려져서 빈 경우 아래 첫 분기가 참이 되어
+    # (가려진 목록도 `can_scroll_forward=True`다) 끝이 아닌데 "이미 끝"으로 적힌다. 이 함수의
+    # 존재 이유가 상황을 갈라 적는 것이라, 실기기 로그가 이 문구를 들고 오면 엉뚱한 데를 판다.
+    if any(
+        _scrolls_toward(element, direction) and element.obscured is True
+        for element in screen.elements
+    ):
+        return (
+            f"scroll 대상을 해석할 수 없다: {direction} 방향의 스크롤 요소가 "
+            "다른 요소에 가려져 있음"
+        )
     if any(_moves_along(element, direction) for element in screen.elements):
         return f"scroll 대상을 해석할 수 없다: 스크롤 요소는 있으나 {direction} 방향은 이미 끝"
-    if any(_has_scroll_metadata(element) for element in screen.elements):
+    if any(has_scroll_metadata(element) for element in screen.elements):
         return f"scroll 대상을 해석할 수 없다: 스크롤 요소가 {direction} 축으로 움직이지 않음"
     if screen.has_scrollable_element:
         return (
@@ -334,6 +343,9 @@ def _screen_signature(screen: Screen) -> str:
                 "checked": element.checked,
                 "selected": element.selected,
                 "showing_hint_text": element.showing_hint_text,
+                # 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 앱 시그니처
+                # (`ScreenSignature`)에도 같은 이유로 들어 있어 두 서명이 대칭이다.
+                "obscured": element.obscured,
                 "bounds": element.bounds,
                 "can_scroll_forward": element.can_scroll_forward,
                 "can_scroll_backward": element.can_scroll_backward,
@@ -383,7 +395,12 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     if not normalized_evidence:
         return False
 
-    labels = [_normalize_for_evidence(element.label) for element in screen.elements]
+    # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
+    # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
+    # 대조에 넣으면 지어낸 근거를 통과시키는 쪽으로만 작용한다 — 검증이 느슨해진다.
+    labels = [
+        _normalize_for_evidence(element.label) for element in visible_elements(screen.elements)
+    ]
     present = [label for label in labels if label]
     if not present:
         # 화면에 label이 하나도 없으면 검사할 수 없다.
