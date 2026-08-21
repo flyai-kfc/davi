@@ -2,8 +2,14 @@
 
 핑퐁의 형식이 바뀌어도 이 파일만 고친다. 사용자 LLM·평가자 LLM은 형식을 모른다.
 
-지금 계약(davi ``POST /v1/intent/slot-fill``)은 텍스트 질문 하나라 ``options``가 비어서
-돌아온다. 선택지 형식으로 바뀌면 응답에 선택지 배열이 실릴 뿐이고, 아래 필드 이름만 맞추면 된다.
+#326이 확정한 흐름은 **요청 두 번**이다.
+
+1. 첫 요청 → ``clarification.questions``에 질문 1~2개와 질문별 보기(최대 3개)
+2. 앱이 질문별 답을 **로컬에서** 모은다 (추가 호출 없음)
+3. 두 번째 요청 → 같은 발화 + ``clarification_answers`` → ``ready`` 또는 ``unable_to_finalize``
+
+#326 이전 형식(텍스트 질문 하나를 여러 왕복)은 ``legacy`` 질문 하나로 표현해 계속 잴 수 있다 —
+그 형식으로 뜬 기준선과 새 형식을 같은 자료형으로 비교하기 위해서다.
 """
 
 from __future__ import annotations
@@ -14,11 +20,9 @@ from typing import Any, Protocol
 
 import httpx
 
-from .models import PingpongStatus, PingpongTurn
+from .models import PingpongStatus, PingpongTurn, Question, UserAnswer
 
-# 선택지 형식이 어떤 이름으로 오든 받아 주려고 후보를 넓게 둔다. 확정되면 하나로 줄인다.
-_OPTION_KEYS = ("options", "choices", "선택지")
-_OTHER_KEYS = ("has_other", "allow_other", "기타")
+_LEGACY_QUESTION_ID = "legacy-message"
 
 
 class PingpongError(RuntimeError):
@@ -26,11 +30,16 @@ class PingpongError(RuntimeError):
 
 
 class PingpongAdapter(Protocol):
-    def send(self, utterance: str, history: list[dict[str, str]]) -> PingpongTurn: ...
+    def send(
+        self,
+        utterance: str,
+        history: list[dict[str, str]],
+        answers: list[UserAnswer],
+    ) -> PingpongTurn: ...
 
 
 class SlotFillHttpAdapter:
-    """davi 서버를 로컬에서 띄워 놓고 HTTP로 부른다. davi 코드는 건드리지 않는다."""
+    """davi 서버를 띄워 놓고 HTTP로 부른다. davi 코드는 import하지 않는다."""
 
     def __init__(
         self,
@@ -46,13 +55,16 @@ class SlotFillHttpAdapter:
         self._session_id = session_id
         self._max_quota_retries = max_quota_retries
         # 배포된 서버가 development 프로필이면 팀 토큰이 필요하다(`X-Davi-Dev-Token`).
-        # production 프로필이면 이 헤더는 무시된다.
         token = (dev_token or os.getenv("PINGPONG_DEV_TOKEN", "")).strip()
         self._headers = {"X-Davi-Dev-Token": token} if token else {}
         self._client = client or httpx.Client(timeout=timeout)
 
     def preflight(self) -> None:
-        """서버가 떠 있고 스텁이 아닌지 본다. 스텁이면 채점이 무의미하다."""
+        """서버가 떠 있고 **스텁이 아닌지** 본다.
+
+        스텁 해석기는 무조건 ``ready``에 발화를 그대로 goal로 돌려준다. 그 상태로도 보고서는
+        멀쩡히 만들어지므로, 막지 않으면 의미 없는 수치가 실제 기준선처럼 남는다.
+        """
 
         try:
             response = self._client.get(
@@ -66,12 +78,32 @@ class SlotFillHttpAdapter:
         if response.is_error:
             raise PingpongError(f"/health 가 {response.status_code} 를 냈다")
 
-    def send(self, utterance: str, history: list[dict[str, str]]) -> PingpongTurn:
-        payload = {
+        try:
+            body = response.json()
+        except ValueError as error:
+            raise PingpongError("/health 응답이 JSON이 아니다") from error
+
+        # production은 status만 알린다(#279). 그 프로필은 설정 자체가 스텁을 금지하므로 통과시킨다.
+        if body.get("stub_llm") is True:
+            raise PingpongError(
+                "서버가 스텁 해석기로 떠 있다(stub_llm=true). 스텁은 언제나 ready에 발화를 "
+                "그대로 goal로 돌려주므로 채점이 의미가 없다. DAVI_USE_STUB_LLM=false 로 다시 띄운다."
+            )
+
+    def send(
+        self,
+        utterance: str,
+        history: list[dict[str, str]],
+        answers: list[UserAnswer] | None = None,
+    ) -> PingpongTurn:
+        payload: dict[str, Any] = {
             "utterance": utterance,
             "session_id": self._session_id,
             "conversation_history": history,
         }
+        if answers:
+            payload["clarification_answers"] = [answer.to_wire() for answer in answers]
+
         started = time.monotonic()
         for attempt in range(self._max_quota_retries + 1):
             try:
@@ -83,8 +115,7 @@ class SlotFillHttpAdapter:
             except httpx.RequestError as error:
                 raise PingpongError(f"핑퐁 요청 실패: {error}") from error
 
-            # 공유 서버의 요청 상한(#304, 창당 30회)에 우리 실행이 걸린다. 30개 시나리오면
-            # 요청이 100회를 넘으므로 기다렸다 다시 보내는 것이 정상 경로다 — 실패가 아니다.
+            # 공유 서버의 요청 상한(#304)에 걸리는 것은 정상 경로다 — 기다렸다 다시 보낸다.
             if response.status_code == 429 and attempt < self._max_quota_retries:
                 time.sleep(_retry_after(response))
                 continue
@@ -116,20 +147,39 @@ def _parse(body: dict[str, Any], latency_ms: int) -> PingpongTurn:
             f"핑퐁 응답에 status가 없거나 모르는 값이다: {body!r}"
         ) from error
 
-    options = next(
-        (list(body[key]) for key in _OPTION_KEYS if isinstance(body.get(key), list)), []
-    )
-    has_other = next(
-        (bool(body[key]) for key in _OTHER_KEYS if key in body),
-        # 선택지가 없으면 자유 발화뿐이므로 '기타'는 언제나 열려 있는 셈이다.
-        not options,
-    )
+    message = str(body.get("message", ""))
+    plan = body.get("clarification")
+    questions: list[Question] = []
+    legacy = False
+
+    if isinstance(plan, dict) and isinstance(plan.get("questions"), list):
+        for raw in plan["questions"]:
+            if not isinstance(raw, dict):
+                raise PingpongError(f"질문 항목이 객체가 아니다: {raw!r}")
+            try:
+                questions.append(
+                    Question(
+                        id=str(raw["id"]),
+                        prompt=str(raw["prompt"]),
+                        options=[str(option) for option in raw.get("options", [])],
+                        allow_freeform=bool(raw.get("allow_freeform", True)),
+                    )
+                )
+            except KeyError as error:
+                raise PingpongError(f"질문에 {error} 가 없다") from error
+        if not questions:
+            raise PingpongError("clarification.questions가 비어 있다")
+    elif status is PingpongStatus.NEEDS_CLARIFICATION:
+        # #326 이전 형식 — 질문은 message 한 문장뿐이고 보기가 없다.
+        legacy = True
+        questions = [Question(id=_LEGACY_QUESTION_ID, prompt=message, options=[])]
+
     return PingpongTurn(
         status=status,
-        question=str(body.get("message", "")),
-        options=[str(option) for option in options],
-        has_other=has_other,
+        message=message,
+        questions=questions,
         goal=body.get("goal"),
+        legacy=legacy,
         latency_ms=latency_ms,
     )
 

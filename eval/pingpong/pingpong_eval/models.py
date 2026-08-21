@@ -70,39 +70,71 @@ class ScenarioFile(BaseModel):
 class PingpongStatus(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
     READY = "ready"
+    UNABLE_TO_FINALIZE = "unable_to_finalize"
+
+
+class AnswerSource(StrEnum):
+    """서버 계약(#326)의 ``ClarificationAnswerSource``와 값이 같아야 한다."""
+
+    OPTION = "option"
+    FREEFORM = "freeform"
+    UNKNOWN_OR_DECLINED = "unknown_or_declined"
+
+
+class Question(BaseModel):
+    """앱이 추가 호출 없이 한 화면씩 보여 주는 질문(#326)."""
+
+    id: str
+    prompt: str
+    options: list[str] = Field(default_factory=list)
+    allow_freeform: bool = True
 
 
 class PingpongTurn(BaseModel):
     """핑퐁이 돌려준 것. 어댑터가 형식 차이를 여기로 흡수한다.
 
-    옛 형식(텍스트 질문 하나)은 ``options``가 빈 특수 케이스로 표현된다.
+    #326 이전 형식(텍스트 질문 하나)은 ``legacy=True``인 질문 하나로 표현된다 —
+    그 형식으로 잰 기준선과 새 형식을 같은 자료형으로 비교하기 위해서다.
     """
 
     status: PingpongStatus
-    question: str = ""
-    options: list[str] = Field(default_factory=list)
-    has_other: bool = True
+    message: str = ""
+    questions: list[Question] = Field(default_factory=list)
     goal: str | None = None
+    legacy: bool = False
     latency_ms: int = 0
 
 
-class UserReply(BaseModel):
-    """사용자 LLM의 응답."""
+class UserAnswer(BaseModel):
+    """질문 하나에 대한 사용자 LLM의 답. 그대로 두 번째 요청에 실린다."""
 
+    question_id: str
+    prompt: str
+    answer: str
+    source: AnswerSource
     chosen_option: int | None = None
-    text: str
-    used_other: bool = False
     revealed_slots: list[str] = Field(default_factory=list)
 
+    def to_wire(self) -> dict[str, str]:
+        return {
+            "question_id": self.question_id,
+            "prompt": self.prompt,
+            "answer": self.answer,
+            "source": self.source.value,
+        }
 
-class Round(BaseModel):
+
+class Exchange(BaseModel):
+    """서버 요청 한 번과, 그 응답의 질문들에 로컬에서 모은 답."""
+
     index: int
-    pingpong: PingpongTurn
-    reply: UserReply | None = None
+    turn: PingpongTurn
+    answers: list[UserAnswer] = Field(default_factory=list)
 
 
 class StopReason(StrEnum):
     READY = "ready"
+    UNABLE = "unable_to_finalize"
     LIMIT = "limit"
     ERROR = "error"
 
@@ -110,11 +142,15 @@ class StopReason(StrEnum):
 class Transcript(BaseModel):
     scenario_id: str
     opening: str
-    rounds: list[Round] = Field(default_factory=list)
+    exchanges: list[Exchange] = Field(default_factory=list)
     final_goal: str | None = None
     stop_reason: StopReason
     error: str | None = None
     elapsed_ms: int = 0
+
+    @property
+    def questions_asked(self) -> int:
+        return sum(len(exchange.turn.questions) for exchange in self.exchanges)
 
 
 class SlotVerdict(StrEnum):

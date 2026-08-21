@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import subprocess
@@ -19,7 +20,7 @@ from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
 from .models import ScenarioFile, ScenarioResult, StopReason, Transcript
 from .report import write_run
-from .runner import MAX_ROUNDS, run_scenario
+from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
 from .user_sim import UserSimulator
 
@@ -28,6 +29,17 @@ DEFAULT_SCENARIOS = Path("scenarios/handwritten-30.json")
 
 def load_scenarios(path: Path) -> ScenarioFile:
     return ScenarioFile.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def scenario_digest(path: Path) -> str:
+    """시나리오 파일의 내용 해시.
+
+    run과 judge를 나눠 두면 그 사이에 시나리오 파일이 바뀔 수 있다. 그러면 옛 대화를 새 정답으로
+    조용히 채점하게 되고, 수치는 멀쩡해 보이지만 비교할 수 없는 값이 된다. 그래서 실행 때 찍고
+    채점 때 대조한다.
+    """
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -61,6 +73,17 @@ def cmd_judge(args: argparse.Namespace) -> int:
 
     run_dir = Path(args.run)
     path = run_dir / "transcripts.jsonl"
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    recorded = meta.get("시나리오해시")
+    current = scenario_digest(args.scenarios)
+    if recorded and recorded != current and not args.allow_scenario_drift:
+        print(
+            f"시나리오 파일이 실행 당시와 다르다(기록 {recorded} · 지금 {current}). "
+            "옛 대화를 새 정답으로 채점하면 비교할 수 없는 수치가 된다. "
+            "실행 당시 파일로 되돌리거나, 알고도 진행하려면 --allow-scenario-drift 를 쓴다.",
+            file=sys.stderr,
+        )
+        return 1
     scenarios = {s.id: s for s in load_scenarios(args.scenarios).scenarios}
     results = [
         ScenarioResult.model_validate_json(line)
@@ -102,7 +125,6 @@ def cmd_judge(args: argparse.Namespace) -> int:
             f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}"
         )
 
-    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     meta.update(
         {
             "평가자모델": judge_client.model,
@@ -114,6 +136,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
                 1,
             ),
             "채점범위": args.difficulty or args.only or "전체",
+            "채점시_시나리오해시": current,
         }
     )
     report = write_run(run_dir, results, meta)
@@ -189,12 +212,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         achievement = result.judge.achievement.value if result.judge else "미채점"
         print(
             f"{scenario.id} [{scenario.difficulty.value}] "
-            f"{result.metrics['라운드수']}라운드 · {result.metrics['종료사유']} · {achievement}"
+            f"질문 {result.metrics['질문수']}개 · {result.metrics['종료사유']} · {achievement}"
         )
 
     meta = {
         "실행시각": datetime.now().astimezone().isoformat(timespec="seconds"),
         "시나리오파일": str(args.scenarios),
+        "시나리오해시": scenario_digest(args.scenarios),
         "시나리오수": len(scenarios),
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,
@@ -212,7 +236,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "핑퐁": args.base_url,
         "davi_sha": _davi_sha(args.davi_repo),
         "seed": args.seed,
-        "max_rounds": args.max_rounds,
+        "max_requests": args.max_requests,
     }
     out_dir = Path(args.out) / datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     path = write_run(out_dir, results, meta)
@@ -226,8 +250,8 @@ def _headline(results: list) -> dict:
     return {
         "채점됨": len(judged),
         "충족": sum(1 for r in judged if r.judge.achievement.value == "충족"),
-        "평균라운드": round(
-            sum(r.metrics["라운드수"] for r in results) / len(results), 2
+        "평균질문수": round(
+            sum(r.metrics["질문수"] for r in results) / len(results), 2
         ),
     }
 
@@ -262,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--out", default="runs")
     run.add_argument("--only", help="쉼표로 구분한 시나리오 id")
     run.add_argument("--limit", type=int)
-    run.add_argument("--max-rounds", type=int, default=MAX_ROUNDS)
+    run.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
     run.add_argument(
         "--seed", type=int, default=None, help="숨길 슬롯 선택의 난수 시드"
     )

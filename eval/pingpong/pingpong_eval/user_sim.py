@@ -9,7 +9,15 @@ from __future__ import annotations
 import random
 
 from .llm import GeminiClient, LlmError
-from .models import Difficulty, Exposure, PingpongTurn, Scenario, Slot, UserReply
+from .models import (
+    AnswerSource,
+    Difficulty,
+    Exposure,
+    Question,
+    Scenario,
+    Slot,
+    UserAnswer,
+)
 
 # 난이도별로 첫 발화에서 빼먹을 슬롯 수. 남길 것이 없으면 코드가 하한을 지킨다.
 _HIDE_BUDGET = {Difficulty.EASY: 1, Difficulty.NORMAL: 2, Difficulty.HARD: 3}
@@ -29,14 +37,15 @@ _OPENING_SCHEMA = {
     "required": ["utterance"],
 }
 
-_REPLY_SCHEMA = {
+_ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
         "chosen_option": {"type": "integer"},
         "text": {"type": "string"},
+        "dont_know": {"type": "boolean"},
         "revealed_slots": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["chosen_option", "text", "revealed_slots"],
+    "required": ["chosen_option", "text", "dont_know", "revealed_slots"],
 }
 
 
@@ -125,36 +134,51 @@ class UserSimulator:
 
 말해도 되는 것만으로 한 문장을 말하세요. 도우미에게 하는 말 그대로만 쓰세요."""
 
-    # --- 되묻기 응답 --------------------------------------------------------
+    # --- 질문 하나에 답한다 -------------------------------------------------
 
-    def reply(
+    def answer(
         self,
         scenario: Scenario,
-        turn: PingpongTurn,
+        question: Question,
         *,
         said: list[str],
-    ) -> UserReply:
-        prompt = self._reply_prompt(scenario, turn, said)
-        body = self._client.generate_json(prompt, _REPLY_SCHEMA, system=_SYSTEM)
+    ) -> UserAnswer:
+        """질문 하나에 답한다. #326의 앱처럼 **한 화면에 질문 하나씩** 답하는 것과 같다."""
+
+        body = self._client.generate_json(
+            self._answer_prompt(scenario, question, said),
+            _ANSWER_SCHEMA,
+            system=_SYSTEM,
+        )
 
         text = str(body.get("text", "")).strip()
         raw_choice = body.get("chosen_option", -1)
         chosen = int(raw_choice) if isinstance(raw_choice, int) else -1
-        valid = 0 <= chosen < len(turn.options)
-        said_text = turn.options[chosen] if valid else text
-        return UserReply(
-            chosen_option=chosen if valid else None,
-            text=said_text,
-            used_other=bool(turn.options) and not valid,
+        picked = 0 <= chosen < len(question.options)
+        dont_know = bool(body.get("dont_know")) and not picked
+
+        if picked:
+            answer_text, source = question.options[chosen], AnswerSource.OPTION
+        elif dont_know:
+            answer_text, source = text or "모르겠어요", AnswerSource.UNKNOWN_OR_DECLINED
+        else:
+            answer_text, source = text, AnswerSource.FREEFORM
+
+        return UserAnswer(
+            question_id=question.id,
+            prompt=question.prompt,
+            answer=answer_text or "모르겠어요",
+            source=source,
+            chosen_option=chosen if picked else None,
             # 자기보고만 믿으면 비어서 온다(실측). 문장에서 직접 찾은 것과 합친다.
             revealed_slots=sorted(
                 {str(k) for k in body.get("revealed_slots", []) if str(k).strip()}
-                | {slot.key for slot in leaked_slots(said_text, scenario.slots)}
+                | {slot.key for slot in leaked_slots(answer_text, scenario.slots)}
             ),
         )
 
-    def _reply_prompt(
-        self, scenario: Scenario, turn: PingpongTurn, said: list[str]
+    def _answer_prompt(
+        self, scenario: Scenario, question: Question, said: list[str]
     ) -> str:
         아는것 = "\n".join(
             f"- {s.key}: {s.value}"
@@ -168,17 +192,17 @@ class UserSimulator:
         )
         이미 = ", ".join(said) if said else "(아직 없음)"
         선택지 = (
-            "\n".join(f"{i}. {o}" for i, o in enumerate(turn.options))
-            if turn.options
-            else "(선택지 없음 — 말로 답합니다)"
+            "\n".join(f"{i}. {o}" for i, o in enumerate(question.options))
+            if question.options
+            else "(보기 없음 — 말로 답합니다)"
         )
         메모 = f"\n당신에 대한 메모: {scenario.user_note}" if scenario.user_note else ""
 
         return f"""도우미가 당신에게 물었습니다.
 
-질문: {turn.question}
+질문: {question.prompt}
 
-선택지:
+보기:
 {선택지}
 
 당신이 마음속에 가진 정보(묻는 것에만 답합니다):
@@ -187,10 +211,11 @@ class UserSimulator:
 이미 말한 것: {이미}{메모}
 
 규칙:
-- 선택지 중에 당신 마음속 답과 **정확히 맞는 것**이 있으면 그 번호를 chosen_option에 넣습니다.
+- 보기 중에 당신 마음속 답과 **정확히 맞는 것**이 있으면 그 번호를 chosen_option에 넣습니다.
 - 맞는 것이 없으면 chosen_option은 -1로 두고 text에 당신 말로 답합니다. 억지로 고르지 않습니다.
+- 당신이 모르는 것을 물으면 dont_know를 true로 하고 text에 "몰라요"라고 씁니다.
+  **무슨 일이 있어도 지어내지 않습니다.**
 - 묻지 않은 조각은 말하지 않습니다.
-- '몰라요'로 되어 있는 조각은 무슨 일이 있어도 지어내지 않습니다.
 - revealed_slots에는 이번 답에서 실제로 말한 조각의 이름만 적습니다."""
 
 

@@ -4,38 +4,42 @@ from __future__ import annotations
 
 from statistics import mean
 
-from .models import Achievement, ScenarioResult, SlotVerdict, Transcript
+from .models import Achievement, AnswerSource, ScenarioResult, SlotVerdict, Transcript
 
 
 def transcript_metrics(transcript: Transcript) -> dict:
-    rounds = transcript.rounds
-    asked = [r for r in rounds if r.reply is not None]
-    with_options = [r for r in rounds if r.pingpong.options]
+    exchanges = transcript.exchanges
+    answers = [answer for exchange in exchanges for answer in exchange.answers]
+    questions = [q for exchange in exchanges for q in exchange.turn.questions]
+    with_options = [q for q in questions if q.options]
     return {
-        "라운드수": len(asked),
+        "요청수": len(exchanges),
+        "질문수": len(questions),
         "종료사유": transcript.stop_reason.value,
         "총_소요ms": transcript.elapsed_ms,
-        "핑퐁_지연ms_평균": round(mean([r.pingpong.latency_ms for r in rounds]))
-        if rounds
+        "핑퐁_지연ms_평균": (
+            round(mean([e.turn.latency_ms for e in exchanges])) if exchanges else 0
+        ),
+        "질문_평균길이": round(mean([len(q.prompt) for q in questions]))
+        if questions
         else 0,
-        "질문_평균길이": round(mean([len(r.pingpong.question) for r in asked]))
-        if asked
+        "보기_제시_질문": len(with_options),
+        "보기_평균개수": round(mean([len(q.options) for q in with_options]), 2)
+        if with_options
         else 0,
-        "선택지_제시_라운드": len(with_options),
-        "기타_사용": sum(1 for r in asked if r.reply and r.reply.used_other),
-        "선택지_적중률": (
+        # 보기가 답을 못 담아 사용자가 직접 말한 비율. 선택지 형식의 핵심 축이다.
+        "자유입력": sum(1 for a in answers if a.source is AnswerSource.FREEFORM),
+        "모름": sum(1 for a in answers if a.source is AnswerSource.UNKNOWN_OR_DECLINED),
+        "보기_적중률": (
             round(
-                sum(
-                    1
-                    for r in with_options
-                    if r.reply and r.reply.chosen_option is not None
-                )
-                / len(with_options),
+                sum(1 for a in answers if a.source is AnswerSource.OPTION)
+                / len(answers),
                 3,
             )
-            if with_options
+            if answers
             else None
         ),
+        "옛형식": any(e.turn.legacy for e in exchanges),
     }
 
 
@@ -52,12 +56,17 @@ def summarize(results: list[ScenarioResult]) -> dict:
                 1 for r in judged if r.judge.achievement is Achievement.PARTIAL
             ),
             "실패": sum(1 for r in judged if r.judge.achievement is Achievement.FAIL),
-            "평균_라운드": round(
-                mean([r.metrics.get("라운드수", 0) for r in subset]), 2
-            )
-            if subset
-            else 0,
-            "상한도달": sum(1 for r in subset if r.metrics.get("종료사유") == "limit"),
+            "평균_질문수": (
+                round(mean([r.metrics.get("질문수", 0) for r in subset]), 2)
+                if subset
+                else 0
+            ),
+            "확정실패": sum(
+                1
+                for r in subset
+                if r.metrics.get("종료사유") in {"limit", "unable_to_finalize"}
+            ),
+            "자유입력": sum(r.metrics.get("자유입력", 0) for r in subset),
             "슬롯_정확률": (
                 round(
                     sum(1 for s in slots if s.verdict is SlotVerdict.CORRECT)
@@ -70,7 +79,7 @@ def summarize(results: list[ScenarioResult]) -> dict:
             "위반수": sum(len(r.judge.violations) for r in judged),
         }
 
-    by_difficulty = {}
+    by_difficulty: dict[str, list[ScenarioResult]] = {}
     for result in results:
         by_difficulty.setdefault(result.difficulty.value, []).append(result)
     by_factor: dict[str, list[ScenarioResult]] = {}

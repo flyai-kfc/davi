@@ -10,8 +10,8 @@ from pingpong_eval.models import (
     Exposure,
     PingpongStatus,
     PingpongTurn,
+    Question,
     Slot,
-    UserReply,
 )
 from pingpong_eval.runner import run_scenario
 from pingpong_eval.sut import PingpongError, _parse
@@ -59,213 +59,318 @@ def test_유출_검사는_긴_값만_본다():
     assert leaked_slots("하나만 사줘", slots) == []
 
 
-def test_어댑터는_옛_형식을_선택지_없는_경우로_읽는다():
-    turn = _parse({"status": "needs_clarification", "message": "어디로 보낼까요?"}, 12)
-    assert turn.options == []
-    assert turn.has_other is True
-    assert turn.latency_ms == 12
-
-
-def test_어댑터는_선택지_형식도_읽는다():
-    turn = _parse(
-        {
-            "status": "needs_clarification",
-            "message": "어디로 보낼까요?",
-            "options": ["카카오톡", "문자"],
-            "has_other": True,
-        },
-        3,
-    )
-    assert turn.options == ["카카오톡", "문자"]
-    assert turn.has_other is True
-
-
 def test_모르는_status는_실패한다():
     with pytest.raises(PingpongError):
         _parse({"status": "누구세요", "message": "x"}, 0)
 
 
-class _FakeAdapter:
-    """두 번 되묻고 세 번째에 목표를 확정하는 핑퐁."""
-
-    def __init__(self):
-        self.sent = []
-
-    def send(self, utterance, history):
-        self.sent.append((utterance, list(history)))
-        if len(self.sent) < 3:
-            return PingpongTurn(
-                status=PingpongStatus.NEEDS_CLARIFICATION,
-                question="누구한테 보낼까요?",
-                options=["딸", "아들"],
-                has_other=True,
-            )
-        return PingpongTurn(
-            status=PingpongStatus.READY, question="이거 맞으세요?", goal="확정된 목표"
-        )
-
-
 class _FakeUser:
+    """질문마다 첫 보기를 고르고, 보기가 없으면 말로 답한다."""
+
     def opening(self, scenario, avoid=None):
         return "사진 좀 보내려고", scenario.first_slots[:1]
 
-    def reply(self, scenario, turn, said):
-        if not turn.options:
-            return UserReply(chosen_option=None, text="딸이요", revealed_slots=["대상"])
-        return UserReply(chosen_option=0, text=turn.options[0], revealed_slots=["대상"])
+    def answer(self, scenario, question, said):
+        from pingpong_eval.models import AnswerSource, UserAnswer
+
+        if question.options:
+            return UserAnswer(
+                question_id=question.id,
+                prompt=question.prompt,
+                answer=question.options[0],
+                source=AnswerSource.OPTION,
+                chosen_option=0,
+                revealed_slots=["대상"],
+            )
+        return UserAnswer(
+            question_id=question.id,
+            prompt=question.prompt,
+            answer="딸이요",
+            source=AnswerSource.FREEFORM,
+            revealed_slots=["대상"],
+        )
 
 
-def test_루프는_ready에서_멈추고_이력을_쌓는다(scenarios):
-    result = run_scenario(scenarios[0], _FakeUser(), _FakeAdapter())
+class _ClarificationAdapter:
+    """#326 계약대로 첫 응답에 질문 2개를 주고, 두 번째 요청에서 확정한다."""
+
+    def __init__(self, second_status="ready"):
+        self.sent = []
+        self._second_status = second_status
+
+    def send(self, utterance, history, answers=None):
+        self.sent.append(
+            {"utterance": utterance, "history": list(history), "answers": answers or []}
+        )
+        if len(self.sent) == 1:
+            return PingpongTurn(
+                status=PingpongStatus.NEEDS_CLARIFICATION,
+                message="누구에게 보낼까요?",
+                questions=[
+                    Question(
+                        id="q1", prompt="누구에게 보낼까요?", options=["딸", "아들"]
+                    ),
+                    Question(
+                        id="q2",
+                        prompt="어떤 방법으로 보낼까요?",
+                        options=["카카오톡", "문자"],
+                    ),
+                ],
+            )
+        if self._second_status == "ready":
+            return PingpongTurn(
+                status=PingpongStatus.READY, message="확인", goal="확정된 목표"
+            )
+        return PingpongTurn(
+            status=PingpongStatus.UNABLE_TO_FINALIZE, message="다시 말씀해 주세요"
+        )
+
+
+def test_326_흐름은_요청_두_번으로_끝난다(scenarios):
+    """첫 요청 → 질문 1~2개를 로컬에서 답 → 두 번째 요청. 이것이 앱이 실제로 하는 핑퐁이다."""
+
+    adapter = _ClarificationAdapter()
+    result = run_scenario(scenarios[0], _FakeUser(), adapter)
+
+    assert len(adapter.sent) == 2
     assert result.transcript.stop_reason.value == "ready"
     assert result.transcript.final_goal == "확정된 목표"
-    assert result.metrics["라운드수"] == 2  # 답한 라운드만 센다
-    assert result.metrics["선택지_적중률"] == 1.0
+    assert result.metrics["질문수"] == 2
+    assert result.metrics["요청수"] == 2
 
 
-def test_상한에_걸리면_limit로_끝난다(scenarios):
-    class _NeverReady(_FakeAdapter):
-        def send(self, utterance, history):
-            self.sent.append((utterance, list(history)))
+def test_두_번째_요청은_원래_발화와_답을_함께_보낸다(scenarios):
+    """앱의 originalUtterance와 같다 — 발화는 그대로 두고 답만 싣는다."""
+
+    adapter = _ClarificationAdapter()
+    run_scenario(scenarios[0], _FakeUser(), adapter)
+
+    first, second = adapter.sent
+    assert second["utterance"] == first["utterance"]
+    assert second["history"] == []  # 이력에 쌓지 않는다
+    wire = [answer.to_wire() for answer in second["answers"]]
+    assert [w["question_id"] for w in wire] == ["q1", "q2"]
+    assert [w["source"] for w in wire] == ["option", "option"]
+    assert wire[0]["prompt"] == "누구에게 보낼까요?"
+
+
+def test_안전_종료를_결과로_남긴다(scenarios):
+    result = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter("unable"))
+    assert result.transcript.stop_reason.value == "unable_to_finalize"
+    assert result.transcript.final_goal is None
+
+
+def test_보기가_답을_못_담으면_자유입력으로_센다(scenarios):
+    class _NoFitAdapter(_ClarificationAdapter):
+        def send(self, utterance, history, answers=None):
+            self.sent.append(
+                {
+                    "utterance": utterance,
+                    "history": list(history),
+                    "answers": answers or [],
+                }
+            )
+            if len(self.sent) == 1:
+                return PingpongTurn(
+                    status=PingpongStatus.NEEDS_CLARIFICATION,
+                    message="어디로 보낼까요?",
+                    questions=[
+                        Question(id="q1", prompt="어디로 보낼까요?", options=[])
+                    ],
+                )
             return PingpongTurn(
-                status=PingpongStatus.NEEDS_CLARIFICATION, question="뭘 하실래요?"
+                status=PingpongStatus.READY, message="확인", goal="목표"
             )
 
-    result = run_scenario(scenarios[0], _FakeUser(), _NeverReady(), max_rounds=3)
-    assert result.transcript.stop_reason.value == "limit"
-    assert result.metrics["라운드수"] == 3
-    assert result.metrics["기타_사용"] == 0  # 선택지가 없으면 '기타'로 세지 않는다
+    result = run_scenario(scenarios[0], _FakeUser(), _NoFitAdapter())
+    assert result.metrics["자유입력"] == 1
+    assert result.metrics["보기_적중률"] == 0.0
 
 
-def test_429는_기다렸다_다시_보낸다(monkeypatch):
-    """공유 서버 요청 상한은 실패가 아니라 정상 경로다."""
-
-    import httpx
-    from pingpong_eval.sut import SlotFillHttpAdapter
-
-    calls = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        assert (
-            request.headers["X-Davi-Dev-Token"]
-            == "dev-token-abcdefghijklmnopqrstuvwxyz123456"
-        )
-        if calls["n"] == 1:
-            return httpx.Response(
-                429,
-                json={"kind": "QUOTA", "retry_after_seconds": 1},
-                headers={"Retry-After": "1"},
-            )
-        return httpx.Response(
-            200, json={"status": "ready", "message": "확인", "goal": "목표"}
-        )
-
-    monkeypatch.setattr("time.sleep", lambda _seconds: None)
-    adapter = SlotFillHttpAdapter(
-        "http://azure.example",
-        session_id="s",
-        dev_token="dev-token-abcdefghijklmnopqrstuvwxyz123456",
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
+def test_어댑터가_clarification을_읽는다():
+    turn = _parse(
+        {
+            "status": "needs_clarification",
+            "message": "누구에게 보낼까요?",
+            "clarification": {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "prompt": "누구에게 보낼까요?",
+                        "options": ["딸", "아들"],
+                        "allow_freeform": True,
+                    }
+                ]
+            },
+        },
+        5,
     )
-    turn = adapter.send("사진 보내줘", [])
-    assert calls["n"] == 2
-    assert turn.goal == "목표"
+    assert turn.legacy is False
+    assert turn.questions[0].id == "q1"
+    assert turn.questions[0].options == ["딸", "아들"]
 
 
-def test_401은_토큰_안내로_끝난다():
+def test_어댑터는_옛_형식을_legacy_질문_하나로_읽는다():
+    turn = _parse({"status": "needs_clarification", "message": "어디로 보낼까요?"}, 12)
+    assert turn.legacy is True
+    assert len(turn.questions) == 1
+    assert turn.questions[0].options == []
+
+
+def test_안전_종료_상태를_읽는다():
+    turn = _parse({"status": "unable_to_finalize", "message": "죄송해요"}, 1)
+    assert turn.status.value == "unable_to_finalize"
+    assert turn.questions == []
+
+
+def test_옛_형식은_여러_왕복을_돈다(scenarios):
+    """#326 이전 기준선을 다시 재거나 비교할 수 있어야 한다."""
+
+    class _LegacyAdapter:
+        def __init__(self):
+            self.sent = 0
+
+        def send(self, utterance, history, answers=None):
+            self.sent += 1
+            assert not answers  # 옛 형식에는 clarification_answers를 싣지 않는다
+            return PingpongTurn(
+                status=PingpongStatus.NEEDS_CLARIFICATION,
+                message="뭘 하실래요?",
+                questions=[
+                    Question(id="legacy-message", prompt="뭘 하실래요?", options=[])
+                ],
+                legacy=True,
+            )
+
+    adapter = _LegacyAdapter()
+    result = run_scenario(scenarios[0], _FakeUser(), adapter, max_legacy_requests=3)
+    assert adapter.sent == 3
+    assert result.transcript.stop_reason.value == "limit"
+
+
+def test_preflight는_스텁_서버를_거부한다():
+    """스텁은 무조건 ready에 발화를 그대로 돌려준다 — 그 수치가 기준선처럼 남으면 안 된다."""
+
     import httpx
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     adapter = SlotFillHttpAdapter(
-        "http://azure.example",
+        "http://localhost",
         session_id="s",
         client=httpx.Client(
             transport=httpx.MockTransport(
-                lambda _r: httpx.Response(401, json={"kind": "AUTH"})
+                lambda _r: httpx.Response(200, json={"status": "ok", "stub_llm": True})
             )
         ),
     )
-    with pytest.raises(PingpongError, match="PINGPONG_DEV_TOKEN"):
-        adapter.send("사진 보내줘", [])
+    with pytest.raises(PingpongError, match="스텁"):
+        adapter.preflight()
 
 
-def test_행위는_첫_발화에서_숨기지_않는다(scenarios):
-    """조각이 둘뿐인 시나리오가 한 단어 발화로 무너지는 것을 막는다(h07 실측)."""
-
-    from pingpong_eval.user_sim import UserSimulator
-
-    user = UserSimulator.__new__(UserSimulator)
-    user._rng = __import__("random").Random(0)
-    for scenario in scenarios:
-        revealed = user._pick_revealed(scenario)
-        assert revealed, f"{scenario.id}: 말할 것이 하나도 없다"
-        keys = {slot.key for slot in revealed}
-        if any(s.key == "행위" for s in scenario.first_slots):
-            assert "행위" in keys, f"{scenario.id}: 행위가 숨겨졌다"
-
-
-def test_사용자_LLM은_429를_재시도한다(monkeypatch):
-    """분당 한도는 정상 경로다 — 한 번의 429로 실행 전체가 죽으면 안 된다(실측)."""
-
+def test_preflight는_실제_모델_서버를_통과시킨다():
     import httpx
-    from pingpong_eval.llm import GeminiClient
+    from pingpong_eval.sut import SlotFillHttpAdapter
 
-    calls = {"n": 0}
-    quota = {
-        "error": {
-            "code": 429,
-            "message": "quota",
-            "details": [
-                {
-                    "@type": "type.googleapis.com/google.rpc.RetryInfo",
-                    "retryDelay": "3s",
-                }
+    for body in ({"status": "ok", "stub_llm": False}, {"status": "ok"}):
+        adapter = SlotFillHttpAdapter(
+            "http://localhost",
+            session_id="s",
+            client=httpx.Client(
+                transport=httpx.MockTransport(
+                    lambda _r, b=body: httpx.Response(200, json=b)
+                )
+            ),
+        )
+        adapter.preflight()  # production은 status만 알린다(#279) — 설정이 스텁을 금지한다
+
+
+def _transcript(scenario):
+    from pingpong_eval.models import Exchange, StopReason, Transcript
+
+    return Transcript(
+        scenario_id=scenario.id,
+        opening="사진 보내줘",
+        exchanges=[
+            Exchange(
+                index=1,
+                turn=PingpongTurn(
+                    status=PingpongStatus.NEEDS_CLARIFICATION,
+                    message="누구에게요?",
+                    questions=[Question(id="q1", prompt="누구에게요?", options=["딸"])],
+                ),
+            )
+        ],
+        final_goal="카카오톡으로 순자에게 사진 보내기",
+        stop_reason=StopReason.READY,
+    )
+
+
+class _StubJudgeClient:
+    """평가자 대역. 실제 호출 없이 계약 위반 출력만 흉내 낸다."""
+
+    def __init__(self, scores):
+        self._scores = scores
+        self.model = "stub"
+        self.base_url = None
+
+    def parse(self, prompt, response_model, system=None):
+        from pingpong_eval.models import Achievement, SlotScore, SlotVerdict
+
+        return response_model(
+            achievement=Achievement.PARTIAL,
+            reason="테스트",
+            slot_scores=[
+                SlotScore(key=key, verdict=SlotVerdict(verdict), evidence="")
+                for key, verdict in self._scores
             ],
-        }
-    }
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        if calls["n"] < 3:
-            return httpx.Response(429, json=quota)
-        return httpx.Response(
-            200,
-            json={
-                "candidates": [
-                    {"content": {"parts": [{"text": '{"utterance":"안녕"}'}]}}
-                ]
-            },
+            violations=[],
         )
 
-    slept = []
-    monkeypatch.setattr("time.sleep", slept.append)
-    client = GeminiClient(
-        api_key="k", client=httpx.Client(transport=httpx.MockTransport(handler))
-    )
-    body = client.generate_json("프롬프트", {"type": "object"})
-    assert body["utterance"] == "안녕"
-    assert calls["n"] == 3
-    assert slept == [4.0, 4.0]  # RetryInfo의 3s + 1
+
+def test_평가자가_없는_슬롯_키를_내면_실패한다(scenarios):
+    """분모에 없는 행이 끼면 슬롯 정확률이 조용히 왜곡된다."""
+
+    from pingpong_eval.judge import JudgeContractError, judge
+
+    scenario = scenarios[0]
+    with pytest.raises(JudgeContractError, match="없는 슬롯 키"):
+        judge(
+            _StubJudgeClient([("앱", "누락"), ("없는키", "틀림")]),
+            scenario,
+            _transcript(scenario),
+        )
 
 
-def test_불필요_질문_축이_있다():
-    """과잉 명세가 30건 기준선의 실패 원인이었다 — 증상(반복)과 따로 세야 한다."""
+def test_평가자가_같은_키를_두_번_내면_실패한다(scenarios):
+    from pingpong_eval.judge import JudgeContractError, judge
 
-    from pingpong_eval.models import ViolationAxis
+    scenario = scenarios[0]
+    with pytest.raises(JudgeContractError, match="두 번"):
+        judge(
+            _StubJudgeClient([("앱", "누락"), ("앱", "부분")]),
+            scenario,
+            _transcript(scenario),
+        )
 
-    assert ViolationAxis("불필요_질문") is ViolationAxis.UNNECESSARY_QUESTION
+
+def test_빠진_슬롯만_정확으로_보충한다(scenarios):
+    from pingpong_eval.judge import judge
+
+    scenario = scenarios[0]  # e01: 앱·행위·대상
+    result = judge(_StubJudgeClient([("앱", "누락")]), scenario, _transcript(scenario))
+
+    assert len(result.slot_scores) == len(scenario.slots)
+    verdicts = {s.key: s.verdict.value for s in result.slot_scores}
+    assert verdicts == {"앱": "누락", "행위": "정확", "대상": "정확"}
 
 
-def test_채점_프롬프트가_불필요_질문을_정의한다(scenarios):
-    from pingpong_eval.judge import build_prompt
-    from pingpong_eval.models import StopReason, Transcript
+def test_시나리오_해시는_내용이_바뀌면_달라진다(tmp_path):
+    """run과 judge 사이에 정답이 바뀌면 비교할 수 없는 수치가 된다."""
 
-    prompt = build_prompt(
-        scenarios[0],
-        Transcript(
-            scenario_id="e01", opening="사진 보내줘", stop_reason=StopReason.LIMIT
-        ),
-    )
-    assert "불필요_질문" in prompt
-    assert "정답 목표에 없는 조각" in prompt
+    from pingpong_eval.cli import scenario_digest
+
+    path = tmp_path / "s.json"
+    path.write_text('{"version": 1, "시나리오": []}', encoding="utf-8")
+    before = scenario_digest(path)
+    path.write_text('{"version": 1, "시나리오": [] }', encoding="utf-8")
+    assert scenario_digest(path) != before
