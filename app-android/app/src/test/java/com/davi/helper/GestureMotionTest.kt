@@ -131,9 +131,16 @@ class GestureMotionTest {
     // --- 무엇에 그리는가 -----------------------------------------------------------
 
     @Test
-    fun `방향이 있는 스크롤만 시연한다`() {
+    fun `방향이 있는 스크롤을 시연한다`() {
         assertTrue(GestureMotion.isDemonstrated(ActionType.SCROLL, SwipeDirection.UP))
         assertTrue(GestureMotion.isDemonstrated(ActionType.SCROLL, SwipeDirection.RIGHT))
+    }
+
+    @Test
+    fun `가장자리 제스처는 방향 없이도 시연한다`() {
+        // #222 — 이 둘은 서버가 direction을 보내지 않는다. 방향은 액션 종류가 갖고 있다.
+        assertTrue(GestureMotion.isDemonstrated(ActionType.OPEN_QUICK_SETTINGS, null))
+        assertTrue(GestureMotion.isDemonstrated(ActionType.OPEN_APP_DRAWER, null))
     }
 
     @Test
@@ -149,7 +156,6 @@ class GestureMotionTest {
         assertFalse(GestureMotion.isDemonstrated(ActionType.SCROLL, null))
         assertFalse(GestureMotion.isDemonstrated(ActionType.DONE, null))
         assertFalse(GestureMotion.isDemonstrated(ActionType.TYPE, null))
-        assertFalse(GestureMotion.isDemonstrated(ActionType.OPEN_APP_DRAWER, null))
         assertFalse(GestureMotion.isDemonstrated(null, SwipeDirection.UP))
     }
 
@@ -285,10 +291,88 @@ class GestureMotionTest {
         )
     }
 
+
+    // --- 가장자리 제스처의 자리 (#222) ------------------------------------------------
+
+    @Test
+    fun `가장자리 제스처는 C17 뒤집기를 타지 않는다`() {
+        // 정하고 갈 것 3 — fingerDirectionFor는 **서버가 준 값**을 뒤집는 자리다. 여기 방향은
+        // 처음부터 손가락 방향이라, 한 번 더 태우면 셰이드를 위로 올리라고 가르치게 된다.
+        val quick = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
+        val drawer = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_APP_DRAWER))
+        assertEquals(SwipeDirection.DOWN, quick.fingerDirection)
+        assertEquals(SwipeDirection.UP, drawer.fingerDirection)
+        assertTrue(GestureMotion.travelFor(quick.fingerDirection, DISTANCE).dy > 0f)
+        assertTrue(GestureMotion.travelFor(drawer.fingerDirection, DISTANCE).dy < 0f)
+    }
+
+    @Test
+    fun `손은 정확히 화면 변에서 출발한다`() {
+        // 시작 지점이 곧 이 안내의 알맹이다. 한 뼘이라도 안쪽에서 시작하면 "화면 밖에서 끌어온다"가
+        // 사라져 그냥 스크롤 시연과 구분되지 않는다.
+        listOf(0f to DISTANCE, HEIGHT to -DISTANCE).forEach { (edgeY, dy) ->
+            val travel = GestureMotion.Travel(0f, dy)
+            val center = GestureMotion.edgeCenterFor(edgeY, travel)
+            // 그리는 쪽이 중심에서 이동의 절반을 되돌려 출발점을 잡는다.
+            assertEquals(edgeY, center - travel.dy / 2f, TOLERANCE)
+        }
+    }
+
+    @Test
+    fun `앵커가 없으면 손은 화면 가로 가운데다`() {
+        // 스크롤은 가리킬 가로 위치가 없다 — 기존 동작 그대로여야 한다.
+        assertEquals(
+            WIDTH / 2f,
+            GestureMotion.horizontalCenterFor(0f, WIDTH, HAND),
+            TOLERANCE,
+        )
+    }
+
+    @Test
+    fun `앵커가 있으면 손은 그 가운데서 출발한다`() {
+        // 퀵세팅의 오른쪽 절반 — One UI 6+에서 왼쪽 위는 알림창이라 가운데로 그리면 안 된다.
+        val quick = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
+        val band = EdgeGesture.bandFor(quick, 0f, 0f, WIDTH, HEIGHT, EDGE_BAND)
+        assertEquals(
+            WIDTH * 0.75f,
+            GestureMotion.horizontalCenterFor(0f, WIDTH, HAND, band.left, band.right),
+            TOLERANCE,
+        )
+    }
+
+    @Test
+    fun `앵커가 가장자리에 붙어도 손은 화면 안에 남는다`() {
+        // 잘린 손은 방향을 말하지 못한다(세로에서 verticalCenterFor가 세운 규칙과 같다).
+        val left = GestureMotion.horizontalCenterFor(0f, WIDTH, HAND, 0f, 0f)
+        val right = GestureMotion.horizontalCenterFor(0f, WIDTH, HAND, WIDTH, WIDTH)
+        assertEquals(HAND / 2f, left, TOLERANCE)
+        assertEquals(WIDTH - HAND / 2f, right, TOLERANCE)
+    }
+
+    @Test
+    fun `손이 캔버스보다 넓으면 가운데에 둔다`() {
+        // 물릴 곳이 없다 — 억지로 물리면 좌우 하한이 상한을 넘어 coerceIn이 던진다.
+        assertEquals(
+            WIDTH / 2f,
+            GestureMotion.horizontalCenterFor(0f, WIDTH, WIDTH * 2f, 0f, WIDTH),
+            TOLERANCE,
+        )
+    }
+
     private companion object {
         /** 세로 스크롤에서 손이 훑는 폭 — 이동 거리 + 손 높이. */
         const val BAND = 200f
         const val DISTANCE = 120f
         const val TOLERANCE = 0.001f
+
+        // 가장자리 제스처(#222). 검증 기기(1080x2340, 3x)의 픽셀값 근사다.
+        const val WIDTH = 1080f
+        const val HEIGHT = 2340f
+
+        /** 손 크기 96dp를 3x로 친 값. */
+        const val HAND = 288f
+
+        /** 가장자리 띠 24dp를 3x로 친 값. */
+        const val EDGE_BAND = 72f
     }
 }
