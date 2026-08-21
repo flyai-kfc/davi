@@ -162,7 +162,7 @@
     -->
     <string name="voice_home_title_desc">어려운 건 물어보세요</string>
     <string name="voice_home_subtitle">· 하나씩 알려드릴게요 ·</string>
-    <string name="voice_home_bubble">무엇을 도와드릴까요?</string>
+    <string name="voice_home_bubble">'띠링' 소리가 나면 말해주세요!</string>
     <string name="voice_home_caption">· 눌러서 말하기 ·</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
 
