@@ -15,6 +15,60 @@ def test_leaves_plain_text_untouched():
     assert mask_text("") == ""
 
 
+# 아래 값은 전부 합성이다(실측 값은 이슈·테스트에 옮기지 않는다, #312).
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        # 조사가 붙으면 `\b`가 성립하지 않아 통째로 새어 나갔다 — 연락처·메시지·송금
+        # 화면의 label이 정확히 이 형태다(#312 ①).
+        ("010-1234-5678에게 전화", "•••에게 전화"),
+        ("연락처 010-1234-5678번", "연락처 •••번"),
+        ("계좌 123-456-789012로 송금", "계좌 •••로 송금"),
+        ("900101-1234567은 주민번호", "•••은 주민번호"),
+        ("1234-5678-9012-3456으로 결제", "•••으로 결제"),
+        # email은 `\b`를 쓰지 않아 원래 걸렸다. 회귀로 남긴다.
+        ("hong@example.com으로 보내기", "•••으로 보내기"),
+    ],
+)
+def test_masks_numbers_followed_by_korean_particles(label, expected):
+    assert mask_text(label) == expected
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "3C:86:9A:1B:2C:3D",
+        "버즈 3C:86:9A:1B:2C:3D",
+        "aa:bb:cc:dd:ee:ff",
+    ],
+)
+def test_masks_mac_addresses(label):
+    """블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②)."""
+    assert "•••" in mask_text(label)
+    assert ":" not in mask_text(label)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        # lookaround로 바꾸면서 오탐이 늘지 않았는지 — 숫자가 섞인 평범한 label들.
+        "내 갤럭시 버즈",
+        "2만 3000원",
+        "재생목록 1-2-3",
+        "오후 3:45",
+        "배터리 85%",
+        "12:34",
+        # MAC처럼 보이지만 6바이트가 아니다.
+        "3C:86:9A",
+        "3C:86:9A:1B:2C:3D:4E",
+    ],
+)
+def test_leaves_non_pii_labels_untouched(label):
+    assert mask_text(label) == label
+
+
 def test_mask_screen_is_non_destructive():
     screen = {
         "package_name": "p",
