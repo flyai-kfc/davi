@@ -101,6 +101,14 @@ def cmd_judge(args: argparse.Namespace) -> int:
         picked = [r for r in picked if r.scenario_id in wanted]
     if args.limit:
         picked = picked[: args.limit]
+    if not picked:
+        # 선택 오타가 자동화에서 성공으로 보이면 안 되고, 빈 채점이 meta·보고서를
+        # 다시 쓰게 둬서도 안 된다 — 평가자 생성 전에 막는다.
+        print(
+            "채점할 대상이 없다 — --difficulty/--only/--limit 을 확인한다",
+            file=sys.stderr,
+        )
+        return 1
 
     print(f"{len(results)}건 중 {len(picked)}건을 채점한다")
     if args.dry_run:
@@ -116,6 +124,9 @@ def cmd_judge(args: argparse.Namespace) -> int:
 
     judge_failures = 0
     for result in picked:
+        # 재채점 대상의 이전 채점은 재시도 전에 비운다 — 실패했는데 남아 있으면
+        # 옛 점수가 이번 채점(meta의 현재 평가자 모델·해시)으로 집계된다.
+        result.judge = None
         try:
             result.judge = run_judge(
                 judge_client, scenarios[result.scenario_id], result.transcript

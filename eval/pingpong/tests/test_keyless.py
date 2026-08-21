@@ -450,19 +450,15 @@ def test_실행_실패는_현_지표_계약으로_남고_exit_code로_드러난�
     assert summary["전체"]["건수"] == 2
 
 
-def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(monkeypatch, tmp_path):
-    """안내 문구가 가리키는 --allow-scenario-drift 가 실제로 있어야 복구 경로가 된다."""
-
+def _make_run_dir(tmp_path, scenario, *, digest, judge=None):
     import json
 
-    from pingpong_eval import cli
     from pingpong_eval.models import ScenarioResult, StopReason, Transcript
 
-    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     (run_dir / "meta.json").write_text(
-        json.dumps({"시나리오해시": "실행당시와다름"}), encoding="utf-8"
+        json.dumps({"시나리오해시": digest}), encoding="utf-8"
     )
     result = ScenarioResult(
         scenario_id=scenario.id,
@@ -471,14 +467,93 @@ def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(mon
         transcript=Transcript(
             scenario_id=scenario.id, opening="사진 보내줘", stop_reason=StopReason.READY
         ),
+        judge=judge,
     )
     (run_dir / "transcripts.jsonl").write_text(
         result.model_dump_json() + "\n", encoding="utf-8"
     )
+    return run_dir
+
+
+def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(tmp_path):
+    """안내 문구가 가리키는 --allow-scenario-drift 가 실제로 있어야 복구 경로가 된다."""
+
+    from pingpong_eval import cli
+
+    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
+    run_dir = _make_run_dir(tmp_path, scenario, digest="실행당시와다름")
 
     base = ["judge", str(run_dir), "--scenarios", str(ROOT / DEFAULT_SCENARIOS)]
     assert cli.main([*base, "--dry-run"]) == 1
     assert cli.main([*base, "--dry-run", "--allow-scenario-drift"]) == 0
+
+
+def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch, tmp_path):
+    """옛 judge가 남은 채로 meta만 현재 평가자로 갱신되면,
+    이전 점수가 이번 채점 결과처럼 집계된다(리뷰 실측)."""
+
+    import json
+
+    from pingpong_eval import cli
+    from pingpong_eval.llm import LlmError
+    from pingpong_eval.models import Achievement, JudgeResult, ScenarioResult
+
+    class _FailingJudge:
+        model = "stub-judge"
+        base_url = None
+        input_tokens = 0
+        output_tokens = 0
+
+        def parse(self, prompt, response_model, system=None):
+            raise LlmError("채점 호출 실패")
+
+    monkeypatch.setattr(cli, "ClaudeJudge", _FailingJudge)
+
+    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
+    old_judge = JudgeResult(
+        achievement=Achievement.FULL, reason="옛 채점", slot_scores=[], violations=[]
+    )
+    run_dir = _make_run_dir(
+        tmp_path,
+        scenario,
+        digest=cli.scenario_digest(ROOT / DEFAULT_SCENARIOS),
+        judge=old_judge,
+    )
+
+    code = cli.main(
+        ["judge", str(run_dir), "--scenarios", str(ROOT / DEFAULT_SCENARIOS)]
+    )
+    assert code == 1
+
+    (line,) = (run_dir / "transcripts.jsonl").read_text(encoding="utf-8").splitlines()
+    assert ScenarioResult.model_validate_json(line).judge is None
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["전체"]["충족"] == 0
+
+
+def test_judge_필터가_비면_실패로_끝난다(tmp_path):
+    """선택 오타가 자동화에서 성공으로 보이거나 기존 보고서를 다시 쓰면 안 된다."""
+
+    from pingpong_eval import cli
+
+    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
+    run_dir = _make_run_dir(
+        tmp_path, scenario, digest=cli.scenario_digest(ROOT / DEFAULT_SCENARIOS)
+    )
+
+    code = cli.main(
+        [
+            "judge",
+            str(run_dir),
+            "--scenarios",
+            str(ROOT / DEFAULT_SCENARIOS),
+            "--only",
+            "없는id",
+            "--dry-run",
+        ]
+    )
+    assert code == 1
+    assert not (run_dir / "report.md").exists()
 
 
 def test_보고서_표는_헤더와_값의_열이_맞는다(scenarios):
