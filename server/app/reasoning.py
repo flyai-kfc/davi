@@ -18,6 +18,7 @@ from .config import settings
 from .errors import LlmError
 from .llm import LlmClient
 from .masking import MaskingPolicy, active_masking_policy
+from .prompt import obscured_observation_unreliable
 from .schemas import (
     ActionType,
     ErrorKind,
@@ -74,6 +75,12 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
     `obscured`가 `None`(낡은 앱의 미관측)이면 아무 판정도 하지 않는다 — 침묵을 "가려짐"으로도
     "안 가려짐"으로도 읽지 않는다(C10의 세 상태 규약).
     """
+    # 전부 가려졌다고 관측된 화면에서는 **판정하지 않는다.** 그런 화면은 실존하지 않아
+    # (덮는 쪽은 항상 보인다) 관측 오작동의 신호이고, 프롬프트도 같은 판정으로 원본 목록을
+    # 폴백으로 싣는다(`prompt._visible_elements`). 여기서만 계속 거부하면 폴백으로 실린
+    # 요소를 모델이 고를 때마다 닫혀서, 백오프 → 같은 프롬프트 → 같은 거부의 뺑뺑이가 된다.
+    if obscured_observation_unreliable(screen.elements):
+        return
     target = _element_by_id(screen, action.target_node_id)
     if target is None or target.obscured is not True:
         return
@@ -212,6 +219,9 @@ def _scroll_candidates(screen: Screen, direction: SwipeDirection | None) -> list
     # 우회한다 — 그 검사는 모델이 고른 대상만 보는데, 아래 2단은 대상을 **직접 채워 넣는다**.
     # 모달이 뜬 화면에서 스크롤 가능한 것은 대개 뒤에 깔린 목록이라 흔한 경로다(PR #336 리뷰).
     # `None`(미관측)은 거르지 않는다 — 낡은 앱의 침묵을 "가려짐"으로 읽지 않는다(C10).
+    # 전부 가려진 화면에서는 필터를 끈다 — `_reject_obscured_target`과 같은 근거·같은 판정이다.
+    if obscured_observation_unreliable(screen.elements):
+        return [e for e in screen.elements if _scrolls_toward(e, direction)]
     return [e for e in screen.elements if e.obscured is not True and _scrolls_toward(e, direction)]
 
 

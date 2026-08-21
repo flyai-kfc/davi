@@ -198,6 +198,9 @@ object UiTreeSerializer {
         for ((index, child) in kids.withIndex()) {
             // 이 자식보다 **위에 그려지고 내용이 있는** 형제만 가림으로 친다.
             // 내용 조건이 없으면 빈 투명 오버레이(실측: draw=5)가 시트를 가린 것으로 잡힌다.
+            // drawingOrder는 Compose의 **가상 노드에서도 채워진다**(2026-08-21 SM-S921N 실측:
+            // AndroidComposeView 안쪽에서 스크림 draw=0 / 패널 draw=1). 전부 0으로 와서 판정이
+            // 조용히 꺼지는 provider(WebView 등)는 아직 관측하지 못했다 — PR #336 "남은 것".
             val childCover = cover + kids.withIndex().mapNotNull { (other, sibling) ->
                 boxOf(sibling).takeIf {
                     other != index && sibling.drawingOrder > child.drawingOrder && painted[other]

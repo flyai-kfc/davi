@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .schemas import GuideStep, NextStepRequest, Screen, SwipeDirection, UiElement
+from .schemas import GuideStep, NextStepRequest, SwipeDirection, UiElement
 
 # 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
@@ -349,7 +349,7 @@ def _scroll_context(req: NextStepRequest) -> str:
         return ""
     context = f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
 
-    open_directions, ended_directions = _scroll_reach(req.screen)
+    open_directions, ended_directions = _scroll_reach(_visible_elements(req))
     if open_directions:
         context += f"스크롤: 지금 더 갈 수 있는 방향은 {_join(open_directions)}입니다\n"
     if ended_directions:
@@ -357,7 +357,9 @@ def _scroll_context(req: NextStepRequest) -> str:
     return context
 
 
-def _scroll_reach(screen: Screen) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+def _scroll_reach(
+    elements: list[UiElement],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """스크롤 여유를 **방향별로 모으되 요소 id를 함께 남긴다.**
 
     한 요소의 `can_scroll_forward`는 그 요소의 `next_swipe_direction` 쪽 여유다. 요소마다
@@ -372,7 +374,7 @@ def _scroll_reach(screen: Screen) -> tuple[dict[str, list[str]], dict[str, list[
 
     open_directions: dict[str, list[str]] = {}
     ended_directions: dict[str, list[str]] = {}
-    for element in screen.elements:
+    for element in elements:
         pairs = (
             (element.can_scroll_forward, element.next_swipe_direction),
             (element.can_scroll_backward, element.prev_swipe_direction),
@@ -405,7 +407,7 @@ def _end_instruction(req: NextStepRequest) -> str:
     """
 
     scroll_ended = req.screen.has_scrollable_element is not None and bool(
-        _scroll_reach(req.screen)[1]
+        _scroll_reach(_visible_elements(req))[1]
     )
     page_ended = (
         req.screen.current_page is not None
@@ -423,9 +425,10 @@ def _swipe_legend(req: NextStepRequest) -> str:
     화면과 무관하게 늘 필요하므로 여기가 아니라 머리말에 있다([SCROLL_DIRECTION_INSTRUCTION]).
     """
 
+    # 요소 줄과 같은 목록을 본다 — 방향 값이 가려진 요소에만 있으면 값 없는 범례만 실린다.
     observed = any(
         element.next_swipe_direction is not None or element.prev_swipe_direction is not None
-        for element in req.screen.elements
+        for element in _visible_elements(req)
     )
     return f"{SWIPE_DIRECTION_LEGEND}\n" if observed else ""
 
@@ -437,7 +440,9 @@ def _input_context(req: NextStepRequest) -> str:
     context = ""
     if ime_visible is not None:
         context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
-    input_ready = any(element.editable and element.focused for element in req.screen.elements)
+    # 요소 줄과 같은 목록을 본다 — 검색창에 포커스가 남은 채 시트가 올라오면 포커스는 뒤에
+    # 남으므로, 전체를 보면 목록에 없는 입력칸을 두고 입력 안내가 나간다(PR #336 리뷰).
+    input_ready = any(element.editable and element.focused for element in _visible_elements(req))
     if input_ready and ime_visible is not False:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
@@ -445,6 +450,21 @@ def _input_context(req: NextStepRequest) -> str:
     if input_ready:
         context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
     return context
+
+
+def obscured_observation_unreliable(elements: list[UiElement]) -> bool:
+    """이 화면의 `obscured` 관측을 통째로 불신할지. **프롬프트와 가드가 같은 판정을 봐야 한다.**
+
+    근거: 무언가를 가리는 쪽(모달·시트)은 **자기 자신이 항상 보인다** — 덮는 요소가 가려질 수는
+    없다. 그래서 "요소 전부가 가려졌다"는 화면은 실제로 존재하지 않고, 그렇게 관측됐다면 앱의
+    기하 판정이 오작동한 것이다(PR #336 본문 "남은 것"의 과잉 판정 시나리오).
+
+    이 판정을 프롬프트(요소 목록 폴백)만 보고 가드가 안 보면, 폴백으로 실린 요소를 모델이
+    골랐을 때 가드가 전부 거부해 **백오프 → 같은 프롬프트 → 같은 거부**의 뺑뺑이가 된다 —
+    스크롤 줄이 목록에 없는 id를 가리키던 것과 같은 모양의 모순을 다시 만드는 셈이다.
+    """
+
+    return bool(elements) and all(element.obscured is True for element in elements)
 
 
 def _visible_elements(req: NextStepRequest) -> list[UiElement]:
@@ -458,8 +478,15 @@ def _visible_elements(req: NextStepRequest) -> list[UiElement]:
     받는 안전망이라 여기서 뺐다고 없앨 것이 아니다.
 
     `None`(미관측)은 뺄 근거가 없으므로 그대로 싣는다(C10의 세 상태 규약).
+
+    **전부 가려졌다고 관측된 화면은 원본을 그대로 준다.** 그런 화면은 실존하지 않아 관측
+    오작동의 신호이고([obscured_observation_unreliable]), 그대로 지우면 모델이 "요소 없음"을
+    받아 멀쩡한 화면에서 안내가 통째로 죽는다. 실패 모드를 "화면이 비어 보임"이 아니라
+    "틀린 후보가 섞임"에 묶어 두는 선택이다 — 후자는 가드와 재질의로 회복할 수 있다.
     """
 
+    if obscured_observation_unreliable(req.screen.elements):
+        return req.screen.elements
     return [element for element in req.screen.elements if element.obscured is not True]
 
 

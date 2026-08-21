@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from app.errors import LlmError
 from app.llm import LlmClient
-from app.prompt import build_prompt
+from app.prompt import FOCUSED_INPUT_INSTRUCTION, build_prompt
 from app.reasoning import next_step
 from app.schemas import (
     ActionType,
@@ -193,3 +193,113 @@ def test_unobscured_scroll_target_is_still_filled():
     )
 
     assert _guide(scroll, screen).target_node_id == "n2"
+
+
+def _scrollable(node_id: str, *, obscured: bool | None) -> UiElement:
+    return UiElement(
+        node_id=node_id,
+        label="가게 목록",
+        role="View",
+        obscured=obscured,
+        can_scroll_forward=True,
+        scroll_axis=ScrollAxis.VERTICAL,
+        next_swipe_direction=SwipeDirection.DOWN,
+    )
+
+
+def test_scroll_reach_line_does_not_point_at_hidden_ids():
+    """스크롤 줄이 요소 목록에 없는 id를 가리키면 안 된다(PR #336 리뷰 2R).
+
+    가리키면 모델이 그 id로 scroll을 내고, 후보 필터가 거부하고, 백오프 후 같은
+    프롬프트가 나가 같은 함정을 밟는 뺑뺑이가 된다 — 목록과 쪽지가 서로 모순인 상태다.
+    """
+
+    screen = Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[
+            UiElement(node_id="n1", label="닫기", role="View", clickable=True, obscured=False),
+            _scrollable("n27", obscured=True),
+        ],
+    )
+    prompt = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=screen))
+
+    assert "n27" not in prompt
+
+
+def test_scroll_reach_line_still_points_at_visible_ids():
+    screen = Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[_scrollable("n2", obscured=False)],
+    )
+    prompt = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=screen))
+
+    assert "n2" in prompt
+
+
+def test_focused_input_instruction_is_not_sent_for_a_hidden_input():
+    """검색창에 포커스가 남은 채 시트가 올라오면, 목록에 없는 입력칸을 두고 입력 안내가 나갔다."""
+
+    def input_screen(obscured: bool) -> Screen:
+        return Screen(
+            package_name="com.sampleapp",
+            elements=[
+                UiElement(node_id="n1", label="닫기", role="View", clickable=True, obscured=False),
+                UiElement(
+                    node_id="n2",
+                    label="검색",
+                    role="EditText",
+                    editable=True,
+                    focused=True,
+                    obscured=obscured,
+                ),
+            ],
+        )
+
+    hidden = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=input_screen(True)))
+    visible = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=input_screen(False)))
+
+    assert FOCUSED_INPUT_INSTRUCTION not in hidden
+    assert FOCUSED_INPUT_INSTRUCTION in visible
+
+
+def _all_obscured_screen() -> Screen:
+    """요소 전부가 가려졌다고 관측된 화면. 덮는 쪽은 항상 보이므로 실존하지 않는 관측이다."""
+
+    return Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[
+            UiElement(node_id="n1", label="치킨", role="Button", clickable=True, obscured=True),
+            _scrollable("n2", obscured=True),
+        ],
+    )
+
+
+def test_a_fully_obscured_screen_falls_back_to_the_original_list():
+    """전부 가려짐 = 관측 오작동. 그대로 지우면 멀쩡한 화면에서 안내가 통째로 죽는다."""
+
+    prompt = build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=_all_obscured_screen()))
+
+    assert "'치킨'" in prompt
+    assert "요소 없음" not in prompt
+
+
+def test_the_guard_stands_down_when_every_element_is_obscured():
+    """폴백으로 실린 요소를 가드가 계속 거부하면 백오프 → 같은 프롬프트 → 같은 거부의 뺑뺑이다."""
+
+    assert _guide(_tap("n1"), _all_obscured_screen()).target_node_id == "n1"
+
+
+def test_scroll_filling_also_stands_down_when_every_element_is_obscured():
+    scroll = GuideAction(
+        expected_result="목표 화면에 도달",
+        screen_summary="배달 앱 첫 화면",
+        evidence="목표에 맞는 가게가 아직 보이지 않음",
+        action_type=ActionType.SCROLL,
+        direction=SwipeDirection.DOWN,
+        instruction="아래쪽으로 스크롤해 주세요.",
+    )
+
+    assert _guide(scroll, _all_obscured_screen()).target_node_id == "n2"
