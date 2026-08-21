@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import android.graphics.Rect
-import android.graphics.Region
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -62,7 +61,11 @@ object UiTreeSerializer {
     private const val ROLE_PAGE_DOT = "page_dot"
 
     /** 직렬화 한 번 동안의 누적 상태. 파라미터가 늘어나는 것을 막는다. */
-    private class Ctx(val screenArea: Long, val masker: LabelMasker) {
+    private class Ctx(val screenRect: RectCover.Box, val masker: LabelMasker) {
+        /** 0이면 아래 넓이 비율이 0으로 나눈다. 창을 못 읽은 화면에서 실제로 0이 될 수 있다. */
+        val screenArea: Long =
+            ((screenRect.right - screenRect.left).toLong() *
+                (screenRect.bottom - screenRect.top).toLong()).coerceAtLeast(1L)
         val elements = mutableListOf<UiElement>()
         var counter = 0
         var currentPage: Int? = null
@@ -91,11 +94,8 @@ object UiTreeSerializer {
         windowTitle: CharSequence? = null,
         masker: LabelMasker = labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
     ): Result {
-        val screenArea = boundsOf(root).let { it.width().toLong() * it.height().toLong() }
-            .coerceAtLeast(1L)
-
-        val ctx = Ctx(screenArea, masker)
-        walk(root, ctx, absorbed = false, depth = 0, cover = Region())
+        val ctx = Ctx(boxOf(root), masker)
+        walk(root, ctx, absorbed = false, depth = 0, cover = emptyList())
 
         val truncated = ctx.elements.size > MAX_ELEMENTS
         return Result(
@@ -121,14 +121,14 @@ object UiTreeSerializer {
         ctx: Ctx,
         absorbed: Boolean,
         depth: Int,
-        cover: Region,
+        cover: List<RectCover.Box>,
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
         if (!node.isVisibleToUser) return
 
         // 이 노드가 **위에 그려진 형제에게 완전히 덮였는지**. isVisibleToUser는 형제 가림을
         // 보지 않으므로(안드로이드 스펙) 여기서 따로 센다.
-        val occluded = isCovered(boundsOf(node), cover)
+        val occluded = RectCover.isCovered(boxOf(node), cover, ctx.screenRect)
 
         val hasScrollActions = hasScrollActions(node)
         ctx.hasScrollableElement = observeScrollable(
@@ -190,28 +190,25 @@ object UiTreeSerializer {
         }
 
         if (!shouldInspectDescendants(node.isEditable)) return
-        val kids = (0 until node.childCount).mapNotNull { i -> node.getChild(i)?.let { i to it } }
-        for ((_, child) in kids) {
+        val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
+        // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
+        // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
+        // 직렬화는 폴링마다 돌고 안정·정체 판정이 그 시간 위에 얹혀 있다(PR #336 리뷰).
+        val painted = kids.map { hasPaintedContent(it, 0) }
+        for ((index, child) in kids.withIndex()) {
             // 이 자식보다 **위에 그려지고 내용이 있는** 형제만 가림으로 친다.
-            // 내용 조건이 없으면 배민의 빈 투명 오버레이(draw=5)가 시트를 가린 것으로 잡힌다(실측).
-            val childCover = Region(cover)
-            for ((_, other) in kids) {
-                if (other === child) continue
-                if (other.drawingOrder <= child.drawingOrder) continue
-                if (!hasPaintedContent(other, 0)) continue
-                childCover.union(boundsOf(other))
+            // 내용 조건이 없으면 빈 투명 오버레이(실측: draw=5)가 시트를 가린 것으로 잡힌다.
+            val childCover = cover + kids.withIndex().mapNotNull { (other, sibling) ->
+                boxOf(sibling).takeIf {
+                    other != index && sibling.drawingOrder > child.drawingOrder && painted[other]
+                }
             }
             walk(child, ctx, childrenAbsorbed, depth + 1, childCover)
         }
     }
 
-    /** [rect]가 [cover]에 **빈틈없이** 들어가는지. 스크림+패널처럼 여러 조각의 합집합도 받는다. */
-    private fun isCovered(rect: Rect, cover: Region): Boolean {
-        if (cover.isEmpty) return false
-        val remainder = Region(rect)
-        remainder.op(cover, Region.Op.DIFFERENCE)
-        return remainder.isEmpty
-    }
+    private fun boxOf(node: AccessibilityNodeInfo): RectCover.Box =
+        boundsOf(node).let { RectCover.Box(it.left, it.top, it.right, it.bottom) }
 
     /**
      * 이 서브트리가 실제로 무언가를 그리는지. **투명한 빈 오버레이를 가림에서 빼려고** 둔다.
