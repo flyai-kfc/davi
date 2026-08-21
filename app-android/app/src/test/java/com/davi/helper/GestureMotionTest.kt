@@ -372,7 +372,7 @@ class GestureMotionTest {
         /** 손 크기 96dp를 3x로 친 값. */
         const val HAND = 288f
 
-        /** 가장자리 띠 24dp를 3x로 친 값. */
-        const val EDGE_BAND = 72f
+        /** 가장자리 선 8dp를 3x로 친 값. */
+        const val EDGE_BAND = 24f
     }
 }

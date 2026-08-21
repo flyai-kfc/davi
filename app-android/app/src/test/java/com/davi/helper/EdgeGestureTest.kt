@@ -56,7 +56,7 @@ class EdgeGestureTest {
     }
 
     @Test
-    fun `상단 띠는 화면 맨 위에 딱 붙는다`() {
+    fun `상단 선은 화면 맨 위에 딱 붙는다`() {
         // 안으로 물리면 "여기서 시작하라"가 아니라 "이 근처를 눌러라"로 읽힌다.
         val spec = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
         val band = EdgeGesture.bandFor(spec, 0f, 0f, WIDTH, HEIGHT, THICKNESS)
@@ -67,7 +67,7 @@ class EdgeGestureTest {
     }
 
     @Test
-    fun `하단 띠는 화면 맨 아래에 딱 붙는다`() {
+    fun `하단 선은 화면 맨 아래에 딱 붙는다`() {
         val spec = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_APP_DRAWER))
         val band = EdgeGesture.bandFor(spec, 0f, 0f, WIDTH, HEIGHT, THICKNESS)
         assertEquals(HEIGHT - THICKNESS, band.top, TOLERANCE)
@@ -77,9 +77,9 @@ class EdgeGestureTest {
     }
 
     @Test
-    fun `캔버스가 원점에 없어도 띠는 그 캔버스의 변에 붙는다`() {
+    fun `캔버스가 원점에 없어도 선은 그 캔버스의 변에 붙는다`() {
         // 오버레이 창은 상태표시줄 아래에서 시작한다(frame=[0,103] 실측) — 좌표계를 0으로
-        // 가정하면 띠가 그만큼 위로 새거나 아래로 밀린다.
+        // 가정하면 선이 그만큼 위로 새거나 아래로 밀린다.
         val spec = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
         val band = EdgeGesture.bandFor(spec, 0f, OFFSET, WIDTH, HEIGHT, THICKNESS)
         assertEquals(OFFSET, band.top, TOLERANCE)
@@ -87,8 +87,8 @@ class EdgeGestureTest {
     }
 
     @Test
-    fun `손은 띠와 같은 변에서 출발한다`() {
-        // 띠와 손이 다른 변을 가리키면 어디를 잡으라는 것인지 알 수 없다.
+    fun `손은 선과 같은 변에서 출발한다`() {
+        // 선과 손이 다른 변을 가리키면 어디를 잡으라는 것인지 알 수 없다.
         val quick = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
         val drawer = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_APP_DRAWER))
         assertEquals(OFFSET, EdgeGesture.startEdgeY(quick, OFFSET, HEIGHT), TOLERANCE)
@@ -96,7 +96,7 @@ class EdgeGestureTest {
     }
 
     @Test
-    fun `띠가 있는 액션은 손 모션도 함께 뜬다`() {
+    fun `선이 있는 액션은 손 모션도 함께 뜬다`() {
         // 강조만 뜨고 손이 없으면 "여기를 눌러라"로 읽혀 정반대를 가르친다.
         ActionType.entries.filter { EdgeGesture.specFor(it) != null }.forEach {
             assertNotNull(EdgeGesture.specFor(it)?.fingerDirection)
@@ -111,8 +111,8 @@ class EdgeGestureTest {
         const val WIDTH = 1080f
         const val HEIGHT = 2340f
 
-        /** 가장자리 띠 24dp를 3x로 친 값. */
-        const val THICKNESS = 72f
+        /** 가장자리 선 8dp를 3x로 친 값. */
+        const val THICKNESS = 24f
 
         /** 오버레이 창이 상태표시줄만큼 아래에서 시작하는 실측값(SM-S921N). */
         const val OFFSET = 103f

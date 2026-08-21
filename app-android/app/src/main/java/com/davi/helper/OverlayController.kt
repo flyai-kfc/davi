@@ -3,6 +3,7 @@ package com.davi.helper
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -206,6 +207,25 @@ internal object OverlayWindowParams {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            // **표시 창만 컷아웃 위까지 올린다**(#222). 기본 모드에서는 세로 방향에서 창이
+            // 컷아웃을 피해 잡혀 프레임이 `[0,103][1080,2340]`이었다(SM-S921N 실측) — 위만
+            // 103px 잘리고 아래는 안 잘린다. 가장자리 제스처의 상단 선이 "화면 맨 위"를
+            // 가리켜야 하는데 그 자리가 상태표시줄 아래로 밀렸다. ALWAYS로 두면 `[0,0]`이 되고
+            // 2026-08-21 실측에서 선이 y=0에 붙었다.
+            //
+            // **조작 창에는 주지 않는다.** 저쪽 프레임이 움직이면 안내창 자리가 통째로 103px
+            // 밀린다 — 두 창의 부모 프레임이 다르다는 것이 화면 좌표를 넘기는 이유였다
+            // ([HighlightOverlayView.GuideBoxListener]).
+            //
+            // **안내창이 시스템 바를 침범하지는 않는다**(#169 유지). 안내창이 앉을 범위는
+            // 창 프레임이 아니라 디스플레이 인셋에서 오므로(`boxBounds`) 이 변경과 무관하다.
+            //
+            // **곁가지로 읽는 중 테두리·종료 스크림도 화면 끝까지 간다.** 시안이 전면인 쪽이라
+            // 되돌릴 이유가 없지만, 그 확정은 #178 몫이고 여기서 앞당긴 것은 아니다.
+            if (!touchable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
         }
     }
 }

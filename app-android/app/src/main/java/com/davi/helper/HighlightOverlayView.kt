@@ -160,11 +160,11 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 가장자리 제스처면 그 사양(#222). null이면 스크롤 시연이거나 시연이 없다.
      *
      * **이 값이 곧 두 경로의 분기다** — 서 있으면 손이 화면 변에서 출발하고 강조는 앱이 만든
-     * 가장자리 띠이며, 없으면 지금까지대로 화면 가운데에서 안내창을 피해 그린다.
+     * 가장자리 선이며, 없으면 지금까지대로 화면 가운데에서 안내창을 피해 그린다.
      */
     private var edgeGesture: EdgeGesture.Spec? = null
 
-    private val edgeBand = resources.getDimension(R.dimen.davi_overlay_edge_band)
+    private val edgeLine = resources.getDimension(R.dimen.davi_overlay_edge_line)
 
     private val handSize = resources.getDimension(R.dimen.davi_overlay_hand_size)
     private val handTravel = resources.getDimension(R.dimen.davi_overlay_hand_travel)
@@ -300,7 +300,7 @@ class HighlightOverlayView(context: Context) : View(context) {
             // **강조도 함께 걷는다**(#295). 화면이 바뀐 뒤에도 남으면 엉뚱한 자리를 가리킨다.
             hasTarget = false
             gestureDirection = null
-            // 가장자리 띠도 함께 걷는다. 변 자체는 안 움직이지만 **읽는 중이라는 것은 셰이드가
+            // 가장자리 선도 함께 걷는다. 변 자체는 안 움직이지만 **읽는 중이라는 것은 셰이드가
             // 이미 내려오는 중이라는 뜻**이라, 그 위에 "여기서 시작하세요"가 남으면 이미 한
             // 동작을 다시 시키는 그림이 된다.
             edgeGesture = null
@@ -460,7 +460,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         gestureDirection = edgeGesture?.fingerDirection
             ?: direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
         if (bounds != null) target.set(bounds)
-        // 가장자리 띠는 서버 target을 덮는다 — 이 액션에 노드가 올 일은 없지만, 와도 가리킬 것은
+        // 가장자리 선는 서버 target을 덮는다 — 이 액션에 노드가 올 일은 없지만, 와도 가리킬 것은
         // "손을 대는 자리"지 그 노드가 아니다.
         syncEdgeTarget()
         this.instruction = instruction.trim()
@@ -544,7 +544,7 @@ class HighlightOverlayView(context: Context) : View(context) {
      * **자리를 정하는 규칙이 둘이고 [edgeGesture]가 가른다**(#222).
      * - 스크롤: 화면 정중앙이 기본이되 안내창이 그 자리를 쓰면 위/아래 남은 공간 중 넓은 쪽으로
      *   옮긴다([GestureMotion.verticalCenterFor], 2026-08-17 요청).
-     * - 가장자리(퀵세팅·앱 서랍): 강조한 띠 위에서 출발한다. 여기서는 손이 비키지 않고
+     * - 가장자리(퀵세팅·앱 서랍): 강조한 선 위에서 출발한다. 여기서는 손이 비키지 않고
      *   **안내창이 비킨다** — 시작 지점이 고정인 것 자체가 가르치려는 내용이라서다.
      *
      * **방향을 여기서 보정하지 않는다.** [gestureDirection]은 이미 보정을 마친 손가락 방향이다
@@ -583,9 +583,9 @@ class HighlightOverlayView(context: Context) : View(context) {
             // 가장자리 — 시작 지점이 고정인 것이 이 제스처의 전부라 **안내창을 피해 옮기지 않는다.**
             // 비키는 쪽은 안내창이다([handSweep]가 회피로 넘긴다).
             //
-            // 띠를 로컬 좌표로 다시 잡는다 — [target]은 화면 좌표라 원점 보정을 한 번 더 타야
+            // 선을 로컬 좌표로 다시 잡는다 — [target]은 화면 좌표라 원점 보정을 한 번 더 타야
             // 하는데, 같은 비율에서 다시 세우면 그 의존이 아예 없어진다.
-            val band = EdgeGesture.bandFor(spec, 0f, 0f, width.toFloat(), height.toFloat(), edgeBand)
+            val band = EdgeGesture.bandFor(spec, 0f, 0f, width.toFloat(), height.toFloat(), edgeLine)
             centerX = GestureMotion.horizontalCenterFor(
                 canvasLeft = 0f,
                 canvasRight = width.toFloat(),
@@ -738,7 +738,11 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (locationOnScreen[0] != layoutOriginX || locationOnScreen[1] != layoutOriginY) relayout()
         canvas.translate(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
 
-        if (hasTarget) {
+        if (hasTarget && edgeGesture != null) {
+            // 가장자리 제스처는 **면이 아니라 선**이다(2026-08-21 요청). 아래 사각형 경로와
+            // 배타적이다 — 둘 다 그리면 선 위에 테두리가 겹쳐 도로 상자가 된다.
+            drawEdgeLine(canvas)
+        } else if (hasTarget) {
             // 자리는 [highlightBounds]가 정한다 — **레이아웃도 같은 사각형을 피한다.**
             // 근거(후광을 안 섞는 이유·가장자리 클램프)는 그 KDoc에 있다.
             //
@@ -787,6 +791,46 @@ class HighlightOverlayView(context: Context) : View(context) {
 
         // 강조와 독립이다 — 강조가 내려간 뒤에도 남은 파동은 마저 퍼진다.
         drawPressWave(canvas)
+    }
+
+    /**
+     * 시작 지점을 **변에 걸린 선 하나**로 그린다(#222, 2026-08-21 요청).
+     *
+     * **사각형이 아닌 이유는 뜻이 다르기 때문이다.** 강조 사각형은 "이 안을 눌러라"인데 여기서
+     * 가리키는 것은 누를 영역이 아니라 손을 대고 끌기 시작하는 **경계**다. 면으로 그리면
+     * 시니어가 그 안을 탭하고, 탭으로는 셰이드가 안 열린다.
+     *
+     * **색·후광·브리딩은 강조와 같은 것을 쓴다**([HighlightMotion]) — 배워야 할 기호를 늘리지
+     * 않으려는 것이라, 달라지는 것은 겹을 쌓는 방향뿐이다. 사각형은 바깥으로 넓혀 가며 쌓지만
+     * 선은 **제자리에서 굵어지며** 쌓는다. 그래서 획의 절반이 화면 밖으로 나가 잘리고, 남은
+     * 절반이 화면 안쪽으로 번진다 — 화면 밖에서 손이 들어온다는 뜻이 그림에 그대로 남는다.
+     */
+    private fun drawEdgeLine(canvas: Canvas) {
+        val spec = edgeGesture ?: return
+        val frame = HighlightMotion.frame(readingPhase, edgeLine, highlightGlowSpread)
+        // 끝을 둥글게 — 퀵세팅은 화면 절반에서 끊기므로 각지게 자르면 잘린 상자로 되읽힌다.
+        // 사각형 경로는 drawRoundRect라 cap을 보지 않으므로 되돌릴 필요가 없다.
+        strokePaint.strokeCap = Paint.Cap.ROUND
+        highlightGlowPaint.strokeCap = Paint.Cap.ROUND
+        // 획은 중심선에 칠해지므로 절반을 안으로 물려야 잉크의 바깥이 변에 맞는다.
+        val y = when (spec.edge) {
+            EdgeGesture.Edge.TOP -> target.top + edgeLine / 2f
+            EdgeGesture.Edge.BOTTOM -> target.bottom - edgeLine / 2f
+        }
+        if (frame.glowBaseAlpha > 0) {
+            for (ring in 0 until HighlightMotion.GLOW_RING_COUNT) {
+                val alpha = HighlightMotion.ringAlphaAt(ring, frame.glowBaseAlpha)
+                if (alpha <= 0) continue
+                // 바깥으로 옮기는 대신 **그 자리에서 굵힌다.** 옮기면 변 밖으로 통째로 나가
+                // 후광이 통째로 잘린다.
+                highlightGlowPaint.strokeWidth =
+                    edgeLine + 2f * HighlightMotion.ringOffsetAt(ring, frame.glowSpread)
+                highlightGlowPaint.alpha = alpha
+                canvas.drawLine(target.left, y, target.right, y, highlightGlowPaint)
+            }
+        }
+        strokePaint.strokeWidth = frame.coreStroke
+        canvas.drawLine(target.left, y, target.right, y, strokePaint)
     }
 
     /**
@@ -915,7 +959,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         val spec = edgeGesture ?: return
         if (width == 0 || height == 0) return
         val view = viewBounds()
-        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeBand)
+        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeLine)
         target.set(band.left, band.top, band.right, band.bottom)
         hasTarget = true
     }
@@ -934,7 +978,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         val spec = edgeGesture ?: return null
         if (width == 0 || height == 0) return null
         val view = viewBounds()
-        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeBand)
+        val band = EdgeGesture.bandFor(spec, view.left, view.top, view.right, view.bottom, edgeLine)
         val centerX = GestureMotion.horizontalCenterFor(
             canvasLeft = view.left,
             canvasRight = view.right,
@@ -961,7 +1005,7 @@ class HighlightOverlayView(context: Context) : View(context) {
         getLocationOnScreen(locationOnScreen)
         layoutOriginX = locationOnScreen[0]
         layoutOriginY = locationOnScreen[1]
-        // 창 크기·자리가 바뀌면 가장자리 띠도 따라가야 한다 — 아래 계산이 그 사각형을 회피한다.
+        // 창 크기·자리가 바뀌면 가장자리 선도 따라가야 한다 — 아래 계산이 그 사각형을 회피한다.
         syncEdgeTarget()
 
         // 크기가 없으면 폭을 모르니 접을 수 없다. onSizeChanged가 다시 부른다.
