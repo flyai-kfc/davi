@@ -89,8 +89,8 @@ Android Studio는 디버거·Layout Inspector가 필요할 때만 쓴다. Gradle
 eval 픽스처 읽기도 같이 죽는다.
 
 **실측된 것은 여기까지다: 증상, 그리고 그 도구를 재시작하면 풀린다는 것**(2026-08-21).
-겪은 자리는 **에이전트 CLI**(`~/Library/Application Support/Claude/claude-code/<버전>/claude.app`
-— 저장소가 `.claude/skills/`로 이미 가리키는 그것)를 통해 돌린 명령들이었다. 셸을 새로
+겪은 자리는 **에이전트 CLI**(`~/Library/Application Support/Claude/claude-code/<버전>/claude.app`)를
+통해 돌린 명령들이었다. 셸을 새로
 띄우는 것만으로는 안 풀렸다. 개인정보 보호 설정에서 접근을 다시 허용해야 할 수도 있다.
 
 원인은 **확인하지 못했다.** 관측된 정황은 그 실행 파일 경로에 버전이 박혀 있고
