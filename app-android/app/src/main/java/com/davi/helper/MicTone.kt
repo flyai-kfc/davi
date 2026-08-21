@@ -27,6 +27,11 @@ import kotlin.math.sin
  * 신호음뿐이라 "삑" 소리가 됐고, **톤 자체가 별로**라는 지적을 받았다(2026-08-20).
  * 여기서는 **두 음을 직접 합성한다** — 음원 파일을 만들지 않으면서 부드러운 차임이 된다.
  *
+ * **메인 스레드 전용이다.** [track]에 동기화가 없다 — [prepare]·[play]·[release]가 전부
+ * 메인에서 불린다는 전제다. [prepare]가 16,317샘플 `sin()`과 [AudioTrack] 생성(바인더
+ * 왕복)을 하는 자리라 **작업 스레드로 옮기고 싶어지는 모양**인데, 그러면 [play]와 조용히
+ * 경합한다. 옮길 거면 동기화를 먼저 넣는다.
+ *
  * **스트림은 미디어다.** TTS가 타는 것과 같게 둔다 — 다르면 무음 모드에서 **소리는 없고
  * 목소리만 나는** 조합이 생긴다. 무음 모드를 따로 다루지는 않는다.
  *
@@ -66,7 +71,10 @@ class MicTone {
         try {
             val active = track ?: buildTrack().also { track = it }
             active.stop()
-            active.reloadStaticData()
+            // **되감기 실패는 예외가 아니라 반환값으로 온다.** 아래 catch에 안 걸리므로
+            // 여기서 본다 — 실패하면 재생 위치가 버퍼 끝이라 소리 없이 지나간다.
+            val rewound = active.reloadStaticData()
+            if (rewound != AudioTrack.SUCCESS) Log.w(TAG, "mic tone rewind failed: $rewound")
             active.play()
         } catch (e: RuntimeException) {
             Log.w(TAG, "mic tone unavailable: ${e.javaClass.simpleName}")

@@ -79,6 +79,9 @@ class ConversationActivity : AppCompatActivity() {
     // 준비 완료 신호는 인식기 구현에 달려 있어 보장으로 삼지 않는다 — 안 오면 라벨이
     // 영영 안 뜨는 게 최악이라, 이 타이머가 도는 최악의 경우를 **이 PR 이전 동작**으로 둔다.
     private val micTone = MicTone()
+
+    /** 이번 듣기 턴에서 차임이 아직 안 울렸는가. [startListeningTurn]이 무장한다. */
+    private var micToneArmed = false
     private val micReadyHandler = Handler(Looper.getMainLooper())
     private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
 
@@ -612,7 +615,7 @@ class ConversationActivity : AppCompatActivity() {
                 if (voiceSession.continueListening(state.generation)) {
                     setState(ConversationUiState.Listening(question = state.question))
                     GuideTelemetry.voiceState("listening_barge_in")
-                    speechHelper().start()
+                    startListeningTurn()
                 }
             }
             else -> return
@@ -640,7 +643,7 @@ class ConversationActivity : AppCompatActivity() {
         voiceSession.start()
         setState(ConversationUiState.Listening())
         GuideTelemetry.voiceState("listening")
-        speechHelper().start()
+        startListeningTurn()
     }
 
     private fun submitVoiceTurn(text: String) {
@@ -772,7 +775,7 @@ class ConversationActivity : AppCompatActivity() {
                 if (voiceSession.continueListening(outcome.generation)) {
                     setState(ConversationUiState.Listening(question = outcome.message))
                     GuideTelemetry.voiceState("listening_follow_up")
-                    speechHelper().start()
+                    startListeningTurn()
                 }
             },
         )
@@ -928,7 +931,13 @@ class ConversationActivity : AppCompatActivity() {
         // 안 주는 인식기에서 **띠링이 아예 없어져 #313이 그 기기에서 통째로 사라진다.**
         // 실측(SM-S921N 8회)에서 상한이 돈 적은 없어 지금은 가정상의 위험이다 —
         // 다른 기기 로그에 `mic_ready_fallback`이 보이면 그때 이 자리를 다시 본다.
-        micTone.play()
+        //
+        // **다만 턴당 한 번이다**([startListeningTurn]). 폴백 재시작으로 이 자리에 두 번째로
+        // 오는 구간은 사용자가 이미 말하는 중이라, 그때 우는 소리는 도움이 아니라 방해다.
+        if (micToneArmed) {
+            micToneArmed = false
+            micTone.play()
+        }
         // 상태 이름은 setState가 남기지 않는다(같은 클래스라 전이가 아니다). 준비까지 걸린
         // 시간은 이 줄과 직전 listening 줄의 간격으로 로그에서 읽는다.
         GuideTelemetry.voiceState(telemetry)
@@ -940,6 +949,25 @@ class ConversationActivity : AppCompatActivity() {
         voiceSession.cancel()
         voiceRequestTracker.reset()
         appResolutionRequestTracker.reset()
+    }
+
+    /**
+     * 듣기 턴 하나를 시작한다. **차임을 여기서 다시 무장한다** — 턴마다 한 번만 운다.
+     *
+     * 인식기는 한 턴 안에서 **다시 준비 중으로 돌아갈 수 있다**: 온디바이스가 끊기면
+     * `ERROR_SERVER_DISCONNECTED` 폴백이 네트워크 인식기로 갈아타며 `onMicPreparing`을
+     * 다시 보낸다(#273). 그때 차임이 또 울면 **사용자가 이미 말하는 중**이다 — 문장 한가운데를
+     * 끊고, 곧 열릴 마이크로 들어가고, "지금 말하세요"를 이미 말하는 사람에게 다시 말한다.
+     *
+     * **두 번째 구간에는 화면 신호만 준다.** 흐림이 다시 덮였다 걷히는 것은 조용하지만 소리는
+     * 안 조용하고, 그 구간의 사용자는 이미 붙잡혀 있어 "언제 말하나"를 다시 알릴 필요가 없다.
+     *
+     * 세 곳에서 부른다(첫 발화·바지인·후속 질문). **`speechHelper().start()`를 직접 부르지
+     * 않는다** — 그러면 그 턴만 차임이 안 무장돼 조용히 갈린다.
+     */
+    private fun startListeningTurn() {
+        micToneArmed = true
+        speechHelper().start()
     }
 
     private fun speechHelper(): SpeechRecognizerHelper =
