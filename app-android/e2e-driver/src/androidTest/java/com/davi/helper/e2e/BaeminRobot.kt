@@ -20,6 +20,23 @@ internal class BaeminRobot(private val device: UiDevice) {
             GuardedControlGuard.liveBlockedControlBoxes(device, ORDER_FRAGMENTS).isNotEmpty()
 
     /**
+     * 정리가 사용자 데이터를 지우지 않도록 장바구니가 비어 있을 때만 시나리오 실행을 허용한다.
+     * 기존 항목이 있거나 상태를 확정하지 못하면 아무것도 지우지 않고 실패한다.
+     */
+    fun requireEmptyCartBeforeRun() {
+        forceStop()
+        GuidedAppOps.launch(device, PACKAGE)
+        dismissPopupIfAny()
+        openCart()
+
+        when (cartState()) {
+            CartState.EMPTY -> return
+            CartState.HAS_ITEMS -> throw GuidedScenarioFailure("cart_not_empty_precondition")
+            CartState.UNKNOWN -> throw GuidedScenarioFailure("cart_screen_unverified")
+        }
+    }
+
+    /**
      * 장바구니를 비운다. UI를 통해서만 지울 수 있어 문구 기반으로 진행하고, 비웠음을 확인하지
      * 못하면 구조화 코드로 실패를 남긴다 — "확인하지 못했다"를 "비웠다"로 읽지 않는다.
      */
@@ -27,14 +44,7 @@ internal class BaeminRobot(private val device: UiDevice) {
         forceStop()
         GuidedAppOps.launch(device, PACKAGE)
         dismissPopupIfAny()
-
-        val cart = GuidedAppOps.waitForVisibleLabelLike(device, "장바구니", ENTRY_TIMEOUT_MS)
-            ?: throw GuidedScenarioFailure("cart_entry_missing")
-        cart.click()
-        // 진입 버튼이 떴다고 장바구니 화면이 그려진 것은 아니다. 화면 표식을 기다리지 않으면
-        // 아직 비지 않은 장바구니를 "주문 컨트롤이 없다"는 이유로 비었다고 읽는다.
-        GuidedAppOps.waitForVisibleLabelLike(device, CART_SCREEN_FRAGMENT, ENTRY_TIMEOUT_MS)
-            ?: throw GuidedScenarioFailure("cart_screen_unverified")
+        openCart()
         when (cartState()) {
             CartState.EMPTY -> return
             CartState.UNKNOWN -> throw GuidedScenarioFailure("cart_screen_unverified")
@@ -58,6 +68,17 @@ internal class BaeminRobot(private val device: UiDevice) {
         throw GuidedScenarioFailure("cart_cleanup_unverified")
     }
 
+    private fun openCart() {
+        val cart = GuidedAppOps.waitForVisibleLabelLike(device, CART_SCREEN_FRAGMENT, ENTRY_TIMEOUT_MS)
+            ?: throw GuidedScenarioFailure("cart_entry_missing")
+        cart.click()
+        device.waitForIdle(IDLE_TIMEOUT_MS)
+        // 진입 버튼이 떴다고 장바구니 화면이 그려진 것은 아니다. 화면 표식을 기다리지 않으면
+        // 아직 비지 않은 장바구니를 "주문 컨트롤이 없다"는 이유로 비었다고 읽는다.
+        GuidedAppOps.waitForVisibleLabelLike(device, CART_SCREEN_FRAGMENT, ENTRY_TIMEOUT_MS)
+            ?: throw GuidedScenarioFailure("cart_screen_unverified")
+    }
+
     /** 장바구니 판정. "비었다"를 단정할 수 없는 상태를 따로 둔다. */
     private enum class CartState { EMPTY, HAS_ITEMS, UNKNOWN }
 
@@ -77,6 +98,8 @@ internal class BaeminRobot(private val device: UiDevice) {
         if (GuardedControlGuard.liveBlockedControlBoxes(device, ORDER_FRAGMENTS).isNotEmpty()) {
             return CartState.HAS_ITEMS
         }
+        // 주소·주문 가능 여부와 무관하게 항목별 삭제 컨트롤은 기존 항목의 양성 증거다.
+        if (GuidedAppOps.hasVisibleLabelLike(device, DELETE_FRAGMENT)) return CartState.HAS_ITEMS
         if (GuidedAppOps.hasVisibleLabelLike(device, "비어")) return CartState.EMPTY
         if (!GuidedAppOps.hasVisibleLabelLike(device, CART_SCREEN_FRAGMENT)) return CartState.UNKNOWN
         return CartState.EMPTY
@@ -105,6 +128,8 @@ internal class BaeminRobot(private val device: UiDevice) {
          * 잡혔다.
          */
         private const val CART_SCREEN_FRAGMENT = "장바구니"
+
+        private const val DELETE_FRAGMENT = "삭제"
 
         /** 콜드 스타트 직후 홈 화면이 그려질 때까지의 여유. */
         private const val ENTRY_TIMEOUT_MS = 10_000L

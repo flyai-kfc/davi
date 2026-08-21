@@ -9,7 +9,8 @@ import androidx.test.uiautomator.UiDevice
  * 주문·결제는 성공 상태에서도 절대 실행하지 않는 하드 경계다 — 실제 가게로 주문이 나가는 기기
  * 밖 부작용이라 label(부분 문자열)과 **누를 좌표**를 함께 본다(#134). 담기를 시도한 뒤부터는
  * 주문 컨트롤이 식별돼야 진행한다(fail-closed, #211). 장바구니는 계정에 남으므로 정리에서
- * 비운다.
+ * 비운다. 다만 기존 장바구니 항목을 지우지 않도록 실행 전에 빈 장바구니를 사전 조건으로
+ * 확인한다.
  */
 internal class BaeminPreOrderScenario : GuidedScenario<BaeminPreOrderScenario.State> {
     data class State(
@@ -40,7 +41,12 @@ internal class BaeminPreOrderScenario : GuidedScenario<BaeminPreOrderScenario.St
 
     override fun prepare(device: UiDevice): State {
         robot = BaeminRobot(device)
-        robot.forceStop()
+        try {
+            robot.requireEmptyCartBeforeRun()
+        } finally {
+            // 사전 조건 확인을 위해 연 배민을 닫아 매 실행을 같은 시작 상태로 맞춘다.
+            robot.forceStop()
+        }
         val launcherPackage = device.launcherPackageName
             ?: throw GuidedScenarioFailure("launcher_package_missing")
         return State(launcherPackage).also { boundaryState = it }
