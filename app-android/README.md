@@ -401,5 +401,6 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 - 1순위: `adb logcat -s GuideSvc` (재현 직전 `adb logcat -c`).
 - 정상 왕복: 같은 `logical_request_id`의 `request_started` → `request_finished outcome=success`.
 - 서버가 꺼짐: `request_finished outcome=network_error`만 남고 서비스는 계속 실행된다.
-- 속성 확인: `adb shell uiautomator dump` (UTF-8로 읽기).
+- 속성 확인: `adb shell uiautomator dump` (UTF-8로 읽기). **우리 서비스가 보는 트리의 대용은 아니다** —
+  덤프는 `visibleToUser=false`에서 서브트리를 끊는다(`CLAUDE.md` 도구 함정).
 - adb 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server`.

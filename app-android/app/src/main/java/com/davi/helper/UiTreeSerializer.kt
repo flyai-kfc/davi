@@ -51,8 +51,9 @@ object UiTreeSerializer {
     /**
      * 런처 페이지 인디케이터(dot)의 content-desc. 예: "6 페이지 중 2 페이지입니다."
      *
-     * 삼성 런처는 홈·앱서랍 모두 `scrollable` 노드를 0개 노출하므로(HANDOFF §3-2)
-     * **현재/전체 페이지를 알 수 있는 유일한 경로가 이것뿐이다**(§3-3).
+     * 삼성 런처는 구성에 따라 `scrollable` 노드를 하나도 노출하지 않는다(다중 페이지 홈·격자
+     * 앱서랍 실측 — `app-android/CLAUDE.md` 기기 함정). 그런 화면에서는
+     * **현재/전체 페이지를 알 수 있는 유일한 경로가 이것뿐이다**(HANDOFF §3-3).
      *
      * 한국어 문구에 묶여 있다. 다국어는 SPEC §11의 열린 결정이다.
      */
@@ -77,8 +78,8 @@ object UiTreeSerializer {
      * 자기 넓이가 화면의 이 비율을 넘으면 "누를 수 있는 대상"이 아니라 컨테이너로 본다.
      * 이런 노드에는 자손 텍스트를 합치지 않는다.
      *
-     * 삼성 런처는 홈·앱서랍 모두 `scrollable` 노드를 0개 노출하므로(HANDOFF §3-2)
-     * `isScrollable`만으로는 워크스페이스를 걸러낼 수 없다. 그래서 넓이로 판단한다.
+     * 삼성 런처 워크스페이스는 `scrollable`을 노출하지 않는 구성이 있어(위 [PAGE_DOT_RE])
+     * `isScrollable`만으로는 걸러낼 수 없다. 그래서 넓이로 판단한다.
      */
     private const val CONTAINER_AREA_RATIO = 0.5
 
@@ -124,15 +125,17 @@ object UiTreeSerializer {
         cover: List<RectCover.Box>,
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
-        // **가시성은 트리 아래로 단조롭지 않다.** 부모가 false인데 자식이 전부 true인 화면이 있다
-        // (#332 실측: 배민 메뉴 상세의 상·하단 바 컨테이너가 `visibleToUser=false`인데 그 안의
-        // `담기` 버튼·`뒤로가기`·제목은 true였다). 그래서 여기서 서브트리를 끊지 않는다 —
-        // 이 노드만 건너뛰고 자식은 계속 훑는다. 화면 밖 목록 항목은 **자기 자신이** false라
-        // 그대로 걸러지므로, 이 규칙이 원래 막으려던 것은 그대로 막힌다.
+        // **가시성은 트리 아래로 단조롭지 않다.** 부모가 false인데 자식은 true인 화면이 있다
+        // (2026-08-21 SM-S921N 실측, #358: 배민 메뉴 상세의 상·하단 바 컨테이너가
+        // `visibleToUser=false`인데 그 안의 `담기` 버튼·`뒤로가기`·제목은 true였다).
+        // 그래서 여기서 서브트리를 끊지 않는다 — 이 노드만 건너뛰고 자식은 계속 훑는다.
+        // 화면 밖 목록 항목은 **자기 자신이** false라 그대로 걸러지므로, 이 규칙이 원래 막으려던
+        // 것은 그대로 막힌다.
+        // **아직 끊는 자리가 남아 있다** — 라벨 병합·상태 hoist는 여전히 안 보이는 자식에서
+        // 멈춘다([collectDescendantText]·[descendantCheckedState]). 고치면 화면 전반의 label이
+        // 함께 바뀌어 별도 측정이 필요하다(#358). 가림 판정([hasPaintedContent])은 이 PR에서 맞췄다.
         if (!node.isVisibleToUser) {
-            if (shouldInspectDescendants(node.isEditable)) {
-                walkChildren(node, ctx, absorbed, depth, cover)
-            }
+            walkChildren(node, ctx, absorbed, depth, cover)
             return
         }
 
@@ -199,13 +202,14 @@ object UiTreeSerializer {
             ctx.elements.add(element(node, "", ctx, obscured = occluded))
         }
 
-        if (!shouldInspectDescendants(node.isEditable)) return
         walkChildren(node, ctx, childrenAbsorbed, depth, cover)
     }
 
     /**
      * 자식들을 훑는다. 보이는 노드와 [walk]가 건너뛴 노드가 **같은 규칙으로** 자식을 훑도록
      * 한 곳에 둔다 — 건너뛴 노드는 자기 자신을 내보내지 않을 뿐, 아래는 그대로 살아 있다(#358).
+     * 순회를 끊는 편집 경계([shouldInspectDescendants])도 여기서 한 번만 본다 — 호출자마다
+     * 두면 두 경로가 조용히 어긋난다.
      */
     private fun walkChildren(
         node: AccessibilityNodeInfo,
@@ -214,6 +218,7 @@ object UiTreeSerializer {
         depth: Int,
         cover: List<RectCover.Box>,
     ) {
+        if (!shouldInspectDescendants(node.isEditable)) return
         val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
@@ -244,9 +249,17 @@ object UiTreeSerializer {
      * 접근성 트리에는 알파가 없어서 이것이 유일한 대용 신호다.
      */
     private fun hasPaintedContent(node: AccessibilityNodeInfo, depth: Int): Boolean {
-        if (depth > MAX_CONTENT_DEPTH || !node.isVisibleToUser) return false
-        if (node.isClickable) return true
-        if (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()) return true
+        if (depth > MAX_CONTENT_DEPTH) return false
+        // 안 보이는 노드는 **자기 자신만** 내용에서 빼고 자식은 계속 본다([walk]와 같은 이유).
+        // 안 보인다고 보고된 컨테이너가 실제로는 그리는 경우가 있어서다 — 2026-08-21 SM-S921N
+        // 실측(#358): 배민 메뉴 상세 하단 바 `[0,1928,1080,2178]`가 `visibleToUser=false`인데
+        // 화면을 덮고 있고, 그 뒤로 완전히 들어간 옵션 행 `[0,1933,1080,2137]`이 한 픽셀도 안
+        // 보이는데 `obscured`로 안 찍혔다.
+        // 안 그리는 것을 가림으로 치는 반대쪽 사고는 열리지 않는다 — 자식까지 안 보이면 false다.
+        if (node.isVisibleToUser) {
+            if (node.isClickable) return true
+            if (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()) return true
+        }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             if (hasPaintedContent(child, depth + 1)) return true
