@@ -167,7 +167,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - 로그가 비어 있으면 "안 돌았다"는 뜻. 앱 프로세스 생존은 `FreecessHandler ... com.davi.helper.debug`로
   확인(debug 기준 — release는 접미어가 없다).
 
-### 도구 함정 (2026-07-28 실측)
+### 도구 함정
 셸·adb 쪽 함정이라 기기와 무관하다. 기기 동작 지식은 여기 적지 말고 픽스처로 쌓는다(#47).
 - **Git Bash에서 adb에 `/sdcard/...`를 넘길 땐 `MSYS_NO_PATHCONV=1`.** 없으면 MSYS가 경로를 Windows 경로로 바꿔 파일을 못 찾는다.
 - **PowerShell `>`가 `adb exec-out screencap` 바이너리를 깨뜨린다.** 인코딩이 끼어든다 → `adb shell screencap -p /sdcard/x.png` + `adb pull`.
@@ -177,26 +177,20 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   "켜짐"을 계속 읽는다. **모션 끄기를 검증하려면 배율을 바꾼 뒤 재설치해 프로세스를 새로 띄운다.**
   안 그러면 "모션 끄기가 안 먹는다"로 잘못 읽는다(두 번 헤맸다).
 - **잠긴 화면에서는 `adb shell input tap`이 조용히 아무 일도 안 한다**(2026-08-21 실측).
-  오류도 안 나고 종료 코드도 0이라, 자동 측정 루프를 돌리면 **빈 로그가 그대로 결과로 쌓인다.**
-  더 나쁜 것은 그 회차만 비는 게 아니라 **직전에 깔린 APK가 그대로 도는 것**이라, 조건을 바꿔
-  가며 재는 루프에서는 **다른 조건의 값이 이번 조건 라벨로 들어온다**(실제로 3조건 측정을
-  통째로 버렸다). 루프마다 앞에서 걸러낸다:
-
-        adb shell dumpsys window | grep -q 'mDreamingLockscreen=true' && echo 잠김
-
-  `KEYCODE_WAKEUP`은 화면만 켠다 — **PIN 잠금은 못 푼다.** 사람이 풀어야 한다.
-- **macOS: Gradle 데몬이 옛 권한 맥락을 물고 산다**(2026-08-21 실측). 데몬은 한 번 뜨면
-  오래 사는데, 권한이 없던 시절에 뜬 데몬은 나중에 권한을 줘도 계속 막힌다:
-
-        java.io.FileNotFoundException: .../gradle.properties (Operation not permitted)
-
-  셸에서는 같은 파일이 읽히는데 빌드만 실패하면 이것이다. `./gradlew --stop`으로 데몬을 죽이면
-  다음 빌드가 새 맥락에서 뜬다.
-  **애초에 권한이 끊기는 원인은 Claude Code 업데이트다.** macOS는 앱을 경로로 식별하는데
-  실행 파일 경로에 버전이 박혀 있어(`~/Library/Application Support/Claude/claude-code/<버전>/claude.app`),
-  업데이트가 폴더를 갈아치우면 **돌고 있던 프로세스의 경로가 사라져** Documents·Desktop·
-  Downloads 접근이 EPERM으로 막힌다. 증상은 `ls: Operation not permitted`이고, **Claude Code를
-  재시작하면 새 버전 경로로 떠서 풀린다**(전체 디스크 접근 권한은 새 경로에 다시 줘야 할 수 있다).
+  오류도 안 나고 종료 코드도 0이다. 조건을 바꿔가며 재는 루프에서는 그 회차가 비는 정도로
+  안 끝난다 — **직전에 깔린 APK가 그대로 돌아서 다른 조건의 값이 이번 조건 라벨로 들어온다**
+  (3조건 측정을 라벨만 믿고 분석하다 전부 버렸다). 예방이 먼저다: 루프 전에
+  `adb shell svc power stayon usb`로 화면이 안 꺼지게 한다. 그래도 잠겨 있을 수 있으니
+  루프 앞에서 **멈춘다** — `adb shell dumpsys window | grep -q 'mDreamingLockscreen=true' && { echo 잠김; exit 1; }`.
+  검사만 하고 계속 돌면 그 함정을 그대로 다시 밟는다. `KEYCODE_WAKEUP`은 화면만 켠다 —
+  **PIN 잠금은 못 푼다.**
+- **조건 라벨은 기기에서 되읽는다.** 위 사건에서 데이터를 죽인 것은 잠금 자체가 아니라
+  **라벨을 기기가 아니라 스크립트가 붙였다는 것**이다 — 설치가 조용히 실패해도 라벨은
+  멀쩡히 살아남았다. 회차마다 조건을 기기에서 확인하면(디버그 빌드가 시작 로그에 그 값을
+  찍게 하거나 `adb shell dumpsys package <pkg> | grep versionName`) 이 계열이 통째로 막힌다.
+- **macOS에서 보호 폴더가 `Operation not permitted`로 막히는 것**은 앱 빌드만의 문제가
+  아니라 저장소 전체에 걸린다 — `CONTRIBUTING.md` §로컬 검사. Gradle 데몬만 따로 걸리는
+  경우는 `app-android/README.md` §Gradle.
 - **중지 버튼 좌표는 스크롤 위치에 따라 달라진다.** 좌표를 외워 탭하지 말고 직전 캡처로 확인한다. 빗나가면 세션이 계속 돌며 모델 쿼터를 쓴다(실제로 두 번 겪었다).
 
 ## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준)
