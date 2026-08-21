@@ -127,7 +127,7 @@ function Get-LogDelta {
 }
 
 # git은 경로를 슬래시로, PowerShell은 백슬래시로 준다. 비교 전에 한 모양으로 맞춘다.
-function Format-PathKey { param([string]$P) ($P -replace '/', '').TrimEnd('').ToLowerInvariant() }
+function Format-PathKey { param([string]$P) ($P -replace '/', '\').TrimEnd('\').ToLowerInvariant() }
 
 # adb는 local.properties의 sdk.dir에서 찾는다(팀원마다 경로가 다르다).
 function Resolve-Adb {
@@ -239,7 +239,9 @@ function Invoke-Reinstall {
     Set-JavaEnv
     # 실패를 삼키면 안 된다. 빌드가 죽었는데 조용히 넘어가면 local.properties는 새 URL,
     # APK는 옛 URL인 상태가 되고 env는 새 URL을 보여 준다 — 진단이 정확히 반대로 나온다.
-    Invoke-Native { & $devInstall } '재설치'
+    # **dev-install은 exit code가 아니라 throw로 실패를 알린다**(EAP=Stop). 그래서 Invoke-Native로
+    # 감싸지 않는다 — 남아 있던 $LASTEXITCODE를 읽어 성공을 실패로 뒤집을 수 있다. 예외는 그대로 올린다.
+    & $devInstall
 }
 
 function Get-MainWorktree {
@@ -409,7 +411,8 @@ switch ($Command) {
         $args2 = @{}
         if ($Clear) { $args2['ClearLog'] = $true }
         if ($SkipBuild) { $args2['SkipBuild'] = $true }
-        Invoke-Native { & $devInstall @args2 } '설치'
+        # 위와 같은 이유로 감싸지 않는다 — dev-install은 실패를 throw로 알린다.
+        & $devInstall @args2
     }
 
     # 앱이 붙을 서버를 바꾼다. URL은 빌드에 박히므로 교체·원복 모두 재설치까지 한다.

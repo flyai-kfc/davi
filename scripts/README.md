@@ -32,6 +32,7 @@
 .\scripts\dev-driver.ps1 step 538 1503 3000      # 탭+캡처예약+3초 대기+로그델타를 한 콜로
                                                  #   step key 3 3000 / step wait 3000(관찰만)
 .\scripts\dev-driver.ps1 swipe 540 1600 540 900  # 스크롤 안내 따라 하기(300ms 지속 — 플링 방지)
+                                                 #   tap·key와 같이 -Shot이면 캡처도 예약
 .\scripts\dev-driver.ps1 tap 538 1503            # 좌표 탭 / key 3 (HOME) — -Shot이면 캡처도 예약
 .\scripts\dev-driver.ps1 shots pull              # 회수 → app-android\captures\shots\**davi_shots\**
                                                  #   (폴더째 pull이라 한 겹 더 들어간다)
