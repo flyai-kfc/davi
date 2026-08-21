@@ -1,7 +1,9 @@
 package com.davi.helper
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -29,8 +31,24 @@ import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
+/** 계측이 앱 화면만 검증할 때 쓰는 debug 전용 진입점. release에서는 항상 무시된다. */
+internal const val EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY =
+    "com.davi.helper.extra.INSTRUMENTATION_SKIP_ACCESSIBILITY"
+internal const val EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER =
+    "com.davi.helper.extra.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER"
+
+/** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
+internal object ConversationInstrumentationConfiguration {
+    @Volatile
+    var fontScale: Float? = null
+}
+
+/** 구체화 답을 보존하고 선택 화면으로 돌아가도 되는, 사용자 무발화 계열 오류만 고른다. */
+internal fun canResumeClarificationAfterSpeechError(error: Int): Boolean =
+    error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
 /**
- * 음성 대화 화면 — 홈(MA-1)부터 최종 확인(MA-4)·실패까지 상태 6개를 한 레이아웃에서
+ * 음성 대화 화면 — 홈(MA-1)부터 구체화·안전 종료·최종 확인·실패까지 한 레이아웃에서
  * 렌더한다(#123, 임시 와이어프레임 디자인). 음성 파이프라인은 기존 개발 화면
  * (debug MainActivity)에서 이식 — 발화·질문·goal은 화면과 메모리에만 두고 logcat에
  * 넘기지 않는다. ○ 확인 시 GuideSession을 시작하고 런처로 나간다(안내는 런처에서 시작).
@@ -78,6 +96,10 @@ class ConversationActivity : AppCompatActivity() {
     // 마이크가 실제로 열릴 때까지 "듣고 있어요"를 미루는 구간의 상한(#273).
     // 준비 완료 신호는 인식기 구현에 달려 있어 보장으로 삼지 않는다 — 안 오면 라벨이
     // 영영 안 뜨는 게 최악이라, 이 타이머가 도는 최악의 경우를 **이 PR 이전 동작**으로 둔다.
+    private val micTone = MicTone()
+
+    /** 이번 듣기 턴에서 차임이 아직 안 울렸는가. [startListeningTurn]이 무장한다. */
+    private var micToneArmed = false
     private val micReadyHandler = Handler(Looper.getMainLooper())
     private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
 
@@ -157,7 +179,14 @@ class ConversationActivity : AppCompatActivity() {
         }
 
         override fun onFinalResult(text: String) {
-            runOnUiThread { submitVoiceTurn(text) }
+            runOnUiThread {
+                val state = uiState
+                if (state is ConversationUiState.Listening && state.clarification != null) {
+                    submitClarificationAnswer(ClarificationAnswerSource.FREEFORM, text)
+                } else {
+                    submitVoiceTurn(text)
+                }
+            }
         }
 
         override fun onError(error: Int) {
@@ -196,10 +225,28 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
+    override fun attachBaseContext(newBase: Context) {
+        val testFontScale = if (BuildConfig.DEBUG) {
+            ConversationInstrumentationConfiguration.fontScale
+        } else {
+            null
+        }
+        if (testFontScale != null && testFontScale > 0f) {
+            val configuration = Configuration(newBase.resources.configuration).apply {
+                fontScale = testFontScale
+            }
+            super.attachBaseContext(newBase.createConfigurationContext(configuration))
+        } else {
+            super.attachBaseContext(newBase)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 파형 계산을 미리 해 둔다 — 처음 울릴 때 메인 스레드에서 하면 소리가 늦다(#313).
+        micTone.prepare()
         launchableAppIndex.start()
         audioPermissionRequested = savedInstanceState?.getBoolean(AUDIO_PERMISSION_REQUESTED) ?: false
         notificationPermissionRequested =
@@ -242,9 +289,28 @@ class ConversationActivity : AppCompatActivity() {
         // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
         // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
         // 뒤로가기를 모르는 사람을 위한 지름길이다.
-        binding.stackedPair.btnStackedSecondary.setOnClickListener { finish() }
-        binding.stackedPair.btnStackedPrimary.setOnClickListener {
-            setState(ConversationUiState.StopConfirm)
+        binding.stackedPair.btnStackedSecondary.setOnClickListener { onStackedSecondaryTapped() }
+        binding.stackedPair.btnStackedPrimary.setOnClickListener { onStackedPrimaryTapped() }
+        val optionButtons = listOf(
+            binding.clarificationChoices.btnOption1,
+            binding.clarificationChoices.btnOption2,
+            binding.clarificationChoices.btnOption3,
+        )
+        optionButtons.forEachIndexed { index, button ->
+            button.setOnClickListener {
+                val state = uiState as? ConversationUiState.Clarifying ?: return@setOnClickListener
+                val option = state.outcome.question.options.getOrNull(index) ?: return@setOnClickListener
+                submitClarificationAnswer(ClarificationAnswerSource.OPTION, option)
+            }
+        }
+        binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
+            beginClarificationSpeech()
+        }
+        binding.clarificationChoices.btnUnknown.setOnClickListener {
+            submitClarificationAnswer(
+                ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
+                getString(R.string.clarification_unknown_answer),
+            )
         }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
         // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
@@ -283,7 +349,9 @@ class ConversationActivity : AppCompatActivity() {
         // **예전에는 오버레이 권한도 같이 봤다**(#212 이전). 그쪽만 회수되는 갈래가 있어서
         // 여기서 세션을 끊어야 했는데 — 서비스는 살아 있어 화면 직렬화와 서버 호출이 계속되고
         // 안내만 안 그려졌다 — 그 권한을 걷어내며 그 갈래 자체가 없어졌다.
-        if (!canStartGuide()) {
+        val instrumentationUiTest = BuildConfig.DEBUG &&
+            intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, false)
+        if (!canStartGuide() && !instrumentationUiTest) {
             // 접근성 회수는 onUnbind도 정리하지만, 그 콜백보다 이 화면이 먼저 살아나는 경합이
             // 있어 여기서도 끊는다. 두 번 불려도 GuideSession.stop()은 멱등이다.
             GuideSession.stop()
@@ -336,6 +404,7 @@ class ConversationActivity : AppCompatActivity() {
         micReadyHandler.removeCallbacks(micReadyFallback)
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
+        micTone.release()
         launchableAppIndex.stop()
         voiceExecutor.shutdownNow()
         super.onDestroy()
@@ -443,13 +512,19 @@ class ConversationActivity : AppCompatActivity() {
         // 길이 없다. weight를 주면 카드가 **남는 공간만** 갖고, 모자라면 카드가 줄어
         // 버튼이 보장된다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
         binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
-            weight = if (model.cardQuestionFlexible) CARD_WEIGHT_DAVI else 0f
+            // 구체화에서는 아래 선택 ScrollView가 남은 높이를 받는다. 질문 카드까지 weight로
+            // 줄이면 2.0x 배율에서 176dp 하한이 깨져 질문 한 줄도 남지 않는다(#326 리뷰).
+            weight = if (model.cardQuestionFlexible && !model.clarificationVisible) {
+                CARD_WEIGHT_DAVI
+            } else {
+                0f
+            }
         }
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
         // 글로우가 화자를 가리킨다 — 다비가 말하면 위, 사용자가 말하면 아래(2026-08-17).
-        // 둘은 상태가 배타적이라 동시에 켜지지 않는다(Speaking / Listening).
+        // 둘은 상태가 배타적이라 동시에 켜지지 않는다(다비 TTS / 사용자 Listening).
         binding.glowUtterance.isVisible(model.utteranceSpeaking)
         // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
         // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
@@ -494,6 +569,24 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
         binding.cardUtterance.text = model.utteranceText
+        binding.clarificationChoices.root.isVisible(model.clarificationVisible)
+        if (state is ConversationUiState.Clarifying) {
+            binding.clarificationChoices.questionProgress.text = getString(
+                R.string.clarification_progress,
+                state.outcome.questionIndex + 1,
+                state.outcome.questionCount,
+            )
+            val optionButtons = listOf(
+                binding.clarificationChoices.btnOption1,
+                binding.clarificationChoices.btnOption2,
+                binding.clarificationChoices.btnOption3,
+            )
+            optionButtons.forEachIndexed { index, button ->
+                val option = state.outcome.question.options.getOrNull(index)
+                button.isVisible(option != null)
+                if (option != null) button.text = option
+            }
+        }
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
         // **`isEnabled`만으로는 화면이 안 바뀐다.** ImageButton은 disabled에서 src를 자동으로
@@ -510,31 +603,44 @@ class ConversationActivity : AppCompatActivity() {
         // 이미 확인된 배치라, 근거 없이 건드리면 방금 맞춘 것이 틀어진다.
         binding.cardColumn.updatePadding(
             bottom = when {
-                model.guidingVisible -> 0
+                model.guidingVisible || model.clarificationVisible || model.safeEndVisible -> 0
                 // 홈만 마이크가 위로 올라가 있어 비울 자리도 그만큼 크다(#231).
                 model.homeVisible ->
                     resources.getDimensionPixelSize(R.dimen.davi_home_control_reserve)
                 else -> resources.getDimensionPixelSize(R.dimen.davi_conversation_control_reserve)
             },
         )
-        // 배지 위 여백도 이 화면만 얕다 — 세로로 쌓는 것이 많아 배율이 커지면 아래가
-        // 화면 밖으로 나간다. 위를 줄여 그 자리를 아래에 준다.
+        // 세로 조작을 쌓는 안내·구체화 화면은 배지 위 여백이 얕다. 구체화는 세 보기와
+        // 직접 말하기·모름을 기본 글꼴에서 한 화면에 모두 보여야 하므로, 일반 72dp를 쓰면
+        // 선택 영역 전체가 실기기 화면 아래로 밀린다(#316 리뷰).
         binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
             topMargin = resources.getDimensionPixelSize(
-                if (model.guidingVisible) R.dimen.davi_badge_margin_top_guiding
+                if (model.guidingVisible || model.clarificationVisible) {
+                    R.dimen.davi_badge_margin_top_guiding
+                }
                 else R.dimen.davi_badge_margin_top,
             )
         }
-        // 카드 위 패딩도 이 화면만 얕다 — 근거는 davi_card_padding_top_guiding 주석.
+        // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible) R.dimen.davi_card_padding_top_guiding
+                if (model.guidingVisible || model.clarificationVisible) {
+                    R.dimen.davi_card_padding_top_guiding
+                }
                 else R.dimen.davi_card_padding_top_davi,
             ),
         )
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
-        binding.stackedPair.root.isVisible(model.guidingVisible)
+        binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
+        binding.stackedPair.btnStackedSecondary.setText(
+            if (model.safeEndVisible) R.string.clarification_restart
+            else R.string.conversation_guiding_resume,
+        )
+        binding.stackedPair.btnStackedPrimary.setText(
+            if (model.safeEndVisible) R.string.clarification_go_home
+            else R.string.conversation_guiding_stop,
+        )
         binding.guidingBottom.isVisible(model.guidingVisible)
         binding.stopConfirmScrim.isVisible(model.stopConfirmVisible)
         // **모달 중에는 뒤 화면을 스크린리더에서 뺀다.** 스크림은 시각 차단일 뿐이라
@@ -578,6 +684,9 @@ class ConversationActivity : AppCompatActivity() {
     private fun renderVoiceMotion(model: ConversationRenderModel) {
         if (!model.waveVisible) binding.voiceWave.resetLevel()
         binding.voiceWave.isVisible(model.waveVisible)
+        // 준비 중에는 **화면 전체**를 흐리게 덮는다(#277). 실제로 듣기 시작하면
+        // 걷히고 그때 띠링이 함께 울린다 — 걷히는 순간이 곧 "지금 말하세요"다.
+        binding.preparingScrim.isVisible(model.signalsDimmed)
 
         binding.glowMic.reactsToVoice = model.glowReactsToVoice
         if (!model.glowVisible || !model.glowReactsToVoice) binding.glowMic.resetLevel()
@@ -598,17 +707,23 @@ class ConversationActivity : AppCompatActivity() {
                     requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
             }
-            // barge-in: 질문 재생을 끊고 바로 답한다. TTS 정리 콜백이 늦게 와도
-            // continueListening은 SPEAKING에서 한 번만 참이라 이중 시작이 없다.
-            is ConversationUiState.Speaking -> {
-                textToSpeechHelper?.stop()
-                if (voiceSession.continueListening(state.generation)) {
-                    setState(ConversationUiState.Listening(question = state.question))
-                    GuideTelemetry.voiceState("listening_barge_in")
-                    speechHelper().start()
-                }
-            }
             else -> return
+        }
+    }
+
+    private fun onStackedSecondaryTapped() {
+        if (uiState is ConversationUiState.SafeEnd) {
+            beginVoiceDialogue()
+        } else {
+            finish()
+        }
+    }
+
+    private fun onStackedPrimaryTapped() {
+        if (uiState is ConversationUiState.SafeEnd) {
+            setState(ConversationUiState.Home())
+        } else {
+            setState(ConversationUiState.StopConfirm)
         }
     }
 
@@ -633,13 +748,25 @@ class ConversationActivity : AppCompatActivity() {
         voiceSession.start()
         setState(ConversationUiState.Listening())
         GuideTelemetry.voiceState("listening")
-        speechHelper().start()
+        startListeningTurn()
     }
 
     private fun submitVoiceTurn(text: String) {
         speechRecognizerHelper?.stop()
         val pending = voiceSession.nextRequest(text) ?: return
-        setState(ConversationUiState.Requesting(utterance = text))
+        submitPendingRequest(pending, text)
+    }
+
+    private fun submitPendingRequest(
+        pending: VoiceDialogueSession.PendingRequest,
+        visibleUtterance: String,
+    ) {
+        setState(
+            ConversationUiState.Requesting(
+                utterance = visibleUtterance,
+                finalizing = pending.turnIndex == 1,
+            ),
+        )
         GuideTelemetry.voiceState("requesting")
 
         voiceExecutor.execute {
@@ -673,6 +800,31 @@ class ConversationActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun beginClarificationSpeech() {
+        val state = uiState as? ConversationUiState.Clarifying ?: return
+        textToSpeechHelper?.stop()
+        setState(
+            ConversationUiState.Listening(
+                question = state.outcome.question.prompt,
+                clarification = state.outcome,
+            ),
+        )
+        GuideTelemetry.voiceState("listening_clarification_freeform")
+        startListeningTurn()
+    }
+
+    private fun submitClarificationAnswer(source: ClarificationAnswerSource, answer: String) {
+        speechRecognizerHelper?.stop()
+        textToSpeechHelper?.stop()
+        when (val outcome = voiceSession.answerCurrent(source, answer)) {
+            is VoiceDialogueSession.AnswerOutcome.NextQuestion -> showClarification(outcome.outcome)
+            is VoiceDialogueSession.AnswerOutcome.FinalRequest -> {
+                submitPendingRequest(outcome.pending, visibleUtterance = "")
+            }
+            null -> Unit
         }
     }
 
@@ -730,12 +882,11 @@ class ConversationActivity : AppCompatActivity() {
                     return
                 }
                 when (outcome) {
-                    is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
+                    is VoiceDialogueSession.Outcome.Clarify -> showClarification(outcome)
                     is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
-                    VoiceDialogueSession.Outcome.LimitReached,
+                    is VoiceDialogueSession.Outcome.UnableToFinalize,
                     VoiceDialogueSession.Outcome.InvalidResponse,
                     -> {
-                        // 기존 goalInput 텍스트 폴백을 실패 화면(5초 뒤 홈)으로 대체(#123)
                         voiceRequestTracker.reset()
                         appResolutionRequestTracker.reset()
                         setState(stateForOutcome(outcome))
@@ -756,16 +907,20 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
-    private fun speakFollowUp(outcome: VoiceDialogueSession.Outcome.Ask) {
-        setState(stateForOutcome(outcome)) // Speaking(질문)
-        GuideTelemetry.voiceState("speaking_question")
+    private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
+        val speaking = shouldSpeakClarification(outcome)
+        setState(ConversationUiState.Clarifying(outcome, speaking = speaking))
+        GuideTelemetry.voiceState("clarification_question")
+        if (!speaking) return
         speak(
-            outcome.message,
+            outcome.question.prompt,
             onFinished = {
-                if (voiceSession.continueListening(outcome.generation)) {
-                    setState(ConversationUiState.Listening(question = outcome.message))
-                    GuideTelemetry.voiceState("listening_follow_up")
-                    speechHelper().start()
+                val current = uiState as? ConversationUiState.Clarifying
+                if (
+                    current?.outcome?.generation == outcome.generation &&
+                    current.outcome.question.id == outcome.question.id
+                ) {
+                    setState(current.copy(speaking = false))
                 }
             },
         )
@@ -805,6 +960,17 @@ class ConversationActivity : AppCompatActivity() {
 
     private fun handleSpeechError(error: Int) {
         GuideTelemetry.voiceState("recognition_error", error)
+        val listening = uiState as? ConversationUiState.Listening ?: return
+        val clarification = listening.clarification
+        if (clarification != null && canResumeClarificationAfterSpeechError(error)) {
+            // 직접 말하기 실패는 질문을 취소한 것이 아니다. 원발화와 앞 답을 세션에 둔 채
+            // 같은 선택 화면으로 돌아가 보기 또는 모름 답을 계속 고를 수 있게 한다. 권한·서비스·
+            // 시작 실패까지 여기서 삼키면 직접 말하기가 무반응으로 반복되므로 그 오류는 아래의
+            // 기존 홈 오류 문구로 종료한다.
+            speechRecognizerHelper?.stop()
+            setState(ConversationUiState.Clarifying(clarification, speaking = false))
+            return
+        }
         voiceSession.cancel()
         voiceRequestTracker.reset()
         appResolutionRequestTracker.reset()
@@ -909,6 +1075,25 @@ class ConversationActivity : AppCompatActivity() {
         val state = uiState as? ConversationUiState.Listening ?: return
         if (state.micReady) return
         setState(state.copy(micReady = true))
+        // **소리도 여기서 낸다**(#313). 파도·「듣고 있어요」·글로우가 이 한 신호로 함께 서는데,
+        // 그 셋은 **보고 있어야** 알 수 있다. 시니어 사용자가 "언제 말해야 할지 모르겠다"고 한
+        // 것이 이 자리다(2026-08-20 관찰) — 화면을 안 보고 있어도 귀로 알게 한다.
+        //
+        // **누를 때가 아니라 여기다.** 누르고 실제로 들리기까지 약 0.9초가 걸리는데(#278에서
+        // 줄이려다 실패했다), 누를 때 소리를 내면 **아직 안 듣는 동안 말하게 된다.**
+        //
+        // **상한 타이머로 들어와도 운다**(2026-08-21 결정 · PR #317 리뷰). 그쪽은 열렸다는
+        // 확증이 없어 "이미 말하는 중에 소리가 겹칠 수 있다"는 위험이 있지만, 막으면 음량을
+        // 안 주는 인식기에서 **띠링이 아예 없어져 #313이 그 기기에서 통째로 사라진다.**
+        // 실측(SM-S921N 8회)에서 상한이 돈 적은 없어 지금은 가정상의 위험이다 —
+        // 다른 기기 로그에 `mic_ready_fallback`이 보이면 그때 이 자리를 다시 본다.
+        //
+        // **다만 턴당 한 번이다**([startListeningTurn]). 폴백 재시작으로 이 자리에 두 번째로
+        // 오는 구간은 사용자가 이미 말하는 중이라, 그때 우는 소리는 도움이 아니라 방해다.
+        if (micToneArmed) {
+            micToneArmed = false
+            micTone.play()
+        }
         // 상태 이름은 setState가 남기지 않는다(같은 클래스라 전이가 아니다). 준비까지 걸린
         // 시간은 이 줄과 직전 listening 줄의 간격으로 로그에서 읽는다.
         GuideTelemetry.voiceState(telemetry)
@@ -920,6 +1105,29 @@ class ConversationActivity : AppCompatActivity() {
         voiceSession.cancel()
         voiceRequestTracker.reset()
         appResolutionRequestTracker.reset()
+    }
+
+    /**
+     * 듣기 턴 하나를 시작한다. **차임을 여기서 다시 무장한다** — 턴마다 한 번만 운다.
+     *
+     * 인식기는 한 턴 안에서 **다시 준비 중으로 돌아갈 수 있다**: 온디바이스가 끊기면
+     * `ERROR_SERVER_DISCONNECTED` 폴백이 네트워크 인식기로 갈아타며 `onMicPreparing`을
+     * 다시 보낸다(#273). 그때 차임이 또 울면 **사용자가 이미 말하는 중**이다 — 문장 한가운데를
+     * 끊고, 곧 열릴 마이크로 들어가고, "지금 말하세요"를 이미 말하는 사람에게 다시 말한다.
+     *
+     * **두 번째 구간에는 화면 신호만 준다.** 흐림이 다시 덮였다 걷히는 것은 조용하지만 소리는
+     * 안 조용하고, 그 구간의 사용자는 이미 붙잡혀 있어 "언제 말하나"를 다시 알릴 필요가 없다.
+     *
+     * 두 곳에서 부른다(최초 목표 발화·구체화 직접 발화). **`speechHelper().start()`를 직접 부르지
+     * 않는다** — 그러면 그 턴만 차임이 안 무장돼 조용히 갈린다.
+     */
+    private fun startListeningTurn() {
+        micToneArmed = true
+        if (
+            BuildConfig.DEBUG &&
+            intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER, false)
+        ) return
+        speechHelper().start()
     }
 
     private fun speechHelper(): SpeechRecognizerHelper =
@@ -947,7 +1155,6 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private companion object {
-
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
         const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -314,6 +314,11 @@ class ApiError(BaseModel):
 MAX_VOICE_TEXT_LENGTH = 500
 MAX_CONVERSATION_MESSAGES = 10
 MAX_INTENT_MESSAGE_LENGTH = 300
+MAX_CLARIFICATION_QUESTIONS = 2
+MAX_CLARIFICATION_OPTIONS = 3
+MAX_CLARIFICATION_ID_LENGTH = 32
+MAX_CLARIFICATION_PROMPT_LENGTH = 200
+MAX_CLARIFICATION_OPTION_LENGTH = 80
 
 
 class ConversationRole(StrEnum):
@@ -339,6 +344,83 @@ class ConversationTurn(BaseModel):
 class IntentDialogueStatus(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
     READY = "ready"
+    UNABLE_TO_FINALIZE = "unable_to_finalize"
+
+
+class ClarificationAnswerSource(StrEnum):
+    OPTION = "option"
+    FREEFORM = "freeform"
+    UNKNOWN_OR_DECLINED = "unknown_or_declined"
+
+
+class ClarificationQuestion(BaseModel):
+    """앱이 추가 호출 없이 한 화면씩 보여 줄 객관식 질문."""
+
+    id: str = Field(min_length=1, max_length=MAX_CLARIFICATION_ID_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_CLARIFICATION_PROMPT_LENGTH)
+    options: list[
+        Annotated[str, Field(min_length=1, max_length=MAX_CLARIFICATION_OPTION_LENGTH)]
+    ] = Field(
+        max_length=MAX_CLARIFICATION_OPTIONS,
+    )
+    allow_freeform: bool = Field(
+        description="항상 true. 앱은 보기 외 직접 말하기를 함께 제공한다.",
+    )
+
+    @field_validator("id", "prompt")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("질문 식별자와 문장은 공백일 수 없다")
+        return stripped
+
+    @field_validator("options")
+    @classmethod
+    def normalize_options(cls, value: list[str]) -> list[str]:
+        normalized = [option.strip() for option in value]
+        if any(not option for option in normalized):
+            raise ValueError("보기는 공백일 수 없다")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("보기는 중복될 수 없다")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_freeform(self) -> Self:
+        if not self.allow_freeform:
+            raise ValueError("모든 질문은 자유 발화를 허용해야 한다")
+        return self
+
+
+class ClarificationPlan(BaseModel):
+    questions: list[ClarificationQuestion] = Field(
+        min_length=1,
+        max_length=MAX_CLARIFICATION_QUESTIONS,
+    )
+
+    @model_validator(mode="after")
+    def require_unique_question_ids(self) -> Self:
+        ids = [question.id for question in self.questions]
+        if len(set(ids)) != len(ids):
+            raise ValueError("질문 식별자는 중복될 수 없다")
+        return self
+
+
+class ClarificationAnswer(BaseModel):
+    """첫 응답의 질문과 앱에서 받은 답을 두 번째 요청에 되돌리는 무상태 계약."""
+
+    question_id: str = Field(min_length=1, max_length=MAX_CLARIFICATION_ID_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_CLARIFICATION_PROMPT_LENGTH)
+    answer: str = Field(min_length=1, max_length=MAX_VOICE_TEXT_LENGTH)
+    source: ClarificationAnswerSource
+
+    @field_validator("question_id", "prompt", "answer")
+    @classmethod
+    def normalize_answer_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("질문과 답변은 공백일 수 없다")
+        return stripped
 
 
 class SlotFillRequest(BaseModel):
@@ -355,6 +437,11 @@ class SlotFillRequest(BaseModel):
     conversation_history: list[ConversationTurn] = Field(
         default_factory=list,
         max_length=MAX_CONVERSATION_MESSAGES,
+    )
+    clarification_answers: list[ClarificationAnswer] = Field(
+        default_factory=list,
+        max_length=MAX_CLARIFICATION_QUESTIONS,
+        description="첫 응답의 질문에 앱이 로컬로 모은 답. 있으면 최종 두 번째 요청이다.",
     )
 
     @field_validator("utterance")
@@ -373,22 +460,29 @@ class SlotFillRequest(BaseModel):
             expected = ConversationRole.USER if index % 2 == 0 else ConversationRole.ASSISTANT
             if turn.role is not expected:
                 raise ValueError("대화 이력은 user와 assistant가 번갈아야 한다")
+        answer_ids = [answer.question_id for answer in self.clarification_answers]
+        if len(set(answer_ids)) != len(answer_ids):
+            raise ValueError("구체화 답변의 질문 식별자는 중복될 수 없다")
         return self
 
 
 class SlotFillState(BaseModel):
-    """고정 슬롯 없이 추가 질문 또는 최종 목표 하나를 돌려주는 응답."""
+    """최대 두 질문의 구체화 계획, 최종 목표 또는 안전 종료를 돌려주는 응답."""
 
-    status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
+    status: IntentDialogueStatus = Field(description="추가 질문, 목표 준비 완료 또는 안전 종료")
     message: str = Field(
         min_length=1,
         max_length=MAX_INTENT_MESSAGE_LENGTH,
-        description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
+        description="TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장",
     )
     goal: str | None = Field(
         default=None,
         max_length=MAX_VOICE_TEXT_LENGTH,
         description="ready일 때 기존 안내 세션에 넘길 구체적인 목표",
+    )
+    clarification: ClarificationPlan | None = Field(
+        default=None,
+        description="needs_clarification일 때 앱이 로컬에서 진행할 질문 계획",
     )
 
     @field_validator("message")
@@ -411,10 +505,21 @@ class SlotFillState(BaseModel):
 
     @model_validator(mode="after")
     def validate_status_and_goal(self) -> Self:
-        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION and self.goal is not None:
-            raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
-        if self.status is IntentDialogueStatus.READY and self.goal is None:
-            raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION:
+            if self.goal is not None:
+                raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
+            if self.clarification is None:
+                raise ValueError("추가 질문 상태에는 clarification이 필요하다")
+            if self.message != self.clarification.questions[0].prompt:
+                raise ValueError("message는 첫 구체화 질문과 같아야 한다")
+        elif self.status is IntentDialogueStatus.READY:
+            if self.goal is None:
+                raise ValueError("준비 완료 상태에는 goal이 필요하다")
+            if self.clarification is not None:
+                raise ValueError("준비 완료 상태에는 clarification이 없어야 한다")
+        else:
+            if self.goal is not None or self.clarification is not None:
+                raise ValueError("안전 종료 상태에는 goal과 clarification이 없어야 한다")
         return self
 
 

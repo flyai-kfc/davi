@@ -8,8 +8,8 @@ enum class ConfirmKind {
 /**
  * 대화 화면(ConversationActivity)의 UI 상태와 렌더 모델.
  *
- * [VoiceDialogueSession.Stage]와 1:1이 아니다 — [Failed]는 Outcome(LimitReached·
- * InvalidResponse)에서 오고, [Confirm]은 READY 이후 화면 고유 상태다. 전이는 Activity의
+ * [VoiceDialogueSession.Stage]와 1:1이 아니다 — [Failed]는 잘못된 응답에서 오고,
+ * [Confirm]은 READY 이후 화면 고유 상태다. 전이는 Activity의
  * 이벤트 지점(콜백 가드 통과 후)에서 일어나고, "상태에서 무엇을 보여줄지"는
  * [renderModelOf]가 순수 함수로 결정한다(JVM 테스트 대상). 디자인 확정 시 XML과
  * [renderModelOf]만 고치면 되도록 화면 판단을 여기로 모은다.
@@ -19,30 +19,34 @@ sealed interface ConversationUiState {
     data class Home(val statusRes: Int? = null) : ConversationUiState
 
     /**
-     * MA-2 듣는 중. [question]이 null이면 첫 청취(초기 프롬프트), 아니면 서버 후속 질문.
+     * MA-2 듣는 중. [question]이 null이면 최초 목표 청취이고, 값이 있으면 구체화 직접 발화다.
      *
      * [micReady]는 **인식기가 실제로 말을 받아들이기 시작한 뒤**에만 true다(#273).
      * `startListening()`은 즉시 인식하지 않는다 — 실측(SM-S921N)에서 마이크 자체는 +60ms에
      * 열리는데 **그 구간에 한 말은 잡히지 않았고**, 실제로 받아들이기 시작한 것은 +0.9초였다.
-     * 화면만 먼저 "듣고 있어요"를 띄우면 그 말을 믿고 바로 말한 첫 음절이 잘린다. 진입점 셋
-     * (홈 시작·되묻기 뒤 재청취·barge-in)이 모두 이 상태를 새로 만들므로 기본값 false가
-     * 자동으로 덮이고, 부분 인식의 copy는 값을 그대로 들고 간다.
+     * 화면만 먼저 "듣고 있어요"를 띄우면 그 말을 믿고 바로 말한 첫 음절이 잘린다. 최초 발화와
+     * 구체화 직접 발화가 모두 이 상태를 새로 만들므로 기본값 false가 자동으로 덮이고, 부분
+     * 인식의 copy는 값을 그대로 들고 간다.
      */
     data class Listening(
         val question: String? = null,
         val partial: String = "",
         val micReady: Boolean = false,
+        /** 보기 대신 직접 말하는 중이면 원래 문항을 보존해 무응답 뒤 선택 화면으로 돌아간다. */
+        val clarification: VoiceDialogueSession.Outcome.Clarify? = null,
     ) : ConversationUiState
 
-    /**
-     * MA-3 서버 질문 TTS 재생 중. 끝나면 Activity가 Listening으로 되돌린다(자동 재청취는
-     * 잠정 — 미결). mic을 누르면 재생을 끊고 바로 듣기로 들어간다(barge-in) —
-     * [generation]은 그 전이를 세션에 대조하는 값이다.
-     */
-    data class Speaking(val question: String, val generation: Long) : ConversationUiState
+    /** 서버 응답 대기. [finalizing]이면 로컬 답을 합친 두 번째이자 마지막 호출이다. */
+    data class Requesting(val utterance: String, val finalizing: Boolean = false) : ConversationUiState
 
-    /** 서버 응답 대기("잠시만요"). [utterance]는 방금 인식된 발화 — 발화 카드에 유지한다. */
-    data class Requesting(val utterance: String) : ConversationUiState
+    /** 서버가 한 번에 준 질문 계획 중 현재 한 문항. 선택은 서버 호출 없이 로컬에서 진행한다. */
+    data class Clarifying(
+        val outcome: VoiceDialogueSession.Outcome.Clarify,
+        val speaking: Boolean = true,
+    ) : ConversationUiState
+
+    /** 두 번째 호출로도 안전한 목표를 만들지 못한 종료 화면. 사용자가 재시작 또는 홈을 고른다. */
+    data class SafeEnd(val message: String) : ConversationUiState
 
     /**
      * MA-4 확인. [kind]가 [ConfirmKind.APP_AVAILABILITY_WARNING]이면 goal 대신 가능성 경고를
@@ -84,6 +88,8 @@ data class ConversationRenderModel(
     val standVisible: Boolean = false,
     /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
     val guidingVisible: Boolean = false,
+    val clarificationVisible: Boolean = false,
+    val safeEndVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
     val stopConfirmVisible: Boolean = false,
     val questionRes: Int? = null,
@@ -129,6 +135,13 @@ data class ConversationRenderModel(
      * (시안 메인 2·4에는 없고 3·5에는 있다).
      */
     val waveVisible: Boolean = false,
+    /**
+     * 인식 준비 중이라 **화면 전체를 흐림으로 덮는가**(#277).
+     *
+     * 신호 셋과 다른 축이다 — 셋은 "이제 말하세요"이고 이것은 "아직 아니다"다. 그래서
+     * 함께 켜지지 않고 **서로 반대로** 움직인다.
+     */
+    val signalsDimmed: Boolean = false,
     /** 마이크 글로우. 듣는 중(음량 반응)과 홈 유도(고정 숨쉬기) 두 자리에서 쓴다. */
     val glowVisible: Boolean = false,
     /**
@@ -210,36 +223,33 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
-        closeVisible = true,
+        closeVisible = state.clarification == null,
+        // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
+        // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
+        // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
         waveVisible = state.micReady,
         glowVisible = state.micReady,
         glowReactsToVoice = state.micReady,
         utteranceLabelVisible = state.micReady,
+        signalsDimmed = !state.micReady,
         utteranceSpeaking = true,
-    )
-    // 다비가 말하는 중 — **파도와 마이크 글로우는 의도적으로 켜지 않는다**(#132).
-    // 사용자 차례와 구분되는 신호가 그 부재이므로, 하단에 다른 모션을 넣으면 구분이 사라진다.
-    // 대신 v2는 **다비 카드 뒤 분홍 글로우**로 다비 차례를 표시한다(#170) — 신호가 하단이
-    // 아니라 카드 쪽에 생기므로 위 구분을 흐리지 않는다.
-    is ConversationUiState.Speaking -> ConversationRenderModel(
-        logoVisible = true,
-        questionText = state.question,
-        utteranceVisible = true,
-        cardQuestionFlexible = true,
-        micVisible = true,
-        micEnabled = true, // barge-in — 재생을 끊고 바로 답할 수 있다
-        closeVisible = true,
-        cardGlowVisible = true,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
         questionRes = R.string.conversation_requesting,
-        utteranceVisible = true,
+        utteranceVisible = !state.finalizing,
         cardQuestionFlexible = true,
         utteranceText = state.utterance,
-        micVisible = true,
-        closeVisible = true,
+        micVisible = !state.finalizing,
+        closeVisible = !state.finalizing,
         loadingDotsVisible = true,
+    )
+    is ConversationUiState.Clarifying -> ConversationRenderModel(
+        logoVisible = true,
+        questionText = state.outcome.question.prompt,
+        cardQuestionFlexible = true,
+        clarificationVisible = true,
+        cardGlowVisible = state.speaking,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(
@@ -267,11 +277,18 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardGlowVisible = true,
         questionRes = R.string.conversation_failed,
     )
+    is ConversationUiState.SafeEnd -> ConversationRenderModel(
+        logoVisible = true,
+        cardGlowVisible = true,
+        questionText = state.message,
+        cardQuestionFlexible = true,
+        safeEndVisible = true,
+    )
 }
 
 /**
  * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
- * (Listening=인식 타임아웃, Speaking=TTS 완료, Requesting=서버 응답).
+ * (Listening=인식 타임아웃, Clarifying의 첫 질문=TTS 완료, Requesting=서버 응답).
  *
  * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
  * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
@@ -294,6 +311,7 @@ fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     // **종료 확인에는 타이머를 두지 않는다.** 뒤에서 안내가 계속 돌고 있으므로 방치돼도
     // 사용자가 갇히지 않는다 — 나가면 그만이다. 최종 확인(Confirm)과 다른 점이다.
     ConversationUiState.StopConfirm -> null
+    is ConversationUiState.SafeEnd -> null
     else -> null
 }
 
@@ -315,14 +333,16 @@ fun followUpConfirmationAfterAccept(
 }
 
 /**
- * 서버 응답 Outcome → 다음 UI 상태. Ask의 TTS 재생·Ready의 message TTS는 Activity가
- * 이 상태로 바꾼 뒤 수행한다. LimitReached는 기존 goalInput 텍스트 폴백을 대체해
- * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
+ * 서버 응답 Outcome → 다음 UI 상태. 첫 Clarify 질문과 Ready의 message TTS는 Activity가
+ * 이 상태로 바꾼 뒤 수행한다. 최종화 불가는 재시작/홈을 고르는 안전 종료로 분리한다.
  */
 fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState = when (outcome) {
-    is VoiceDialogueSession.Outcome.Ask ->
-        ConversationUiState.Speaking(outcome.message, outcome.generation)
+    is VoiceDialogueSession.Outcome.Clarify -> ConversationUiState.Clarifying(outcome)
     is VoiceDialogueSession.Outcome.Ready -> ConversationUiState.Confirm(outcome.goal)
-    VoiceDialogueSession.Outcome.LimitReached -> ConversationUiState.Failed
+    is VoiceDialogueSession.Outcome.UnableToFinalize -> ConversationUiState.SafeEnd(outcome.message)
     VoiceDialogueSession.Outcome.InvalidResponse -> ConversationUiState.Failed
 }
+
+/** 질문 계획은 첫 문항만 TTS로 읽는다. 뒤 문항은 같은 화면에서 즉시 선택 가능해야 한다. */
+fun shouldSpeakClarification(outcome: VoiceDialogueSession.Outcome.Clarify): Boolean =
+    outcome.questionIndex == 0

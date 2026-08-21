@@ -46,10 +46,11 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 
 ## 음성 목표 대화 계약
 
-`/v1/intent/slot-fill`은 PR #88의 엔드포인트 모양만 참고하고 규칙 기반 슬롯 분류는 이식하지
-않았다. `conversation_history`에는 **이전에 끝난** user/assistant 쌍만 오래된 순으로 넣고,
-`utterance`가 이번 요청의 현재 사용자 발화다. 이력은 최대 10개 메시지(5왕복)이며
-`session_id`는 무작위 UUID다.
+`/v1/intent/slot-fill`은 규칙 기반 슬롯 분류를 이식하지 않는다. 첫 요청은 최초 `utterance`와
+무작위 `session_id`를 보낸다. 서버는 충분하면 즉시 ready, 부족하면 앱이 로컬에서 진행할 최대
+두 질문과 질문별 보기 0~3개를 한 번에 돌려준다. 근거 있는 보기가 없으면 빈 배열이 정상이다.
+`conversation_history`는 이전 앱 호환을 위해 남아 있지만 #316 앱은
+질문별 답을 `clarification_answers`로 모아 두 번째이자 마지막 요청에 보낸다.
 
 ```json
 {
@@ -59,15 +60,47 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 }
 ```
 
-모델이 정보가 더 필요하다고 판단하면 한 질문만 돌려준다.
+모델이 정보가 더 필요하다고 판단하면 질문 계획을 돌려준다.
 
 ```json
 {
   "status": "needs_clarification",
-  "message": "사진을 어디로 보내고 싶으세요?",
-  "goal": null
+  "message": "어느 방식으로 보내고 싶으세요?",
+  "goal": null,
+  "clarification": {
+    "questions": [{
+      "id": "q1",
+      "prompt": "어느 방식으로 보내고 싶으세요?",
+      "options": ["카카오톡", "문자"],
+      "allow_freeform": true
+    }]
+  }
 }
 ```
+
+앱은 선택 때 서버를 호출하지 않는다. 모든 문항을 마치면 원발화와 답을 함께 보낸다.
+
+```json
+{
+  "utterance": "사진을 보내고 싶어",
+  "session_id": "2c8a6a21-0d5a-4868-a394-694684f494df",
+  "clarification_answers": [{
+    "question_id": "q1",
+    "prompt": "어느 방식으로 보내고 싶으세요?",
+    "answer": "문자",
+    "source": "option"
+  }]
+}
+```
+
+두 번째 요청은 `ready` 또는 goal 없는 `unable_to_finalize`로만 끝난다. 모델이 다시 질문해도 서버가
+안전 종료로 정규화해 세 번째 제품 호출을 만들지 않는다. 보기에는 일반 범주만 허용하고, 자유 발화와
+`unknown_or_declined`는 모든 질문에서 열어 둔다.
+
+배포는 **서버 먼저, 앱 다음** 순서다. 기존 앱은 JSON의 새 `clarification`을 무시하고 첫 질문과 같은
+`message`를 기존 자유 발화 질문으로 읽을 수 있다. 그래서 `message == questions[0].prompt`를 계약으로
+검증하고 `conversation_history`도 당분간 유지한다. 반대로 새 앱은 질문 계획이 없는 옛
+`needs_clarification`을 계약 오류로 닫으므로 서버 배포가 선행돼야 한다.
 
 충분하면 기존 `/v1/next-step`의 `goal`로 바로 쓸 정규화된 목표를 돌려준다.
 
@@ -116,10 +149,10 @@ capability와 일반 후보를 최대 5개 반환하고 candidate ID는 서버�
 대화 UUID나 프로세스 캐시에 후보 상태를 저장하지 않는다. 기기에서만 발견한 package·label·component·
 profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`, phase, 최종 status만 운영 로그에 남는다.
 
-Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과
-운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
-제거한다. ready goal 누락·공백 또는 텍스트 상한 위반은 이전 모델 원문 없이 고정 진단만 덧붙여 한 번
-교정한다. schema 400 폴백을 포함해 공급자 호출은 요청당 최대 2회이며, 그 뒤에는 `PARSE`로 실패한다.
+모델은 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과 운영
+로그에 포함하지 않는다. #316 음성 목표 경로는 첫 판단과 최종화에 공급자를 각각 한 번만 호출한다.
+첫 판단의 계약 위반은 `PARSE`, 답을 실은 최종화의 계약 위반은 재호출 없는 `unable_to_finalize`다.
+`needs_clarification`에 goal이 함께 왔고 질문 계획이 유효한 경우에만 goal을 제거해 정규화한다.
 
 ## 카카오 로그인 세션 (#165)
 
@@ -202,6 +235,23 @@ next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 �
 추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
 OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
 모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+
+#### #316 목표 구체화 모델·예산 결정 (2026-08-21)
+
+목표 구체화 전용 설정은 이번 변경에서 추가하지 않고 공용 `DAVI_MODEL`·추론 설정을 유지한다.
+같은 익명 시나리오(“사진 보내기” → 첫 보기 선택)를 실제 OpenAI 구조화 출력으로 각각 한 번씩
+관측한 결과는 아래와 같다. 원문 질문·보기·goal은 출력하거나 저장하지 않았다.
+
+| 설정 | 첫 응답 | 질문 수 | 최종 응답 | 2호출 경과 |
+|---|---|---:|---|---:|
+| Luna / low | needs_clarification | 2 | ready | 9.97초 |
+| Luna / medium | needs_clarification | 2 | ready | 8.25초 |
+| Terra / low | needs_clarification | 2 | ready | 6.80초 |
+
+세 설정 모두 계약과 기능 결과가 같았고 표본이 1개라 품질·속도 우위를 주장할 근거는 없다. 따라서
+기본 Luna/low를 유지한다. operation별 knob를 먼저 만들면 측정되지 않은 설정 조합만 늘어나므로,
+여러 목표의 2회 이내 ready율·goal 유효성·환각률·선택 편향·TTS 길이를 같은 eval에서 비교해 실제
+차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
 **Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
 상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이

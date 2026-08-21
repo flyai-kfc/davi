@@ -43,7 +43,7 @@ def test_keyless_stub_returns_additive_dialogue_contract():
     response = client.post(_PATH, json=_payload())
 
     assert response.status_code == 200
-    assert set(response.json()) == {"status", "message", "goal"}
+    assert set(response.json()) == {"status", "message", "goal", "clarification"}
     assert response.json()["status"] == "ready"
     assert response.json()["goal"] == "카메라 앱 열어줘"
     assert response.headers[REQUEST_ID_HEADER]
@@ -62,6 +62,26 @@ def test_completed_history_pairs_are_accepted():
     )
 
     assert response.status_code == 200
+
+
+def test_clarification_answers_are_accepted_only_with_unique_valid_questions():
+    valid_answer = {
+        "question_id": "q1",
+        "prompt": "어느 방식으로 보낼까요?",
+        "answer": "문자",
+        "source": "option",
+    }
+    accepted = client.post(
+        _PATH,
+        json=_payload(clarification_answers=[valid_answer]),
+    )
+    duplicated = client.post(
+        _PATH,
+        json=_payload(clarification_answers=[valid_answer, valid_answer]),
+    )
+
+    assert accepted.status_code == 200
+    assert duplicated.status_code == 422
 
 
 def test_invalid_voice_contract_returns_safe_bad_request():
@@ -169,6 +189,8 @@ def test_operational_logs_exclude_voice_session_history_and_response(caplog):
     events = _request_events(caplog)
     assert [event["event"] for event in events] == ["request_received", "request_finished"]
     assert events[-1]["conversation_message_count"] == 2
+    assert events[-1]["clarification_answer_count"] == 0
+    assert events[-1]["intent_phase"] == "plan"
     serialized = json.dumps(events, ensure_ascii=False)
     assert all(value not in serialized for value in sensitive_values)
     assert all("goal" not in event and "message" not in event for event in events)

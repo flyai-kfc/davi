@@ -3,7 +3,7 @@ package com.davi.helper
 import kotlin.math.cos
 
 /**
- * 읽는 중 표시(GD-1)의 **판정과 위상 계산**. Android 타입을 쓰지 않아 JVM 테스트로 고정한다.
+ * 읽는 중 표시(GD-1·GD-2r)의 **판정과 위상 계산**. Android 타입을 쓰지 않아 JVM 테스트로 고정한다.
  *
  * "언제 보이나"([isReading])와 "어떻게 보이나"([frame])를 한 파일에 둔 것은 둘 다 이 기능
  * 하나의 규칙이고 각각 몇 줄이라서다(`ScreenSignature` + `ScreenStabilityTracker`가 한 파일에

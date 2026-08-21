@@ -267,7 +267,8 @@ enum class ConversationRole {
 }
 
 /**
- * 고정 슬롯을 노출하지 않는 음성 목표 요청. 이력은 완결된 user/assistant 쌍 최대 5왕복이다.
+ * 고정 슬롯을 노출하지 않는 음성 목표 요청. #316 앱은 [clarificationAnswers]를 두 번째이자 마지막
+ * 요청에 싣고, [conversationHistory]는 이전 앱 wire 호환을 위해서만 남긴다.
  * [sessionId]는 무작위 대화 경계이며 원문·기기 값에서 만들거나 로그에 남기지 않는다.
  */
 @Serializable
@@ -275,21 +276,55 @@ data class SlotFillRequest(
     val utterance: String,
     @SerialName("session_id") val sessionId: String,
     @SerialName("conversation_history") val conversationHistory: List<ConversationTurn> = emptyList(),
+    @SerialName("clarification_answers")
+    val clarificationAnswers: List<ClarificationAnswer> = emptyList(),
+)
+
+@Serializable
+data class ClarificationAnswer(
+    @SerialName("question_id") val questionId: String,
+    val prompt: String,
+    val answer: String,
+    val source: ClarificationAnswerSource,
+)
+
+@Serializable
+enum class ClarificationAnswerSource {
+    @SerialName("option") OPTION,
+    @SerialName("freeform") FREEFORM,
+    @SerialName("unknown_or_declined") UNKNOWN_OR_DECLINED,
+}
+
+@Serializable
+data class ClarificationQuestion(
+    val id: String,
+    val prompt: String,
+    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기와 모름 답은 항상 가능하다. */
+    val options: List<String>,
+    @SerialName("allow_freeform") val allowFreeform: Boolean,
+)
+
+@Serializable
+data class ClarificationPlan(
+    val questions: List<ClarificationQuestion>,
 )
 
 @Serializable
 data class SlotFillState(
     val status: IntentDialogueStatus,
-    /** 화면에 보여주고 TTS로 읽을 질문 또는 준비 완료 문장. 운영 로그에는 남기지 않는다. */
+    /** 화면에 보여줄 질문 또는 준비 완료 문장. 질문 계획에서는 첫 문항만 TTS로 읽는다. */
     val message: String,
     /** READY일 때만 존재하며, 사용자가 확인할 기존 목표 입력칸에 넣는다. */
     val goal: String? = null,
+    /** NEEDS_CLARIFICATION일 때 한 화면씩 진행할 최대 두 질문. */
+    val clarification: ClarificationPlan? = null,
 )
 
 @Serializable
 enum class IntentDialogueStatus {
     @SerialName("needs_clarification") NEEDS_CLARIFICATION,
     @SerialName("ready") READY,
+    @SerialName("unable_to_finalize") UNABLE_TO_FINALIZE,
 }
 
 /** 서버가 제안한 후보 하나. package/alias는 서버 원본이며 기기 index 값을 역으로 채우지 않는다. */

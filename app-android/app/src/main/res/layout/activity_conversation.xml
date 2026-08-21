@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   대화 화면 (docs/SCREENS.md MA-1~4 + 실패 — 임시 와이어프레임 디자인, #123).
-  상태 6개가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
+  대화 상태 전부가 이 레이아웃 하나를 공유하고 ConversationUiState의 렌더 모델이 가시성을 정한다.
   고정 배치 — 루트 스크롤 컨벤션은 폼형 화면에만 적용한다(app-android/CLAUDE.md).
 
   **마이크는 바닥 고정이다.** vertical LinearLayout은 높이가 모자라면 뒤쪽 자식부터
@@ -374,6 +374,20 @@
         </FrameLayout>
 
         <!--
+          구체화에서는 질문 카드의 176dp 하한을 먼저 보존하고, 선택 영역이 남은 높이를 받는다.
+          기본 배율에서는 다섯 조작이 한 화면에 보이고, 2.0x처럼 내용이 넘칠 때만 include 안의
+          ScrollView가 스크롤한다. wrap_content로 두면 선택 영역만 줄지 않아 질문 카드가 패딩보다
+          작게 눌리고, 질문 한 줄조차 표시할 수 없게 된다(#326 리뷰).
+        -->
+        <include
+            android:id="@+id/clarification_choices"
+            layout="@layout/view_davi_clarification_choices"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="@dimen/davi_card_gap" />
+
+        <!--
           시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
           "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을
           위해 같은 구조를 쓴 것과 짝이다.
@@ -562,6 +576,29 @@
         android:scaleType="fitCenter"
         android:contentDescription="@string/conversation_close_desc" />
     </FrameLayout>
+
+    <!--
+      인식 준비 중 화면 전체를 덮는 흐림(#277). 색·농도의 근거는 colors.xml에 있다.
+
+      **인셋 층(conversation_insets) 밖이라 상태표시줄·내비게이션까지 덮는다 — 의도다.**
+      바로 아래 모달 스크림이 같은 자리에 있는 것과 같은 사정이고, 여기서는 더 직접적이다:
+      이 흐림이 말하는 것이 **"화면 전체가 아직 아니다"**라 일부만 덮으면 덮이지 않은 띠가
+      남아 "덜 그려진 화면"으로 읽힌다. 0.9초 뒤 통째로 걷히는 것이 신호다.
+      실제로 듣기 시작하면(micReady) 걷히고, 그때 띠링이 함께 울린다.
+
+      **종료 확인 모달보다 앞에 둔다.** 지금은 안내 중이면 마이크가 잠겨 둘이 같이 뜨지
+      않지만, 마지막 자식으로 두면 스크림이 모달을 덮는 배치가 되어 나중에 물린다.
+
+      **터치를 막지 않는다.** clickable을 켜지 않은 일반 View라 터치가 뒤로 통과한다 —
+      준비 중에도 X로 취소할 수 있어야 한다(실기기 확인).
+    -->
+    <View
+        android:id="@+id/preparing_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/davi_preparing_scrim"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
 
     <!--
       메인 10 종료 확인 모달(#197). **루트 FrameLayout의 마지막 자식이라 모든 것 위에 뜬다** —
