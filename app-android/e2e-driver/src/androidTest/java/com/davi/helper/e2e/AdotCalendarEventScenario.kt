@@ -13,6 +13,14 @@ import androidx.test.uiautomator.UiDevice
 internal class AdotCalendarEventScenario : GuidedScenario<AdotCalendarEventScenario.State> {
     data class State(
         val launcherPackage: String,
+        /**
+         * 저장이 **일어날 수 있었는가**. 실행 전에 기록한다.
+         *
+         * 저장 관측(`eventSaved`)은 모델이 DONE을 냈을 때만 갱신되므로, timeout·step_limit으로
+         * 끝나면 저장해 놓고도 거짓으로 남는다. 그 값을 정리의 판정 기준으로 쓰면 계정에 일정을
+         * 남긴 채 성공으로 끝난다(2026-08-21 리뷰). 제목이 입력된 순간부터는 저장 가능성이 있다.
+         */
+        var eventSaveAttempted: Boolean = false,
         var eventSaved: Boolean = false,
     )
 
@@ -27,6 +35,9 @@ internal class AdotCalendarEventScenario : GuidedScenario<AdotCalendarEventScena
 
     override fun prepare(device: UiDevice): State {
         robot = AdotCalendarRobot(device)
+        // 앞선 실행이 남긴 같은 제목의 일정을 먼저 걷어낸다. 남아 있으면 이번 실행의 목표
+        // 판정이 시작부터 참이 되고, 정리도 무엇을 지웠는지 알 수 없다.
+        robot.purgeTestEvents()
         robot.forceStop()
         val launcherPackage = device.launcherPackageName
             ?: throw GuidedScenarioFailure("launcher_package_missing")
@@ -48,6 +59,11 @@ internal class AdotCalendarEventScenario : GuidedScenario<AdotCalendarEventScena
         }
         if (decision.screenPackage != AdotCalendarRobot.PACKAGE) {
             return GuidedDecisionAssessment(deviationCodes = listOf("unexpected_package"))
+        }
+        // 앱 안의 TYPE에는 테스트 제목이 들어간다([textFor]). 그 순간부터 저장이 가능하므로,
+        // 실행 **전에** 기록해 정리가 이 실행을 자기 책임으로 보게 한다.
+        if (decision.action.actionType == GuidedActionType.TYPE) {
+            state.eventSaveAttempted = true
         }
         return GuidedDecisionAssessment()
     }
@@ -74,9 +90,12 @@ internal class AdotCalendarEventScenario : GuidedScenario<AdotCalendarEventScena
     override fun cleanup(device: UiDevice, state: State?) {
         val cleanupRobot = if (::robot.isInitialized) robot else AdotCalendarRobot(device)
         try {
-            val deleted = cleanupRobot.deleteVisibleTestEvent()
-            // 저장을 관측했는데 지금 화면에서 일정을 못 찾으면, 지워지지 않은 채 남는다.
-            if (!deleted && state?.eventSaved == true) {
+            // 정리 시점의 화면은 안내가 끝난 자리라 캘린더가 아닐 수 있다. 앱을 새로 띄워 찾는다.
+            val deleted = cleanupRobot.purgeTestEvents()
+            // 저장이 가능했던 실행에서 일정을 못 찾았다면, 정말 없는 것인지 캘린더를 못 본 것인지
+            // 구분할 수 없다(캘린더 화면의 양성 표식이 아직 실측되지 않았다). 계정에 남기느니
+            // 확인 불가로 끝낸다.
+            if (!deleted && (state?.eventSaveAttempted == true || state?.eventSaved == true)) {
                 throw GuidedScenarioFailure("event_cleanup_unverified")
             }
         } finally {

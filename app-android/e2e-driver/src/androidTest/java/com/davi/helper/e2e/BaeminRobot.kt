@@ -31,8 +31,15 @@ internal class BaeminRobot(private val device: UiDevice) {
         val cart = GuidedAppOps.waitForVisibleLabelLike(device, "장바구니", ENTRY_TIMEOUT_MS)
             ?: throw GuidedScenarioFailure("cart_entry_missing")
         cart.click()
-        device.waitForIdle(IDLE_TIMEOUT_MS)
-        if (isCartEmpty()) return
+        // 진입 버튼이 떴다고 장바구니 화면이 그려진 것은 아니다. 화면 표식을 기다리지 않으면
+        // 아직 비지 않은 장바구니를 "주문 컨트롤이 없다"는 이유로 비었다고 읽는다.
+        GuidedAppOps.waitForVisibleLabelLike(device, CART_SCREEN_FRAGMENT, ENTRY_TIMEOUT_MS)
+            ?: throw GuidedScenarioFailure("cart_screen_unverified")
+        when (cartState()) {
+            CartState.EMPTY -> return
+            CartState.UNKNOWN -> throw GuidedScenarioFailure("cart_screen_unverified")
+            CartState.HAS_ITEMS -> Unit
+        }
 
         // 2026-08-21 실측(16.19.0) — 장바구니에 "전체삭제"가 없고 항목별 삭제(contentDescription
         // "삭제")만 있다. 전체삭제만 찾으면 담긴 상태의 첫 정리가 cart_clear_control_missing으로
@@ -45,22 +52,35 @@ internal class BaeminRobot(private val device: UiDevice) {
             // 확인 대화상자가 뜨면 삭제를 확정한다. 없으면 이미 지워진 것일 수 있어 상태로 판정한다.
             GuidedAppOps.findVisibleLabelLike(device, "삭제")?.click()
             device.waitForIdle(IDLE_TIMEOUT_MS)
-            if (isCartEmpty()) return
+            if (cartState() == CartState.EMPTY) return
         }
 
         throw GuidedScenarioFailure("cart_cleanup_unverified")
     }
 
+    /** 장바구니 판정. "비었다"를 단정할 수 없는 상태를 따로 둔다. */
+    private enum class CartState { EMPTY, HAS_ITEMS, UNKNOWN }
+
     /**
-     * 장바구니가 비었는가.
+     * 장바구니 상태를 읽는다.
      *
-     * **한계** — 2026-08-21 실측(16.19.0)에서 빈 장바구니에도 "비어" 문구가 잡히지 않았다.
-     * 그래서 실질 판정은 "주문 컨트롤이 없다" 하나에 기대고, 이는 화면이 아직 그려지지 않은
-     * 동안에도 참이 된다. 아직 이 앱에서 확인된 '비었음' 표식이 없어 남겨 둔 약점이다.
+     * "주문 컨트롤이 없다"만으로 비었다고 읽으면 **화면이 아직 그려지지 않은 동안에도 참**이
+     * 되어, 상품이 남았는데 정리가 성공으로 끝난다(fail-open). 그래서 장바구니 화면이 실제로
+     * 떠 있다는 양성 표식을 함께 요구하고, 그것마저 없으면 판정 불가로 돌려 호출부가 실패로
+     * 끝내게 한다.
+     *
+     * 2026-08-21 실측(16.19.0) — 빈 장바구니에도 "비어"류 문구는 없었다. 확인된 빈 상태
+     * 표식이 없어 "화면은 떴는데 주문 컨트롤이 없다"를 빈 상태로 본다.
      */
-    private fun isCartEmpty(): Boolean =
-        GuidedAppOps.hasVisibleLabelLike(device, "비어") ||
-            GuardedControlGuard.liveBlockedControlBoxes(device, ORDER_FRAGMENTS).isEmpty()
+    private fun cartState(): CartState {
+        if (!isForeground()) return CartState.UNKNOWN
+        if (GuardedControlGuard.liveBlockedControlBoxes(device, ORDER_FRAGMENTS).isNotEmpty()) {
+            return CartState.HAS_ITEMS
+        }
+        if (GuidedAppOps.hasVisibleLabelLike(device, "비어")) return CartState.EMPTY
+        if (!GuidedAppOps.hasVisibleLabelLike(device, CART_SCREEN_FRAGMENT)) return CartState.UNKNOWN
+        return CartState.EMPTY
+    }
 
     /** 실행 시 전면 광고·공지 팝업이 덮을 수 있다. 닫기류가 보이면 닫고, 아니면 그대로 둔다. */
     private fun dismissPopupIfAny() {
@@ -76,6 +96,15 @@ internal class BaeminRobot(private val device: UiDevice) {
 
         /** 항목별 삭제를 반복할 상한. 장바구니 한 건에 메뉴가 이만큼 담길 일은 없다. */
         private const val MAX_CART_CLEAR_ATTEMPTS = 12
+
+        /**
+         * 장바구니 화면이 떠 있다는 양성 표식.
+         *
+         * 홈의 하단 내비게이션에도 같은 문구가 있어 단독으로는 화면을 특정하지 못한다 —
+         * 진입을 누른 뒤에만 쓴다. 2026-08-21 실측에서 담긴 장바구니·빈 장바구니 양쪽에서
+         * 잡혔다.
+         */
+        private const val CART_SCREEN_FRAGMENT = "장바구니"
 
         /** 콜드 스타트 직후 홈 화면이 그려질 때까지의 여유. */
         private const val ENTRY_TIMEOUT_MS = 10_000L
