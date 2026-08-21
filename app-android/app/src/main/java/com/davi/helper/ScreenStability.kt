@@ -67,6 +67,14 @@ object ScreenSignature {
 }
 
 /**
+ * 서버에 안내를 물을 만큼 화면 내용이 준비됐는지 판정한다.
+ *
+ * 창 제목은 요소 label이 아니다. 앱 전환 직후 제목·package만 잡히고 접근성 트리는 아직 비어 있는
+ * 스플래시가 실재하므로, 실제 요소 label이 하나라도 있어야 준비된 화면으로 본다(#350).
+ */
+internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNotBlank() }
+
+/**
  * 샘플 하나가 들어올 때 무엇을 할지 정한다.
  *
  * - [Decision.WAIT] 아직 흔들린다. 요청을 보내지 않는다(#32).
@@ -92,7 +100,19 @@ class ScreenStabilityTracker(
     private var lastAttemptMs = 0L
     private var requestOutstanding = false
 
-    fun onSample(signature: String, nowMs: Long): Decision {
+    fun onSample(
+        signature: String,
+        nowMs: Long,
+        hasLabeledElement: Boolean = true,
+    ): Decision {
+        if (!hasLabeledElement) {
+            // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
+            // currentSignature 대조가 그 응답을 버린다. 다만 몇 번 반복돼도 안정 화면으로
+            // 승격하지 않는다 — 접근성 트리가 아직 채워지는 중인 실측이 있다(#350).
+            lastSample = signature
+            heldSamples = 0
+            return Decision.WAIT
+        }
         if (signature != lastSample) {
             lastSample = signature
             heldSamples = 1

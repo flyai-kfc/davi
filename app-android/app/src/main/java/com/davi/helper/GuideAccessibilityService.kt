@@ -486,7 +486,8 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
-        val decision = stability.onSample(signature, now)
+        val hasLabeledElement = result.screen.hasLabeledElement()
+        val decision = stability.onSample(signature, now, hasLabeledElement)
         lastDecision = decision
         updateReading()
 
@@ -518,7 +519,11 @@ class GuideAccessibilityService : AccessibilityService() {
         when (decision) {
             ScreenStabilityTracker.Decision.WAIT -> {
                 // 억제한 샘플이 로그에 없으면 "덜 그려진 트리를 안 보냈다"를 실기기에서 볼 수 없다(#32).
-                Log.d(TAG, "settling pkg=${result.screen.packageName} elements=${result.screen.elements.size}")
+                Log.d(
+                    TAG,
+                    "settling pkg=${result.screen.packageName} " +
+                        "elements=${result.screen.elements.size} labeled=$hasLabeledElement",
+                )
                 scheduleSample(SETTLE_MS)
             }
 

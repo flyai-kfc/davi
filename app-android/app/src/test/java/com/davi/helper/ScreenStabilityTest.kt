@@ -203,6 +203,20 @@ class ScreenSignatureTest {
 
         assertNotEquals(ScreenSignature.of(before), ScreenSignature.of(ready))
     }
+
+    @Test
+    fun `창 제목만 있고 요소 label이 없으면 준비된 화면이 아니다`() {
+        val splash = screen(
+            UiElement(nodeId = "n1", label = "   ", role = "FrameLayout"),
+            windowTitle = "카카오 T",
+        )
+
+        assertFalse(splash.hasLabeledElement())
+        assertTrue(
+            screen(UiElement(nodeId = "n1", label = "어디로 갈까요?", role = "TextView"))
+                .hasLabeledElement(),
+        )
+    }
 }
 
 class InputStateEventTest {
@@ -239,6 +253,16 @@ class ScreenStabilityTrackerTest {
         tracker.onSample("a", 0)
 
         assertEquals(Decision.SEND, tracker.onSample("a", 100))
+    }
+
+    @Test
+    fun `label 없는 화면은 반복돼도 보내지 않고 label이 생긴 뒤 다시 안정화한다`() {
+        assertEquals(Decision.WAIT, tracker.onSample("splash", 0, hasLabeledElement = false))
+        assertEquals(Decision.WAIT, tracker.onSample("splash", 100, hasLabeledElement = false))
+        assertEquals("splash", tracker.currentSignature())
+
+        assertEquals(Decision.WAIT, tracker.onSample("content", 200, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("content", 300, hasLabeledElement = true))
     }
 
     @Test

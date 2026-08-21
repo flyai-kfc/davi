@@ -103,13 +103,17 @@ object GuideSession {
     private var pressRequeryArmed = false
 
     /**
-     * 이 세션에서 **연속으로** 믿지 않고 넘긴 `done` 수. done이 아닌 안내가 실제로 표시되면
-     * 0으로 돌아간다 — 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다.
+     * 같은 화면에서 **연속으로** 믿지 않고 넘긴 `done` 수. 화면이 바뀌거나 done이 아닌 안내가
+     * 실제로 표시되면 0으로 돌아간다 — 화면을 넘어 누적으로 세면 스플래시가 다음 실화면의
+     * 재시도 여유를 먼저 써 버린다(#350).
      *
      * 보통은 미검증 done이지만, 사용자가 "아직요"로 부정한 화면에서는 검증된 done도 여기서
      * 센다([onDone]) — 근거를 잃은 완료 신호라는 점이 같고, 세는 목적(재질의 총량 제한)도 같다.
      */
     private var unverifiedDones = 0
+
+    /** [unverifiedDones]가 속한 서버 화면 구조 시그니처. label 원문은 들어 있지 않다. */
+    private var unverifiedDoneSignature: String? = null
 
     /**
      * 사용자의 확인 응답을 기다리는 중인가(#139). 그동안 서비스는 화면을 계속 보되 서버에
@@ -160,13 +164,19 @@ object GuideSession {
      * **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다(server/CLAUDE.md C11이
      * fallback에서 done을 배제한 것과 같은 근거).
      *
-     * [screenSignature]는 그 done이 온 화면이다. 사용자가 이미 부정한 화면인지 이 값으로 가린다.
+     * [screenSignature]는 서버가 label 없이 계산해 응답한 화면 구조 시그니처다. 사용자가 이미
+     * 부정한 화면인지 가리고, 미검증 done의 재시도 예산을 화면별로 나누는 데 함께 쓴다.
      *
      * 이전 세대의 늦은 done은 여기서도 버린다(null).
      */
     @Synchronized
     fun onDone(generation: Long, verified: Boolean, screenSignature: String): DoneOutcome? {
         if (!isCurrent(generation)) return null
+
+        if (screenSignature != unverifiedDoneSignature) {
+            unverifiedDoneSignature = screenSignature
+            unverifiedDones = 0
+        }
 
         // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
         val rejected = screenSignature == rejectedSignature
@@ -269,6 +279,7 @@ object GuideSession {
         rejectedSignature = pendingConfirmSignature
         pendingConfirmSignature = null
         unverifiedDones = 0
+        unverifiedDoneSignature = rejectedSignature
     }
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
@@ -292,6 +303,7 @@ object GuideSession {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
         unverifiedDones = 0
+        unverifiedDoneSignature = null
         // 같은 근거로 부정 이력의 유효기간도 여기서 끝난다. ×아직요는 "지금 이 순간 아직 안
         // 됐다"는 답인데, 이력을 done으로만 지우면 완료 신호가 드문 실제 세션에서 세션이 끝날
         // 때까지 남는다 — 사용자가 여러 단계를 거쳐 그 화면에서 실제로 목표를 달성해도 성공
@@ -412,6 +424,7 @@ object GuideSession {
             lastStepSignature = null
             pressRequeryArmed = false
             unverifiedDones = 0
+            unverifiedDoneSignature = null
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.
             awaitingConfirm = false
@@ -424,9 +437,9 @@ object GuideSession {
     private const val MAX_HISTORY = 10
 
     /**
-     * 미검증 done을 이만큼 받으면 다시 묻지 않고 사용자에게 알린다. 재시도 하나가 곧 모델 호출
-     * 하나이고(무료 티어 15 RPM), 같은 화면에 같은 요청이라 답이 바뀔 여지도 작아 크게 둘 수
-     * 없다. 다른 시간 상수처럼 첫 추정치다 — 실사용 로그로 다시 정한다.
+     * 같은 화면에서 미검증 done을 이만큼 받으면 다시 묻지 않고 사용자에게 알린다. 재시도 하나가
+     * 곧 모델 호출 하나이고(무료 티어 15 RPM), 같은 화면에 같은 요청이라 답이 바뀔 여지도 작아
+     * 크게 둘 수 없다. 다른 시간 상수처럼 첫 추정치다 — 실사용 로그로 다시 정한다.
      */
     const val MAX_UNVERIFIED_DONE = 3
 }
