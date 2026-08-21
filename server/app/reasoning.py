@@ -343,9 +343,10 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     labels = [_normalize_for_evidence(element.label) for element in screen.elements]
     present = [label for label in labels if label]
     if not present:
-        # 화면에 label이 하나도 없으면 검사할 수 없다.
-        # 없는 것을 근거로 거짓 판정을 만들지 않는다(SPEC §4).
-        return True
+        # 화면에 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로 돌리면
+        # 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
+        # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
+        return False
 
     # 한 글자 label은 아이콘·숫자라 아무 문장에나 우연히 걸린다. 다만 화면이 전부 한 글자면
     # (숫자 키패드 등) 검사를 끄는 대신 그것들로 대조한다 — 끄면 지어낸 근거가 그대로 통과한다.

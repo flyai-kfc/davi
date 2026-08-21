@@ -172,7 +172,8 @@ def test_step_carries_the_whole_guidance_record():
     req = NextStepRequest(goal="x", screen=Screen(), steps=[step])
 
     assert req.steps == [step]
-    # 앱이 아직 채우지 않는 둘은 없는 값으로 온다(#270 서브이슈 3·4).
+    # 앱이 아직 채우지 않는 content_signature는 없는 값으로 온다(#270 서브이슈 4).
+    # performed도 귀속 미확인이면 같은 규칙이다(#319) — None을 "안 누름"으로 읽지 않는다.
     assert step.performed is None
     assert step.content_signature is None
 

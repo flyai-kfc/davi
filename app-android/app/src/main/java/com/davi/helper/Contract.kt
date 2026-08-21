@@ -138,8 +138,8 @@ data class GuideAction(
  * [contentSignature]). 앱은 나르기만 하고 해석하지 않는다. [targetLabel]만 `target_node_id`로
  * 현재 화면에서 찾아 붙이는데, 강조를 그리려고 어차피 하는 조회다.
  *
- * [performed]와 [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 3·4). 필드를 먼저
- * 두는 것은 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
+ * [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 4). 필드를 먼저 두는 것은
+ * 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
  */
 @Serializable
 data class GuideStep(
@@ -154,6 +154,11 @@ data class GuideStep(
     @SerialName("structure_signature") val structureSignature: String,
     /** 그 안내 뒤 화면이 실제로 바뀌었는가. `null`은 아직 모른다는 뜻이다. */
     @SerialName("screen_changed") val screenChanged: Boolean? = null,
+    /**
+     * 안내한 대상을 사용자가 실제로 눌렀는가(`PressMatch`, #319). `false`는 좌표 축의 확신
+     * 불일치(다른 노드를 누름)에서만 나오고, `null`은 귀속 미확인이다 — 이벤트가 안 왔거나,
+     * source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다.
+     */
     val performed: Boolean? = null,
     @SerialName("content_signature") val contentSignature: String? = null,
 )
@@ -174,9 +179,19 @@ enum class ActionType {
     @SerialName("tap") TAP,
     @SerialName("scroll") SCROLL,
     @SerialName("type") TYPE,
+    /**
+     * 화면 요소가 아니라 **가장자리 제스처**다(#222) — `target_node_id` 없이 오고, 시작 지점
+     * 선과 손 모션은 앱이 [EdgeGesture]의 표에서 만들어 그린다. "강조 없이 안내문만 뜬다"(#35)는
+     * #222 이전 동작이다.
+     *
+     * `direction`도 안 오는 것이 관측이지만 **계약 보장은 아니다** — 서버 스키마는 scroll에서만
+     * 필수로 요구할 뿐 다른 액션에서 금지하지 않는다(`server/app/schemas.py`의
+     * `validate_scroll_direction`). 모델이 실어 보내도 앱은 표의 손가락 방향에 우선권을 줘
+     * 무시한다(`HighlightOverlayView.setGuide`).
+     */
     @SerialName("open_quick_settings") OPEN_QUICK_SETTINGS,
 
-    /** 화면 요소가 아니라 제스처다. `target_node_id`가 없으므로 강조 없이 안내문만 뜬다(#35). */
+    /** [OPEN_QUICK_SETTINGS]와 같은 가장자리 제스처다(#222) — 계약도 표현 규칙도 같다. */
     @SerialName("open_app_drawer") OPEN_APP_DRAWER,
     @SerialName("done") DONE,
 }

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .schemas import GuideStep, NextStepRequest, Screen, SwipeDirection, UiElement
+from .schemas import ActionType, GuideStep, NextStepRequest, Screen, SwipeDirection, UiElement
 
 # 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
@@ -145,19 +145,42 @@ ACTIONABLE_RESULT_INSTRUCTION = (
 STEP_HISTORY_HEADER = "최근에 한 안내와 그 결과:"
 STEP_CHANGED = "화면이 바뀜"
 STEP_UNCHANGED = "화면이 그대로임"
+# 눌림 귀속(#319). "누른 것"이라는 구체 표현은 지금 생산자가 TAP·TYPE뿐이라 정확하다 —
+# 수행 판정이 다른 조작으로 넓어지면(스크롤 등) 스텝의 `action_type`으로 문구를 갈라야 하고,
+# 그 분기는 그 판정을 들여오는 변경에서 여기에 추가한다(계약은 그대로다).
+STEP_PRESSED = "누른 것이 확인됨"
+# 좌표 축의 확신 불일치에서만 온다(앱 `PressMatch` — 클릭된 노드의 위치를 정확히 알 때만
+# "다른 곳"을 확신한다). 텍스트 폴백의 불일치는 미탐일 수 있어 null로 온다.
+STEP_PRESSED_ELSEWHERE = "안내한 대상이 아닌 곳을 누름"
 # `screen_changed=False`가 실제로 실렸을 때만 붙인다. 위 스크롤 문장들과 같은 규칙이다.
 #
 # **단정하지 않는다.** `False`의 원인은 "안내가 틀렸다"와 "사용자가 아직 안 했다" 둘 다이고
-# 서버는 구별할 수 없다. 게다가 이 값이 서버에 닿는 경로(오류 백오프 재시도·미검증 done)는
-# **둘 다 후자일 확률이 높은 자리다** — 화면이 그대로인 동안의 정체는 앱이 혼자 처리하고
-# 서버를 부르지 않으므로(#39) 여기까지 오지 않는다. 확정 지시를 넣으면 사용자가 안내를 읽는
-# 중에 맞는 안내가 버려지고, 문구 규칙이 값을 끌어당긴 C17 · #109를 프롬프트에서 재현한다.
-# 느린 사용자를 실패로 적지 않는다는 C11의 판정 시점 결정과 같은 이유이며, "…만으로 …단정하지
-# 마세요"라는 형태의 선례는 [FOCUSED_INPUT_INSTRUCTION]이다.
+# 서버는 구별할 수 없다. 이 값이 닿는 경로 중 오류 백오프 재시도·미검증 done은 **둘 다
+# 후자일 확률이 높은 자리다** — 확정 지시를 넣으면 사용자가 안내를 읽는 중에 맞는 안내가
+# 버려지고, 문구 규칙이 값을 끌어당긴 C17 · #109를 프롬프트에서 재현한다. 눌림이 확인된
+# 스텝만 [PRESSED_UNCHANGED_INSTRUCTION]이 전자로 좁혀 말한다 — 정체 재질의(#319)로 오는
+# `False`가 그 경우다. 느린 사용자를 실패로 적지 않는다는 C11의 판정 시점 결정과 같은
+# 이유이며, "…만으로 …단정하지 마세요"라는 형태의 선례는 [FOCUSED_INPUT_INSTRUCTION]이다.
 UNCHANGED_STEP_INSTRUCTION = (
     f'"{STEP_UNCHANGED}"은 그 안내 뒤로 아직 화면이 바뀌지 않았다는 관측입니다. '
     "사용자가 아직 따라 하지 않은 것일 수도 있으니 그것만으로 안내가 틀렸다고 단정하지 마세요. "
     "같은 안내가 여러 번 반복됐다면 다른 방법을 고르세요."
+)
+# 눌림 표시가 실린 이력에만 붙는다. 없는 스텝의 침묵(null)을 "안 누름"으로 읽는 것이
+# 이 값의 가장 흔한 오독이라, 표시가 하나라도 보일 때 침묵의 뜻을 함께 말한다.
+PERFORMED_STEP_INSTRUCTION = (
+    f'"{STEP_PRESSED}"은 사용자가 안내한 대상을 실제로 눌렀다는 관측이고, '
+    f'"{STEP_PRESSED_ELSEWHERE}"은 다른 곳을 눌렀다는 관측입니다. '
+    "둘 다 목표가 진행됐다는 뜻은 아닙니다. 눌림 표시가 없는 스텝은 누르지 않았다는 뜻이 "
+    "아니라 확인되지 않았다는 뜻입니다."
+)
+# 유일하게 단정하는 문장이다 — 눌림이 확인되고도 화면이 그대로인 스텝은 "아직 안 했다"가
+# 배제된, 안내가 통하지 않았다는 관측이라서다(#319 재질의가 이 조합을 만든다).
+# [UNCHANGED_STEP_INSTRUCTION]의 유보와 공존한다: 그쪽은 눌림 미확인 스텝을 말한다.
+# 발화 조건이 좁은 이유는 _history_instruction 참고 — tap의 마지막 스텝에서만 단정한다.
+PRESSED_UNCHANGED_INSTRUCTION = (
+    f'"{STEP_PRESSED}"인데 "{STEP_UNCHANGED}"이면 사용자가 시킨 대로 눌렀는데 화면에 아무 '
+    "변화가 없었던 것입니다. 그 안내를 반복하지 말고 다른 방법을 고르세요."
 )
 
 
@@ -218,7 +241,8 @@ def _recent_step_lines(req: NextStepRequest) -> str:
 
     wire는 구조화, 프롬프트는 문장이다 — 자연어 이력이 구조화 나열보다 우세하다는 보고가
     근거다(GUI-Rise, arXiv:2510.27210). 절 순서는 **어디서 → 무엇을 안내했고 → 대상은
-    무엇이며 → 그래서 화면이 바뀌었는가**다.
+    무엇이며 → 눌렀는가 → 그래서 화면이 바뀌었는가**다(꼬리 둘은 시간순 — 누름이 변화보다
+    앞선다).
 
     **없는 값은 그 절을 통째로 생략한다.** "알 수 없음"을 적지 않는 것은 미관측에 침묵하는
     C10 규약과 같다. 빈 문장은 스텝째로 거른다 — 앱은 문장이 비어도 스텝을 남기지만(조작과
@@ -229,7 +253,7 @@ def _recent_step_lines(req: NextStepRequest) -> str:
     `tap`에서만 중복이고 `scroll`·`type`의 안내문에는 대상이 안 들어가므로 **항상** 싣는다.
     조건을 달면 규칙이 하나 늘고, 가드레일이 대상을 바꾼 경우를 놓친다
     (`reasoning._resolve_scroll`은 모델이 고른 대상을 가장 넓은 스크롤 영역으로 교체한다).
-    `performed`·`content_signature`는 아직 앱이 채우지 않는다(#270 서브 3·4).
+    `content_signature`는 아직 앱이 채우지 않는다(#270 서브 4).
     """
 
     recent = "\n".join(_step_line(step) for step in _history(req))
@@ -258,22 +282,55 @@ def _step_line(step: GuideStep) -> str:
     label = (step.target_label or "").strip()
     where = f"{hint!r}에서 " if hint else ""
     target = f"(대상 {label!r})" if label else ""
-    if step.screen_changed is None:
-        outcome = ""
-    else:
-        outcome = f" — {STEP_CHANGED if step.screen_changed else STEP_UNCHANGED}"
+    # 꼬리는 관측 목록이다 — 값이 있는 것만 시간순(누름 → 변화)으로 잇는다. 관측이 하나도
+    # 없으면 꼬리째 생략한다(C10 침묵 규약).
+    notes = []
+    if step.performed is not None:
+        notes.append(STEP_PRESSED if step.performed else STEP_PRESSED_ELSEWHERE)
+    if step.screen_changed is not None:
+        notes.append(STEP_CHANGED if step.screen_changed else STEP_UNCHANGED)
+    outcome = f" — {' · '.join(notes)}" if notes else ""
     return f"- {where}{step.instruction.strip()!r}라고 안내함{target}{outcome}"
 
 
 def _history_instruction(req: NextStepRequest) -> str:
-    """`화면이 그대로임`이 실제로 적힌 이력에만 그 관측을 어떻게 읽을지 말해 준다.
+    """꼬리에 실제로 실린 관측에만 그것을 어떻게 읽을지 한 줄씩 덧붙인다.
 
     조건을 다는 이유는 [_end_instruction]과 같다 — 관측된 것이 없으면 없는 상태를 설명하는
     문장이 된다. 줄이 만들어지지 않은 스텝을 세지 않으려고 [_history]를 함께 쓴다.
+    순서는 일반 유보([UNCHANGED_STEP_INSTRUCTION]) → 눌림 표시의 뜻 → 그 둘이 겹친 확정
+    ([PRESSED_UNCHANGED_INSTRUCTION])이다 — 넓은 규칙 뒤에 좁은 예외가 와야 겹칠 때
+    모순으로 읽히지 않는다.
     """
 
-    unchanged = any(step.screen_changed is False for step in _history(req))
-    return f"{UNCHANGED_STEP_INSTRUCTION}\n" if unchanged else ""
+    steps = _history(req)
+    lines = []
+    if any(step.screen_changed is False for step in steps):
+        lines.append(UNCHANGED_STEP_INSTRUCTION)
+    if any(step.performed is not None for step in steps):
+        lines.append(PERFORMED_STEP_INSTRUCTION)
+    # 단정은 **마지막 스텝**이 tap이고 눌림 확인 + 화면 그대로일 때만이다. 과거 스텝의 이
+    # 조합은 그 뒤 진행으로 이미 해소됐을 수 있고(느린 화면 전환이 재질의 직후 일어난 경우),
+    # type은 눌림 확인이 "입력칸을 눌렀다"까지라 "아직 안 했다"가 배제되지 않는다.
+    #
+    # **여기만 `req.steps`를 본다.** 위 두 줄은 "그 관측이 줄로 실렸는가"가 조건이라 `_history`가
+    # 맞지만, 이 단정의 근거는 "**지금** 화면이 그 상태다"이므로 프롬프트에 실리는 목록이 아니라
+    # 원본 이력의 끝을 봐야 한다 — 빈 안내문 스텝은 줄을 안 만들 뿐 그 뒤에 안내가 나갔다는
+    # 사실은 남는다(#333 리뷰).
+    #
+    # 그 대신 **그 마지막 스텝이 줄로 실렸는지는 여기서 따로 본다.** 원본의 끝만 보면 반대쪽이
+    # 열린다 — 마지막 스텝 자신의 안내문이 비면 줄이 없는데 단정만 남아, 이력이 "없음"인
+    # 프롬프트가 있지도 않은 표시를 인용해 규칙을 말한다(#333 재리뷰).
+    last = req.steps[-1] if req.steps else None
+    if (
+        last is not None
+        and last.instruction.strip()
+        and last.action_type is ActionType.TAP
+        and last.performed is True
+        and last.screen_changed is False
+    ):
+        lines.append(PRESSED_UNCHANGED_INSTRUCTION)
+    return "".join(f"{line}\n" for line in lines)
 
 
 def _screen_line(req: NextStepRequest) -> str:

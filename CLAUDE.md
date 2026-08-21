@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `app-android/` | Kotlin/Android | 기기측 실행기: 트리 직렬화·1차 마스킹·오버레이·정체 감지 | `app-android/CLAUDE.md` |
 | `server/` | Python 3.12/FastAPI | 추론 오케스트레이터: 프롬프트·모델 호출·완료 검증·2차 마스킹 | `server/CLAUDE.md` |
-| `eval/` | Python | 회귀 평가 하니스 + 픽스처 | `eval/CLAUDE.md` |
+| `eval/` | Python | 회귀 평가 하니스 + 픽스처, 핑퐁 성능 하니스(`eval/pingpong/`) | `eval/CLAUDE.md` |
 | `scripts/` | PowerShell (**Windows 전용**) | 실기기 검증 드라이버: 서버 기동·URL 관리·기기 조작·관측 | `scripts/README.md` |
 | `reference/` | — | 이전 PoC (read-only, gitignore) | — |
 
@@ -67,6 +67,9 @@
   일지 본문은 이 레포에서 추적하지 않는다(규칙: `.claude/skills/davi-journal/`).
 - 비밀값은 절대 커밋하지 않는다. `.env`, `local.properties`는 gitignore됨(확인: `.gitignore`). 앱엔 키를 넣지 않는다.
 - 앱별/버전별 지식을 코드에 박지 않는다. 서버 프롬프트·가드레일에만 둔다. 일반 정책만 가드레일로.
+  **예외는 하나이고 이름이 있다** — 가장자리 제스처의 시작 지점(`app-android/`의 `EdgeGesture`,
+  #222). 셰이드를 여는 자리는 접근성 트리에 없어 **서버가 줄 수 없어서** 앱이 갖는다. 예외를
+  넓히지 말고, 새 제조사·버전 지식이 필요해지면 먼저 "서버가 정말 줄 수 없는가"를 묻는다.
 - 모델에게 "지식"이 아니라 "상태"를 준다(스크롤 가능 여부, 페이지 위치 등). `HANDOFF.md` §3.
 
 ## 커밋·브랜치 규칙 (소규모 팀 5명)
