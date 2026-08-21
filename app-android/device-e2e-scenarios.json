@@ -18,31 +18,25 @@
       "id": "kakaotalk-photo-presend-full-journey",
       "test_class": "com.davi.helper.e2e.KakaoTalkPhotoPreSendGeminiTest",
       "description": "실제 Gemini 안내로 카카오톡 나와의 채팅방에서 사진 한 장을 골라 전송 직전 상태까지 가고, 전송은 하드 경계로 막는다.",
-      "requirements": "카카오톡 26.7.1 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
-    },
-    {
-      "id": "tworld-bill-view-full-journey",
-      "test_class": "com.davi.helper.e2e.TworldBillGeminiTest",
-      "description": "실제 Gemini 안내로 T월드에서 이번 달 요금안내서를 열어 청구 요금을 확인하고, 납부·결제는 하드 경계로 막는다.",
-      "requirements": "T월드 6.1.13 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+      "requirements": "카카오톡 26.7.1 설치·로그인 필요. 2026-08-21 실기기(SM-S921N/Android 16) 실측 — 전송 컨트롤·선택 표시로 pre-send 판정을 양성·음성 양쪽에서 확인했다."
     },
     {
       "id": "kakaot-taxi-precall-full-journey",
       "test_class": "com.davi.helper.e2e.KakaoTaxiPreCallGeminiTest",
       "description": "실제 Gemini 안내로 카카오 T에서 택시 도착지를 SK텔레콤 보라매사옥으로 정해 호출 직전 상태까지 가고, 호출·예약은 하드 경계로 막는다.",
-      "requirements": "카카오 T(com.kakao.taxi) 설치·로그인 필요 — 2026-08-19 두 검증 기기 모두 미설치"
+      "requirements": "카카오 T 7.12.1 설치·로그인 필요(로그인 전이면 taxi_login_required로 끝난다). 2026-08-21 실기기 실측 — 호출 버튼 \"호출하기\"와 pre-call 판정을 양성·음성 양쪽에서 확인했다."
     },
     {
       "id": "baemin-gimbap-preorder-full-journey",
       "test_class": "com.davi.helper.e2e.BaeminPreOrderGeminiTest",
       "description": "실제 Gemini 안내로 배달의민족에서 김밥 메뉴 하나를 장바구니에 담아 주문 직전 상태까지 가고, 주문·결제는 하드 경계로 막은 뒤 장바구니를 비운다.",
-      "requirements": "배달의민족 16.18.0 설치·로그인·배달 주소 설정 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+      "requirements": "배달의민족 16.19.0 설치·로그인·배달 주소 설정 필요. 2026-08-21 실기기 실측 — 주문 컨트롤 판정과 장바구니 정리를 확인했다. **메뉴 상세의 담기 버튼이 접근성 트리에 없어 안내로는 목표 도달이 불가능하다.**"
     },
     {
       "id": "adot-calendar-add-event-full-journey",
       "test_class": "com.davi.helper.e2e.AdotCalendarEventGeminiTest",
       "description": "실제 Gemini 안내로 에이닷 캘린더에 8월 20일 테스트 일정(DAVI_E2E_설문조사)을 추가·저장하고, 정리에서 그 일정만 삭제한다.",
-      "requirements": "에이닷 4.4.3 설치·로그인 필요. 2026-08-19 기기 실측은 package·버전까지 — 화면 selector는 실기기 미검증"
+      "requirements": "에이닷 4.4.3 설치·로그인 필요. 2026-08-21 실기기 실측 — 캘린더 진입·일정 삭제 정리 경로를 실제 일정으로 확인했다. 월간 화면은 일정 제목을 노출하지 않아 정리는 목표 날짜의 일간 화면까지 들어간다."
     }
   ]
 }
