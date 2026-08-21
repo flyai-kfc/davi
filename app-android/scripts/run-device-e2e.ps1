@@ -35,6 +35,26 @@ $runner = 'com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner'
 # (com.davi.helper) 기준이라 그대로다. E2E는 debug 빌드를 몰기 때문에 앞쪽에 .debug가 붙는다.
 $service = 'com.davi.helper.debug/com.davi.helper.GuideAccessibilityService'
 
+# dumpsys accessibility의 섹션 하나(`라벨:{...}`)를 통째로 잘라낸다. 섹션은 전부 `이름:{` 꼴이라
+# 다음 섹션 머리 직전까지가 한 블록이다. dev-install.ps1에 같은 함수가 있다 — 여기 확인은
+# dev-install을 부르지 않고 직접 하는 자리라(E2E는 설치를 건드리지 않는다) 한 벌 더 둔다.
+# debug는 클래스가 applicationId(com.davi.helper.debug)로 시작하지 않아 dumpsys가 축약형으로
+# 줄이지 못한다. 그래서 여기선 완전형 하나만 보면 된다(실측).
+#
+# **첫 섹션 하나만 돌려준다.** dumpsys는 `User state[...]`를 사용자별로 찍으므로 직장 프로필·
+# 보조 사용자가 있으면 같은 라벨이 여러 번 나온다. 계측이 도는 현재 사용자(=첫 블록)만 봐야,
+# 보조 사용자에만 붙은 서비스를 우리 것으로 오탐하지 않는다. sh 실행기도 같은 의미다.
+#
+# 돌려주는 것은 `:{` 뒤부터라 머리 줄이 빠져 있다. 첫 서비스가 머리 줄과 같은 줄에 찍히므로
+# 판정에는 차이가 없지만, sh 쪽 같은 이름의 함수는 머리 줄을 포함해 돌려준다.
+function Get-DumpsysSection {
+    param([string]$Dump, [string]$Label)
+    $pattern = "(?ms)^\s*$([regex]::Escape($Label))\s*:\{(.*?)(?=^\s*[A-Za-z][A-Za-z0-9 ]*:\{|\z)"
+    $match = [regex]::Match($Dump, $pattern)
+    if ($match.Success) { return $match.Groups[1].Value }
+    return ''
+}
+
 function Invoke-CheckedNative {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -253,10 +273,12 @@ try {
     # 오버레이 권한(SYSTEM_ALERT_WINDOW) 점검은 없앴다 — #240이 매니페스트에서 걷어냈고 안내
     # 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한이 없어도 그려진다(#56). sh 실행기와 같다.
     $accessibilityState = (Invoke-AdbCapture @('shell', 'dumpsys', 'accessibility') '접근성 서비스 상태 조회') -join "`n"
-    # **.debug까지 붙여서 본다**(#58). 접두어만 보면 release가 bound된 기기에서 debug가 죽어
-    # 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
-    if ($accessibilityState -notmatch 'Bound services:.*com\.davi\.helper\.debug' -or
-        $accessibilityState -match 'Crashed services:.*com\.davi\.helper\.debug') {
+    # 컴포넌트 전체로 본다(#58·#302). 패키지 접두어만 보면 release가 bound된 기기에서 debug가
+    # 죽어 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
+    # 섹션은 블록으로 자른다. 바인딩된 서비스가 둘 이상이면 두 번째부터 줄이 바뀌어서, 한 줄
+    # 정규식은 첫 서비스만 본다(#302 실측).
+    if (-not (Get-DumpsysSection $accessibilityState 'Bound services').Contains($service) -or
+        (Get-DumpsysSection $accessibilityState 'Crashed services').Contains($service)) {
         throw 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.'
     }
     $instrumentationArgs = $adbDevice + @(
