@@ -89,7 +89,8 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
     ]
     for result in results:
         achievement = result.judge.achievement.value if result.judge else "-"
-        goal = (result.transcript.final_goal or "-").replace("|", "/")
+        # 모델이 만든 문장이라 표를 깨는 문자가 올 수 있다 — 구분자와 줄바꿈만 걷는다.
+        goal = " ".join((result.transcript.final_goal or "-").replace("|", "/").split())
         lines.append(
             f"| {result.scenario_id} | {result.difficulty.value} | {achievement} "
             f"| {result.metrics.get('질문수')} | {result.metrics.get('자유입력')} "

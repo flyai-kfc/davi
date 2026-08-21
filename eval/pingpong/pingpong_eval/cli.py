@@ -74,6 +74,13 @@ def cmd_judge(args: argparse.Namespace) -> int:
 
     run_dir = Path(args.run)
     path = run_dir / "transcripts.jsonl"
+    if not path.is_file() or not (run_dir / "meta.json").is_file():
+        print(
+            f"{run_dir} 는 실행 디렉터리가 아니다 — "
+            "transcripts.jsonl 과 meta.json 이 있는 runs/<타임스탬프> 를 준다.",
+            file=sys.stderr,
+        )
+        return 1
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     recorded = meta.get("시나리오해시")
     current = scenario_digest(args.scenarios)
@@ -127,10 +134,17 @@ def cmd_judge(args: argparse.Namespace) -> int:
         # 재채점 대상의 이전 채점은 재시도 전에 비운다 — 실패했는데 남아 있으면
         # 옛 점수가 이번 채점(meta의 현재 평가자 모델·해시)으로 집계된다.
         result.judge = None
-        try:
-            result.judge = run_judge(
-                judge_client, scenarios[result.scenario_id], result.transcript
+        scenario = scenarios.get(result.scenario_id)
+        if scenario is None:
+            # 드리프트를 알고 진행했거나 해시가 없는 옛 실행이면 여기 올 수 있다.
+            print(
+                f"[{result.scenario_id}] 시나리오 파일에 없는 id라 채점할 수 없다",
+                file=sys.stderr,
             )
+            judge_failures += 1
+            continue
+        try:
+            result.judge = run_judge(judge_client, scenario, result.transcript)
         except LlmError as error:
             print(f"[{result.scenario_id}] 채점 실패: {error}", file=sys.stderr)
             judge_failures += 1

@@ -531,6 +531,54 @@ def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch
     assert summary["전체"]["충족"] == 0
 
 
+def test_judge는_시나리오에_없는_id를_건너뛰고_실패로_센다(monkeypatch, tmp_path):
+    """드리프트를 알고 진행한 복구 경로가 KeyError로 죽으면 안 된다."""
+
+    from pingpong_eval import cli
+    from pingpong_eval.models import ScenarioResult
+
+    class _NeverCalledJudge:
+        model = "stub-judge"
+        base_url = None
+        input_tokens = 0
+        output_tokens = 0
+
+        def parse(self, prompt, response_model, system=None):
+            raise AssertionError("없는 id는 채점 호출 전에 걸러져야 한다")
+
+    monkeypatch.setattr(cli, "ClaudeJudge", _NeverCalledJudge)
+
+    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
+    run_dir = _make_run_dir(
+        tmp_path, scenario, digest=cli.scenario_digest(ROOT / DEFAULT_SCENARIOS)
+    )
+    ghost = ScenarioResult.model_validate_json(
+        (run_dir / "transcripts.jsonl").read_text(encoding="utf-8")
+    ).model_copy(update={"scenario_id": "유령"})
+    (run_dir / "transcripts.jsonl").write_text(
+        ghost.model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    code = cli.main(
+        ["judge", str(run_dir), "--scenarios", str(ROOT / DEFAULT_SCENARIOS)]
+    )
+    assert code == 1
+
+
+def test_judge는_실행_디렉터리가_아니면_안내하고_끝낸다(tmp_path):
+    from pingpong_eval import cli
+
+    code = cli.main(
+        [
+            "judge",
+            str(tmp_path / "없는경로"),
+            "--scenarios",
+            str(ROOT / DEFAULT_SCENARIOS),
+        ]
+    )
+    assert code == 1
+
+
 def test_judge_필터가_비면_실패로_끝난다(tmp_path):
     """선택 오타가 자동화에서 성공으로 보이거나 기존 보고서를 다시 쓰면 안 된다."""
 
