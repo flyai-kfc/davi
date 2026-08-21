@@ -40,6 +40,13 @@ internal class KakaoTaxiPreCallScenario : GuidedScenario<KakaoTaxiPreCallScenari
     override fun prepare(device: UiDevice): State {
         robot = KakaoTaxiRobot(device)
         robot.forceStop()
+        // 로그인 여부는 **시작 전에** 본다. 안내 도중 판정하면 모델이 로그인 화면에서 done을
+        // 선언하는 경로(assessBeforeExecute를 거치지 않는다)를 놓쳐, 사전 조건 미충족이
+        // done_before_goal이나 호출 컨트롤 미식별 같은 다른 코드로 둔갑한다(2026-08-21 실측).
+        GuidedAppOps.launch(device, KakaoTaxiRobot.PACKAGE)
+        val loggedOut = robot.isLoginScreen()
+        robot.forceStop()
+        if (loggedOut) throw GuidedScenarioFailure("taxi_login_required")
         val launcherPackage = device.launcherPackageName
             ?: throw GuidedScenarioFailure("launcher_package_missing")
         return State(launcherPackage).also { boundaryState = it }
@@ -61,7 +68,14 @@ internal class KakaoTaxiPreCallScenario : GuidedScenario<KakaoTaxiPreCallScenari
         if (decision.screenPackage != KakaoTaxiRobot.PACKAGE) {
             return GuidedDecisionAssessment(deviationCodes = listOf("unexpected_package"))
         }
-        if (decision.action.actionType == GuidedActionType.TYPE) {
+        if (robot.isLoginScreen()) {
+            // 로그인은 E2E가 대신 할 수 없는 사전 조건이다. 여기서 끝내지 않으면 로그인 화면 입력이
+            // 도착지 입력으로 오인돼 호출 컨트롤을 요구하고, fail-closed가 selector 결함처럼 보인다.
+            throw GuidedScenarioFailure("taxi_login_required", step)
+        }
+        if (decision.action.actionType == GuidedActionType.TYPE &&
+            robot.isDestinationInputVisible()
+        ) {
             state.destinationEntered = true
         }
         return GuidedDecisionAssessment()
