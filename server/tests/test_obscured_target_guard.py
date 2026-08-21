@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from app.errors import LlmError
 from app.llm import LlmClient
-from app.prompt import OBSCURED_ELEMENT_INSTRUCTION, build_prompt
+from app.prompt import build_prompt
 from app.reasoning import next_step
 from app.schemas import (
     ActionType,
@@ -20,6 +20,8 @@ from app.schemas import (
     GuideAction,
     NextStepRequest,
     Screen,
+    ScrollAxis,
+    SwipeDirection,
     UiElement,
 )
 
@@ -97,15 +99,97 @@ def test_obscured_is_unobserved_by_default():
     assert UiElement(node_id="n1").obscured is None
 
 
-def test_prompt_carries_the_fact_only_when_something_is_obscured():
-    obscured = build_prompt(
+def test_prompt_leaves_obscured_elements_out_of_the_element_list():
+    """가려진 요소는 **오답 선택지**라 아예 싣지 않는다. 실측 화면에서 74%가 그것이었다."""
+
+    prompt = build_prompt(
         NextStepRequest(goal="치킨을 주문한다", screen=_sheet_screen(obscured=True))
     )
-    clear = build_prompt(
+
+    assert "'닫기'" in prompt
+    assert "'치킨'" not in prompt
+    assert "n2" not in prompt
+
+
+def test_prompt_keeps_elements_that_are_not_obscured():
+    prompt = build_prompt(
         NextStepRequest(goal="치킨을 주문한다", screen=_sheet_screen(obscured=False))
     )
 
-    assert "obscured=True" in obscured
-    assert OBSCURED_ELEMENT_INSTRUCTION in obscured
-    # `False`는 싣지도 설명하지도 않는다 — 요소가 최대 200개라 기본값 줄이 토큰을 먹는다.
-    assert "obscured" not in clear
+    assert "'치킨'" in prompt
+
+
+def test_prompt_keeps_unobserved_elements():
+    """`None`은 뺄 근거가 아니다 — 낡은 앱의 화면이 통째로 비어 버린다(C10)."""
+
+    prompt = build_prompt(
+        NextStepRequest(goal="치킨을 주문한다", screen=_sheet_screen(obscured=None))
+    )
+
+    assert "'치킨'" in prompt
+
+
+def test_scroll_target_is_not_filled_with_an_obscured_element():
+    """가드가 **직접 채우는** 대상도 가림 검사를 받아야 한다(PR #336 리뷰).
+
+    모달이 뜬 화면에서 스크롤 가능한 것은 대개 뒤에 깔린 목록이라 흔한 경로다. 후보가 비면
+    아래 단들이 페이지 이동·앱서랍·실패로 알아서 간다.
+    """
+
+    screen = Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[
+            UiElement(node_id="n1", label="닫기", role="View", clickable=True, obscured=False),
+            UiElement(
+                node_id="n2",
+                label="가게 목록",
+                role="View",
+                obscured=True,
+                can_scroll_forward=True,
+                scroll_axis=ScrollAxis.VERTICAL,
+                next_swipe_direction=SwipeDirection.DOWN,
+            ),
+        ],
+    )
+    scroll = GuideAction(
+        expected_result="목표 화면에 도달",
+        screen_summary="배달 앱 첫 화면",
+        evidence="목표에 맞는 가게가 아직 보이지 않음",
+        action_type=ActionType.SCROLL,
+        direction=SwipeDirection.DOWN,
+        instruction="아래쪽으로 스크롤해 주세요.",
+    )
+
+    with pytest.raises(LlmError) as raised:
+        _guide(scroll, screen)
+
+    assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_unobscured_scroll_target_is_still_filled():
+    screen = Screen(
+        package_name="com.sampleapp",
+        has_scrollable_element=True,
+        elements=[
+            UiElement(
+                node_id="n2",
+                label="가게 목록",
+                role="View",
+                obscured=False,
+                can_scroll_forward=True,
+                scroll_axis=ScrollAxis.VERTICAL,
+                next_swipe_direction=SwipeDirection.DOWN,
+            ),
+        ],
+    )
+    scroll = GuideAction(
+        expected_result="목표 화면에 도달",
+        screen_summary="배달 앱 첫 화면",
+        evidence="목표에 맞는 가게가 아직 보이지 않음",
+        action_type=ActionType.SCROLL,
+        direction=SwipeDirection.DOWN,
+        instruction="아래쪽으로 스크롤해 주세요.",
+    )
+
+    assert _guide(scroll, screen).target_node_id == "n2"

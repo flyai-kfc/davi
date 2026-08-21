@@ -208,7 +208,11 @@ def _scroll_candidates(screen: Screen, direction: SwipeDirection | None) -> list
     if direction is None:  # pragma: no cover - 스키마가 scroll의 direction을 강제한다(C3)
         return []
 
-    return [e for e in screen.elements if _scrolls_toward(e, direction)]
+    # **가려진 요소는 후보가 아니다.** 여기서 거르지 않으면 이 파일 맨 앞의 가림 검사를
+    # 우회한다 — 그 검사는 모델이 고른 대상만 보는데, 아래 2단은 대상을 **직접 채워 넣는다**.
+    # 모달이 뜬 화면에서 스크롤 가능한 것은 대개 뒤에 깔린 목록이라 흔한 경로다(PR #336 리뷰).
+    # `None`(미관측)은 거르지 않는다 — 낡은 앱의 침묵을 "가려짐"으로 읽지 않는다(C10).
+    return [e for e in screen.elements if e.obscured is not True and _scrolls_toward(e, direction)]
 
 
 def _scrolls_toward(element: UiElement, direction: SwipeDirection) -> bool:

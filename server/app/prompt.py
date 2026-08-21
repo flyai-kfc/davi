@@ -129,16 +129,6 @@ TOGGLE_STATE_INSTRUCTION = (
 # 네이티브 주소창만 `True`였다. 그래서 `False`를 "값이 들어 있다"로 말하면 웹뷰에서 거짓이 된다.
 # 세 상태 규약이 이걸 막지 못하는 이유는 **침묵이 아니라 틀린 값이 오기 때문**이다(C10·C18).
 # 서명에는 그대로 넣는다 — 네이티브 입력칸에서 값이 실제로 뒤집히는 변화는 여전히 화면 변화다.
-# 가림은 **관측이지 추론이 아니다** — 앱이 z(그리기 순서)·좌표·내용 유무 셋으로 계산해 보낸다.
-# 여기서도 관측 사실과 대상 배제까지만 쓰고 "그러니 무엇을 눌러라"는 넣지 않는다(C17 · #109).
-#
-# `True`일 때만 싣는다. `False`는 "잘 보인다"는 적극적 주장이 아니라 그냥 기본 상태라,
-# 설명하면 요소 200개짜리 화면에서 토큰만 먹는다.
-OBSCURED_ELEMENT_INSTRUCTION = (
-    "obscured=True로 적힌 요소는 지금 화면에서 다른 것에 완전히 가려져 있습니다. 사용자 눈에 "
-    "보이지 않고 누를 수도 없으니 안내 대상으로 고르지 마세요. 가린 것을 먼저 치우는 단계가 "
-    "필요하면 가리지 않은 요소 중에서 고르세요."
-)
 HINT_TEXT_INSTRUCTION = (
     "showing_hint_text=True인 입력칸은 아직 비어 있고, 지금 보이는 글자는 사용자가 넣은 값이 "
     "아니라 안내문입니다. 이 표시가 없는 입력칸이 비었는지 채워졌는지는 화면 정보로 알 수 없습니다."
@@ -305,7 +295,8 @@ def _state_context(req: NextStepRequest) -> str:
     없는 값을 설명하거나, 실린 값을 설명 없이 두게 된다.
     """
 
-    elements = req.screen.elements
+    # 요소 목록과 **같은 것을 본다** — 빠진 요소를 설명하는 문장이 되면 안 된다.
+    elements = _visible_elements(req)
     context = ""
     if any(element.enabled is False for element in elements):
         context += f"{DISABLED_ELEMENT_INSTRUCTION}\n"
@@ -313,8 +304,6 @@ def _state_context(req: NextStepRequest) -> str:
         context += f"{TOGGLE_STATE_INSTRUCTION}\n"
     if any(element.showing_hint_text for element in elements):
         context += f"{HINT_TEXT_INSTRUCTION}\n"
-    if any(element.obscured for element in elements):
-        context += f"{OBSCURED_ELEMENT_INSTRUCTION}\n"
     return context
 
 
@@ -458,8 +447,26 @@ def _input_context(req: NextStepRequest) -> str:
     return context
 
 
+def _visible_elements(req: NextStepRequest) -> list[UiElement]:
+    """모델에게 보여 줄 요소. **가려진 것은 빼고 준다**(PR #336 리뷰).
+
+    빼는 이유는 토큰이 아니라 **선택지**다. 실측 화면에서 가려진 요소가 53개 중 39개였고,
+    그것들이 목록의 대부분을 차지한 채 모델에게 오답 후보로 제시된다. 골라 봐야 가드가 요청을
+    실패로 닫고, 앱은 백오프 후 **같은 프롬프트로** 다시 물어 같은 함정을 다시 밟는다.
+
+    가드(`reasoning._reject_obscured_target`)는 그대로 둔다 — 낡은 앱의 미관측과 경계 사례를
+    받는 안전망이라 여기서 뺐다고 없앨 것이 아니다.
+
+    `None`(미관측)은 뺄 근거가 없으므로 그대로 싣는다(C10의 세 상태 규약).
+    """
+
+    return [element for element in req.screen.elements if element.obscured is not True]
+
+
 def _screen_elements(req: NextStepRequest) -> str:
-    return "\n".join(_format_element(element) for element in req.screen.elements) or "- 요소 없음"
+    return (
+        "\n".join(_format_element(element) for element in _visible_elements(req)) or "- 요소 없음"
+    )
 
 
 def _format_element(element: UiElement) -> str:
@@ -479,8 +486,6 @@ def _format_element(element: UiElement) -> str:
         details.append("selected=True")
     if element.showing_hint_text:
         details.append("showing_hint_text=True")
-    if element.obscured:
-        details.append("obscured=True")
     optional_fields = (
         ("checked", element.checked),
         ("bounds", element.bounds),
