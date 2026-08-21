@@ -711,10 +711,16 @@ def test_pressed_but_unchanged_steer_is_limited_to_the_last_tap_step():
     typing = build_prompt(
         _with_steps(_step(action_type=ActionType.TYPE, performed=True, screen_changed=False))
     )
+    # 반대쪽 — 마지막 스텝 **자신의** 안내문이 비면 줄이 안 실린다. 그때도 단정이 붙으면
+    # 이력이 "없음"인 프롬프트가 있지도 않은 표시를 인용해 규칙을 말한다(#333 재리뷰).
+    blank_last = build_prompt(
+        _with_steps(_step(instruction="", performed=True, screen_changed=False))
+    )
 
     assert PRESSED_UNCHANGED_INSTRUCTION not in resolved_later
     assert PRESSED_UNCHANGED_INSTRUCTION not in resolved_by_blank
     assert PRESSED_UNCHANGED_INSTRUCTION not in typing
+    assert PRESSED_UNCHANGED_INSTRUCTION not in blank_last
 
 
 def test_history_text_is_marked_as_data_like_screen_labels():

@@ -317,9 +317,14 @@ def _history_instruction(req: NextStepRequest) -> str:
     # 맞지만, 이 단정의 근거는 "**지금** 화면이 그 상태다"이므로 프롬프트에 실리는 목록이 아니라
     # 원본 이력의 끝을 봐야 한다 — 빈 안내문 스텝은 줄을 안 만들 뿐 그 뒤에 안내가 나갔다는
     # 사실은 남는다(#333 리뷰).
+    #
+    # 그 대신 **그 마지막 스텝이 줄로 실렸는지는 여기서 따로 본다.** 원본의 끝만 보면 반대쪽이
+    # 열린다 — 마지막 스텝 자신의 안내문이 비면 줄이 없는데 단정만 남아, 이력이 "없음"인
+    # 프롬프트가 있지도 않은 표시를 인용해 규칙을 말한다(#333 재리뷰).
     last = req.steps[-1] if req.steps else None
     if (
         last is not None
+        and last.instruction.strip()
         and last.action_type is ActionType.TAP
         and last.performed is True
         and last.screen_changed is False
