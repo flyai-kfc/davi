@@ -104,7 +104,13 @@ jobs:
           aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)"
           test -n "$aapt2"
 
-          badging() { "$aapt2" dump badging "$1"; }
+          # **파이프의 종료 코드에도 기대지 않는다.** `badging "$1" | grep -q` 는 종료 코드가
+          # grep의 것이라 aapt2가 실패해도 "패턴 없음"으로 읽혀 경계가 조용히 통과한다.
+          # 덤프를 파일로 떠 두고 실패·빈 출력을 그 자리에서 죽인다(PR #354 리뷰).
+          badging_to() {  # $1=apk $2=출력파일
+            "$aapt2" dump badging "$1" > "$2" || { echo "badging 실패: $1" >&2; exit 1; }
+            test -s "$2" || { echo "badging 출력이 비었다: $1" >&2; exit 1; }
+          }
           # 키를 오타내도 조용히 다른 값을 돌려주지 않게 갈래를 닫는다.
           meta() {
             case "$2" in
@@ -120,9 +126,18 @@ jobs:
           # 스크립트의 **마지막 명령일 때만** 종료 코드가 스텝 결과가 되어 우연히 동작한다 —
           # 그 밑에 한 줄만 덧붙이면 경계가 조용히 검사를 멈춘다(PR #281 리뷰에서 실측).
           # 각 검사를 스스로 exit 하는 게이트로 만들고, 어느 경계가 깨졌는지도 함께 찍는다.
-          assert_absent() {  # $1=apk $2=패턴 $3=설명
-            if badging "$1" | grep -q "$2"; then
-              echo "release 경계 위반: $3 ($2)" >&2
+          #
+          # **방향은 인자가 아니라 이름에 박는다.** apk를 인자로 받으면 호출을 반대로 바꿔도
+          # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 이 스텝은 apk가 딱 둘이라 이 편이 짧다.
+          assert_absent_in_release() {  # $1=패턴 $2=설명
+            if grep -qE "$1" "$release_badging"; then
+              echo "release 경계 위반: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          assert_present_in_debug() {  # $1=패턴 $2=설명
+            if ! grep -qE "$1" "$debug_badging"; then
+              echo "빈 관문: $2 ($1)" >&2
               exit 1
             fi
           }
@@ -136,26 +151,30 @@ jobs:
           release_apk="$(apk_of "$release_meta")"
           echo "debug=$debug_apk  release=$release_apk"
           test -f "$debug_apk" && test -f "$release_apk"
+          debug_badging="$(mktemp)"
+          release_badging="$(mktemp)"
+          badging_to "$debug_apk" "$debug_badging"
+          badging_to "$release_apk" "$release_badging"
 
           # 앱 식별자 — 함께 설치되려면 서로 달라야 한다.
           test "$(appid "$debug_meta")" = com.davi.helper.debug
           test "$(appid "$release_meta")" = com.davi.helper
 
           # 앱 이름 — release는 제품 이름을 유지하고, debug 이름이 새어 들어가면 안 된다.
-          debug_label="$(badging "$debug_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
-          release_label="$(badging "$release_apk" | sed -n "s/^application-label:'\(.*\)'$/\1/p")"
+          debug_label="$(sed -n "s/^application-label:'\(.*\)'$/\1/p" "$debug_badging")"
+          release_label="$(sed -n "s/^application-label:'\(.*\)'$/\1/p" "$release_badging")"
           test "$debug_label" = '다비 (개발)'
           test "$release_label" = '다비'
 
           # release 산출물에 debug 식별자·이름이 없다는 것을 반대 방향으로도 못박는다.
-          assert_absent "$release_apk" 'com\.davi\.helper\.debug' 'debug 식별자가 release에 실렸다'
-          assert_absent "$release_apk" '개발' 'debug 앱 이름이 release에 실렸다'
+          assert_absent_in_release 'com\.davi\.helper\.debug' 'debug 식별자가 release에 실렸다'
+          assert_absent_in_release '개발' 'debug 앱 이름이 release에 실렸다'
 
           # versionName 접미어도 같은 경계다 — 스토어에 -debug가 붙어 나가면 안 된다.
           # release 쪽도 접미어의 유무로만 좁힌다. `debug` 통짜로 보면 badging 출력 어디에
           # 그 글자가 스쳐도 이 경계와 무관한 이유로 빨개진다.
-          badging "$debug_apk" | grep -qE "versionName='[^']*-debug'"
-          assert_absent "$release_apk" "versionName='[^']*-debug'" 'release versionName에 -debug가 붙었다'
+          assert_present_in_debug "versionName='[^']*-debug'" 'debug versionName에서 -debug 접미어가 사라졌다'
+          assert_absent_in_release "versionName='[^']*-debug'" 'release versionName에 -debug가 붙었다'
 
       - name: 실기기 결과 문서 렌더러 테스트
         run: |
@@ -209,9 +228,27 @@ jobs:
         run: |
           ./gradlew assembleDebug
           config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
-          grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
-          ! grep -q 'cleartextTrafficPermitted="true"' "$config"
-          ! grep -q '<domain-config' "$config"
+          # `!`로 부정된 명령은 errexit를 타지 않아 **마지막 줄만** 스텝 결과가 됐다. 그래서
+          # 평문 트래픽 허용(`cleartextTrafficPermitted="true"`)이 새어도 이 스텝은 초록이었다 —
+          # 산출물 검사에서 같은 결함을 고친 PR #281·#354와 같은 모양의 게이트로 바꾼다.
+          # **파일이 없을 때도 닫는다.** grep은 파일이 없으면 2로 죽는데, 부정 검사에서는
+          # 그게 "패턴 없음"으로 읽혀 또 하나의 빈 관문이 된다.
+          test -f "$config"
+          assert_in_config() {  # $1=패턴 $2=설명
+            if ! grep -q "$1" "$config"; then
+              echo "debug 네트워크 보안 경계 위반: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          assert_not_in_config() {  # $1=패턴 $2=설명
+            if grep -q "$1" "$config"; then
+              echo "debug 네트워크 보안 경계 위반: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          assert_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단이 사라졌다'
+          assert_not_in_config 'cleartextTrafficPermitted="true"' '평문 트래픽 허용이 HTTPS 전용 설정에 새어 들어갔다'
+          assert_not_in_config '<domain-config' 'HTTPS endpoint인데 domain-config 예외가 생겼다'
 
       - name: debug 임의 HTTPS endpoint 거부
         env:
@@ -313,7 +350,19 @@ jobs:
       # 빈 관문이 된다 — 카나리아가 사라진 걸 실패로 잡아야 검사가 살아 있다.
       - name: release 산출물에 화면 상세 로그가 없는지 확인
         run: |
-          dump() { unzip -p "$1" 'classes*.dex' | strings; }
+          # **덤프는 한 번만 뜨고 파일로 둔다.** `unzip -p … | strings` 는 파이프의 종료 코드가
+          # strings의 것이라 **unzip이 실패해도 0**이다. dex 이름·경로가 어긋나면 빈 문자열에서
+          # grep 하게 되어 검사가 조용히 통과한다 — 이 스텝이 닫으려는 것과 같은 종류의 빈 관문이
+          # release 쪽에 그대로 남는다. `set -o pipefail`만으로는 안 고쳐진다: 실패가 `if` 조건
+          # 안이면 errexit를 타지 않고 그냥 "패턴 없음"으로 읽힌다(PR #354 리뷰에서 위조 입력으로
+          # 양쪽 확인). 그래서 덤프 자체의 실패·빈 결과를 그 자리에서 죽인다.
+          # 덤으로 카나리아마다 2회씩 총 6회 돌던 전체 dex strings가 2회로 준다.
+          set -o pipefail
+          dump_to() {  # $1=apk $2=출력파일
+            unzip -p "$1" 'classes*.dex' | strings > "$2" \
+              || { echo "덤프 실패: $1 에서 classes*.dex를 읽지 못했다" >&2; exit 1; }
+            test -s "$2" || { echo "덤프가 비었다: $1" >&2; exit 1; }
+          }
           # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release
           # 산출물은 app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 output-metadata.json에
           # 실제 이름을 적어 주므로 거기서 유도한다.
@@ -324,6 +373,10 @@ jobs:
           release_apk="$(apk_of app/build/outputs/apk/release/output-metadata.json)"
           echo "debug=$debug_apk  release=$release_apk"
           test -f "$debug_apk" && test -f "$release_apk"
+          debug_dump="$(mktemp)"
+          release_dump="$(mktemp)"
+          dump_to "$debug_apk" "$debug_dump"
+          dump_to "$release_apk" "$release_dump"
 
           # GuideScreenLog의 debug 구현만 쓰는 포맷이다. 바꾸면 이 목록도 함께 고친다.
           #
@@ -341,21 +394,24 @@ jobs:
           # 두 스텝은 덤프 방식이 서로 달라(badging / dex strings) 헬퍼를 공유하지 않고 각자
           # 둔다. 대신 게이트의 모양과 이 근거 주석을 맞춘다 — 한쪽만 고치면 다른 쪽이 같은
           # 결함으로 되돌아간다.
-          assert_present() {  # $1=apk $2=카나리아 $3=설명
-            if ! dump "$1" | grep -qF "$2"; then
-              echo "빈 관문: $3 — 카나리아 [$2]가 debug 산출물에 없다" >&2
+          #
+          # **방향은 인자가 아니라 이름에 박는다.** 덤프를 인자로 받으면 호출을 반대로 바꿔도
+          # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 산출물이 딱 둘이라 이 편이 짧다.
+          assert_present_in_debug() {  # $1=카나리아
+            if ! grep -qF "$1" "$debug_dump"; then
+              echo "빈 관문: debug 상세 로그 포맷이 사라졌다 — 카나리아 [$1]가 debug 산출물에 없다" >&2
               exit 1
             fi
           }
-          assert_absent() {  # $1=apk $2=카나리아 $3=설명
-            if dump "$1" | grep -qF "$2"; then
-              echo "release 경계 위반: $3 — 카나리아 [$2]가 release 산출물에 있다" >&2
+          assert_absent_in_release() {  # $1=카나리아
+            if grep -qF "$1" "$release_dump"; then
+              echo "release 경계 위반: 화면 상세 로그가 release에 실렸다 — 카나리아 [$1]가 release 산출물에 있다" >&2
               exit 1
             fi
           }
           for canary in "label='" " scroll=" " at="; do
-            assert_present "$debug_apk"   "$canary" 'debug 상세 로그 포맷이 사라졌다'
-            assert_absent  "$release_apk" "$canary" '화면 상세 로그가 release에 실렸다'
+            assert_present_in_debug "$canary"
+            assert_absent_in_release "$canary"
           done
 
   backend:
