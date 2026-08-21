@@ -30,7 +30,7 @@
       "id": "baemin-gimbap-preorder-full-journey",
       "test_class": "com.davi.helper.e2e.BaeminPreOrderGeminiTest",
       "description": "실제 Gemini 안내로 배달의민족에서 김밥 메뉴 하나를 장바구니에 담아 주문 직전 상태까지 가고, 주문·결제는 하드 경계로 막은 뒤 장바구니를 비운다.",
-      "requirements": "배달의민족 16.19.0 설치·로그인·배달 주소 설정 및 빈 장바구니 필요(기존 항목이 있으면 cart_not_empty_precondition으로 중단). 2026-08-21 실기기 실측 — 주문 컨트롤 판정과 장바구니 정리를 확인했다. **메뉴 상세의 담기 버튼이 접근성 트리에 없어 안내로는 목표 도달이 불가능하다.**"
+      "requirements": "배달의민족 16.19.0 설치·로그인·배달 주소 설정 및 빈 장바구니 필요(기존 항목이 있으면 cart_not_empty_precondition으로 중단). 2026-08-21 실기기 실측 — 주문 컨트롤 판정과 장바구니 정리를 확인했다. 메뉴 상세의 담기 버튼은 접근성 트리에 있다(2026-08-22 재실측, #358 — 직렬화가 `visibleToUser=false` 컨테이너에서 서브트리를 끊어 잃고 있었다)."
     },
     {
       "id": "adot-calendar-add-event-full-journey",
