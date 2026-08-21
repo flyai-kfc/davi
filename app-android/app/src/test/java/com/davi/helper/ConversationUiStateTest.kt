@@ -339,6 +339,28 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `준비 중 흐림은 신호 셋과 정확히 반대로 움직인다`() {
+        // #277의 빈 0.9초를 채우는 흐림이다. 셋과 **같은 축이 아니다** — 셋은 "이제
+        // 말하세요"이고 이것은 "아직 아니다"라, 같이 켜지면 화면이 두 말을 한꺼번에 한다.
+        // 셋 중 하나라도 흐림과 같은 방향으로 붙으면 위 #273 계약이 소리 없이 깨진다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening())
+        assertTrue(준비중.signalsDimmed)
+
+        val 듣는중 = renderModelOf(ConversationUiState.Listening(micReady = true))
+        assertFalse(듣는중.signalsDimmed)
+        assertTrue(듣는중.waveVisible)
+
+        // 듣는 상태가 아니면 걷혀 있다 — 다비가 말하는 동안 화면이 흐리면 안 된다.
+        assertFalse(renderModelOf(ConversationUiState.Home()).signalsDimmed)
+        assertFalse(
+            renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).signalsDimmed,
+        )
+        assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).signalsDimmed)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).signalsDimmed)
+        assertFalse(renderModelOf(ConversationUiState.Failed).signalsDimmed)
+    }
+
+    @Test
     fun `마이크가 열려도 카드와 배지는 그대로다`() {
         // 준비 구간에서 바뀌는 것은 신호 셋뿐이다. 레이아웃까지 흔들리면 어긋남을 고치려다
         // 화면이 덜컹거린다 — 어르신에게는 그 흔들림이 더 큰 방해다.
