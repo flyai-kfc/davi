@@ -8,12 +8,16 @@ from app.prompt import (
     PAGE_FIRST,
     PAGE_LAST,
     PAGE_ONLY_ONE,
+    PERFORMED_STEP_INSTRUCTION,
+    PRESSED_UNCHANGED_INSTRUCTION,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     STEP_CHANGED,
     STEP_HISTORY_HEADER,
+    STEP_PRESSED,
+    STEP_PRESSED_ELSEWHERE,
     STEP_UNCHANGED,
     SWIPE_DIRECTION_LEGEND,
     UNCHANGED_STEP_INSTRUCTION,
@@ -577,6 +581,27 @@ def test_step_history_writes_the_three_states_of_screen_changed():
     assert "—" not in unknown.split(STEP_HISTORY_HEADER)[1].split("\n")[1]
 
 
+def test_step_history_writes_the_three_states_of_performed():
+    """True/False/None을 각각 다르게 쓴다. None은 귀속 미확인이라 절이 없다(C10) —
+    판정 밖 액션(SCROLL·DONE)은 구조적으로 영원히 None이므로 침묵이 기본값이다."""
+
+    pressed = build_prompt(_with_steps(_step(performed=True, screen_changed=None)))
+    elsewhere = build_prompt(_with_steps(_step(performed=False, screen_changed=None)))
+    unknown = build_prompt(_with_steps(_step(screen_changed=None)))
+
+    assert f"(대상 '카메라') — {STEP_PRESSED}\n" in pressed
+    assert f"(대상 '카메라') — {STEP_PRESSED_ELSEWHERE}\n" in elsewhere
+    assert "(대상 '카메라')\n" in unknown
+
+
+def test_step_history_joins_press_and_screen_notes_in_time_order():
+    """꼬리 관측이 둘이면 시간순이다 — 누름이 변화보다 앞선다."""
+
+    prompt = build_prompt(_with_steps(_step(performed=True, screen_changed=True)))
+
+    assert f"(대상 '카메라') — {STEP_PRESSED} · {STEP_CHANGED}\n" in prompt
+
+
 def test_step_history_drops_steps_whose_instruction_is_blank():
     """앱은 문장이 비어도 스텝을 남긴다(조작과 화면 변화는 남는 사실이다). 프롬프트엔 안 싣는다."""
 
@@ -620,6 +645,67 @@ def test_unchanged_screen_explanation_does_not_declare_the_guidance_wrong():
     assert "단정하지 마세요" in UNCHANGED_STEP_INSTRUCTION
     assert "따라 하지 않은 것일 수도" in UNCHANGED_STEP_INSTRUCTION
     assert "여러 번 반복됐다면" in UNCHANGED_STEP_INSTRUCTION
+
+
+def test_performed_marker_is_explained_only_when_present():
+    """눌림 표시가 실린 이력에만 그 뜻을 붙인다 — [UNCHANGED_STEP_INSTRUCTION]과 같은 규칙.
+
+    핵심은 침묵의 뜻이다: 표시 없는 스텝(null)을 "안 누름"으로 읽는 오독을 이 줄이 막는다.
+    """
+
+    pressed = build_prompt(_with_steps(_step(performed=True)))
+    elsewhere = build_prompt(_with_steps(_step(performed=False)))
+    silent = build_prompt(_with_steps(_step()))
+    blank = build_prompt(_with_steps(_step(instruction="", performed=True)))
+
+    assert PERFORMED_STEP_INSTRUCTION in pressed
+    assert PERFORMED_STEP_INSTRUCTION in elsewhere
+    assert PERFORMED_STEP_INSTRUCTION not in silent
+    assert PERFORMED_STEP_INSTRUCTION not in blank
+
+
+def test_performed_explanation_says_silence_is_not_a_denial():
+    assert "확인되지 않았다는 뜻" in PERFORMED_STEP_INSTRUCTION
+    assert "목표가 진행됐다는 뜻은 아닙니다" in PERFORMED_STEP_INSTRUCTION
+
+
+def test_pressed_but_unchanged_steers_away_only_when_both_are_observed():
+    """눌림 확인 + 화면 그대로가 한 스텝에 겹칠 때만 단정한다 — "아직 안 했다"가 배제된
+    유일한 조합이라서다(#319 재질의가 이 조합을 만든다). 어느 한쪽만으로는 붙지 않는다."""
+
+    both = build_prompt(_with_steps(_step(performed=True, screen_changed=False)))
+    pressed_and_moved = build_prompt(_with_steps(_step(performed=True, screen_changed=True)))
+    unpressed_unchanged = build_prompt(_with_steps(_step(screen_changed=False)))
+    elsewhere_unchanged = build_prompt(_with_steps(_step(performed=False, screen_changed=False)))
+
+    assert PRESSED_UNCHANGED_INSTRUCTION in both
+    assert PRESSED_UNCHANGED_INSTRUCTION not in pressed_and_moved
+    assert PRESSED_UNCHANGED_INSTRUCTION not in unpressed_unchanged
+    assert PRESSED_UNCHANGED_INSTRUCTION not in elsewhere_unchanged
+    assert "다른 방법" in PRESSED_UNCHANGED_INSTRUCTION
+
+
+def test_pressed_but_unchanged_steer_is_limited_to_the_last_tap_step():
+    """단정은 **마지막 스텝**이 tap일 때만이다.
+
+    과거 스텝의 이 조합은 그 뒤 진행으로 이미 해소됐을 수 있다 — 느린 화면 전환이 재질의
+    직후 일어났으면 그 안내는 실제로 통한 것이고, 이력 10줄 내내 "반복하지 말라"를 실으면
+    맞는 길을 계속 막는다. type은 눌림 확인이 "입력칸을 눌렀다"까지라(웹뷰는 입력해도
+    시그니처가 안 변한다, C18) "아직 안 했다"가 배제되지 않는다.
+    """
+
+    resolved_later = build_prompt(
+        _with_steps(
+            _step(performed=True, screen_changed=False),
+            _step(instruction="다음 안내", screen_changed=True),
+        )
+    )
+    typing = build_prompt(
+        _with_steps(_step(action_type=ActionType.TYPE, performed=True, screen_changed=False))
+    )
+
+    assert PRESSED_UNCHANGED_INSTRUCTION not in resolved_later
+    assert PRESSED_UNCHANGED_INSTRUCTION not in typing
 
 
 def test_history_text_is_marked_as_data_like_screen_labels():
