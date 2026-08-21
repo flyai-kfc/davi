@@ -145,6 +145,43 @@ class SlotFillApiClientTest {
     }
 
     @Test
+    fun `reads and attaches the current session token on every request`() {
+        repeat(2) {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"status":"unable_to_finalize","message":"처음부터 다시 말씀해 주세요."}""",
+                ),
+            )
+        }
+        var token = "first-session"
+        val client = SlotFillApiClient(
+            server.url("/").toString(),
+            sessionToken = { token },
+        )
+
+        client.resolve(sampleRequest(), trace())
+        token = "refreshed-session"
+        client.resolve(sampleRequest(), trace(2))
+
+        assertEquals("Bearer first-session", server.takeRequest().getHeader("Authorization"))
+        assertEquals("Bearer refreshed-session", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `recognizes the server session challenge`() {
+        server.enqueue(
+            MockResponse().setResponseCode(401)
+                .setHeader("WWW-Authenticate", "Bearer")
+                .setBody("""{"kind":"AUTH","message":"session token required"}"""),
+        )
+
+        val result = SlotFillApiClient(server.url("/").toString())
+            .resolve(sampleRequest(), trace()) as SlotFillResult.ApiFailure
+
+        assertTrue(result.sessionAuthenticationRequired)
+    }
+
+    @Test
     fun `serializes locally collected clarification answers on final request`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(

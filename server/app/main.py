@@ -296,6 +296,7 @@ def _external_auth_error(request: Request) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content=error.model_dump(),
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
 

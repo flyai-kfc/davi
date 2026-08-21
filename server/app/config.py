@@ -239,6 +239,10 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_AUTH_JWT_SECRET은 32자 이상이어야 합니다")
         if self.davi_kakao_app_id < 0:
             raise ValueError("DAVI_KAKAO_APP_ID는 음수일 수 없습니다")
+        if self.davi_env != "development" and not self.kakao_auth_configured:
+            raise ValueError(
+                "beta·production에는 DAVI_KAKAO_APP_ID와 DAVI_AUTH_JWT_SECRET이 필요합니다"
+            )
         if self.davi_auth_session_ttl_seconds <= 0:
             raise ValueError("DAVI_AUTH_SESSION_TTL_SECONDS는 양수여야 합니다")
         if self.davi_auth_rate_limit_requests <= 0:

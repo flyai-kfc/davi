@@ -143,6 +143,27 @@ class GuideApiClientTest {
         assertEquals(null, server.takeRequest().getHeader("Authorization"))
     }
 
+    @Test
+    fun `only bearer challenge marks an auth failure as requiring login`() {
+        server.enqueue(
+            MockResponse().setResponseCode(401).setBody(
+                """{"kind":"AUTH","message":"development access denied"}""",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(401)
+                .setHeader("WWW-Authenticate", "Bearer")
+                .setBody("""{"kind":"AUTH","message":"session token required"}"""),
+        )
+        val client = GuideApiClient(server.url("/").toString())
+
+        val developmentFailure = client.nextStep(sampleRequest(), trace())
+        val sessionFailure = client.nextStep(sampleRequest(), trace(2))
+
+        assertFalse((developmentFailure as NextStepResult.ApiFailure).sessionAuthenticationRequired)
+        assertTrue((sessionFailure as NextStepResult.ApiFailure).sessionAuthenticationRequired)
+    }
+
     /**
      * scroll은 서버가 "누를 게 없을 때" 실제로 돌려주는 액션이다.
      * 앱 enum에 이 값이 없던 시절 이 응답이 오면 파싱이 통째로 터졌다(이슈 #17).

@@ -34,6 +34,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+    private var authStore: AuthStore? = null
     private var e2ePublisher: GuideE2ePublisher? = null
 
     /**
@@ -236,11 +237,11 @@ class GuideAccessibilityService : AccessibilityService() {
             },
         )
         e2ePublisher = GuideE2ePublisher(this)
-        val authStore = AuthStore(this)
+        authStore = AuthStore(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
-            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
+            sessionToken = { authStore?.sessionToken(System.currentTimeMillis() / 1000) },
         )
         // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
         // 막을 수 있다(#77 리뷰). 앱의 1차 마스킹이 꺼진 요청은 서버가 구분할 수 없으므로
@@ -772,7 +773,11 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = result.error.kind.name,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen(signature, session.generation, result)
+                        if (result.sessionAuthenticationRequired) {
+                            requireFreshLogin(session.generation)
+                        } else {
+                            retryThisScreen(signature, session.generation, result)
+                        }
                     }
 
                     is NextStepResult.HttpFailure -> {
@@ -830,6 +835,17 @@ class GuideAccessibilityService : AccessibilityService() {
             }
         }
         return true
+    }
+
+    /** 백그라운드 서비스는 Activity를 직접 띄우지 않고, 안내를 닫은 뒤 알림 탭으로 복구한다. */
+    private fun requireFreshLogin(generation: Long) {
+        mainHandler.post {
+            if (!GuideSession.isCurrent(generation)) return@post
+            authStore?.clearSession()
+            GuideSession.stop()
+            GuideNotifier.notifyLoginRequired(this)
+            Log.i(TAG, "session authentication required, guide stopped")
+        }
     }
 
     /**
@@ -1105,6 +1121,7 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay?.destroy()
         overlay = null
         guideApiClient = null
+        authStore = null
         e2ePublisher = null
         apiExecutor.shutdownNow()
         return super.onUnbind(intent)

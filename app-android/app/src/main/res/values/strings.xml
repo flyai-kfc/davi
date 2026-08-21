@@ -16,6 +16,8 @@
     <string name="login_error_network">인터넷 연결을 확인해 주세요.</string>
     <string name="login_error_auth">카카오 로그인에 실패했어요. 다시 시도해 주세요.</string>
     <string name="login_error_server">지금은 로그인할 수 없어요.\n로그인 없이 시작할 수 있어요.</string>
+    <string name="login_session_authentication_required">서버 연결을 계속하려면 다시 로그인해 주세요.\n로그인 없이 앱을 둘러볼 수도 있어요.</string>
+    <string name="guide_session_authentication_required">로그인이 만료되어 안내를 멈췄어요. 다비 앱에서 다시 로그인해 주세요.</string>
 
     <!--
       온보딩 (두 모드: 가족 대신 설정 / 시니어 본인).

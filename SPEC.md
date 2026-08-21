@@ -511,6 +511,22 @@ davi/
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
   넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 배포 설정(카카오 앱 ID,
   LLM 공급자·모델)뿐이다(#279, #259).
+- `beta`·`production` 프로필은 외부 공개를 전제로 `/v1/next-step`, `/v1/intent/slot-fill`,
+  `/v1/intent/app-resolution` 세 추론 endpoint에 **다비 세션 JWT**를 요구한다(#214).
+  `/health`와 세션을 발급하는 `/v1/auth/kakao`는 예외이며, 로그인 endpoint는 별도 출처별·전역
+  제한을 적용한다. 세션 인증 실패만 `WWW-Authenticate: Bearer`로 구별해 앱이 저장된 세션을
+  지우고 로그인 화면을 다시 제시한다. 로그인 화면의 스킵은 그대로 열어 두므로 앱 진입 자체를
+  막지는 않지만, 외부 공개 프로필의 추론을 다시 쓰려면 로그인해야 한다.
+- 외부 공개 프로필의 추론 비용 상한은 기본값으로 **전체 15회/60초, 사용자별 6회/60초**와
+  **전체 900회/24시간, 사용자별 200회/24시간**을 함께 적용한다. 짧은 창은 순간 폭주를,
+  24시간 창은 누적 비용을 막는다. 출처 키는 세션 JWT의 카카오 회원번호이고, 응답 로그에는
+  토큰·회원번호·사용자 발화·화면 원문을 남기지 않는다. 제한기는 프로세스 메모리 안에 있으므로
+  이 프로필은 worker·replica 각 1개로만 운영한다. 수평 확장할 때는 공유 저장소 기반 제한기로
+  먼저 교체한다.
+- `beta`는 코드 수준 실행 경계다. 별도 관리형 beta 호스팅은 이번 사이클의 비목표이므로 현재
+  Azure development Container App을 `beta`로 바꾸지 않는다. 실제 beta 배포를 열 때 별도
+  Container App·Key Vault 비밀을 만들고 위 단일 replica 조건과 release 실기기 한 바퀴를
+  배포 관문으로 추가한다.
 - **공유 서버의 LLM 공급자도 GitHub environment 변수로 고른다**(§5 표의 `DAVI_LLM_PROVIDER`를
   배포까지 이은 것). 비우면 `gemini`라 지금까지의 배포와 같고, 바꿀 때는 그 공급자의 키 secret
   이름을 짝으로 채운다 — 키 없이 공급자만 바꾸면 서버가 기동을 거부해 revision이 Healthy에

@@ -45,7 +45,11 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         authStore = AuthStore(this)
-        if (authStore.hasDecision(nowEpochSeconds())) {
+        val sessionAuthenticationRequired = intent.getBooleanExtra(
+            EXTRA_SESSION_AUTHENTICATION_REQUIRED,
+            false,
+        )
+        if (!sessionAuthenticationRequired && authStore.hasDecision(nowEpochSeconds())) {
             proceedToOnboarding()
             return
         }
@@ -71,6 +75,11 @@ class LoginActivity : AppCompatActivity() {
         // 앱을 막지 않는다는 원칙의 빌드판. 키가 없어 SDK가 init되지 않은 경우뿐 아니라, 키는
         // 있는데 세션을 교환할 서버 주소가 아직 placeholder인 경우까지 LOGIN_ENABLED가 덮는다.
         binding.btnKakaoLogin.isVisible = BuildConfig.LOGIN_ENABLED
+
+        if (sessionAuthenticationRequired) {
+            binding.loginStatus.setText(R.string.login_session_authentication_required)
+            binding.loginStatus.isVisible = true
+        }
 
         binding.btnKakaoLogin.setOnClickListener { startKakaoLogin() }
         binding.btnLoginSkip.setOnClickListener {
@@ -194,7 +203,9 @@ class LoginActivity : AppCompatActivity() {
 
     private fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1000
 
-    private companion object {
-        const val TAG = "GuideSvc"
+    companion object {
+        const val EXTRA_SESSION_AUTHENTICATION_REQUIRED =
+            "com.davi.helper.extra.SESSION_AUTHENTICATION_REQUIRED"
+        private const val TAG = "GuideSvc"
     }
 }

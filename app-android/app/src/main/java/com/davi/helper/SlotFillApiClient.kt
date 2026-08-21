@@ -20,6 +20,7 @@ sealed interface SlotFillResult {
         val statusCode: Int,
         val error: ApiError,
         val trace: ServerResponseTrace,
+        val sessionAuthenticationRequired: Boolean = false,
     ) : SlotFillResult
 
     data class HttpFailure(
@@ -39,6 +40,7 @@ class SlotFillApiClient(
     serverUrl: String,
     private val httpClient: OkHttpClient = defaultHttpClient(),
     devAccessToken: String? = null,
+    private val sessionToken: () -> String? = { null },
     private val json: Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -65,6 +67,7 @@ class SlotFillApiClient(
             )
             .header(RequestTracingContract.ATTEMPT_HEADER, logicalRequest.attempt.toString())
         devAccessToken?.let { requestBuilder.header(DEV_TOKEN_HEADER, it) }
+        SessionAuthentication.attach(requestBuilder, sessionToken)
 
         return try {
             httpClient.newCall(requestBuilder.build()).execute().use { response ->
@@ -84,6 +87,7 @@ class SlotFillApiClient(
                             response.code,
                             json.decodeFromString(body),
                             trace,
+                            SessionAuthentication.isRequired(response),
                         )
                     } catch (_: Exception) {
                         SlotFillResult.HttpFailure(response.code, trace)

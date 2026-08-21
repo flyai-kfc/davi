@@ -20,6 +20,7 @@ internal sealed interface AppResolutionResult {
         val statusCode: Int,
         val error: ApiError,
         val trace: ServerResponseTrace,
+        val sessionAuthenticationRequired: Boolean = false,
     ) : AppResolutionResult
 
     data class HttpFailure(val statusCode: Int, val trace: ServerResponseTrace) : AppResolutionResult
@@ -38,6 +39,7 @@ internal class AppResolutionApiClient(
     serverUrl: String,
     private val httpClient: OkHttpClient = defaultHttpClient(),
     devAccessToken: String? = null,
+    private val sessionToken: () -> String? = { null },
     private val json: Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -59,6 +61,7 @@ internal class AppResolutionApiClient(
             .header(RequestTracingContract.LOGICAL_REQUEST_ID_HEADER, logicalRequest.logicalRequestId)
             .header(RequestTracingContract.ATTEMPT_HEADER, logicalRequest.attempt.toString())
         devAccessToken?.let { builder.header(DEV_TOKEN_HEADER, it) }
+        SessionAuthentication.attach(builder, sessionToken)
         return try {
             httpClient.newCall(builder.build()).execute().use { response ->
                 val trace = ServerResponseTrace(
@@ -85,6 +88,7 @@ internal class AppResolutionApiClient(
                             response.code,
                             json.decodeFromString(body),
                             trace,
+                            SessionAuthentication.isRequired(response),
                         )
                     } catch (_: Exception) {
                         AppResolutionResult.HttpFailure(response.code, trace)

@@ -106,6 +106,8 @@ def test_valid_production_profile():
         davi_env="production",
         davi_use_stub_llm=False,
         gemini_api_key="server-side-key",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
     )
 
     assert configured.davi_env == "production"
@@ -149,6 +151,8 @@ def test_production_accepts_external_bind():
         davi_use_stub_llm=False,
         gemini_api_key="server-side-key",
         davi_bind_host="0.0.0.0",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
     )
 
     assert configured.davi_bind_host == "0.0.0.0"
@@ -184,10 +188,33 @@ def test_valid_beta_profile_accepts_external_bind():
         davi_use_stub_llm=False,
         gemini_api_key="server-side-key",
         davi_bind_host="0.0.0.0",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
     )
 
     assert configured.davi_env == "beta"
     assert configured.davi_bind_host == "0.0.0.0"
+
+
+@pytest.mark.parametrize("profile", ["beta", "production"])
+def test_external_profiles_require_complete_session_auth(profile):
+    with pytest.raises(ValidationError, match="DAVI_KAKAO_APP_ID.*DAVI_AUTH_JWT_SECRET"):
+        _settings(
+            davi_env=profile,
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_kakao_app_id=0,
+            davi_auth_jwt_secret="",
+        )
+
+    with pytest.raises(ValidationError, match="DAVI_KAKAO_APP_ID.*DAVI_AUTH_JWT_SECRET"):
+        _settings(
+            davi_env=profile,
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_kakao_app_id=777,
+            davi_auth_jwt_secret="",
+        )
 
 
 def test_external_rate_limit_settings_must_be_positive():

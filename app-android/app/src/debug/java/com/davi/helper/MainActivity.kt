@@ -39,16 +39,21 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var destroyed = false
 
+    private val authStore: AuthStore by lazy { AuthStore(this) }
+    private var loginRecoveryStarted = false
+
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
     private val appResolutionApiClient: AppResolutionApiClient by lazy {
         AppResolutionApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
     private val launchableAppIndex: LaunchableAppIndex by lazy {
@@ -252,6 +257,8 @@ class MainActivity : AppCompatActivity() {
             null -> handleSlotFillResult(pending, logicalRequest, slotResult)
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
+            AppResolutionCoordinator.Outcome.SessionAuthenticationRequired ->
+                returnToLogin()
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -306,6 +313,13 @@ class MainActivity : AppCompatActivity() {
             is SlotFillResult.NetworkFailure,
             is SlotFillResult.ParseFailure,
             -> {
+                if (
+                    result is SlotFillResult.ApiFailure &&
+                    result.sessionAuthenticationRequired
+                ) {
+                    returnToLogin()
+                    return
+                }
                 if (voiceSession.fail(pending)) {
                     setVoiceStatus(errorMessageFor(result))
                     voiceRequestTracker.reset()
@@ -314,6 +328,19 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun returnToLogin() {
+        if (loginRecoveryStarted || destroyed) return
+        loginRecoveryStarted = true
+        authStore.clearSession()
+        cancelVoiceDialogue()
+        startActivity(
+            Intent(this, LoginActivity::class.java)
+                .putExtra(LoginActivity.EXTRA_SESSION_AUTHENTICATION_REQUIRED, true)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
+        )
+        finish()
     }
 
     private fun speakClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {

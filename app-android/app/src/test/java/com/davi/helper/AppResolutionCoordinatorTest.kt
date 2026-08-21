@@ -51,6 +51,22 @@ class AppResolutionCoordinatorTest {
     }
 
     @Test
+    fun `session challenge is not downgraded to an advisory warning`() {
+        val index = LaunchableAppIndex(FakeSource(emptyList())) {}.also { it.start() }
+        val failure = AppResolutionResult.ApiFailure(
+            401,
+            ApiError(ApiErrorKind.AUTH, "session token required"),
+            trace(),
+            sessionAuthenticationRequired = true,
+        )
+
+        val outcome = AppResolutionCoordinator(index) { failure }
+            .resolve("이미 완성된 목표", 1) { true }
+
+        assertEquals(AppResolutionCoordinator.Outcome.SessionAuthenticationRequired, outcome)
+    }
+
+    @Test
     fun `one local match confirms availability without feedback or goal rewrite`() {
         val source = FakeSource(
             listOf(record("com.example.delivery", "로컬 전용 label")),

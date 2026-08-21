@@ -20,6 +20,7 @@ sealed interface NextStepResult {
         val statusCode: Int,
         val error: ApiError,
         val trace: ServerResponseTrace,
+        val sessionAuthenticationRequired: Boolean = false,
     ) : NextStepResult
 
     data class HttpFailure(
@@ -69,9 +70,7 @@ class GuideApiClient(
             )
             .header(RequestTracingContract.ATTEMPT_HEADER, logicalRequest.attempt.toString())
         devAccessToken?.let { requestBuilder.header(DEV_TOKEN_HEADER, it) }
-        sessionToken()?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            requestBuilder.header(SESSION_AUTH_HEADER, "$SESSION_AUTH_PREFIX$it")
-        }
+        SessionAuthentication.attach(requestBuilder, sessionToken)
         val httpRequest = requestBuilder.build()
 
         return try {
@@ -101,6 +100,7 @@ class GuideApiClient(
                             response.code,
                             json.decodeFromString(body),
                             responseTrace,
+                            SessionAuthentication.isRequired(response),
                         )
                     } catch (_: Exception) {
                         NextStepResult.HttpFailure(response.code, responseTrace)
@@ -115,8 +115,6 @@ class GuideApiClient(
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
-        const val SESSION_AUTH_HEADER = "Authorization"
-        const val SESSION_AUTH_PREFIX = "Bearer "
         val REQUEST_ID = Regex("[0-9a-f]{32}")
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()

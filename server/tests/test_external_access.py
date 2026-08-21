@@ -65,6 +65,15 @@ def test_development_next_step_does_not_require_session_token():
     assert r.status_code == 200
 
 
+def test_development_access_denial_is_not_a_session_challenge(set_runtime_profile):
+    set_runtime_profile(davi_dev_access_token="d" * 32)
+
+    r = client.post("/v1/next-step", json=_next_step_payload())
+
+    assert r.status_code == 401
+    assert "WWW-Authenticate" not in r.headers
+
+
 def test_beta_next_step_without_authorization_header_is_rejected(set_runtime_profile):
     _beta_profile(set_runtime_profile)
 
@@ -72,6 +81,7 @@ def test_beta_next_step_without_authorization_header_is_rejected(set_runtime_pro
 
     assert r.status_code == 401
     assert r.json()["kind"] == "AUTH"
+    assert r.headers["WWW-Authenticate"] == "Bearer"
 
 
 def test_beta_next_step_with_malformed_authorization_is_rejected(set_runtime_profile):

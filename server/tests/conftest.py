@@ -27,6 +27,13 @@ def _validated_runtime_profile(**overrides: Any) -> Settings:
         "davi_dogfood_device_ids": "",
         "davi_use_stub_llm": True,
     }
+    # 외부 프로필을 쓰는 API 테스트는 세션 경계가 실제로 성립하는 정상 프로필에서 시작한다.
+    # 설정 누락 자체는 test_config.py가 명시적으로 빈 값을 넘겨 검증한다.
+    if overrides.get("davi_env") in {"beta", "production"}:
+        values.update(
+            davi_kakao_app_id=777,
+            davi_auth_jwt_secret="s" * 32,
+        )
     values.update(overrides)
     return Settings(_env_file=None, **values)
 

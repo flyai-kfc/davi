@@ -29,6 +29,7 @@ class AuthStore(private val prefs: SharedPreferences) {
         prefs.edit {
             putString(KEY_SESSION_TOKEN, sessionToken)
             putLong(KEY_SESSION_EXPIRES_AT, expiresAt)
+            remove(KEY_LOGIN_SKIPPED)
         }
     }
 
@@ -40,7 +41,19 @@ class AuthStore(private val prefs: SharedPreferences) {
     }
 
     fun markSkipped() {
-        prefs.edit { putBoolean(KEY_LOGIN_SKIPPED, true) }
+        prefs.edit {
+            remove(KEY_SESSION_TOKEN)
+            remove(KEY_SESSION_EXPIRES_AT)
+            putBoolean(KEY_LOGIN_SKIPPED, true)
+        }
+    }
+
+    /** 서버가 세션 challenge를 돌려준 경우에만 호출한다. 토큰 원문은 읽거나 로그로 남기지 않는다. */
+    fun clearSession() {
+        prefs.edit {
+            remove(KEY_SESSION_TOKEN)
+            remove(KEY_SESSION_EXPIRES_AT)
+        }
     }
 
     /** ON-1을 다시 보여줄 필요가 없는가 — 유효한 세션이 있거나 스킵을 선택했다. */

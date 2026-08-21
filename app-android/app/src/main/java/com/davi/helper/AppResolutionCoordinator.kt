@@ -26,6 +26,9 @@ internal class AppResolutionCoordinator(
             val availability: AppAvailabilityPreflight,
         ) : Outcome
 
+        /** advisory 실패와 달리 다음 보호 요청도 반드시 실패하므로 로그인으로 되돌려야 한다. */
+        data object SessionAuthenticationRequired : Outcome
+
         data object Dropped : Outcome
     }
 
@@ -37,6 +40,12 @@ internal class AppResolutionCoordinator(
         if (!isCurrent(generation)) return Outcome.Dropped
         val initial = gateway.resolve(AppResolutionRequest(goal))
         if (!isCurrent(generation)) return Outcome.Dropped
+        if (
+            initial is AppResolutionResult.ApiFailure &&
+            initial.sessionAuthenticationRequired
+        ) {
+            return Outcome.SessionAuthenticationRequired
+        }
         // goal은 slot-fill에서 이미 완성됐다. 후보 요청 실패는 그 goal을 버릴 치명 오류가 아니라
         // 실행 가능성을 확인하지 못한 advisory 결과다(#185).
         if (initial !is AppResolutionResult.Success) {

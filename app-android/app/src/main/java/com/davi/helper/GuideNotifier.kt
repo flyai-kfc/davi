@@ -37,14 +37,33 @@ internal object GuideNotifier {
      * 잡아낸다.
      */
     fun notifyGuideStopped(context: Context, messageRes: Int) {
+        notify(
+            context,
+            messageRes,
+            Intent(context, OnboardingActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
+        )
+    }
+
+    /** 세션이 만료된 동안 백그라운드에 있던 사용자를 로그인 화면으로 돌려보낸다. */
+    fun notifyLoginRequired(context: Context) {
+        notify(
+            context,
+            R.string.guide_session_authentication_required,
+            Intent(context, LoginActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                .putExtra(LoginActivity.EXTRA_SESSION_AUTHENTICATION_REQUIRED, true),
+        )
+    }
+
+    private fun notify(context: Context, messageRes: Int, destination: Intent) {
         ensureChannel(context)
         val text = context.getString(messageRes)
         val tap = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, OnboardingActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                .putExtra(OnboardingActivity.EXTRA_GUIDE_STOPPED, true),
+            destination,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
