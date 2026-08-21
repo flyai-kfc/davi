@@ -161,7 +161,14 @@ class ConversationActivity : AppCompatActivity() {
         }
 
         override fun onFinalResult(text: String) {
-            runOnUiThread { submitVoiceTurn(text) }
+            runOnUiThread {
+                val state = uiState
+                if (state is ConversationUiState.Listening && state.clarification) {
+                    submitClarificationAnswer(ClarificationAnswerSource.FREEFORM, text)
+                } else {
+                    submitVoiceTurn(text)
+                }
+            }
         }
 
         override fun onError(error: Int) {
@@ -248,9 +255,28 @@ class ConversationActivity : AppCompatActivity() {
         // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
         // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
         // 뒤로가기를 모르는 사람을 위한 지름길이다.
-        binding.stackedPair.btnStackedSecondary.setOnClickListener { finish() }
-        binding.stackedPair.btnStackedPrimary.setOnClickListener {
-            setState(ConversationUiState.StopConfirm)
+        binding.stackedPair.btnStackedSecondary.setOnClickListener { onStackedSecondaryTapped() }
+        binding.stackedPair.btnStackedPrimary.setOnClickListener { onStackedPrimaryTapped() }
+        val optionButtons = listOf(
+            binding.clarificationChoices.btnOption1,
+            binding.clarificationChoices.btnOption2,
+            binding.clarificationChoices.btnOption3,
+        )
+        optionButtons.forEachIndexed { index, button ->
+            button.setOnClickListener {
+                val state = uiState as? ConversationUiState.Clarifying ?: return@setOnClickListener
+                val option = state.outcome.question.options.getOrNull(index) ?: return@setOnClickListener
+                submitClarificationAnswer(ClarificationAnswerSource.OPTION, option)
+            }
+        }
+        binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
+            beginClarificationSpeech()
+        }
+        binding.clarificationChoices.btnUnknown.setOnClickListener {
+            submitClarificationAnswer(
+                ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
+                getString(R.string.clarification_unknown_answer),
+            )
         }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
         // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
@@ -501,6 +527,24 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardUtterance.isVisible(model.utteranceVisible)
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
         binding.cardUtterance.text = model.utteranceText
+        binding.clarificationChoices.root.isVisible(model.clarificationVisible)
+        if (state is ConversationUiState.Clarifying) {
+            binding.clarificationChoices.questionProgress.text = getString(
+                R.string.clarification_progress,
+                state.outcome.questionIndex + 1,
+                state.outcome.questionCount,
+            )
+            val optionButtons = listOf(
+                binding.clarificationChoices.btnOption1,
+                binding.clarificationChoices.btnOption2,
+                binding.clarificationChoices.btnOption3,
+            )
+            optionButtons.forEachIndexed { index, button ->
+                val option = state.outcome.question.options.getOrNull(index)
+                button.isVisible(option != null)
+                if (option != null) button.text = option
+            }
+        }
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
         // **`isEnabled`만으로는 화면이 안 바뀐다.** ImageButton은 disabled에서 src를 자동으로
@@ -517,7 +561,7 @@ class ConversationActivity : AppCompatActivity() {
         // 이미 확인된 배치라, 근거 없이 건드리면 방금 맞춘 것이 틀어진다.
         binding.cardColumn.updatePadding(
             bottom = when {
-                model.guidingVisible -> 0
+                model.guidingVisible || model.clarificationVisible || model.safeEndVisible -> 0
                 // 홈만 마이크가 위로 올라가 있어 비울 자리도 그만큼 크다(#231).
                 model.homeVisible ->
                     resources.getDimensionPixelSize(R.dimen.davi_home_control_reserve)
@@ -541,7 +585,15 @@ class ConversationActivity : AppCompatActivity() {
         )
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
-        binding.stackedPair.root.isVisible(model.guidingVisible)
+        binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
+        binding.stackedPair.btnStackedSecondary.setText(
+            if (model.safeEndVisible) R.string.clarification_go_home
+            else R.string.conversation_guiding_resume,
+        )
+        binding.stackedPair.btnStackedPrimary.setText(
+            if (model.safeEndVisible) R.string.clarification_restart
+            else R.string.conversation_guiding_stop,
+        )
         binding.guidingBottom.isVisible(model.guidingVisible)
         binding.stopConfirmScrim.isVisible(model.stopConfirmVisible)
         // **모달 중에는 뒤 화면을 스크린리더에서 뺀다.** 스크림은 시각 차단일 뿐이라
@@ -608,17 +660,23 @@ class ConversationActivity : AppCompatActivity() {
                     requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
             }
-            // barge-in: 질문 재생을 끊고 바로 답한다. TTS 정리 콜백이 늦게 와도
-            // continueListening은 SPEAKING에서 한 번만 참이라 이중 시작이 없다.
-            is ConversationUiState.Speaking -> {
-                textToSpeechHelper?.stop()
-                if (voiceSession.continueListening(state.generation)) {
-                    setState(ConversationUiState.Listening(question = state.question))
-                    GuideTelemetry.voiceState("listening_barge_in")
-                    startListeningTurn()
-                }
-            }
             else -> return
+        }
+    }
+
+    private fun onStackedSecondaryTapped() {
+        if (uiState is ConversationUiState.SafeEnd) {
+            setState(ConversationUiState.Home())
+        } else {
+            finish()
+        }
+    }
+
+    private fun onStackedPrimaryTapped() {
+        if (uiState is ConversationUiState.SafeEnd) {
+            beginVoiceDialogue()
+        } else {
+            setState(ConversationUiState.StopConfirm)
         }
     }
 
@@ -649,7 +707,19 @@ class ConversationActivity : AppCompatActivity() {
     private fun submitVoiceTurn(text: String) {
         speechRecognizerHelper?.stop()
         val pending = voiceSession.nextRequest(text) ?: return
-        setState(ConversationUiState.Requesting(utterance = text))
+        submitPendingRequest(pending, text)
+    }
+
+    private fun submitPendingRequest(
+        pending: VoiceDialogueSession.PendingRequest,
+        visibleUtterance: String,
+    ) {
+        setState(
+            ConversationUiState.Requesting(
+                utterance = visibleUtterance,
+                finalizing = pending.turnIndex == 1,
+            ),
+        )
         GuideTelemetry.voiceState("requesting")
 
         voiceExecutor.execute {
@@ -683,6 +753,31 @@ class ConversationActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun beginClarificationSpeech() {
+        val state = uiState as? ConversationUiState.Clarifying ?: return
+        textToSpeechHelper?.stop()
+        setState(
+            ConversationUiState.Listening(
+                question = state.outcome.question.prompt,
+                clarification = true,
+            ),
+        )
+        GuideTelemetry.voiceState("listening_clarification_freeform")
+        speechHelper().start()
+    }
+
+    private fun submitClarificationAnswer(source: ClarificationAnswerSource, answer: String) {
+        speechRecognizerHelper?.stop()
+        textToSpeechHelper?.stop()
+        when (val outcome = voiceSession.answerCurrent(source, answer)) {
+            is VoiceDialogueSession.AnswerOutcome.NextQuestion -> showClarification(outcome.outcome)
+            is VoiceDialogueSession.AnswerOutcome.FinalRequest -> {
+                submitPendingRequest(outcome.pending, visibleUtterance = "")
+            }
+            null -> Unit
         }
     }
 
@@ -740,12 +835,11 @@ class ConversationActivity : AppCompatActivity() {
                     return
                 }
                 when (outcome) {
-                    is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
+                    is VoiceDialogueSession.Outcome.Clarify -> showClarification(outcome)
                     is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
-                    VoiceDialogueSession.Outcome.LimitReached,
+                    is VoiceDialogueSession.Outcome.UnableToFinalize,
                     VoiceDialogueSession.Outcome.InvalidResponse,
                     -> {
-                        // 기존 goalInput 텍스트 폴백을 실패 화면(5초 뒤 홈)으로 대체(#123)
                         voiceRequestTracker.reset()
                         appResolutionRequestTracker.reset()
                         setState(stateForOutcome(outcome))
@@ -766,16 +860,18 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
-    private fun speakFollowUp(outcome: VoiceDialogueSession.Outcome.Ask) {
-        setState(stateForOutcome(outcome)) // Speaking(질문)
-        GuideTelemetry.voiceState("speaking_question")
+    private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
+        setState(ConversationUiState.Clarifying(outcome, speaking = true))
+        GuideTelemetry.voiceState("clarification_question")
         speak(
-            outcome.message,
+            outcome.question.prompt,
             onFinished = {
-                if (voiceSession.continueListening(outcome.generation)) {
-                    setState(ConversationUiState.Listening(question = outcome.message))
-                    GuideTelemetry.voiceState("listening_follow_up")
-                    startListeningTurn()
+                val current = uiState as? ConversationUiState.Clarifying
+                if (
+                    current?.outcome?.generation == outcome.generation &&
+                    current.outcome.question.id == outcome.question.id
+                ) {
+                    setState(current.copy(speaking = false))
                 }
             },
         )

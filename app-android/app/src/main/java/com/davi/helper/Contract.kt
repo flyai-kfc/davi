@@ -270,6 +270,36 @@ data class SlotFillRequest(
     val utterance: String,
     @SerialName("session_id") val sessionId: String,
     @SerialName("conversation_history") val conversationHistory: List<ConversationTurn> = emptyList(),
+    @SerialName("clarification_answers")
+    val clarificationAnswers: List<ClarificationAnswer> = emptyList(),
+)
+
+@Serializable
+data class ClarificationAnswer(
+    @SerialName("question_id") val questionId: String,
+    val prompt: String,
+    val answer: String,
+    val source: ClarificationAnswerSource,
+)
+
+@Serializable
+enum class ClarificationAnswerSource {
+    @SerialName("option") OPTION,
+    @SerialName("freeform") FREEFORM,
+    @SerialName("unknown_or_declined") UNKNOWN_OR_DECLINED,
+}
+
+@Serializable
+data class ClarificationQuestion(
+    val id: String,
+    val prompt: String,
+    val options: List<String>,
+    @SerialName("allow_freeform") val allowFreeform: Boolean,
+)
+
+@Serializable
+data class ClarificationPlan(
+    val questions: List<ClarificationQuestion>,
 )
 
 @Serializable
@@ -279,12 +309,15 @@ data class SlotFillState(
     val message: String,
     /** READY일 때만 존재하며, 사용자가 확인할 기존 목표 입력칸에 넣는다. */
     val goal: String? = null,
+    /** NEEDS_CLARIFICATION일 때 한 화면씩 진행할 최대 두 질문. */
+    val clarification: ClarificationPlan? = null,
 )
 
 @Serializable
 enum class IntentDialogueStatus {
     @SerialName("needs_clarification") NEEDS_CLARIFICATION,
     @SerialName("ready") READY,
+    @SerialName("unable_to_finalize") UNABLE_TO_FINALIZE,
 }
 
 /** 서버가 제안한 후보 하나. package/alias는 서버 원본이며 기기 index 값을 역으로 채우지 않는다. */

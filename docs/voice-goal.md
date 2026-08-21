@@ -1,8 +1,12 @@
 # 음성 목표 확정 — 작업 문서
 
 작성 2026-08-07. 어르신 발화를 **의도를 정확히 정의한 목표 문장 하나**로 바꾸는 기능의 작업 문서다.
-방향·범위는 `../SPEC.md`, 계약 결정은 `../server/CLAUDE.md`(C1~C16)에 있고 **이 문서가 그것들을 대체하지 않는다.**
+방향·범위는 `../SPEC.md`, 계약 결정은 `../server/CLAUDE.md`(C1~C19)에 있고 **이 문서가 그것들을 대체하지 않는다.**
 여기 있는 것이 확정되면 SPEC·CLAUDE로 올리고 이 문서에서는 링크만 남긴다.
+
+> **2026-08-21 #316:** 아래 C16/합의 F의 “보기 필드를 두지 않는다” 결정은 C19로 대체됐다.
+> 현재 계약은 질문 최대 2개·보기 최대 3개·자유 발화/모름 상시 제공·제품 호출 최대 2회다.
+> 아래 내용은 이전 결정의 근거와 변경 경위를 보존하는 역사 기록으로만 읽는다.
 
 ## 상태 표기
 
@@ -24,14 +28,14 @@
 |---|---|---|
 | STT | `app-android/.../SpeechRecognizerHelper.kt` | 온디바이스 우선(`EXTRA_PREFER_OFFLINE`), 부분/최종 결과, RECORD_AUDIO 런타임 권한 |
 | TTS | `app-android/.../TextToSpeechHelper.kt` | 질문 읽기. 실패해도 화면 문구로 흐름 유지 |
-| 대화 상태 | `app-android/.../VoiceDialogueSession.kt` | user/assistant 쌍 누적, 최대 10메시지(5왕복), generation 격리, stage 머신 |
+| 대화 상태 | `app-android/.../VoiceDialogueSession.kt` | 최초 발화와 최대 두 질문 답을 로컬 누적, 제품 호출 최대 2회, generation 격리 |
 | HTTP | `app-android/.../SlotFillApiClient.kt` → `POST /v1/intent/slot-fill` | |
 | 의도 해석 | `server/app/intent_resolution.py`, `intent_prompt.py` | LLM 1콜 구조화 출력, 스텁/원격 2구현(원격은 `llm_provider`가 고른 공급자, #259), 스키마 400 폴백, 계약 위반 1회 교정 |
-| 계약 | `server/app/schemas.py` (C13) | `SlotFillRequest{utterance, session_id, conversation_history}` → `SlotFillState{status, message, goal}` |
+| 계약 | `server/app/schemas.py` (C13·C19) | 요청에 `clarification_answers`, 응답에 `clarification`; status는 질문/준비/안전 종료 |
 | 테스트 | `test_intent_resolution.py`, `test_slot_fill_api.py`, `VoiceDialogueSessionTest.kt`, `SlotFillApiClientTest.kt` | |
 
-모델 내부 출력은 `{decision_basis, status, message, goal}` 4필드이고 `decision_basis`는 wire·로그로 나가지 않는다.
-`status`는 `needs_clarification` / `ready` **2개뿐**이다.
+모델 내부 출력은 wire 필드 앞에 `decision_basis`를 두고 이 값은 wire·로그로 내보내지 않는다.
+status는 `needs_clarification` / `ready` / `unable_to_finalize`다.
 
 **없는 것:**
 
@@ -141,7 +145,7 @@ evidence를 화면 label과 축자 대조하는 현 방식은 이 기능의 출�
 목표 확정 단계는 별도 제품이 아니라 닫힌 루프의 앞단이다. 문장은 `goal`에, 완료 신호는 새 선택 필드에 실어 기존 파이프라인을 재사용한다. 순수 추가라 낡은 앱은 무시하면 된다(`SlotFillApiClient`·`GuideApiClient` 둘 다 `ignoreUnknownKeys = true`).
 (**완료 신호 부분은 §3 P1·P2 승인이 선행 조건이다.** 기존 파이프라인을 재사용한다는 원칙 자체는 그와 무관하게 유효하다.)
 
-### [합의] F. 되묻기 질문에 답변 예시를 함께 말해준다 — 보기(선택지)를 만들지 않는다
+### [대체됨 — C19] F. 되묻기 질문에 답변 예시를 함께 말해준다 — 보기(선택지)를 만들지 않는다
 
 2026-08-14 합의. `needs_clarification`의 질문 문장 뒤에 짧은 예시 문장을 붙여 **TTS로 함께 읽어준다**
 ("어디로 보낼까요? 예를 들면 카카오톡이나 문자요"). 예시는 `message` 안의 문장이지 별도 필드가

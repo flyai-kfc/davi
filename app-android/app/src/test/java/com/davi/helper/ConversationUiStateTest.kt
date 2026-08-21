@@ -226,9 +226,18 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `Ask는 질문 재생 상태로 간다`() {
-        val state = stateForOutcome(VoiceDialogueSession.Outcome.Ask(generation = 1L, message = "누구에게?"))
-        assertEquals(ConversationUiState.Speaking("누구에게?", generation = 1L), state)
+    fun `Clarify는 보기 선택 상태로 간다`() {
+        val outcome = VoiceDialogueSession.Outcome.Clarify(
+            generation = 1L,
+            question = ClarificationQuestion("q1", "누구에게?", listOf("가족"), true),
+            questionIndex = 0,
+            questionCount = 1,
+        )
+        val state = stateForOutcome(outcome)
+        assertEquals(ConversationUiState.Clarifying(outcome), state)
+        val model = renderModelOf(state)
+        assertTrue(model.clarificationVisible)
+        assertFalse("문답 중 취소 버튼은 없다", model.closeVisible)
     }
 
     @Test
@@ -240,14 +249,30 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `상한 초과와 잘못된 응답은 실패 화면으로 간다`() {
+    fun `안전 종료와 잘못된 응답은 서로 다른 종료 화면으로 간다`() {
         assertEquals(
-            ConversationUiState.Failed,
-            stateForOutcome(VoiceDialogueSession.Outcome.LimitReached),
+            ConversationUiState.SafeEnd("처음부터 다시 말씀해 주세요."),
+            stateForOutcome(
+                VoiceDialogueSession.Outcome.UnableToFinalize("처음부터 다시 말씀해 주세요."),
+            ),
         )
         assertEquals(
             ConversationUiState.Failed,
             stateForOutcome(VoiceDialogueSession.Outcome.InvalidResponse),
+        )
+    }
+
+    @Test
+    fun `구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Listening(question = "누구에게?", clarification = true),
+            ).closeVisible,
+        )
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Requesting("", finalizing = true),
+            ).closeVisible,
         )
     }
 

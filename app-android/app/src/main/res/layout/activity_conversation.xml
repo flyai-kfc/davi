@@ -373,6 +373,14 @@
         </LinearLayout>
         </FrameLayout>
 
+        <include
+            android:id="@+id/clarification_choices"
+            layout="@layout/view_davi_clarification_choices"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="196"
+            android:layout_marginTop="@dimen/davi_card_gap" />
+
         <!--
           시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
           "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을

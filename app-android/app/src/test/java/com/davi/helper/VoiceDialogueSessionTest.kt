@@ -7,81 +7,149 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceDialogueSessionTest {
+    private fun question(id: String, prompt: String) = ClarificationQuestion(
+        id = id,
+        prompt = prompt,
+        options = listOf("카카오톡", "문자"),
+        allowFreeform = true,
+    )
+
     @Test
-    fun `first request keeps current utterance outside empty history`() {
-        val session = VoiceDialogueSession { "00000000-0000-4000-8000-000000000001" }
+    fun `first request contains only original utterance`() {
+        val session = VoiceDialogueSession { SESSION_ID }
 
         val generation = session.start()
-        val pending = requireNotNull(session.nextRequest("  카메라 앱 열어줘  "))
+        val pending = requireNotNull(session.nextRequest("  사진 보내고 싶어  "))
 
         assertEquals(generation, pending.generation)
         assertEquals(0, pending.turnIndex)
-        assertEquals("카메라 앱 열어줘", pending.request.utterance)
-        assertEquals("00000000-0000-4000-8000-000000000001", pending.request.sessionId)
+        assertEquals("사진 보내고 싶어", pending.request.utterance)
+        assertEquals(SESSION_ID, pending.request.sessionId)
         assertTrue(pending.request.conversationHistory.isEmpty())
+        assertTrue(pending.request.clarificationAnswers.isEmpty())
         assertEquals(VoiceDialogueSession.Stage.REQUESTING, session.stage)
     }
 
     @Test
-    fun `follow-up stores only completed user assistant pair`() {
-        val session = VoiceDialogueSession { "00000000-0000-4000-8000-000000000001" }
+    fun `two questions are answered locally before one final request`() {
+        val session = VoiceDialogueSession { SESSION_ID }
         session.start()
-        val first = requireNotNull(session.nextRequest("사진을 보내고 싶어"))
+        val first = requireNotNull(session.nextRequest("사진 보내고 싶어"))
+        val questions = listOf(
+            question("q1", "어느 방식으로 보낼까요?"),
+            question("q2", "누구에게 보낼까요?"),
+        )
 
-        val outcome = session.applyResponse(
+        val firstQuestion = session.applyResponse(
+            first,
+            SlotFillState(
+                status = IntentDialogueStatus.NEEDS_CLARIFICATION,
+                message = questions.first().prompt,
+                clarification = ClarificationPlan(questions),
+            ),
+        ) as VoiceDialogueSession.Outcome.Clarify
+
+        assertEquals(0, firstQuestion.questionIndex)
+        assertEquals(2, firstQuestion.questionCount)
+        assertEquals(VoiceDialogueSession.Stage.CLARIFYING, session.stage)
+
+        val next = session.answerCurrent(ClarificationAnswerSource.OPTION, "문자")
+            as VoiceDialogueSession.AnswerOutcome.NextQuestion
+        assertEquals("q2", next.outcome.question.id)
+        assertEquals(VoiceDialogueSession.Stage.CLARIFYING, session.stage)
+
+        val final = session.answerCurrent(ClarificationAnswerSource.FREEFORM, "보호자에게")
+            as VoiceDialogueSession.AnswerOutcome.FinalRequest
+        assertEquals(1, final.pending.turnIndex)
+        assertEquals("사진 보내고 싶어", final.pending.request.utterance)
+        assertEquals(2, final.pending.request.clarificationAnswers.size)
+        assertEquals("문자", final.pending.request.clarificationAnswers[0].answer)
+        assertEquals("보호자에게", final.pending.request.clarificationAnswers[1].answer)
+        assertEquals(VoiceDialogueSession.Stage.REQUESTING, session.stage)
+    }
+
+    @Test
+    fun `unknown answer remains explicit and is never inferred`() {
+        val session = VoiceDialogueSession { SESSION_ID }
+        session.start()
+        val first = requireNotNull(session.nextRequest("사진 보내기"))
+        session.applyResponse(
             first,
             SlotFillState(
                 IntentDialogueStatus.NEEDS_CLARIFICATION,
-                "사진을 어디로 보내고 싶으세요?",
+                "어느 앱인가요?",
+                clarification = ClarificationPlan(listOf(question("q1", "어느 앱인가요?"))),
             ),
-        ) as VoiceDialogueSession.Outcome.Ask
+        )
 
-        assertEquals(VoiceDialogueSession.Stage.SPEAKING, session.stage)
-        assertTrue(session.continueListening(outcome.generation))
-        val second = requireNotNull(session.nextRequest("메신저로 보호자에게"))
-        assertEquals("메신저로 보호자에게", second.request.utterance)
+        val final = session.answerCurrent(
+            ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
+            "모르거나 답변하지 않음",
+        ) as VoiceDialogueSession.AnswerOutcome.FinalRequest
+
         assertEquals(
-            listOf(
-                ConversationTurn(ConversationRole.USER, "사진을 보내고 싶어"),
-                ConversationTurn(
-                    ConversationRole.ASSISTANT,
-                    "사진을 어디로 보내고 싶으세요?",
-                ),
-            ),
-            second.request.conversationHistory,
+            ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
+            final.pending.request.clarificationAnswers.single().source,
         )
     }
 
     @Test
-    fun `ready response returns server goal without starting guide session`() {
-        val session = VoiceDialogueSession { "00000000-0000-4000-8000-000000000001" }
-        session.start()
+    fun `ready response returns server goal`() {
+        val session = VoiceDialogueSession { SESSION_ID }
+        val generation = session.start()
         val pending = requireNotNull(session.nextRequest("카메라 열어줘"))
 
         val outcome = session.applyResponse(
             pending,
-            SlotFillState(
-                IntentDialogueStatus.READY,
-                "카메라 앱 열기로 정리했어요.",
-                "카메라 앱 열기",
-            ),
+            SlotFillState(IntentDialogueStatus.READY, "정리했어요.", "카메라 앱 열기"),
         ) as VoiceDialogueSession.Outcome.Ready
 
         assertEquals("카메라 앱 열기", outcome.goal)
         assertEquals(VoiceDialogueSession.Stage.READY, session.stage)
-        assertTrue(session.finish(outcome.generation))
+        assertTrue(session.finish(generation))
         assertEquals(VoiceDialogueSession.Stage.IDLE, session.stage)
     }
 
     @Test
-    fun `late response from cancelled generation cannot affect restarted dialogue`() {
+    fun `second response cannot create a third question`() {
+        val session = VoiceDialogueSession { SESSION_ID }
+        session.start()
+        val first = requireNotNull(session.nextRequest("사진 보내기"))
+        val q = question("q1", "어느 앱인가요?")
+        session.applyResponse(
+            first,
+            SlotFillState(
+                IntentDialogueStatus.NEEDS_CLARIFICATION,
+                q.prompt,
+                clarification = ClarificationPlan(listOf(q)),
+            ),
+        )
+        val second = (
+            session.answerCurrent(ClarificationAnswerSource.OPTION, "문자")
+                as VoiceDialogueSession.AnswerOutcome.FinalRequest
+            ).pending
+
+        val outcome = session.applyResponse(
+            second,
+            SlotFillState(
+                IntentDialogueStatus.NEEDS_CLARIFICATION,
+                q.prompt,
+                clarification = ClarificationPlan(listOf(q)),
+            ),
+        )
+
+        assertEquals(VoiceDialogueSession.Outcome.InvalidResponse, outcome)
+        assertEquals(VoiceDialogueSession.Stage.IDLE, session.stage)
+    }
+
+    @Test
+    fun `late response cannot affect restarted dialogue`() {
         var index = 0
         val session = VoiceDialogueSession {
             "00000000-0000-4000-8000-${String.format("%012d", ++index)}"
         }
         session.start()
         val old = requireNotNull(session.nextRequest("같은 목표"))
-
         session.cancel()
         session.start()
         val current = requireNotNull(session.nextRequest("같은 목표"))
@@ -92,7 +160,6 @@ class VoiceDialogueSessionTest {
                 SlotFillState(IntentDialogueStatus.READY, "이전 응답", "이전 목표"),
             ),
         )
-        assertEquals(VoiceDialogueSession.Stage.REQUESTING, session.stage)
         assertTrue(
             session.applyResponse(
                 current,
@@ -102,44 +169,17 @@ class VoiceDialogueSessionTest {
     }
 
     @Test
-    fun `five completed follow-ups are bounded and sixth question stops`() {
-        val session = VoiceDialogueSession { "00000000-0000-4000-8000-000000000001" }
-        var generation = session.start()
-
-        repeat(5) { turn ->
-            val pending = requireNotNull(session.nextRequest("답변 $turn"))
-            val outcome = session.applyResponse(
-                pending,
-                SlotFillState(
-                    IntentDialogueStatus.NEEDS_CLARIFICATION,
-                    "질문 $turn",
-                ),
-            ) as VoiceDialogueSession.Outcome.Ask
-            generation = outcome.generation
-            assertTrue(session.continueListening(generation))
-        }
-
-        val last = requireNotNull(session.nextRequest("추가 답변"))
-        assertEquals(VoiceDialogueSession.MAX_HISTORY_MESSAGES, last.request.conversationHistory.size)
-        assertEquals(
-            VoiceDialogueSession.Outcome.LimitReached,
-            session.applyResponse(
-                last,
-                SlotFillState(IntentDialogueStatus.NEEDS_CLARIFICATION, "추가 질문"),
-            ),
-        )
-        assertEquals(VoiceDialogueSession.Stage.IDLE, session.stage)
-        assertFalse(session.continueListening(generation))
-    }
-
-    @Test
-    fun `request failure invalidates only matching pending turn`() {
-        val session = VoiceDialogueSession { "00000000-0000-4000-8000-000000000001" }
+    fun `request failure invalidates only matching request`() {
+        val session = VoiceDialogueSession { SESSION_ID }
         session.start()
         val pending = requireNotNull(session.nextRequest("목표"))
 
         assertTrue(session.fail(pending))
         assertEquals(VoiceDialogueSession.Stage.IDLE, session.stage)
         assertFalse(session.fail(pending))
+    }
+
+    private companion object {
+        const val SESSION_ID = "00000000-0000-4000-8000-000000000001"
     }
 }

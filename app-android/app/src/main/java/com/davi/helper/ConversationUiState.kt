@@ -32,6 +32,8 @@ sealed interface ConversationUiState {
         val question: String? = null,
         val partial: String = "",
         val micReady: Boolean = false,
+        /** 보기 대신 직접 말하는 구체화 답변이면 문답 중 취소 버튼을 숨긴다. */
+        val clarification: Boolean = false,
     ) : ConversationUiState
 
     /**
@@ -41,8 +43,17 @@ sealed interface ConversationUiState {
      */
     data class Speaking(val question: String, val generation: Long) : ConversationUiState
 
-    /** 서버 응답 대기("잠시만요"). [utterance]는 방금 인식된 발화 — 발화 카드에 유지한다. */
-    data class Requesting(val utterance: String) : ConversationUiState
+    /** 서버 응답 대기. [finalizing]이면 로컬 답을 합친 두 번째이자 마지막 호출이다. */
+    data class Requesting(val utterance: String, val finalizing: Boolean = false) : ConversationUiState
+
+    /** 서버가 한 번에 준 질문 계획 중 현재 한 문항. 선택은 서버 호출 없이 로컬에서 진행한다. */
+    data class Clarifying(
+        val outcome: VoiceDialogueSession.Outcome.Clarify,
+        val speaking: Boolean = true,
+    ) : ConversationUiState
+
+    /** 두 번째 호출로도 안전한 목표를 만들지 못한 종료 화면. 사용자가 재시작 또는 홈을 고른다. */
+    data class SafeEnd(val message: String) : ConversationUiState
 
     /**
      * MA-4 확인. [kind]가 [ConfirmKind.APP_AVAILABILITY_WARNING]이면 goal 대신 가능성 경고를
@@ -84,6 +95,8 @@ data class ConversationRenderModel(
     val standVisible: Boolean = false,
     /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
     val guidingVisible: Boolean = false,
+    val clarificationVisible: Boolean = false,
+    val safeEndVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
     val stopConfirmVisible: Boolean = false,
     val questionRes: Int? = null,
@@ -217,7 +230,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
-        closeVisible = true,
+        closeVisible = !state.clarification,
         // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
         // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
         // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
@@ -249,8 +262,15 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.utterance,
         micVisible = true,
-        closeVisible = true,
+        closeVisible = !state.finalizing,
         loadingDotsVisible = true,
+    )
+    is ConversationUiState.Clarifying -> ConversationRenderModel(
+        logoVisible = true,
+        questionText = state.outcome.question.prompt,
+        cardQuestionFlexible = true,
+        clarificationVisible = true,
+        cardGlowVisible = state.speaking,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(
@@ -277,6 +297,13 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         standVisible = true,
         cardGlowVisible = true,
         questionRes = R.string.conversation_failed,
+    )
+    is ConversationUiState.SafeEnd -> ConversationRenderModel(
+        logoVisible = true,
+        cardGlowVisible = true,
+        questionText = state.message,
+        cardQuestionFlexible = true,
+        safeEndVisible = true,
     )
 }
 
@@ -305,6 +332,7 @@ fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     // **종료 확인에는 타이머를 두지 않는다.** 뒤에서 안내가 계속 돌고 있으므로 방치돼도
     // 사용자가 갇히지 않는다 — 나가면 그만이다. 최종 확인(Confirm)과 다른 점이다.
     ConversationUiState.StopConfirm -> null
+    is ConversationUiState.SafeEnd -> null
     else -> null
 }
 
@@ -331,9 +359,8 @@ fun followUpConfirmationAfterAccept(
  * 실패 화면으로 보낸다(#123 — 음성 인식 실패·무응답 세분화는 #106 범위).
  */
 fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState = when (outcome) {
-    is VoiceDialogueSession.Outcome.Ask ->
-        ConversationUiState.Speaking(outcome.message, outcome.generation)
+    is VoiceDialogueSession.Outcome.Clarify -> ConversationUiState.Clarifying(outcome)
     is VoiceDialogueSession.Outcome.Ready -> ConversationUiState.Confirm(outcome.goal)
-    VoiceDialogueSession.Outcome.LimitReached -> ConversationUiState.Failed
+    is VoiceDialogueSession.Outcome.UnableToFinalize -> ConversationUiState.SafeEnd(outcome.message)
     VoiceDialogueSession.Outcome.InvalidResponse -> ConversationUiState.Failed
 }

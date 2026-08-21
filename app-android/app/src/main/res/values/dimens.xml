@@ -357,6 +357,9 @@
       버튼끼리는 테두리·채움으로 이미 갈리므로 간격이 조금 좁아도 붙어 보이지 않는다.
     -->
     <dimen name="davi_stacked_button_gap">24dp</dimen>
+    <!-- #316 문답은 최대 다섯 조작을 한 화면에 담되 큰 글꼴에서는 내부 스크롤로 보존한다. -->
+    <dimen name="davi_clarification_button_height">56dp</dimen>
+    <dimen name="davi_clarification_button_gap">10dp</dimen>
     <!-- **⚠ 값이 옛 환산이다**(#265). 카드와 버튼 사이 여백이라 개정 규칙(#244)에서는
          세로 거리 1:1로 **44**다. 배치가 통째로 움직여 실기기로 보고 정한다. -->
     <dimen name="davi_stacked_pair_margin_top">53dp</dimen>

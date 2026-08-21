@@ -84,7 +84,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onFinalResult(text: String) {
-            runOnUiThread { submitVoiceTurn(text) }
+            runOnUiThread {
+                if (voiceSession.stage == VoiceDialogueSession.Stage.CLARIFYING) {
+                    submitClarificationAnswer(text)
+                } else {
+                    submitVoiceTurn(text)
+                }
+            }
         }
 
         override fun onError(error: Int) {
@@ -189,6 +195,10 @@ class MainActivity : AppCompatActivity() {
     private fun submitVoiceTurn(text: String) {
         speechRecognizerHelper?.stop()
         val pending = voiceSession.nextRequest(text) ?: return
+        submitPendingRequest(pending)
+    }
+
+    private fun submitPendingRequest(pending: VoiceDialogueSession.PendingRequest) {
         setVoiceStatus(R.string.voice_processing)
         GuideTelemetry.voiceState("requesting")
         refreshUi()
@@ -275,10 +285,10 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 when (outcome) {
-                    is VoiceDialogueSession.Outcome.Ask -> speakFollowUp(outcome)
+                    is VoiceDialogueSession.Outcome.Clarify -> speakClarification(outcome)
                     is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
-                    VoiceDialogueSession.Outcome.LimitReached -> {
-                        setVoiceStatus(R.string.voice_dialogue_limit)
+                    is VoiceDialogueSession.Outcome.UnableToFinalize -> {
+                        binding.voiceStatus.text = outcome.message
                         voiceRequestTracker.reset()
                         appResolutionFlow.reset()
                         refreshUi()
@@ -306,14 +316,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun speakFollowUp(outcome: VoiceDialogueSession.Outcome.Ask) {
-        binding.voiceStatus.text = outcome.message
+    private fun speakClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
+        binding.voiceStatus.text = outcome.question.prompt
         GuideTelemetry.voiceState("speaking_question")
         refreshUi()
         speak(
-            outcome.message,
+            outcome.question.prompt,
             onFinished = {
-                if (voiceSession.continueListening(outcome.generation)) {
+                if (voiceSession.stage == VoiceDialogueSession.Stage.CLARIFYING) {
                     setVoiceStatus(R.string.voice_listening)
                     GuideTelemetry.voiceState("listening_follow_up")
                     refreshUi()
@@ -321,6 +331,15 @@ class MainActivity : AppCompatActivity() {
                 }
             },
         )
+    }
+
+    private fun submitClarificationAnswer(text: String) {
+        speechRecognizerHelper?.stop()
+        when (val outcome = voiceSession.answerCurrent(ClarificationAnswerSource.FREEFORM, text)) {
+            is VoiceDialogueSession.AnswerOutcome.NextQuestion -> speakClarification(outcome.outcome)
+            is VoiceDialogueSession.AnswerOutcome.FinalRequest -> submitPendingRequest(outcome.pending)
+            null -> Unit
+        }
     }
 
     private fun showReadyGoal(
