@@ -38,7 +38,7 @@ class SlotFillApiClientTest {
                 .addHeader(RequestTracingContract.LOGICAL_REQUEST_ID_HEADER, TRACE_ID)
                 .addHeader(RequestTracingContract.ATTEMPT_HEADER, "1")
                 .setBody(
-                    """{"status":"needs_clarification","message":"어느 앱에서 할까요?","goal":null}""",
+                    """{"status":"needs_clarification","message":"어느 앱에서 할까요?","goal":null,"clarification":{"questions":[{"id":"q1","prompt":"어느 앱에서 할까요?","options":["카카오톡","문자"],"allow_freeform":true}]}}""",
                 ),
         )
 
@@ -86,11 +86,30 @@ class SlotFillApiClientTest {
     }
 
     @Test
+    fun `accepts clarification question without suggested options`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"needs_clarification","message":"어떻게 하고 싶으세요?","clarification":{"questions":[{"id":"q1","prompt":"어떻게 하고 싶으세요?","options":[],"allow_freeform":true}]}}""",
+            ),
+        )
+
+        val result = SlotFillApiClient(server.url("/").toString()).resolve(sampleRequest(), trace())
+
+        assertTrue(result is SlotFillResult.Success)
+        result as SlotFillResult.Success
+        assertTrue(result.state.clarification?.questions?.single()?.options?.isEmpty() == true)
+    }
+
+    @Test
     fun `rejects status and goal combinations that drift from server contract`() {
         val invalidBodies = listOf(
             """{"status":"needs_clarification","message":"질문","goal":"잘못된 목표"}""",
+            """{"status":"needs_clarification","message":"질문","goal":null}""",
             """{"status":"ready","message":"완료","goal":null}""",
             """{"status":"ready","message":"   ","goal":"목표"}""",
+            """{"status":"unable_to_finalize","message":"다시 말해 주세요","goal":"추측"}""",
+            """{"status":"needs_clarification","message":"다른 질문","clarification":{"questions":[{"id":"q1","prompt":"첫 질문","options":["보기"],"allow_freeform":true}]}}""",
+            """{"status":"needs_clarification","message":"질문","clarification":{"questions":[{"id":"q1","prompt":"질문","options":["1","2","3","4"],"allow_freeform":true}]}}""",
         )
         invalidBodies.forEach {
             server.enqueue(MockResponse().setResponseCode(200).setBody(it))
@@ -123,6 +142,33 @@ class SlotFillApiClientTest {
         val recorded = server.takeRequest()
         assertEquals(token, recorded.getHeader("X-Davi-Dev-Token"))
         assertEquals("2", recorded.getHeader(RequestTracingContract.ATTEMPT_HEADER))
+    }
+
+    @Test
+    fun `serializes locally collected clarification answers on final request`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"unable_to_finalize","message":"처음부터 다시 말씀해 주세요."}""",
+            ),
+        )
+        val request = sampleRequest().copy(
+            clarificationAnswers = listOf(
+                ClarificationAnswer(
+                    questionId = "q1",
+                    prompt = "어느 앱에서 할까요?",
+                    answer = "문자",
+                    source = ClarificationAnswerSource.OPTION,
+                ),
+            ),
+        )
+
+        val result = SlotFillApiClient(server.url("/").toString()).resolve(request, trace())
+
+        assertTrue(result is SlotFillResult.Success)
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val answer = body["clarification_answers"]?.jsonArray?.single()?.jsonObject
+        assertEquals("q1", answer?.get("question_id")?.jsonPrimitive?.content)
+        assertEquals("option", answer?.get("source")?.jsonPrimitive?.content)
     }
 
     @Test

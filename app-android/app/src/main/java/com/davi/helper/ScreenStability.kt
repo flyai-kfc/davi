@@ -185,6 +185,18 @@ class ScreenStabilityTracker(
         if (requery) sentSignature = null
     }
 
+    /**
+     * 안내한 대상이 눌렸다(#319). 정체 타이머를 지금으로 다시 찍는다 — "안내 후 화면 그대로
+     * 7초"는 사용자가 방금 조작했으면 **그 조작부터** 세야 맞다. [stuckReported]를 함께 내리는
+     * 이유는 정체가 이미 보고된 뒤 눌림이 와도 다음 정체(와 눌림 확인 재질의)가 뜰 수 있어야
+     * 해서다 — 래치를 그대로 두면 그 화면의 재질의가 영영 없다.
+     *
+     * [markResumed]와 기계가 같지만 의미가 다르다 — 그쪽은 "꺼진 구간은 정체가 아니다"이고
+     * 여기는 "조작 이후만 정체다". requery 되돌림은 없다: 화면이 그대로면 [sentSignature]가
+     * 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이 정한다.
+     */
+    fun markPressed(nowMs: Long) = markResumed(nowMs, requery = false)
+
     /** 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다. */
     fun backoffMs(): Long {
         if (failures <= 0) return 0L

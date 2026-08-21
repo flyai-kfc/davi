@@ -83,14 +83,32 @@ def test_lazy_but_real_evidence_still_passes():
     assert _verified("지도", _screen("지도", "사진", "설정"))
 
 
-def test_screen_without_any_label_is_not_failed():
-    """label이 하나도 없으면 검사할 수 없다. 없는 것을 근거로 거짓 판정을 만들지 않는다."""
+def test_screen_without_any_label_is_not_verified():
+    """label이 하나도 없으면 대조할 것이 없다 — 검사 불가는 통과가 아니다(SPEC §4 2026-08-21 개정).
 
-    assert _verified("다 되었습니다", _screen("", ""))
+    예전에는 통과시켰다. 그 결정은 앱이 이런 화면을 보내지 않는다는 전제 위에 있었는데, 앱 전환
+    직후 스플래시가 그대로 온다는 실측(#331)이 전제를 깼다.
+    """
+
+    assert not _verified("다 되었습니다", _screen("", ""))
 
 
-def test_hintless_editable_only_screen_keeps_fail_open_completion_policy():
-    """#112가 늘린 빈 label 입력 화면도 기존 fail-open 완료 정책을 명시적으로 유지한다."""
+def test_empty_screen_from_app_transition_is_not_verified():
+    """실측 재현(#331) — 앱을 연 직후 요소가 하나도 없는 화면에서 온 done.
+
+    에이닷 `element_count=0`, 카카오 T `element_count=1`(그 하나도 빈 label). 이 화면에서 done이
+    통과하면 앱은 곧바로 종료 흐름으로 간다(`GuideSession.onDone`).
+    """
+
+    assert not _verified("일정이 저장되었습니다", _screen())
+
+
+def test_hintless_editable_only_screen_is_not_verified():
+    """#112가 늘린 빈 label 입력 화면도 같은 규칙을 받는다.
+
+    label이 없어 대조할 수 없다는 점은 스플래시와 다르지 않다. 여기서 정말로 끝난 목표는
+    `verified=false`로 몇 턴 늦게 끝날 뿐, 못 끝나지는 않는다 — 앱의 재시도 예산이 받는다.
+    """
 
     screen = Screen(
         package_name="com.example.app",
@@ -106,7 +124,7 @@ def test_hintless_editable_only_screen_keeps_fail_open_completion_policy():
         ],
     )
 
-    assert _verified("다 되었습니다", screen)
+    assert not _verified("다 되었습니다", screen)
 
 
 def test_non_latin_labels_are_still_compared():
