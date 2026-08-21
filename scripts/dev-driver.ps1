@@ -173,7 +173,13 @@ function Set-JavaEnv {
         # Android Studio 번들 JBR만 가진 팀원도 있어 그 경로를 후보에 넣는다(app-android/README.md §Gradle).
         $jdk = Get-ChildItem 'C:\Program Files\Eclipse Adoptium\jdk-*', 'C:\Program Files\Java\jdk-*' `
             -Directory -ErrorAction SilentlyContinue |
-            Sort-Object { [version](($_.Name -replace '^jdk-', '') -replace '[^\d.].*$', '').Trim('.') } -Descending |
+            Sort-Object {
+                # [version]'21'은 던진다(마이너가 없다). EAP=Stop이라 그런 폴더가 하나만 있어도
+                # 정렬 블록 전체가 터져 옆의 멀쩡한 jdk-21.0.3까지 못 찾는다. 실패는 0으로 떨군다.
+                $v = (($_.Name -replace '^jdk-', '') -replace '[^\d.].*$', '').Trim('.')
+                if ($v -notmatch '\.') { $v = "$v.0" }
+                try { [version]$v } catch { [version]'0.0' }
+            } -Descending |
             Select-Object -First 1
         $jbr = 'C:\Program Files\Android\Android Studio\jbr'
         if ($jdk) { $env:JAVA_HOME = $jdk.FullName }
@@ -558,7 +564,10 @@ switch ($Command) {
             Invoke-Native { & $adb shell input keyevent $Arg2 } 'input keyevent'
             $tag = "key$Arg2"
         }
-        elseif ($Arg1 -eq 'wait') { $waitMs = $Arg2 }
+        elseif ($Arg1 -eq 'wait') {
+            if ($Arg2 -notmatch '^\d+$') { throw "step wait은 대기 ms 숫자 하나다 (받은 값: '$Arg2')" }
+            $waitMs = $Arg2
+        }
         elseif ($Arg1 -or $Arg2) {
             # 좌표가 숫자가 아니면 기기까지 가서 실패한다. 여기서 막고 무엇이 틀렸는지 알려 준다.
             if ($Arg1 -notmatch '^\d+$' -or $Arg2 -notmatch '^\d+$') {

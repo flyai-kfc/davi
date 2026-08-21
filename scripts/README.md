@@ -29,7 +29,7 @@
 .\scripts\dev-driver.ps1 server                  # 스텁 LLM 서버(키 불필요). -Real 실모델 / -Probe <py>
 .\scripts\dev-driver.ps1 install                 # 빌드+설치+권한 복구 (-Clear: logcat 비움, -SkipBuild: 권한만)
 .\scripts\dev-driver.ps1 test                    # 앱 JVM 단위 테스트 (기기 불필요)
-.\scripts\dev-driver.ps1 step 538 1503 3000      # 탭+캡처예약+3초 대기+로그델타를 한 콜로
+.\scripts\dev-driver.ps1 step 538 1503 3000      # 탭 → 3초 대기 → 캡처예약 → 로그델타를 한 콜로
                                                  #   step key 3 3000 / step wait 3000(관찰만)
 .\scripts\dev-driver.ps1 swipe 540 1600 540 900  # 스크롤 안내 따라 하기(300ms 지속 — 플링 방지)
                                                  #   tap·key와 같이 -Shot이면 캡처도 예약
