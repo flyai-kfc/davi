@@ -91,6 +91,17 @@ class GuideDisplayState {
 
     private data class Stash(val guide: Content?, val stuckSuffixAllowed: Boolean)
 
+    /** 읽기 불가 안내가 잠시 덮은 화면 소속 안내. 원래 화면이 안정되면 되살린다. */
+    private var unreadableStash: ScreenStash? = null
+
+    private var unreadableNoticeActive = false
+
+    private data class ScreenStash(
+        val guide: Content,
+        val signature: String?,
+        val stuckSuffixAllowed: Boolean,
+    )
+
     /** [signature] 화면에 서버 안내 하나를 표시한다. 그릴 내용을 돌려준다. */
     fun show(
         signature: String,
@@ -99,6 +110,7 @@ class GuideDisplayState {
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
     ): Content {
+        clearUnreadableState()
         val content = Content(bounds, text, actionType, direction)
         guide = content
         guideSignature = signature
@@ -109,6 +121,7 @@ class GuideDisplayState {
 
     /** [signature] 화면에 미검증 done 상한 안내를 표시한다(#55). STUCK 접미사를 붙이지 않는다. */
     fun showCapNotice(signature: String, text: String): Content {
+        clearUnreadableState()
         val content = Content(null, text)
         guide = content
         guideSignature = signature
@@ -122,13 +135,21 @@ class GuideDisplayState {
      * 재시도 중인 요청은 없지만, 같은 문구를 매 폴링 다시 그리면 오버레이가 만든 이벤트로
      * 샘플러를 스스로 깨운다. 떠 있는 동안은 화면 시그니처가 흔들려도 한 번만 그린다.
      * root=null 청소 뒤에는 [visible]이 false라 다시 표시한다.
+     *
+     * 기존 안내는 [unreadableStash]에 잠시 보존한다. UNREADABLE은 화면 정체성을 확정한 상태가
+     * 아니므로, 그 서명으로 기존 안내를 폐기하면 안 된다. label이 돌아온 안정 화면이 원래
+     * 안내의 화면이면 [redisplay]가 복구하고, 정말 다른 안정 화면이면 그때 둘 다 폐기한다.
      */
     fun showUnreadableNotice(signature: String, text: String): Content? {
-        if (visible && guide?.text == text) return null
+        if (unreadableNoticeActive && visible && guide?.text == text) return null
+        if (!unreadableNoticeActive) {
+            unreadableStash = guide?.let { ScreenStash(it, guideSignature, stuckSuffixAllowed) }
+        }
         val content = Content(bounds = null, text = text)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false
+        unreadableNoticeActive = true
         markVisible()
         return content
     }
@@ -146,7 +167,15 @@ class GuideDisplayState {
      * 오버레이가 지워졌다면([onCleared]) `visible`이 false라 다시 그린다.
      */
     fun showError(signature: String, text: String): Content? {
-        if (visible && guideSignature == signature && guide?.text == text) return null
+        if (
+            !unreadableNoticeActive &&
+            visible &&
+            guideSignature == signature &&
+            guide?.text == text
+        ) {
+            return null
+        }
+        clearUnreadableState()
         val content = Content(bounds = null, text = text)
         guide = content
         guideSignature = signature
@@ -166,6 +195,7 @@ class GuideDisplayState {
      * 사용자가 어디로 가든 답할 자리가 따라가고, ○/×를 눌러야 사라진다.
      */
     fun showConfirm(signature: String, text: String): Content {
+        clearUnreadableState()
         val content = Content(bounds = null, text = text, confirm = ConfirmKind.DONE)
         guide = content
         guideSignature = signature
@@ -324,6 +354,7 @@ class GuideDisplayState {
         guide = null
         guideSignature = null
         stuckSuffixAllowed = true
+        clearUnreadableState()
         markVisible(false)
         // 밀어 둔 안내도 세션에 매인다. 남기면 다음 세션의 종료 확인에서 ×를 눌렀을 때
         // 이전 세션의 안내가 되살아난다.
@@ -343,12 +374,32 @@ class GuideDisplayState {
      * (2026-08-16 SM-S921N 실측: 셰이드 왕복 한 번에 확인이 버려지고 셰이드 화면에 대고 요청이
      * 2회 나갔다 — PR #153 리뷰 P1). **답하기 전에는 사라지지 않는 것이 이 화면의 계약이다.**
      *
-     * [screenStable]이 false(추적기 판정 WAIT)면 **아무것도 하지 않는다** — 전환 중 덜 그려진
-     * 과도기 트리(#32 실측)의 서명은 화면의 정체가 아니라서, 그걸 근거로 폐기하면 안정된
-     * 원래 화면이 돌아왔을 때 되살릴 안내가 이미 없다(4차 리뷰 P1).
+     * [screenStable]이 false(추적기 판정 WAIT·UNREADABLE)면 **아무것도 하지 않는다** — 전환 중
+     * 덜 그려졌거나 label 없는 트리의 서명은 화면의 정체가 아니라서, 그걸 근거로 폐기하면 안정된
+     * 원래 화면이 돌아왔을 때 되살릴 안내가 이미 없다(4차 리뷰 P1, PR #352 재리뷰).
      */
     fun redisplay(currentSignature: String, screenStable: Boolean): Content? {
         if (!screenStable) return null
+        // 읽기 불가 안내에서 중지 확인으로 들어갈 수 있다. 그때 아래 unreadable 복구가 먼저
+        // 돌면 화면 변화만으로 확인창을 걷어 버린다. 확인은 답하기 전까지 화면을 따라다닌다.
+        guide?.takeIf { it.confirm != null }?.let { confirming ->
+            if (visible) return null
+            markVisible()
+            return confirming
+        }
+        if (unreadableNoticeActive) {
+            val preserved = unreadableStash
+            clearUnreadableState()
+            if (preserved != null && preserved.signature == currentSignature) {
+                guide = preserved.guide
+                guideSignature = preserved.signature
+                stuckSuffixAllowed = preserved.stuckSuffixAllowed
+                markVisible()
+                return preserved.guide
+            }
+            reset()
+            return null
+        }
         val current = guide ?: return null
         if (visible) return null
         if (current.confirm == null && guideSignature != currentSignature) {
@@ -357,6 +408,11 @@ class GuideDisplayState {
         }
         markVisible()
         return current
+    }
+
+    private fun clearUnreadableState() {
+        unreadableStash = null
+        unreadableNoticeActive = false
     }
 
     /**

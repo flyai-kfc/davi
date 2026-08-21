@@ -339,6 +339,31 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `화면 관측을 재개하면 관측 불가 시간은 읽기 불가 타이머에서 뺀다`() {
+        tracker.onSample("blank", 0, hasLabeledElement = false)
+
+        val resumedAt = 10_000L
+        tracker.markResumed(resumedAt, requery = false)
+
+        assertEquals(
+            Decision.WAIT,
+            tracker.onSample(
+                "blank",
+                resumedAt + ScreenStabilityTracker.UNREADABLE_AFTER_MS - 1,
+                hasLabeledElement = false,
+            ),
+        )
+        assertEquals(
+            Decision.UNREADABLE,
+            tracker.onSample(
+                "blank",
+                resumedAt + ScreenStabilityTracker.UNREADABLE_AFTER_MS,
+                hasLabeledElement = false,
+            ),
+        )
+    }
+
+    @Test
     fun `이미 보낸 화면은 다시 보내지 않는다`() {
         tracker.onSample("a", 0, hasLabeledElement = true)
         tracker.onSample("a", 100, hasLabeledElement = true)

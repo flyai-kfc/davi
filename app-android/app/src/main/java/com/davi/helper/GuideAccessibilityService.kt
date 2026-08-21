@@ -468,6 +468,9 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         if (rootUnavailable) {
             rootUnavailable = false
+            // root가 없던 시간은 화면을 관측한 시간이 아니다. 정체·읽기 불가 타이머 양쪽에서
+            // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
+            stability.markResumed(SystemClock.uptimeMillis(), requery = false)
             GuideTelemetry.rootState("recovered")
         }
 
@@ -495,9 +498,9 @@ class GuideAccessibilityService : AccessibilityService() {
         // 있어서, 문구를 따르러 앱을 여는 것만으로 위 root=null 청소에 지워졌다 — 중지 없이
         // 작업 화면으로 돌아오면(화면 불변 → IDLE만 반복) 되살릴 길이 없었다.
         // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
-        // 단 **안정 판정 뒤에만** — 과도기(WAIT) 샘플의 서명으로 폐기하면 #32의 덜 그려진
-        // 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1).
-        display.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)?.let {
+        // 단 **안정 판정 뒤에만** — 과도기(WAIT)나 label 없는 UNREADABLE의 서명으로 폐기하면
+        // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
+        display.redisplay(signature, decision.isStableForGuideRedisplay())?.let {
             Log.i(TAG, "redisplay guide")
             draw(it)
         }

@@ -192,10 +192,9 @@ class ScreenStabilityTracker(
     }
 
     /**
-     * 화면이 다시 켜졌다. **꺼져 있던 구간은 정체가 아니다** — 사용자가 볼 수도 조작할 수도
-     * 없었다. 그대로 두면 [sentAtMs]가 그 구간을 세서 잠금 해제 첫 샘플이 곧바로
-     * [Decision.STUCK]이 되고, 사용자는 되살아난 안내와 "한 번 더 해 주세요"를 같은 프레임에
-     * 본다(PR #216 3차 리뷰). 타이머만 지금으로 다시 찍는다.
+     * 화면이 다시 켜졌거나 root가 복구돼 관측을 재개했다. **관측할 수 없던 구간은 정체도,
+     * 읽기 불가도 아니다.** 그대로 두면 잠금 해제·root 복구 첫 샘플이 곧바로 [Decision.STUCK]
+     * 또는 [Decision.UNREADABLE]이 된다. 두 타이머를 지금으로 다시 찍는다.
      *
      * [stuckReported]를 함께 내리는 것은 **반대 방향도 닫기 위해서다** — 꺼지기 전에 이미
      * 정체가 떴다면 [stuckContent]는 접미사를 붙인 사본만 돌려주고 원본에 되쓰지 않아,
@@ -208,6 +207,7 @@ class ScreenStabilityTracker(
     fun markResumed(nowMs: Long, requery: Boolean) {
         sentAtMs = nowMs
         stuckReported = false
+        if (unreadableSinceMs != null) unreadableSinceMs = nowMs
         if (requery) sentSignature = null
     }
 
@@ -217,11 +217,15 @@ class ScreenStabilityTracker(
      * 이유는 정체가 이미 보고된 뒤 눌림이 와도 다음 정체(와 눌림 확인 재질의)가 뜰 수 있어야
      * 해서다 — 래치를 그대로 두면 그 화면의 재질의가 영영 없다.
      *
-     * [markResumed]와 기계가 같지만 의미가 다르다 — 그쪽은 "꺼진 구간은 정체가 아니다"이고
-     * 여기는 "조작 이후만 정체다". requery 되돌림은 없다: 화면이 그대로면 [sentSignature]가
-     * 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이 정한다.
+     * [markResumed]와 의미가 다르다 — 그쪽은 관측 불가 구간을 정체·읽기 불가 양쪽에서 빼고,
+     * 여기는 조작 이후의 정체 시간만 다시 센다. requery 되돌림은 없다: 화면이 그대로면
+     * [sentSignature]가 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이
+     * 정한다.
      */
-    fun markPressed(nowMs: Long) = markResumed(nowMs, requery = false)
+    fun markPressed(nowMs: Long) {
+        sentAtMs = nowMs
+        stuckReported = false
+    }
 
     /** 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다. */
     fun backoffMs(): Long {
@@ -269,4 +273,16 @@ class ScreenStabilityTracker(
 
         private const val MAX_BACKOFF_SHIFT = 16
     }
+}
+
+/** WAIT와 UNREADABLE은 화면 정체성을 확정하지 못한 상태라 보존 안내의 재표시·폐기 근거가 아니다. */
+internal fun ScreenStabilityTracker.Decision.isStableForGuideRedisplay(): Boolean = when (this) {
+    ScreenStabilityTracker.Decision.WAIT,
+    ScreenStabilityTracker.Decision.UNREADABLE,
+    -> false
+
+    ScreenStabilityTracker.Decision.SEND,
+    ScreenStabilityTracker.Decision.STUCK,
+    ScreenStabilityTracker.Decision.IDLE,
+    -> true
 }

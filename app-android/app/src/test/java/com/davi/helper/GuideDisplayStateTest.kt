@@ -445,6 +445,47 @@ class GuideDisplayStateTest {
         assertEquals(GuideDisplayState.Content(null, capNotice), state.redisplay(sigA, true))
     }
 
+    @Test
+    fun `읽기 불가 화면은 보존 안내를 폐기하지 않고 원래 화면에서 복구한다`() {
+        val tracker = ScreenStabilityTracker(unreadableAfterMs = 100)
+        state.showCapNotice(sigA, capNotice)
+        state.onCleared()
+
+        fun sync(signature: String, at: Long, labeled: Boolean): GuideDisplayState.Content? {
+            val decision = tracker.onSample(signature, at, hasLabeledElement = labeled)
+            val redisplayed = state.redisplay(signature, decision.isStableForGuideRedisplay())
+            return if (decision == ScreenStabilityTracker.Decision.UNREADABLE) {
+                state.showUnreadableNotice(signature, errorText) ?: redisplayed
+            } else {
+                redisplayed
+            }
+        }
+
+        assertNull(sync(sigB, 0, labeled = false))
+        assertEquals(GuideDisplayState.Content(null, errorText), sync(sigB, 100, labeled = false))
+        assertNull(sync(sigA, 200, labeled = true))
+        assertEquals(GuideDisplayState.Content(null, capNotice), sync(sigA, 300, labeled = true))
+    }
+
+    @Test
+    fun `읽기 불가 뒤 다른 안정 화면이면 보존 안내도 함께 폐기한다`() {
+        state.showCapNotice(sigA, capNotice)
+        state.onCleared()
+        state.showUnreadableNotice(sigB, errorText)
+
+        assertNull(state.redisplay("stable-c", screenStable = true))
+        assertNull(state.redisplay(sigA, screenStable = true))
+    }
+
+    @Test
+    fun `읽기 불가 안내에서 연 종료 확인은 화면이 바뀌어도 우선 보존한다`() {
+        state.showUnreadableNotice(sigA, errorText)
+        val confirming = state.showQuitConfirm("안내를 그만 볼까요?")
+        state.onCleared()
+
+        assertEquals(confirming, state.redisplay(sigB, screenStable = true))
+    }
+
     /** 리뷰가 요구한 시퀀스: A 안내 → clear → 과도기 B(WAIT) → A(WAIT) → A(IDLE) 재표시. */
     @Test
     fun `과도기를 지나 안정된 원래 화면에서 재표시된다 - 추적기 결합`() {
@@ -452,7 +493,7 @@ class GuideDisplayStateTest {
         // 서비스 sampleScreen의 배선 그대로: 판정을 먼저 얻고, WAIT가 아닐 때만 재표시/폐기.
         fun sync(signature: String, at: Long): GuideDisplayState.Content? {
             val decision = tracker.onSample(signature, at, hasLabeledElement = true)
-            return state.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)
+            return state.redisplay(signature, decision.isStableForGuideRedisplay())
         }
 
         // A 안정 → 요청 → 응답으로 상한 안내 표시(서비스의 SEND→applyAction에 해당)
