@@ -109,6 +109,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   `status`보다 먼저 생성한다. #316 경로는 첫 판단·최종화에서 공급자를 각각 한 번만 호출한다.
   첫 판단 계약 위반은 PARSE, 최종화 계약 위반은 재호출 없는 안전 종료다. 로그에는 고정 reason
   code만 남긴다.
+- Pydantic 배열의 `min_length`/`max_length`는 Gemini `minItems`/`maxItems`로 옮긴다. 변환기는
+  공용이므로 slot-fill 질문·보기뿐 아니라 app-resolution의 후보·package·label 배열에도 적용된다.
+  이 변환을 바꾸면 두 계약의 생성 스키마를 함께 고정하고 실제 Gemini 수용 여부도 함께 확인한다.
 - 무료 티어 rate limit: flash-lite ≈ 15 RPM / 1,000 RPD. 429 `prepayment credits are depleted`는 사용량 초과가 아니라 결제 경로 문제일 수 있다. RPD 리셋은 한국시간 17:00.
 
 ## API 계약 결정 (2026-07-24 리뷰 → **2026-08-13 C1~C15 반영** → **2026-08-14 C16** → **2026-08-17 C17**(2026-08-18 재확정) → **2026-08-19 C18** → **2026-08-21 C19**)

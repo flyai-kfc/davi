@@ -218,6 +218,29 @@ class ClarificationFlowDeviceTest {
         )
     }
 
+    @Test
+    fun emptyOptionsRepeatedNoMatchKeepsVisibleExitThatEndsTheDialogue() {
+        val current = launchConversation()
+        showClarification(current, questionCount = 1, optionCount = 0)
+        val close = current.findViewById<View>(R.id.btn_close)
+        assertEquals(View.VISIBLE, close.visibility)
+
+        repeat(2) {
+            instrumentation.runOnMainSync {
+                current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+                invokeSpeechError(current, SpeechRecognizer.ERROR_NO_MATCH)
+            }
+            instrumentation.waitForIdleSync()
+            assertEquals(View.VISIBLE, close.visibility)
+            assertEquals(VoiceDialogueSession.Stage.CLARIFYING, voiceSession(current).stage)
+        }
+
+        instrumentation.runOnMainSync { close.performClick() }
+        instrumentation.waitForIdleSync()
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.home_head).visibility)
+        assertEquals(VoiceDialogueSession.Stage.IDLE, voiceSession(current).stage)
+    }
+
     private fun launchConversation(fontScale: Float? = null): ConversationActivity {
         ConversationInstrumentationConfiguration.fontScale = fontScale
         val intent = Intent(instrumentation.targetContext, ConversationActivity::class.java)

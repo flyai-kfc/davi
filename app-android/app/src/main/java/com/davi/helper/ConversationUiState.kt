@@ -223,7 +223,9 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
-        closeVisible = state.clarification == null,
+        // 닫힌 선택 질문은 문답 흐름을 유지하지만, 빈 보기 자유 응답은 음성이 유일한 입력이다.
+        // 그 경우 ASR 실패가 반복돼도 사용자가 명시적으로 대화를 끝낼 수 있게 ×를 유지한다.
+        closeVisible = state.clarification == null || state.clarification.question.options.isEmpty(),
         // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
         // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
         // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
@@ -249,6 +251,9 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionText = state.outcome.question.prompt,
         cardQuestionFlexible = true,
         clarificationVisible = true,
+        // 선택 영역에는 보조 답변을 늘리지 않는다. 자유 응답 질문에서만 기존 대화 닫기를
+        // 노출해 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 한다.
+        closeVisible = state.outcome.question.options.isEmpty(),
         cardGlowVisible = state.speaking,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
