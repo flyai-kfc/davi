@@ -37,17 +37,25 @@ def test_masks_numbers_followed_by_korean_particles(label, expected):
 
 
 @pytest.mark.parametrize(
-    "label",
+    ("label", "expected"),
     [
-        "3C:86:9A:1B:2C:3D",
-        "버즈 3C:86:9A:1B:2C:3D",
-        "aa:bb:cc:dd:ee:ff",
+        ("3C:86:9A:1B:2C:3D", "•••"),
+        ("버즈 3C:86:9A:1B:2C:3D", "버즈 •••"),
+        ("aa:bb:cc:dd:ee:ff", "•••"),
+        # 앞 라벨이 콜론으로 붙어 공백이 없는 표기. 경계가 콜론을 금지하면 통째로 샌다
+        # (PR #357 리뷰에서 실측). 라벨 단어 자체는 보존돼야 한다.
+        ("MAC:3C:86:9A:1B:2C:3D", "MAC:•••"),
+        ("주소:3C:86:9A:1B:2C:3D", "주소:•••"),
+        ("MAC: 3C:86:9A:1B:2C:3D", "MAC: •••"),
+        # 뒤에 콜론이 남는 표기.
+        ("3C:86:9A:1B:2C:3D:", "•••:"),
+        # 7바이트 이상은 앞 6바이트만 지우지 않고 통째로 삼킨다.
+        ("3C:86:9A:1B:2C:3D:4E", "•••"),
     ],
 )
-def test_masks_mac_addresses(label):
+def test_masks_mac_addresses(label, expected):
     """블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②)."""
-    assert "•••" in mask_text(label)
-    assert ":" not in mask_text(label)
+    assert mask_text(label) == expected
 
 
 @pytest.mark.parametrize(
@@ -60,9 +68,12 @@ def test_masks_mac_addresses(label):
         "오후 3:45",
         "배터리 85%",
         "12:34",
-        # MAC처럼 보이지만 6바이트가 아니다.
+        "자막 01:02:03",
+        # MAC처럼 보이지만 6바이트에 못 미친다.
         "3C:86:9A",
-        "3C:86:9A:1B:2C:3D:4E",
+        "3C:86:9A:1B:2C",
+        # IPv6는 4자리 그룹이라 걸리지 않는다.
+        "2001:0db8:85a3:0000:0000:8a2e",
     ],
 )
 def test_leaves_non_pii_labels_untouched(label):

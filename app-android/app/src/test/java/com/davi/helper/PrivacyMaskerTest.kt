@@ -6,7 +6,8 @@ import org.junit.Test
 class PrivacyMaskerTest {
 
     @Test
-    fun masksTheSameFivePiiPatternsAsTheServer() {
+    // 이름에 개수를 넣지 않는다 — 패턴이 늘 때마다 이름이 낡는다(#312에서 실제로 낡았다).
+    fun masksTheSamePiiPatternsAsTheServer() {
         assertEquals("연락처 •••", PrivacyMasker.maskText("연락처 hong@example.com"))
         assertEquals("주민 •••", PrivacyMasker.maskText("주민 900101-1234567"))
         assertEquals("카드 •••", PrivacyMasker.maskText("카드 1234-5678-9012-3456"))
@@ -44,6 +45,20 @@ class PrivacyMaskerTest {
         assertEquals("•••", PrivacyMasker.maskText("aa:bb:cc:dd:ee:ff"))
     }
 
+    /**
+     * 앞 라벨이 콜론으로 붙어 공백이 없는 표기. 경계가 콜론을 금지하면 통째로 샌다
+     * (PR #357 리뷰에서 실측). 라벨 단어 자체는 보존돼야 한다. 서버 테스트와 같은 목록이다.
+     */
+    @Test
+    fun masksMacAddressesAttachedToALabel() {
+        assertEquals("MAC:•••", PrivacyMasker.maskText("MAC:3C:86:9A:1B:2C:3D"))
+        assertEquals("주소:•••", PrivacyMasker.maskText("주소:3C:86:9A:1B:2C:3D"))
+        assertEquals("MAC: •••", PrivacyMasker.maskText("MAC: 3C:86:9A:1B:2C:3D"))
+        assertEquals("•••:", PrivacyMasker.maskText("3C:86:9A:1B:2C:3D:"))
+        // 7바이트 이상은 앞 6바이트만 지우지 않고 통째로 삼킨다.
+        assertEquals("•••", PrivacyMasker.maskText("3C:86:9A:1B:2C:3D:4E"))
+    }
+
     /** lookaround로 바꾸면서 오탐이 늘지 않았는지. 서버 테스트와 같은 목록이다. */
     @Test
     fun leavesNonPiiLabelsUntouched() {
@@ -54,9 +69,12 @@ class PrivacyMaskerTest {
             "오후 3:45",
             "배터리 85%",
             "12:34",
-            // MAC처럼 보이지만 6바이트가 아니다.
+            "자막 01:02:03",
+            // MAC처럼 보이지만 6바이트에 못 미친다.
             "3C:86:9A",
-            "3C:86:9A:1B:2C:3D:4E",
+            "3C:86:9A:1B:2C",
+            // IPv6는 4자리 그룹이라 걸리지 않는다.
+            "2001:0db8:85a3:0000:0000:8a2e",
         ).forEach { assertEquals(it, PrivacyMasker.maskText(it)) }
     }
 }
