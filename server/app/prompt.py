@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .schemas import ActionType, GuideStep, NextStepRequest, Screen, SwipeDirection, UiElement
+from .schemas import ActionType, GuideStep, NextStepRequest, SwipeDirection, UiElement
+from .screen_view import scrollable_is_only_obscured, visible_elements
 
 # 프롬프트에 넣을 최근 안내 개수. PoC는 8개로 완화 효과를 봤다(HANDOFF §3-10).
 # 늘리면 토큰이 늘고 줄이면 반복을 놓친다 — 실사용 로그로 다시 정할 값이다.
@@ -61,6 +62,11 @@ SWIPE_DIRECTION_LEGEND = (
 )
 
 SCROLLABLE_OBSERVED = "스크롤: 스크롤 가능한 요소가 관측되었습니다"
+# 관측은 실제로 있었으므로 "관측되지 않았다"로 뒤집지 않는다 — 사실에 단서만 붙인다.
+# 판단("그러니 모달을 닫아라")은 넣지 않는다. 문구가 값을 끌어당긴 전례가 있다(C17 · #109).
+SCROLLABLE_OBSERVED_BUT_COVERED = (
+    "스크롤: 스크롤 가능한 요소가 관측되었지만 지금은 다른 요소에 가려져 있습니다"
+)
 SCROLLABLE_NOT_OBSERVED = (
     "스크롤: 스크롤 가능한 요소가 관측되지 않았습니다(화면을 넘길 수 없다는 뜻은 아닙니다)"
 )
@@ -352,7 +358,8 @@ def _state_context(req: NextStepRequest) -> str:
     없는 값을 설명하거나, 실린 값을 설명 없이 두게 된다.
     """
 
-    elements = req.screen.elements
+    # 요소 목록과 **같은 것을 본다** — 빠진 요소를 설명하는 문장이 되면 안 된다.
+    elements = _visible_elements(req)
     context = ""
     if any(element.enabled is False for element in elements):
         context += f"{DISABLED_ELEMENT_INSTRUCTION}\n"
@@ -403,9 +410,14 @@ def _scroll_context(req: NextStepRequest) -> str:
     observed = req.screen.has_scrollable_element
     if observed is None:
         return ""
-    context = f"{SCROLLABLE_OBSERVED if observed else SCROLLABLE_NOT_OBSERVED}\n"
+    if not observed:
+        context = f"{SCROLLABLE_NOT_OBSERVED}\n"
+    elif scrollable_is_only_obscured(req.screen.elements):
+        context = f"{SCROLLABLE_OBSERVED_BUT_COVERED}\n"
+    else:
+        context = f"{SCROLLABLE_OBSERVED}\n"
 
-    open_directions, ended_directions = _scroll_reach(req.screen)
+    open_directions, ended_directions = _scroll_reach(_visible_elements(req))
     if open_directions:
         context += f"스크롤: 지금 더 갈 수 있는 방향은 {_join(open_directions)}입니다\n"
     if ended_directions:
@@ -413,7 +425,9 @@ def _scroll_context(req: NextStepRequest) -> str:
     return context
 
 
-def _scroll_reach(screen: Screen) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+def _scroll_reach(
+    elements: list[UiElement],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """스크롤 여유를 **방향별로 모으되 요소 id를 함께 남긴다.**
 
     한 요소의 `can_scroll_forward`는 그 요소의 `next_swipe_direction` 쪽 여유다. 요소마다
@@ -428,7 +442,7 @@ def _scroll_reach(screen: Screen) -> tuple[dict[str, list[str]], dict[str, list[
 
     open_directions: dict[str, list[str]] = {}
     ended_directions: dict[str, list[str]] = {}
-    for element in screen.elements:
+    for element in elements:
         pairs = (
             (element.can_scroll_forward, element.next_swipe_direction),
             (element.can_scroll_backward, element.prev_swipe_direction),
@@ -461,7 +475,7 @@ def _end_instruction(req: NextStepRequest) -> str:
     """
 
     scroll_ended = req.screen.has_scrollable_element is not None and bool(
-        _scroll_reach(req.screen)[1]
+        _scroll_reach(_visible_elements(req))[1]
     )
     page_ended = (
         req.screen.current_page is not None
@@ -479,9 +493,10 @@ def _swipe_legend(req: NextStepRequest) -> str:
     화면과 무관하게 늘 필요하므로 여기가 아니라 머리말에 있다([SCROLL_DIRECTION_INSTRUCTION]).
     """
 
+    # 요소 줄과 같은 목록을 본다 — 방향 값이 가려진 요소에만 있으면 값 없는 범례만 실린다.
     observed = any(
         element.next_swipe_direction is not None or element.prev_swipe_direction is not None
-        for element in req.screen.elements
+        for element in _visible_elements(req)
     )
     return f"{SWIPE_DIRECTION_LEGEND}\n" if observed else ""
 
@@ -493,7 +508,9 @@ def _input_context(req: NextStepRequest) -> str:
     context = ""
     if ime_visible is not None:
         context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
-    input_ready = any(element.editable and element.focused for element in req.screen.elements)
+    # 요소 줄과 같은 목록을 본다 — 검색창에 포커스가 남은 채 시트가 올라오면 포커스는 뒤에
+    # 남으므로, 전체를 보면 목록에 없는 입력칸을 두고 입력 안내가 나간다(PR #336 리뷰).
+    input_ready = any(element.editable and element.focused for element in _visible_elements(req))
     if input_ready and ime_visible is not False:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
@@ -503,8 +520,24 @@ def _input_context(req: NextStepRequest) -> str:
     return context
 
 
+def _visible_elements(req: NextStepRequest) -> list[UiElement]:
+    """모델에게 보여 줄 요소. 판정은 `screen_view`가 들고 **가드레일과 공유한다**.
+
+    빼는 이유는 토큰이 아니라 **선택지**다. 실측 화면에서 가려진 요소가 53개 중 39개였고,
+    그것들이 목록의 대부분을 차지한 채 모델에게 오답 후보로 제시된다. 골라 봐야 가드가 요청을
+    실패로 닫고, 앱은 백오프 후 **같은 프롬프트로** 다시 물어 같은 함정을 다시 밟는다.
+
+    **프롬프트 안에서 요소를 훑는 곳은 전부 이 목록을 봐야 한다.** 한 곳만 전체를 보면 그
+    자리가 목록에 없는 것을 가리켜 모순이 된다(리뷰 2R에서 실제로 셋이 남아 있었다).
+    """
+
+    return visible_elements(req.screen.elements)
+
+
 def _screen_elements(req: NextStepRequest) -> str:
-    return "\n".join(_format_element(element) for element in req.screen.elements) or "- 요소 없음"
+    return (
+        "\n".join(_format_element(element) for element in _visible_elements(req)) or "- 요소 없음"
+    )
 
 
 def _format_element(element: UiElement) -> str:

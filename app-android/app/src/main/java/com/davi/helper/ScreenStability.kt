@@ -36,6 +36,10 @@ object ScreenSignature {
             append(state(element.checked, on = 'c', off = 'u'))
             append(state(element.selected, on = 's', off = 'n'))
             append(state(element.showingHintText, on = 'h', off = 'v'))
+            // 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 보통은 요소 수도 함께
+            // 변해 서명이 어차피 바뀌지만, 투명 오버레이가 내용을 얻는 경우처럼 구조가
+            // 그대로인 전환도 있어 상태로 남긴다(#271과 같은 결).
+            append(state(element.obscured, on = 'o', off = 'p'))
             append(element.role).append(':')
             append(stableLabel(element))
             append(';')
@@ -67,11 +71,20 @@ object ScreenSignature {
 }
 
 /**
+ * 서버에 안내를 물을 만큼 화면 내용이 준비됐는지 판정한다.
+ *
+ * 창 제목은 요소 label이 아니다. 앱 전환 직후 제목·package만 잡히고 접근성 트리는 아직 비어 있는
+ * 스플래시가 실재하므로, 실제 요소 label이 하나라도 있어야 준비된 화면으로 본다(#350).
+ */
+internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNotBlank() }
+
+/**
  * 샘플 하나가 들어올 때 무엇을 할지 정한다.
  *
  * - [Decision.WAIT] 아직 흔들린다. 요청을 보내지 않는다(#32).
  * - [Decision.SEND] 안정됐고 직전에 보낸 화면과 다르다. 서버에 물어본다.
  * - [Decision.STUCK] 안내를 했는데 화면이 그대로다. **서버를 다시 부르지 않고** 사용자에게 알린다(#39).
+ * - [Decision.UNREADABLE] label 없는 상태가 오래 이어졌다. 서버 대신 로컬 안내를 표시한다(#350).
  * - [Decision.IDLE] 안정됐고 이미 처리한 화면이다. 아무것도 하지 않는다.
  *
  * 상태는 메인 스레드에서만 만진다. 응답이 다른 스레드로 오므로 [markFailed]는 반드시 메인으로 넘겨 부른다.
@@ -79,9 +92,10 @@ object ScreenSignature {
 class ScreenStabilityTracker(
     private val holdSamples: Int = HOLD_SAMPLES,
     private val stuckAfterMs: Long = STUCK_AFTER_MS,
+    private val unreadableAfterMs: Long = UNREADABLE_AFTER_MS,
 ) {
 
-    enum class Decision { WAIT, SEND, STUCK, IDLE }
+    enum class Decision { WAIT, SEND, STUCK, UNREADABLE, IDLE }
 
     private var lastSample: String? = null
     private var heldSamples = 0
@@ -92,8 +106,28 @@ class ScreenStabilityTracker(
     private var lastAttemptMs = 0L
     private var requestOutstanding = false
     private var minRetryAfterMs = 0L
+    private var unreadableSinceMs: Long? = null
 
-    fun onSample(signature: String, nowMs: Long): Decision {
+    fun onSample(
+        signature: String,
+        nowMs: Long,
+        hasLabeledElement: Boolean,
+    ): Decision {
+        if (!hasLabeledElement) {
+            // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
+            // currentSignature 대조가 그 응답을 버린다. 서버에 보낼 안정 화면으로는 승격하지
+            // 않되, 영구 빈 WebView·카메라에서 읽는 중 표시가 무한히 돌지 않도록 연속 빈 화면
+            // 전체를 시간으로 묶는다. 시그니처가 A↔B로 흔들려도 타이머를 새로 주지 않는다.
+            lastSample = signature
+            heldSamples = 0
+            val since = unreadableSinceMs ?: nowMs.also { unreadableSinceMs = it }
+            return if (nowMs - since >= unreadableAfterMs) {
+                Decision.UNREADABLE
+            } else {
+                Decision.WAIT
+            }
+        }
+        unreadableSinceMs = null
         if (signature != lastSample) {
             lastSample = signature
             heldSamples = 1
@@ -169,10 +203,9 @@ class ScreenStabilityTracker(
     }
 
     /**
-     * 화면이 다시 켜졌다. **꺼져 있던 구간은 정체가 아니다** — 사용자가 볼 수도 조작할 수도
-     * 없었다. 그대로 두면 [sentAtMs]가 그 구간을 세서 잠금 해제 첫 샘플이 곧바로
-     * [Decision.STUCK]이 되고, 사용자는 되살아난 안내와 "한 번 더 해 주세요"를 같은 프레임에
-     * 본다(PR #216 3차 리뷰). 타이머만 지금으로 다시 찍는다.
+     * 화면이 다시 켜졌거나 root가 복구돼 관측을 재개했다. **관측할 수 없던 구간은 정체도,
+     * 읽기 불가도 아니다.** 그대로 두면 잠금 해제·root 복구 첫 샘플이 곧바로 [Decision.STUCK]
+     * 또는 [Decision.UNREADABLE]이 된다. 두 타이머를 지금으로 다시 찍는다.
      *
      * [stuckReported]를 함께 내리는 것은 **반대 방향도 닫기 위해서다** — 꺼지기 전에 이미
      * 정체가 떴다면 [stuckContent]는 접미사를 붙인 사본만 돌려주고 원본에 되쓰지 않아,
@@ -185,6 +218,7 @@ class ScreenStabilityTracker(
     fun markResumed(nowMs: Long, requery: Boolean) {
         sentAtMs = nowMs
         stuckReported = false
+        if (unreadableSinceMs != null) unreadableSinceMs = nowMs
         if (requery) sentSignature = null
     }
 
@@ -194,11 +228,15 @@ class ScreenStabilityTracker(
      * 이유는 정체가 이미 보고된 뒤 눌림이 와도 다음 정체(와 눌림 확인 재질의)가 뜰 수 있어야
      * 해서다 — 래치를 그대로 두면 그 화면의 재질의가 영영 없다.
      *
-     * [markResumed]와 기계가 같지만 의미가 다르다 — 그쪽은 "꺼진 구간은 정체가 아니다"이고
-     * 여기는 "조작 이후만 정체다". requery 되돌림은 없다: 화면이 그대로면 [sentSignature]가
-     * 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이 정한다.
+     * [markResumed]와 의미가 다르다 — 그쪽은 관측 불가 구간을 정체·읽기 불가 양쪽에서 빼고,
+     * 여기는 조작 이후의 정체 시간만 다시 센다. requery 되돌림은 없다: 화면이 그대로면
+     * [sentSignature]가 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이
+     * 정한다.
      */
-    fun markPressed(nowMs: Long) = markResumed(nowMs, requery = false)
+    fun markPressed(nowMs: Long) {
+        sentAtMs = nowMs
+        stuckReported = false
+    }
 
     /**
      * 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다.
@@ -228,6 +266,7 @@ class ScreenStabilityTracker(
         lastAttemptMs = 0L
         requestOutstanding = false
         minRetryAfterMs = 0L
+        unreadableSinceMs = null
     }
 
     companion object {
@@ -242,6 +281,12 @@ class ScreenStabilityTracker(
          */
         const val STUCK_AFTER_MS = 7_000L
 
+        /**
+         * label 없는 화면을 서버에 보내지 않고 기다릴 최대 시간. 정체와 같은 첫 추정치를 쓰되,
+         * 이 시간이 지나면 로컬 안내만 띄운다. 서버 호출은 여전히 0회다.
+         */
+        const val UNREADABLE_AFTER_MS = STUCK_AFTER_MS
+
         /** 첫 재시도까지 기다리는 시간. 이후 실패마다 두 배. */
         const val RETRY_BASE_MS = 2_000L
 
@@ -250,4 +295,16 @@ class ScreenStabilityTracker(
 
         private const val MAX_BACKOFF_SHIFT = 16
     }
+}
+
+/** WAIT와 UNREADABLE은 화면 정체성을 확정하지 못한 상태라 보존 안내의 재표시·폐기 근거가 아니다. */
+internal fun ScreenStabilityTracker.Decision.isStableForGuideRedisplay(): Boolean = when (this) {
+    ScreenStabilityTracker.Decision.WAIT,
+    ScreenStabilityTracker.Decision.UNREADABLE,
+    -> false
+
+    ScreenStabilityTracker.Decision.SEND,
+    ScreenStabilityTracker.Decision.STUCK,
+    ScreenStabilityTracker.Decision.IDLE,
+    -> true
 }

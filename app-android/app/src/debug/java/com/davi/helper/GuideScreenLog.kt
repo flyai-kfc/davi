@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import android.util.Log
+import android.view.accessibility.AccessibilityEvent
 
 /**
  * 화면 상세 진단 로그의 **debug 구현**(#58).
@@ -44,6 +45,52 @@ object GuideScreenLog {
         // toString(`..., bounds=...`)과 겹쳐 release 산출물에도 남기 때문이다.
         // **이 리터럴을 바꾸면 ci.yml의 카나리아 목록도 함께 고친다.**
         Log.i(GuideAccessibilityService.TAG, "highlight ${nodeId ?: "-"} at=$bounds")
+    }
+
+    /**
+     * **계측(임시 — #356에서 걷거나 간섭 없는 형태로 줄인다).** 들어온 접근성 이벤트의 타입과
+     * 출처. "검증 앱이 클릭 이벤트를 안 쏘는가, 쏘는데 못 맞추는가"를 가르려고 둔다 — 지금
+     * `press on target`은 **맞았을 때만** 찍혀서 둘이 구분되지 않는다
+     * (2026-08-21 실측: 눌림 감지 2건이 전부 런처였다).
+     *
+     * **이벤트 텍스트는 화면 원문이라 절대 찍지 않는다**(1차 마스킹은 직렬화 경로에만 걸려 있다).
+     * 있는지 여부와 길이만 남긴다 — 라벨 대조가 왜 실패했는지는 그것으로 좁혀진다.
+     */
+    fun event(event: AccessibilityEvent, interesting: Boolean) {
+        val texts = event.text.count { !it.isNullOrBlank() }
+        Log.d(
+            GuideAccessibilityService.TAG,
+            "ev=${eventName(event.eventType)} pkg=${event.packageName ?: "-"} " +
+                "src=${event.source != null} texts=$texts " +
+                "desc=${!event.contentDescription.isNullOrBlank()} kept=$interesting",
+        )
+    }
+
+    /**
+     * **계측(임시 — #356에서 걷거나 간섭 없는 형태로 줄인다).** 폴링 한 번의 결과. `IDLE`이 지금
+     * 완전히 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다 — 팝업이 저절로
+     * 내려간 27초를 여기서 갈라야 한다.
+     *
+     * 시그니처는 라벨을 담으므로 **원문 대신 해시만** 남긴다. 같은지 다른지만 알면 된다.
+     */
+    fun sample(decision: String, elementCount: Int, signature: String) {
+        Log.d(
+            GuideAccessibilityService.TAG,
+            "poll=$decision n=$elementCount sig=${Integer.toHexString(signature.hashCode())}",
+        )
+    }
+
+    private fun eventName(type: Int): String = when (type) {
+        AccessibilityEvent.TYPE_VIEW_CLICKED -> "VIEW_CLICKED"
+        AccessibilityEvent.TYPE_VIEW_FOCUSED -> "VIEW_FOCUSED"
+        AccessibilityEvent.TYPE_VIEW_SCROLLED -> "VIEW_SCROLLED"
+        AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE_CHANGED"
+        AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "WINDOW_CONTENT_CHANGED"
+        AccessibilityEvent.TYPE_WINDOWS_CHANGED -> "WINDOWS_CHANGED"
+        AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> "VIEW_LONG_CLICKED"
+        AccessibilityEvent.TYPE_VIEW_SELECTED -> "VIEW_SELECTED"
+        AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "VIEW_TEXT_CHANGED"
+        else -> "OTHER($type)"
     }
 
     /** 스크롤 가능한 요소에만 붙는다. 방향 안내가 맞는지 로그에서 바로 보려고 찍는다. */

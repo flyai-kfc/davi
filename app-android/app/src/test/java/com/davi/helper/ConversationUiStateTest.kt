@@ -12,10 +12,14 @@ import org.junit.Test
  */
 class ConversationUiStateTest {
 
-    private fun clarificationOutcome(questionIndex: Int = 0, questionCount: Int = 1) =
+    private fun clarificationOutcome(
+        questionIndex: Int = 0,
+        questionCount: Int = 1,
+        options: List<String> = listOf("가족"),
+    ) =
         VoiceDialogueSession.Outcome.Clarify(
             generation = 1L,
-            question = ClarificationQuestion("q${questionIndex + 1}", "누구에게?", listOf("가족"), true),
+            question = ClarificationQuestion("q${questionIndex + 1}", "누구에게?", options, true),
             questionIndex = questionIndex,
             questionCount = questionCount,
         )
@@ -239,6 +243,21 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `빈 보기 구체화는 음성 실패 반복을 끝낼 닫기 버튼을 보인다`() {
+        val outcome = clarificationOutcome(options = emptyList())
+
+        assertTrue(renderModelOf(ConversationUiState.Clarifying(outcome)).closeVisible)
+        assertTrue(
+            renderModelOf(
+                ConversationUiState.Listening(
+                    question = outcome.question.prompt,
+                    clarification = outcome,
+                ),
+            ).closeVisible,
+        )
+    }
+
+    @Test
     fun `Ready는 최종 확인으로 간다`() {
         val state = stateForOutcome(
             VoiceDialogueSession.Outcome.Ready(generation = 1L, message = "정리했어요", goal = "카카오톡 열기"),
@@ -261,7 +280,7 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
+    fun `보기 있는 구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
         assertFalse(
             renderModelOf(
                 ConversationUiState.Listening(

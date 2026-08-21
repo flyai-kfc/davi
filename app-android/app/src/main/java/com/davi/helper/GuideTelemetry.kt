@@ -86,6 +86,8 @@ object GuideTelemetry {
                 "checked_count" to screen.elements.count { it.checked == true },
                 "selected_count" to screen.elements.count { it.selected == true },
                 "empty_input_count" to screen.elements.count { it.showingHintText == true },
+                // 모달 뒤에 깔려 사용자가 조작할 수 없는 요소 수. 개수만 남기는 이유는 위와 같다.
+                "obscured_count" to screen.elements.count { it.obscured == true },
                 // 제목 원문은 label과 같은 등급이라 로그에 쓰지 않는다. 있고 없고만 남긴다.
                 "window_title" to if (screen.windowTitle != null) "present" else "absent",
                 "ime_visible" to (screen.imeVisible ?: "unknown"),

@@ -137,10 +137,14 @@ def test_response_contract_has_no_fixed_slot_or_action_taxonomy():
     ]
     assert INTENT_DIALOGUE_SCHEMA["required"][0] == "decision_basis"
     clarification_schema = INTENT_DIALOGUE_SCHEMA["properties"]["clarification"]
-    question_schema = clarification_schema["properties"]["questions"]["items"]
+    questions_schema = clarification_schema["properties"]["questions"]
+    assert questions_schema["minItems"] == 1
+    assert questions_schema["maxItems"] == 2
+    question_schema = questions_schema["items"]
     assert question_schema["propertyOrdering"] == ["id", "prompt", "options", "allow_freeform"]
     assert "allow_freeform" in question_schema["required"]
     assert "minItems" not in question_schema["properties"]["options"]
+    assert question_schema["properties"]["options"]["maxItems"] == 3
 
 
 @pytest.mark.parametrize(
@@ -213,6 +217,7 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "allow_freeform은 true" in prompt
     assert "0~3개" in prompt
     assert "빈 배열" in prompt
+    assert "모르겠음·답변 거절을 보기로 만들지 마세요" in prompt
 
 
 def test_prompt_treats_unknown_or_declined_details_as_unavailable_without_reasking():
@@ -228,7 +233,29 @@ def test_prompt_treats_unknown_or_declined_details_as_unavailable_without_reaski
 
     assert "모르겠다고 하거나 제공을 원하지 않으면" in prompt
     assert "같은 정보를 반복해서 질문하지 마세요" in prompt
-    assert "같은 정보를 반복해서 질문하지 마세요" in prompt
+
+
+def test_spoken_unknown_is_sent_as_freeform_for_the_llm_to_interpret():
+    request = SlotFillRequest.model_validate(
+        {
+            "utterance": "사진을 보내고 싶어",
+            "session_id": str(uuid.uuid4()),
+            "clarification_answers": [
+                {
+                    "question_id": "q1",
+                    "prompt": "어느 앱으로 보낼까요?",
+                    "answer": "잘 모르겠어요",
+                    "source": "freeform",
+                }
+            ],
+        }
+    )
+
+    prompt = build_intent_prompt(request)
+
+    assert '"answer":"잘 모르겠어요"' in prompt
+    assert '"source":"freeform"' in prompt
+    assert "모르겠음·답변 거절 때문에 필수 정보가 부족하면" in prompt
 
 
 def test_llm_sends_dialogue_schema_and_parses_dynamic_question():

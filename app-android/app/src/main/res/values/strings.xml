@@ -62,6 +62,7 @@
     <string name="voice_server_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="voice_server_error">하려는 일을 정리하지 못했어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 주세요.</string>
+    <string name="guide_screen_unreadable">이 화면은 내용을 읽을 수 없어요.\n다른 화면으로 이동하거나 ×를 눌러 안내를 그만 봐 주세요.</string>
     <!--
       안내창 X 칩(#126). 아이콘 only로 바뀔 예정이며, 그때 이 문자열은 지우지 말고
       contentDescription으로 자리만 옮긴다 — 지우면 아이콘의 뜻이 코드 어디에도 안 남는다.
@@ -217,8 +218,6 @@
     <string name="conversation_close_desc">대화 그만하기</string>
     <string name="clarification_progress">질문 %1$d / %2$d</string>
     <string name="clarification_direct_speak">직접 말하기</string>
-    <string name="clarification_unknown">잘 모르겠어요 · 답하지 않을래요</string>
-    <string name="clarification_unknown_answer">모르거나 답변하지 않음</string>
     <string name="clarification_restart">처음부터 다시 말하기</string>
     <string name="clarification_go_home">홈으로</string>
 </resources>

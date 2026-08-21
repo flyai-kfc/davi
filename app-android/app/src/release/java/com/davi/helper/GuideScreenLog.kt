@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import android.util.Log
+import android.view.accessibility.AccessibilityEvent
 
 /**
  * 화면 상세 진단 로그의 **release 구현**(#58).
@@ -16,6 +17,14 @@ object GuideScreenLog {
     /** release는 요소 상세를 남기지 않는다. 개수는 호출부의 화면 요약 줄에 이미 들어 있다. */
     @Suppress("UNUSED_PARAMETER")
     fun elements(screen: Screen) = Unit
+
+    /** 계측은 debug 전용이다. 제품 빌드에는 이벤트·폴링 흐름을 남기지 않는다. */
+    @Suppress("UNUSED_PARAMETER")
+    fun event(event: AccessibilityEvent, interesting: Boolean) = Unit
+
+    /** 위와 같다. */
+    @Suppress("UNUSED_PARAMETER")
+    fun sample(decision: String, elementCount: Int, signature: String) = Unit
 
     /**
      * 좌표 없이 어느 요소를 골랐는지만 남긴다. node_id는 직렬화가 붙인 일련 식별자(n1, n2…)라

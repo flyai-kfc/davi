@@ -44,6 +44,19 @@ data class UiElement(
      * **입력 원문은 여전히 보내지 않는다**(#112). 비었는지 여부만 알려 준다.
      */
     @SerialName("showing_hint_text") val showingHintText: Boolean? = null,
+    /**
+     * 위에 그려진 다른 요소에게 **완전히 덮여** 사용자가 보지도 누르지도 못하는가.
+     *
+     * 접근성 트리는 겹쳐 쌓인 화면을 평평한 목록으로 눌러 편 것이라, 모달이 떠 있어도
+     * 그 아래 요소가 그대로 딸려 온다. `isVisibleToUser`는 이걸 못 잡는다 — 그 플래그는
+     * GONE/INVISIBLE과 창 밖 클리핑만 보고 **형제 가림은 애초에 소관이 아니다**(안드로이드 스펙).
+     * 실측: 배민 타임세일 시트가 떠 있는 화면에서 53개 중 39개가 시트 뒤였는데 전부
+     * `isVisibleToUser=true`였고, 모델이 그중 하나를 탭 대상으로 골랐다.
+     *
+     * `null`은 미관측이다. 낡은 앱의 침묵을 "안 가려짐"으로 읽으면 같은 오안내가 되살아나므로
+     * 기본값을 `false`로 두지 않는다(C10의 세 상태와 같은 이유).
+     */
+    val obscured: Boolean? = null,
     /** [left, top, right, bottom] 화면 좌표. */
     val bounds: List<Int>? = null,
     @SerialName("can_scroll_forward") val canScrollForward: Boolean? = null,
@@ -302,6 +315,8 @@ data class ClarificationAnswer(
 enum class ClarificationAnswerSource {
     @SerialName("option") OPTION,
     @SerialName("freeform") FREEFORM,
+
+    /** #316 초기 APK가 보낸 값의 wire 호환용. 새 UI는 모름·거절도 직접 발화로 보낸다. */
     @SerialName("unknown_or_declined") UNKNOWN_OR_DECLINED,
 }
 
@@ -309,7 +324,7 @@ enum class ClarificationAnswerSource {
 data class ClarificationQuestion(
     val id: String,
     val prompt: String,
-    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기와 모름 답은 항상 가능하다. */
+    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기는 항상 가능하다. */
     val options: List<String>,
     @SerialName("allow_freeform") val allowFreeform: Boolean,
 )

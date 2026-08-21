@@ -75,7 +75,7 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
-    fun allThreeOptionsAndFallbackActionsAreVisibleWithoutScrolling() {
+    fun threeOptionsAndDirectSpeechAreVisibleWithoutScrolling() {
         val current = launchConversation()
         showClarification(current, questionCount = 1, optionCount = 3)
 
@@ -91,7 +91,6 @@ class ClarificationFlowDeviceTest {
             R.id.btn_option_2,
             R.id.btn_option_3,
             R.id.btn_direct_speak,
-            R.id.btn_unknown,
         ).forEach { id ->
             val action = current.findViewById<View>(id)
             assertFullyVisible(action, viewportBounds)
@@ -119,13 +118,12 @@ class ClarificationFlowDeviceTest {
             R.id.btn_option_2,
             R.id.btn_option_3,
             R.id.btn_direct_speak,
-            R.id.btn_unknown,
         )
         if (choices.canScrollVertically(1)) {
             instrumentation.runOnMainSync { choices.fullScroll(View.FOCUS_DOWN) }
             instrumentation.waitForIdleSync()
             val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
-            assertFullyVisible(current.findViewById(R.id.btn_unknown), viewportBounds)
+            assertFullyVisible(current.findViewById(R.id.btn_direct_speak), viewportBounds)
         } else {
             val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
             actionIds.forEach { id -> assertFullyVisible(current.findViewById(id), viewportBounds) }
@@ -218,6 +216,29 @@ class ClarificationFlowDeviceTest {
             current.getString(R.string.clarification_progress, 2, 2),
             current.findViewById<TextView>(R.id.question_progress).text.toString(),
         )
+    }
+
+    @Test
+    fun emptyOptionsRepeatedNoMatchKeepsVisibleExitThatEndsTheDialogue() {
+        val current = launchConversation()
+        showClarification(current, questionCount = 1, optionCount = 0)
+        val close = current.findViewById<View>(R.id.btn_close)
+        assertEquals(View.VISIBLE, close.visibility)
+
+        repeat(2) {
+            instrumentation.runOnMainSync {
+                current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+                invokeSpeechError(current, SpeechRecognizer.ERROR_NO_MATCH)
+            }
+            instrumentation.waitForIdleSync()
+            assertEquals(View.VISIBLE, close.visibility)
+            assertEquals(VoiceDialogueSession.Stage.CLARIFYING, voiceSession(current).stage)
+        }
+
+        instrumentation.runOnMainSync { close.performClick() }
+        instrumentation.waitForIdleSync()
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.home_head).visibility)
+        assertEquals(VoiceDialogueSession.Stage.IDLE, voiceSession(current).stage)
     }
 
     private fun launchConversation(fontScale: Float? = null): ConversationActivity {

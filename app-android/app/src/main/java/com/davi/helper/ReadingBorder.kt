@@ -44,6 +44,7 @@ object ReadingBorder {
             ScreenStabilityTracker.Decision.SEND -> true
             ScreenStabilityTracker.Decision.IDLE -> false
             ScreenStabilityTracker.Decision.STUCK -> false
+            ScreenStabilityTracker.Decision.UNREADABLE -> false
         }
     }
 

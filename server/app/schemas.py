@@ -98,6 +98,12 @@ class UiElement(BaseModel):
     # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
     showing_hint_text: bool | None = None
 
+    # 위에 그려진 다른 요소에게 완전히 덮여 사용자가 보지도 누르지도 못하는가.
+    #   접근성 트리는 겹쳐 쌓인 화면을 평평한 목록으로 눌러 편 것이라 모달 뒤 요소가 그대로
+    #   딸려 온다. 앱의 isVisibleToUser는 형제 가림을 보지 않는다(안드로이드 스펙).
+    #   None = 낡은 앱이 안 보냄(미관측). False로 기본값을 두지 않는 이유는 C10·C18과 같다.
+    obscured: bool | None = None
+
     bounds: list[int] | None = None  # [left, top, right, bottom]
 
     # 스크롤 상태 (C4). 방향·끝 판정이 여기서 나온다.
@@ -350,6 +356,7 @@ class IntentDialogueStatus(StrEnum):
 class ClarificationAnswerSource(StrEnum):
     OPTION = "option"
     FREEFORM = "freeform"
+    # #316 초기 APK 요청 호환용. 새 앱은 모름·거절도 직접 발화의 freeform으로 보낸다.
     UNKNOWN_OR_DECLINED = "unknown_or_declined"
 
 

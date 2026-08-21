@@ -122,7 +122,7 @@ class VoiceDialogueSession(
         }
     }
 
-    /** 현재 질문의 보기·자유 발화·모름 답을 저장하고 다음 질문 또는 마지막 요청으로 진행한다. */
+    /** 현재 질문의 보기 또는 자유 발화를 저장하고 다음 질문 또는 마지막 요청으로 진행한다. */
     @Synchronized
     fun answerCurrent(source: ClarificationAnswerSource, answer: String): AnswerOutcome? {
         val current = active ?: return null

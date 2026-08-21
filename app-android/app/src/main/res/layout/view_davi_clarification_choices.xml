@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- #316: 서버가 한 번에 준 최대 세 보기와 항상 열려 있는 자유 발화·모름 답변. -->
+<!-- #316: 서버가 한 번에 준 최대 세 보기와 항상 열려 있는 직접 말하기. 최대 네 버튼이다. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -48,13 +48,5 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/davi_clarification_button_gap"
             android:text="@string/clarification_direct_speak" />
-
-        <Button
-            android:id="@+id/btn_unknown"
-            style="@style/Widget.Davi.Clarification.Option"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_clarification_button_gap"
-            android:text="@string/clarification_unknown" />
     </LinearLayout>
 </ScrollView>

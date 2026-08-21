@@ -72,6 +72,11 @@ class ReadingBorderTest {
     }
 
     @Test
+    fun `읽기 불가 안내가 뜬 화면에서는 끈다`() {
+        assertFalse(reading(decision = ScreenStabilityTracker.Decision.UNREADABLE))
+    }
+
+    @Test
     fun `세션이 없으면 무조건 끈다`() {
         assertFalse(reading(sessionActive = false, requestInFlight = true))
         assertFalse(reading(sessionActive = false, decision = ScreenStabilityTracker.Decision.WAIT))
