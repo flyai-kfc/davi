@@ -78,8 +78,9 @@ class EdgeGestureTest {
 
     @Test
     fun `캔버스가 원점에 없어도 선은 그 캔버스의 변에 붙는다`() {
-        // 오버레이 창은 상태표시줄 아래에서 시작한다(frame=[0,103] 실측) — 좌표계를 0으로
-        // 가정하면 선이 그만큼 위로 새거나 아래로 밀린다.
+        // 컷아웃 게이트 밖(API 28~29, OverlayWindowParams의 R 게이트)에서는 오버레이 창이
+        // 상태표시줄 아래(frame=[0,103] 실측)에서 시작한다 — 좌표계를 0으로 가정하면 선이
+        // 그만큼 위로 새거나 아래로 밀린다. API 30+는 #222가 창을 올려 [0,0]이다.
         val spec = requireNotNull(EdgeGesture.specFor(ActionType.OPEN_QUICK_SETTINGS))
         val band = EdgeGesture.bandFor(spec, 0f, OFFSET, WIDTH, HEIGHT, THICKNESS)
         assertEquals(OFFSET, band.top, TOLERANCE)
@@ -114,7 +115,7 @@ class EdgeGestureTest {
         /** 가장자리 선 8dp를 3x로 친 값. */
         const val THICKNESS = 24f
 
-        /** 오버레이 창이 상태표시줄만큼 아래에서 시작하는 실측값(SM-S921N). */
+        /** 컷아웃 게이트 밖에서 오버레이 창이 상태표시줄만큼 아래에서 시작하는 실측값(SM-S921N). */
         const val OFFSET = 103f
         const val TOLERANCE = 0.001f
     }

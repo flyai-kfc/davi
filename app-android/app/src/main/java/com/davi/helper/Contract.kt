@@ -174,9 +174,19 @@ enum class ActionType {
     @SerialName("tap") TAP,
     @SerialName("scroll") SCROLL,
     @SerialName("type") TYPE,
+    /**
+     * 화면 요소가 아니라 **가장자리 제스처**다(#222) — `target_node_id` 없이 오고, 시작 지점
+     * 선과 손 모션은 앱이 [EdgeGesture]의 표에서 만들어 그린다. "강조 없이 안내문만 뜬다"(#35)는
+     * #222 이전 동작이다.
+     *
+     * `direction`도 안 오는 것이 관측이지만 **계약 보장은 아니다** — 서버 스키마는 scroll에서만
+     * 필수로 요구할 뿐 다른 액션에서 금지하지 않는다(`server/app/schemas.py`의
+     * `validate_scroll_direction`). 모델이 실어 보내도 앱은 표의 손가락 방향에 우선권을 줘
+     * 무시한다(`HighlightOverlayView.setGuide`).
+     */
     @SerialName("open_quick_settings") OPEN_QUICK_SETTINGS,
 
-    /** 화면 요소가 아니라 제스처다. `target_node_id`가 없으므로 강조 없이 안내문만 뜬다(#35). */
+    /** [OPEN_QUICK_SETTINGS]와 같은 가장자리 제스처다(#222) — 계약도 표현 규칙도 같다. */
     @SerialName("open_app_drawer") OPEN_APP_DRAWER,
     @SerialName("done") DONE,
 }
