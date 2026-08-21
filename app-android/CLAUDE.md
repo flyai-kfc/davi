@@ -186,8 +186,11 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   **PIN 잠금은 못 푼다.**
 - **조건 라벨은 기기에서 되읽는다.** 위 사건에서 데이터를 죽인 것은 잠금 자체가 아니라
   **라벨을 기기가 아니라 스크립트가 붙였다는 것**이다 — 설치가 조용히 실패해도 라벨은
-  멀쩡히 살아남았다. 회차마다 조건을 기기에서 확인하면(디버그 빌드가 시작 로그에 그 값을
-  찍게 하거나 `adb shell dumpsys package <pkg> | grep versionName`) 이 계열이 통째로 막힌다.
+  멀쩡히 살아남았다. 회차마다 **기기에서 되읽으면** 이 계열이 통째로 막힌다 — 조건 값을
+  디버그 빌드가 **시작 로그에 찍게** 하는 것이 가장 곧고, 최소한 설치가 실제로 일어났는지는
+  `adb shell dumpsys package <pkg> | grep lastUpdateTime`으로 본다(설치가 조용히 실패하면
+  시각이 안 바뀐다). **`versionName`은 이 자리에서 쓸모없다** — 조건만 바꿔 재빌드한
+  APK들 사이에서 값이 전부 같다.
 - **macOS에서 보호 폴더가 `Operation not permitted`로 막히는 것**은 앱 빌드만의 문제가
   아니라 저장소 전체에 걸린다 — `CONTRIBUTING.md` §로컬 검사. Gradle 데몬만 따로 걸리는
   경우는 `app-android/README.md` §Gradle.
