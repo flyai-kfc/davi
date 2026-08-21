@@ -126,6 +126,9 @@ function Get-LogDelta {
     $lines
 }
 
+# git은 경로를 슬래시로, PowerShell은 백슬래시로 준다. 비교 전에 한 모양으로 맞춘다.
+function Format-PathKey { param([string]$P) ($P -replace '/', '').TrimEnd('').ToLowerInvariant() }
+
 # adb는 local.properties의 sdk.dir에서 찾는다(팀원마다 경로가 다르다).
 function Resolve-Adb {
     foreach ($sdk in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)) {
@@ -166,9 +169,15 @@ function Assert-SingleDevice {
 function Set-JavaEnv {
     if (-not $env:JAVA_HOME -or -not (Test-Path $env:JAVA_HOME)) {
         # 버전을 박지 않는다 — 팀원마다 JDK 패치 버전이 다르다. 흔한 설치 위치만 훑는다.
+        # **이름 정렬은 안 된다** — 사전순이라 jdk-8.0.x가 jdk-21.x를 이긴다. 버전으로 정렬한다.
+        # Android Studio 번들 JBR만 가진 팀원도 있어 그 경로를 후보에 넣는다(app-android/README.md §Gradle).
         $jdk = Get-ChildItem 'C:\Program Files\Eclipse Adoptium\jdk-*', 'C:\Program Files\Java\jdk-*' `
-            -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+            -Directory -ErrorAction SilentlyContinue |
+            Sort-Object { [version](($_.Name -replace '^jdk-', '') -replace '[^\d.].*$', '').Trim('.') } -Descending |
+            Select-Object -First 1
+        $jbr = 'C:\Program Files\Android\Android Studio\jbr'
         if ($jdk) { $env:JAVA_HOME = $jdk.FullName }
+        elseif (Test-Path $jbr) { $env:JAVA_HOME = $jbr }
         else { throw 'JAVA_HOME이 없다. JDK 17+ 설치 경로를 JAVA_HOME으로 지정할 것.' }
     }
     $afunix = Join-Path $root '.gradle-afunix-tmp'
@@ -247,11 +256,11 @@ switch ($Command) {
             '기기      : 확인 불가(local.properties 없음 — worktree-init 먼저)'
         }
         elseif (Select-String -Path $devInstall -Pattern '\[switch\]\$Status' -Quiet) {
-            # 기기·패키지·접근성·오버레이는 dev-install이 판정한다.
+            # 기기·패키지·접근성은 dev-install이 판정한다(오버레이 판정은 #212로 걷혔다).
             & $devInstall -Status
         }
         else {
-            # driver는 미추적이라 #157 이전 브랜치에서도 돌아간다. 그땐 최소한만 보여준다.
+            # 워크트리에 이 파일만 남은 채 #157 이전 코드를 체크아웃한 경우다. 최소한만 보여준다.
             $adbEarly = Resolve-Adb
             $devices = @((& $adbEarly devices) | Where-Object { $_ -match "`tdevice$" })
             "기기      : $($devices.Count)대 (이 브랜치의 dev-install엔 -Status가 없다 — #157 이후 브랜치에서 상세)"
@@ -374,7 +383,15 @@ switch ($Command) {
 
     'server-stop' {
         $listener = Get-ServerListener
-        if ($listener) { Stop-Process -Id $listener.OwningProcess -Force; "stopped pid $($listener.OwningProcess)" }
+        if ($listener) {
+            # 8000은 흔한 포트다. 우리 uvicorn인지 보고 죽인다 — 남의 dev 서버를 조용히 끄지 않는다.
+            $proc = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+            if ($proc -and $proc.ProcessName -notmatch '^(python|pythonw)$') {
+                throw "8000을 잡은 것은 우리 서버가 아니다: pid $($proc.Id) $($proc.ProcessName). 직접 확인할 것."
+            }
+            Stop-Process -Id $listener.OwningProcess -Force
+            "stopped pid $($listener.OwningProcess)"
+        }
         else { 'no listener' }
     }
 
@@ -443,7 +460,15 @@ switch ($Command) {
     'worktree-init' {
         $main = Get-MainWorktree
         if (-not $main) { throw 'git worktree list를 읽지 못했다.' }
-        if ($main -eq $root) { '여기가 본 레포다. 할 일 없음.'; break }
+        # git은 슬래시로, PowerShell은 백슬래시로 준다. 정규화하지 않으면 절대 같지 않아
+        # 본 레포에서도 "복사" 분기로 들어가 자기 자신을 덮어쓰다 IOException으로 죽는다.
+        if ((Format-PathKey $main) -eq (Format-PathKey $root)) {
+            '여기가 본 레포다. 할 일 없음.'
+            if (-not (Test-Path $localProps)) {
+                '다만 local.properties가 없다 — sdk.dir=<Android SDK 경로>를 직접 쓰거나 Android Studio로 한 번 열 것.'
+            }
+            break
+        }
         $src = Join-Path $main 'app-android\local.properties'
         if (-not (Test-Path $src)) { throw "본 레포에 local.properties가 없다: $src" }
         Copy-Item $src $localProps -Force
@@ -517,7 +542,8 @@ switch ($Command) {
     }
 
     # 조작 한 번 = 도구 호출 한 번. 조작 → 캡처 예약(백그라운드) → 로그 델타를 한 프로세스에서.
-    # PowerShell 기동이 콜당 ~1.1초라 tap/shot/log를 따로 부르면 그 값이 세 번 붙는다(실측 3.57초).
+    # PowerShell 기동이 콜당 ~1.1초라 tap/shot/log를 따로 부르면 그 값이 세 번 붙는다 —
+    # 세션 중 A/B 교대 8스텝에서 3콜 2753ms 대 step 1콜 896ms였다(둘 다 대기 ms 제외).
     #   step 538 1503 3000 — 좌표 탭 후 3초 대기
     #   step key 3 3000    — 키 이벤트(3=HOME) 후 대기
     #   step wait 3000     — 조작 없이 관찰만(캡처 예약 + 대기 + 로그 델타)
@@ -542,20 +568,27 @@ switch ($Command) {
         # 프레임이 전이 전/전이 중 화면이 된다 — 조용히 한 스텝씩 밀린 증거가 쌓인다.
         # 캡처를 로그보다 앞에 두는 이유는 로그 델타(0.4~0.6초)가 인코딩 시간을 덮어 주기 때문이다.
         if ($waitMs -match '^\d+$') { Start-Sleep -Milliseconds ([int]$waitMs) }
+        elseif ($tag) {
+            # 대기를 안 주면 바로 위 주석이 말하는 그 상태가 된다. 조용히 넘기지 않는다.
+            '(대기 없음 — 이 캡처는 전이 전 프레임일 수 있다. 세 번째 인자로 대기 ms를 줄 것)'
+        }
         $path = Start-BackgroundShot -Adb $adb -Tag $tag
         "capture: $path"
         Get-LogDelta -Adb $adb -Tail $Lines
     }
 
-    # 입력 헬퍼. 좌표는 shot으로 찍어 확인한다(화면 1080x2340).
+    # 입력 헬퍼. 좌표는 shot으로 찍어 확인한다(검증 기기 SM-S921N은 1080x2340 — 기기마다 다르다).
     # -Shot을 주면 조작 직후 캡처를 백그라운드로 예약한다(대기 없음, 회수는 shots pull).
     'tap' {
         $adb = Resolve-Adb
+        # 오타는 기기까지 가서 조용히 아무 일도 안 하는 쪽으로 끝난다. 여기서 막는다.
+        if ($Arg1 -notmatch '^\d+$' -or $Arg2 -notmatch '^\d+$') { throw "tap 좌표는 숫자 둘이다 (받은 값: '$Arg1' '$Arg2')" }
         Invoke-Native { & $adb shell input tap $Arg1 $Arg2 } 'input tap'
         if ($Shot) { "capture: $(Start-BackgroundShot -Adb $adb -Tag "tap$Arg1-$Arg2")" }
     }
     'key' {
         $adb = Resolve-Adb
+        if ($Arg1 -notmatch '^\d+$') { throw "key는 키코드 숫자 하나다 (받은 값: '$Arg1'). 3=HOME, 4=BACK" }
         Invoke-Native { & $adb shell input keyevent $Arg1 } 'input keyevent'
         if ($Shot) { "capture: $(Start-BackgroundShot -Adb $adb -Tag "key$Arg1")" }
     }

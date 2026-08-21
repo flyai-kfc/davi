@@ -32,7 +32,10 @@
 .\scripts\dev-driver.ps1 step 538 1503 3000      # 탭+캡처예약+3초 대기+로그델타를 한 콜로
                                                  #   step key 3 3000 / step wait 3000(관찰만)
 .\scripts\dev-driver.ps1 swipe 540 1600 540 900  # 스크롤 안내 따라 하기(300ms 지속 — 플링 방지)
-.\scripts\dev-driver.ps1 shots pull              # 기기에 쌓인 캡처 회수 (shots: 목록 / shots clear: 삭제)
+.\scripts\dev-driver.ps1 tap 538 1503            # 좌표 탭 / key 3 (HOME) — -Shot이면 캡처도 예약
+.\scripts\dev-driver.ps1 shots pull              # 회수 → app-android\captures\shots\**davi_shots\**
+                                                 #   (폴더째 pull이라 한 겹 더 들어간다)
+                                                 #   shots: 목록 / shots clear: 기기에서 삭제
 .\scripts\dev-driver.ps1 shot [경로]              # 동기 캡처(1.3초). 기본 app-android/captures/run-shot.png
 .\scripts\dev-driver.ps1 log                     # GuideSvc 로그 델타 (-Full: 버퍼 전체, -Clear: 비움)
 .\scripts\dev-driver.ps1 url                     # 현재값 + 종류 / url set local|azure|wifi|<URL> / url restore
@@ -78,7 +81,8 @@ SM-S921N에서 잰 값이다(USB, 5회 중앙값).
 | `shot`(동기) | 1.1~1.5초 | 지금 당장 픽셀을 봐야 할 때만 |
 
 **캡처 1.3초는 전송이 아니라 기기의 PNG 인코딩이다**(raw 263ms, `pull`은 2.4MB에 106ms).
-그래서 왕복을 줄이는 방향은 헛수고고(`exec-out`이 오히려 1485ms), 답은 **비동기로 미루는 것**이다.
+그래서 왕복을 줄이는 방향은 헛수고다 — 왕복 셋(`screencap`+`pull`+`rm`)을 하나로 합친 `exec-out`이
+1485ms로, 합치기 전 1518ms와 사실상 같았다. 답은 **비동기로 미루는 것**이다.
 `step`·`tap -Shot`이 그 일을 한다 — 캡처는 기기의 `/sdcard/davi_shots`에 쌓이고 `shots pull`로 회수한다.
 
 **`step`의 순서는 조작 → 대기 → 캡처 → 로그다.** 캡처를 조작 직후에 걸면 인코딩이 1.3초라
@@ -88,7 +92,7 @@ SM-S921N에서 잰 값이다(USB, 5회 중앙값).
 
 | | 조작·캡처·로그를 따로(3콜) | `step`(1콜) |
 |---|---|---|
-| 도구 시간(중앙값) | 2753ms | **896ms** |
+| 도구 시간(중앙값, **대기 ms 제외**) | 2753ms | **896ms** |
 | 읽은 로그 줄 | 매번 버퍼 전체(43→68→68→68) | 델타(50→2→1→1) |
 
 앱이 쓰는 시간(스텝당 4474ms, 그중 서버 왕복 2608ms)은 도구로 줄지 않는다.
@@ -100,7 +104,8 @@ SM-S921N에서 잰 값이다(USB, 5회 중앙값).
 
 - **클린 머신 셋업** — venv·SDK·JDK 설치는 범위 밖
 - **맥** — #72
-- **오버레이·접근성 최초 허용** — 상태 판정과 복구는 하지만 처음 켜는 건 사람이 기기에서 한다
+- **접근성 최초 허용** — 상태 판정과 복구는 하지만 처음 켜는 건 사람이 기기에서 한다
+  (특수 권한은 접근성 하나다 — `SYSTEM_ALERT_WINDOW`는 #212로 걷혔다)
 
 ## Troubleshooting
 
@@ -109,11 +114,10 @@ SM-S921N에서 잰 값이다(USB, 5회 중앙값).
 | `adb server version (40) doesn't match this client (41)` | `adb-fix` |
 | 앱 로그 `network_error` (서버는 떠 있음) | reverse 소실 — `adb-fix`. URL이 local인지도 `env`로 확인 |
 | 안내가 스텁·프로브와 다름 | 서버 URL 오인 — `url` |
-| gradle `SDK location not found` (워크트리) | `worktree-init` |
+| gradle `SDK location not found` | 워크트리면 `worktree-init`. **처음 clone한 레포면** `app-android/local.properties`에 `sdk.dir=<SDK 경로>`를 직접 쓰거나 Android Studio로 한 번 연다 |
 | `venv 없음` (워크트리) | 자동 폴백된다 — 본 레포 venv를 빌려 쓰고 코드는 이 레포다. `server`의 `code=`·`python=` 줄로 확인 |
 | 워크트리에서 `-Real`인데 키가 안 먹는 듯 | `.env`는 cwd 기준이라 워크트리엔 없다. 드라이버가 본 레포 `.env`를 환경변수로 넘긴다 |
-| 화면에 아무것도 안 그려짐 (로그는 정상) | 오버레이 권한 — `env` |
-| 안내가 아예 시작되지 않음 | 접근성 바인딩 죽음 — `install -SkipBuild` |
+| 안내가 아예 시작되지 않음 / 화면에 아무것도 안 그려짐 | 접근성 바인딩 죽음 — `install -SkipBuild`. 판정은 `env` |
 | `.ps1` 파스 에러(Unexpected token 등) | BOM 없는 UTF-8로 저장됨 — BOM 붙여 재저장 |
 
 adb·기기 쪽 함정은 `app-android/CLAUDE.md`의 「도구 함정」에 모여 있다.
