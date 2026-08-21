@@ -88,6 +88,21 @@ object GuideSession {
     private var lastStepSignature: String? = null
 
     /**
+     * 눌림 확인 재질의 토큰(#319). [observePress]가 **tap 스텝의** `performed`를 true로 바꿀 때
+     * 무장하고, 정체 판정에서 서비스가 [consumePressRequery]로 소비한다. 새 안내가 나가거나
+     * **화면이 바뀌거나**([observeScreen]) 세션이 바뀌면 버린다 — 토큰은 "이 안내를 눌렀는데
+     * 화면이 그대로"라는 그 스텝의 근거라, 어느 조건이 깨져도 근거가 아니다.
+     *
+     * type 스텝은 무장하지 않는다. 거기서 눌림 확인은 "입력칸을 눌렀다"까지고, 그 뒤 7초
+     * 무변화는 입력 중인 정상 상태라(웹뷰는 입력해도 시그니처가 안 변한다, C18) 재질의가
+     * 진행 중인 올바른 안내를 끊는다.
+     *
+     * 눌림 하나에 토큰 하나이므로 재질의도 눌림당 최대 1회다(#39의 호출량 규율 안에서 여는
+     * 유일한 예외 — 실제 조작 + 7초 무변화라는 두 근거가 모여야 1회 나간다).
+     */
+    private var pressRequeryArmed = false
+
+    /**
      * 이 세션에서 **연속으로** 믿지 않고 넘긴 `done` 수. done이 아닌 안내가 실제로 표시되면
      * 0으로 돌아간다 — 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다.
      *
@@ -283,6 +298,8 @@ object GuideSession {
         // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
         // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
         rejectedSignature = null
+        // 재질의 토큰은 직전 안내의 눌림에 매인 근거다. 새 안내가 나가면 그 근거는 소멸한다.
+        pressRequeryArmed = false
         steps.addLast(step.copy(instruction = step.instruction.trim()))
         while (steps.size > MAX_HISTORY) {
             steps.removeFirst()
@@ -314,9 +331,59 @@ object GuideSession {
         val last = steps.lastOrNull() ?: return
         if (last.screenChanged == true) return
         val changed = screenSignature != stepSignature
+        // 화면이 바뀌었으면 눌림 확인 재질의의 근거("눌렀는데 그대로")가 깨졌다. 여기서
+        // 버려야 응답이 스텝을 못 남긴 경로(폐기·미검증 done)에서도 토큰이 다음 화면으로
+        // 새지 않는다.
+        if (changed) pressRequeryArmed = false
         if (last.screenChanged == changed) return
         steps.removeLast()
         steps.addLast(last.copy(screenChanged = changed))
+    }
+
+    /**
+     * 클릭 이벤트가 안내한 대상과 맞았는지를 마지막 스텝의 `performed`에 적는다(#319).
+     *
+     * [observeScreen]과 달리 판정 시점이 **클릭 이벤트가 온 순간**이다 — 요청 직전으로 미루면
+     * 그 사이 이벤트가 버려져 옮겨 적을 값이 없다. 시간으로 끊지 않는 것은 같다: 이벤트가
+     * 안 오면 영원히 null(귀속 미확인)이고, 그것이 설계된 퇴화 경로다(미탐 ≠ 안 누름).
+     *
+     * **true는 되돌리지 않는다**(sticky). 빗맞은 뒤 대상을 제대로 누르면 false가 true로 덮인다 —
+     * [observeScreen]의 false→true 규칙과 같은 결이다.
+     *
+     * **`screenChanged == true`인 스텝에는 적지 않는다.** 화면이 바뀐 뒤에도 다음 응답까지 옛
+     * 대상 bounds가 무장 상태로 남아, 새 화면의 탭이 옛 스텝에 귀속되는 오탐 창이 있다
+     * (`GuideDisplayState.consumePress` KDoc). 그 창을 여기서 닫는다 — 잔여는 화면이 바뀌고
+     * `screenChanged`가 적히기 전(~settle 구간)의 탭 정도로, #264가 파동에서 수용한 것과 같은
+     * 폭이다. 반대로 A→B→A 복귀 화면에서 강조가 되살아난 뒤의 정당한 눌림도 함께 버려지는데,
+     * 그건 미탐이라 이 판정의 확신 방향과 맞다.
+     */
+    @Synchronized
+    fun observePress(generation: Long, onTarget: Boolean) {
+        if (!isCurrent(generation)) return
+        val last = steps.lastOrNull() ?: return
+        if (last.screenChanged == true) return
+        if (last.performed == true) return
+        if (onTarget && last.actionType == ActionType.TAP) pressRequeryArmed = true
+        if (last.performed == onTarget) return
+        steps.removeLast()
+        steps.addLast(last.copy(performed = onTarget))
+    }
+
+    /**
+     * 눌림 확인 재질의 토큰을 소비한다. 정체 판정 시점에 서비스가 부르고, true를 받으면
+     * 같은 화면 재질의를 한 번 보낼 수 있다([pressRequeryArmed]).
+     *
+     * 토큰만 믿지 않고 **마지막 스텝이 지금도 그 근거인지** 대조한다 — 무장과 소비 사이에
+     * 스텝 상태가 움직였으면(눌림 기록이 없거나 화면이 바뀐 것으로 닫혔으면) 근거 없는
+     * 재질의다. 대조에 실패한 토큰은 버린다.
+     */
+    @Synchronized
+    fun consumePressRequery(generation: Long): Boolean {
+        if (!isCurrent(generation)) return false
+        if (!pressRequeryArmed) return false
+        pressRequeryArmed = false
+        val last = steps.lastOrNull() ?: return false
+        return last.performed == true && last.screenChanged != true
     }
 
     /**
@@ -343,6 +410,7 @@ object GuideSession {
             generation++
             steps.clear()
             lastStepSignature = null
+            pressRequeryArmed = false
             unverifiedDones = 0
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.

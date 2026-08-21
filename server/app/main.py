@@ -335,6 +335,8 @@ async def observe_request(request: Request, call_next):
                 element_count=metadata.get("element_count"),
                 client_version=metadata.get("client_version"),
                 conversation_message_count=metadata.get("conversation_message_count"),
+                clarification_answer_count=metadata.get("clarification_answer_count"),
+                intent_phase=metadata.get("intent_phase"),
                 candidate_count=metadata.get("candidate_count"),
                 resolution_phase=metadata.get("resolution_phase"),
                 resolution_status=metadata.get("resolution_status"),
@@ -454,10 +456,12 @@ def post_kakao_login(
 
 @app.post("/v1/intent/slot-fill", response_model=SlotFillState)
 def post_slot_fill(req: SlotFillRequest, request: Request) -> SlotFillState | JSONResponse:
-    """현재 발화를 LLM으로 정리해 질문 하나 또는 기존 안내 세션용 목표를 돌려준다."""
+    """첫 호출은 질문 계획, 답을 담은 두 번째 호출은 목표 또는 안전 종료를 돌려준다."""
 
     request.state.request_metadata = {
         "conversation_message_count": len(req.conversation_history),
+        "clarification_answer_count": len(req.clarification_answers),
+        "intent_phase": "finalize" if req.clarification_answers else "plan",
     }
     try:
         return resolve_intent(req)
