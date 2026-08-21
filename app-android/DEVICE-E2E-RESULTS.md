@@ -73,7 +73,7 @@ UIAutomator는 런처에서 검색을 거쳐 Samsung Clock으로 이동하고 �
 정답 selector로 `done`을 대신 만들지 않았으며 테스트 전용 알람 정리는 성공했다. 이 실행으로 다음을
 확인했다.
 
-- 한 세션의 `recent_instructions`와 `recent_actions`가 런처 → Samsung Clock 전환 뒤에도 이어진다.
+- 한 세션의 안내 이력이 런처 → Samsung Clock 전환 뒤에도 이어진다.
 - 대상 없는 전역 `scroll`도 서버 계약에 맞게 전체 화면 제스처로 실행된다.
 - 비식별 보고서가 단계별 package와 `경유한 package`를 남겨 앱 전환 지점을 보여 준다.
 - 잘못된 런처 target은 개인 앱이 열리기 전에 구조화 실패로 차단할 수 있다.

@@ -7,7 +7,9 @@
 
 여기서 흡수하는 HANDOFF §10 함정:
 - enum에 빈 문자열을 넣으면 400 (`cannot be empty`). 값에 빈 문자열이 있으면 여기서 막는다.
-- "해당 없음"은 빈 값이 아니라 **필드 생략**이다. 그래서 선택 필드는 `required`에 넣지 않는다.
+- "해당 없음"은 빈 값이 아니라 **필드 생략**이다. 그래서 선택 필드는 `required`에 넣지 않고,
+  그 규약 문장을 description 끝에 덧붙인다. 모델 선언에는 이 문장을 두지 않는다 — 규약이
+  공급자마다 다르므로(strict 모드는 null이다) 한쪽을 박으면 다른 쪽과 모순된다(`json_schema.py`).
 - 스키마가 거부되면 모든 호출이 실패한다. 호출부는 무스키마 재시도 폴백을 반드시 둘 것(llm.py).
 
 GuideAction의 평평한 모델뿐 아니라 앱 후보 계약의 중첩 객체·목록도 같은 선언에서 만든다.
@@ -23,6 +25,9 @@ import typing
 from pydantic import BaseModel
 
 # Gemini 스키마의 타입 이름. 표준 JSON Schema의 소문자와 다르다.
+# 선택 필드 description에 붙는 규약. 무스키마 폴백에서는 이 문장이 유일한 지시가 된다.
+_OMIT_HINT = " 해당 없으면 이 필드를 생략한다."
+
 _PRIMITIVES: dict[type, str] = {
     str: "STRING",
     int: "INTEGER",
@@ -82,11 +87,12 @@ def build_response_schema(model: type[BaseModel]) -> dict:
 
     for name, field in model.model_fields.items():
         schema = _field_schema(hints[name])
+        optional = not field.is_required()
         if field.description:
-            schema["description"] = field.description
+            schema["description"] = field.description + (_OMIT_HINT if optional else "")
         properties[name] = schema
         ordering.append(name)
-        if field.is_required():
+        if not optional:
             required.append(name)
 
     return {

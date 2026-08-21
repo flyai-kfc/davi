@@ -19,6 +19,10 @@ object ScreenSignature {
      */
     fun of(screen: Screen): String = buildString {
         append(screen.packageName).append('|')
+        // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
+        // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
+        // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
+        append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
         append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
         append(screen.hasScrollableElement ?: "-").append('|')
         append(screen.imeVisible ?: "-").append('|')
@@ -26,10 +30,23 @@ object ScreenSignature {
             append(if (element.clickable) 't' else '-')
             append(if (element.editable) 'e' else '-')
             append(if (element.focused) 'f' else '-')
+            // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
+            // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
+            append(state(element.enabled, on = 'a', off = 'x'))
+            append(state(element.checked, on = 'c', off = 'u'))
+            append(state(element.selected, on = 's', off = 'n'))
+            append(state(element.showingHintText, on = 'h', off = 'v'))
             append(element.role).append(':')
             append(stableLabel(element))
             append(';')
         }
+    }
+
+    /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
+    private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
+        true -> on
+        false -> off
+        null -> '-'
     }
 
     /**
@@ -170,6 +187,18 @@ class ScreenStabilityTracker(
         stuckReported = false
         if (requery) sentSignature = null
     }
+
+    /**
+     * 안내한 대상이 눌렸다(#319). 정체 타이머를 지금으로 다시 찍는다 — "안내 후 화면 그대로
+     * 7초"는 사용자가 방금 조작했으면 **그 조작부터** 세야 맞다. [stuckReported]를 함께 내리는
+     * 이유는 정체가 이미 보고된 뒤 눌림이 와도 다음 정체(와 눌림 확인 재질의)가 뜰 수 있어야
+     * 해서다 — 래치를 그대로 두면 그 화면의 재질의가 영영 없다.
+     *
+     * [markResumed]와 기계가 같지만 의미가 다르다 — 그쪽은 "꺼진 구간은 정체가 아니다"이고
+     * 여기는 "조작 이후만 정체다". requery 되돌림은 없다: 화면이 그대로면 [sentSignature]가
+     * 유효한 게 맞고, 재질의 여부는 토큰(`GuideSession.consumePressRequery`)이 정한다.
+     */
+    fun markPressed(nowMs: Long) = markResumed(nowMs, requery = false)
 
     /**
      * 연속 실패마다 두 배로 늘어나고 [RETRY_MAX_MS]에서 멈춘다.

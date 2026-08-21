@@ -34,6 +34,7 @@ class DoneLlmClient(LlmClient):
     def reason(self, req: NextStepRequest) -> GuideAction:
         return GuideAction(
             expected_result=self._expected_result,
+            screen_summary="테스트 화면",
             evidence=self._evidence,
             action_type=ActionType.DONE,
             instruction="다 되었습니다.",

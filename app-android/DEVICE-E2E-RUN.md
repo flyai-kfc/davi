@@ -40,7 +40,7 @@ registry를 읽으므로 OS마다 시나리오 목록을 따로 관리하지 않
 실행기는 다음을 자동 수행한다.
 
 1. `/health`가 실제 모델 모드인지 확인한다.
-2. 대상 기기와 접근성·오버레이 권한을 확인한다.
+2. 대상 기기와 접근성 권한을 확인한다.
 3. 필요한 경우 `adb reverse tcp:8000 tcp:8000`을 만든다.
 4. Davi debug 앱, 별도 driver APK와 test APK를 설치한다.
 5. Davi 접근성 서비스의 실제 연결 callback을 기다린다.
@@ -171,7 +171,7 @@ build/reports/device-e2e-private/
 상세 분석 보고서는 각 가이드 번호 아래에서 다음을 함께 보여 준다.
 
 - 요청 시점의 package/page/scroll/IME 및 전달된 화면 요소 전체
-- 그 요청에 실제 포함된 `recent_instructions`와 구조화 `recent_actions`
+- 그 요청에 실제 포함된 스텝 이력(`steps`) — 안내 문장·조작·대상 label·화면 요약·화면 변화 여부
 - 응답의 model/verified/screen signature와 전체 `GuideAction` 필드
 - 해석된 target bounds·role, 비종료 이탈과 실행/실패 결과
 

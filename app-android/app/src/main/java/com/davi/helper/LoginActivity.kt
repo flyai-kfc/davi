@@ -53,8 +53,10 @@ class LoginActivity : AppCompatActivity() {
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+        // targetSdk 35+ edge-to-edge: 시스템 바 인셋을 마진으로 반영(#78 패턴).
+        // **루트가 아니라 인셋 층에 건다**(#266) — 루트에 걸면 배경 메시에도 마진이 걸려
+        // 메시가 화면 끝까지 못 가고 그 바깥으로 흰 띠가 드러난다(ON-2와 같은 구조).
+        ViewCompat.setOnApplyWindowInsetsListener(binding.loginInsets) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 leftMargin = bars.left

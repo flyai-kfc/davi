@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shared_dev_prepare_dirs
 cd "$SHARED_DEV_SERVER_DIR"
 
-[[ -f ".env" ]] || shared_dev_die "server/.env가 없습니다. .env.example을 복사해 실제 Gemini 설정을 채우세요."
+[[ -f ".env" ]] || shared_dev_die "server/.env가 없습니다. .env.example을 복사해 실제 LLM 공급자 설정을 채우세요."
 [[ -x ".venv/bin/python" ]] || shared_dev_die "server/.venv/bin/python이 없습니다. Python 3.12 환경을 준비하세요."
 command -v curl >/dev/null 2>&1 || shared_dev_die "curl이 필요합니다."
 command -v lsof >/dev/null 2>&1 || shared_dev_die "lsof가 필요합니다."
@@ -23,20 +23,17 @@ fi
 
 shared_dev_port_in_use && shared_dev_die "TCP ${SHARED_DEV_PORT} 포트를 다른 프로세스가 사용 중입니다."
 
-dev_token="${DAVI_DEV_ACCESS_TOKEN:-}"
-if [[ -z "$dev_token" ]]; then
-    env_file="$(shared_dev_env_file)"
-    [[ -f "$env_file" ]] || shared_dev_die "개발 토큰 파일이 없습니다: $env_file"
-    mode="$(shared_dev_file_mode "$env_file")"
-    [[ "$mode" == "600" ]] || shared_dev_die "개발 토큰 파일 권한은 600이어야 합니다(현재 $mode)."
-    dev_token="$(shared_dev_load_token "$env_file")" \
-        || shared_dev_die "토큰 파일에 DAVI_DEV_ACCESS_TOKEN이 없습니다."
-fi
-[[ "${#dev_token}" -ge 32 ]] || shared_dev_die "DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다."
+# 토큰 해결·검증은 common.sh의 함수 하나다(테스트가 실제로 실행해 본다).
+shared_dev_resolve_tokens
+dev_token="$SHARED_DEV_DEV_TOKEN"
+test_token="$SHARED_DEV_TEST_TOKEN"
 
 private_ip="$(shared_dev_private_ipv4)" || shared_dev_die "활성 사설 IPv4를 찾지 못했습니다. Wi-Fi 연결을 확인하세요."
 
 export DAVI_DEV_ACCESS_TOKEN="$dev_token"
+if [[ -n "$test_token" ]]; then
+    export DAVI_TEST_ACCESS_TOKEN="$test_token"
+fi
 export DAVI_BIND_HOST="0.0.0.0"
 
 # Settings가 server/.env와 위 환경변수를 함께 읽어 키·profile·stub 경계를 한 번 더 검증한다.
@@ -91,3 +88,9 @@ printf '공용 개발 서버 시작: pid=%s\n' "$server_pid"
 printf 'local health: %s\n' "$SHARED_DEV_HEALTH_URL"
 printf 'debug URL: DAVI_DEBUG_SERVER_URL=http://%s:%s\n' "$private_ip" "$SHARED_DEV_PORT"
 printf '로그: %s (권한 600, 7일 보존)\n' "$log_file"
+# 어느 토큰이 실렸는지 알린다. 값은 절대 출력하지 않는다 — 실렸는지 여부만이 진단에 필요하다.
+if [[ -n "$test_token" ]]; then
+    printf '접근 토큰: 개발 + 외부 테스트(DAVI_TEST_ACCESS_TOKEN) 둘 다 실림\n'
+else
+    printf '접근 토큰: 개발 토큰만 실림 (외부 테스트 토큰 없음)\n'
+fi

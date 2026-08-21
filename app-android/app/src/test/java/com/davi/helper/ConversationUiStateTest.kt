@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.speech.SpeechRecognizer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -7,10 +8,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 대화 화면 렌더 규칙의 고정 — 상태별로 무엇이 보이는지와 Outcome→상태 매핑(#123).
- * 특히 LimitReached가 텍스트 폴백이 아니라 실패 화면으로 가는 결정을 여기서 지킨다.
+ * 대화 화면 렌더 규칙의 고정 — 상태별로 무엇이 보이는지와 Outcome→상태 매핑(#123·#316).
  */
 class ConversationUiStateTest {
+
+    private fun clarificationOutcome(questionIndex: Int = 0, questionCount: Int = 1) =
+        VoiceDialogueSession.Outcome.Clarify(
+            generation = 1L,
+            question = ClarificationQuestion("q${questionIndex + 1}", "누구에게?", listOf("가족"), true),
+            questionIndex = questionIndex,
+            questionCount = questionCount,
+        )
 
     @Test
     fun `홈은 제목과 활성 마이크만 보인다`() {
@@ -107,22 +115,17 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `핑퐁 청취는 서버 질문을 유지하고 부분 인식을 흘린다`() {
+    fun `구체화 직접 발화는 서버 질문을 유지하고 부분 인식을 흘린다`() {
         val model = renderModelOf(
-            ConversationUiState.Listening(question = "누구에게 보내시겠어요?", partial = "손자에게"),
+            ConversationUiState.Listening(
+                question = "누구에게 보내시겠어요?",
+                partial = "손자에게",
+                clarification = clarificationOutcome(),
+            ),
         )
         assertNull(model.questionRes)
         assertEquals("누구에게 보내시겠어요?", model.questionText)
         assertEquals("손자에게", model.utteranceText)
-    }
-
-    @Test
-    fun `질문 재생 중에는 마이크를 눌러 끊고 답할 수 있다`() {
-        val model = renderModelOf(ConversationUiState.Speaking("누구에게 보내시겠어요?", generation = 1L))
-        assertEquals("누구에게 보내시겠어요?", model.questionText)
-        assertTrue(model.micVisible)
-        assertTrue(model.micEnabled) // barge-in — 듣는 중(deactive)과 구분되는 지점
-        assertTrue(model.utteranceVisible)
     }
 
     @Test
@@ -199,7 +202,7 @@ class ConversationUiStateTest {
         for (state in listOf(
             ConversationUiState.Home(),
             ConversationUiState.Listening(),
-            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Clarifying(clarificationOutcome()),
             ConversationUiState.Requesting("발화"),
             ConversationUiState.Confirm("목표"),
         )) {
@@ -221,14 +224,18 @@ class ConversationUiStateTest {
         assertEquals(CONFIRM_TIMEOUT_MS, autoReturnDelayMs(ConversationUiState.Confirm("카카오톡 열기")))
         assertNull(autoReturnDelayMs(ConversationUiState.Home()))
         assertNull(autoReturnDelayMs(ConversationUiState.Listening()))
-        assertNull(autoReturnDelayMs(ConversationUiState.Speaking("누구에게?", generation = 1L)))
+        assertNull(autoReturnDelayMs(ConversationUiState.Clarifying(clarificationOutcome())))
         assertNull(autoReturnDelayMs(ConversationUiState.Requesting("손자에게")))
     }
 
     @Test
-    fun `Ask는 질문 재생 상태로 간다`() {
-        val state = stateForOutcome(VoiceDialogueSession.Outcome.Ask(generation = 1L, message = "누구에게?"))
-        assertEquals(ConversationUiState.Speaking("누구에게?", generation = 1L), state)
+    fun `Clarify는 보기 선택 상태로 간다`() {
+        val outcome = clarificationOutcome()
+        val state = stateForOutcome(outcome)
+        assertEquals(ConversationUiState.Clarifying(outcome), state)
+        val model = renderModelOf(state)
+        assertTrue(model.clarificationVisible)
+        assertFalse("문답 중 취소 버튼은 없다", model.closeVisible)
     }
 
     @Test
@@ -240,10 +247,12 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `상한 초과와 잘못된 응답은 실패 화면으로 간다`() {
+    fun `안전 종료와 잘못된 응답은 서로 다른 종료 화면으로 간다`() {
         assertEquals(
-            ConversationUiState.Failed,
-            stateForOutcome(VoiceDialogueSession.Outcome.LimitReached),
+            ConversationUiState.SafeEnd("처음부터 다시 말씀해 주세요."),
+            stateForOutcome(
+                VoiceDialogueSession.Outcome.UnableToFinalize("처음부터 다시 말씀해 주세요."),
+            ),
         )
         assertEquals(
             ConversationUiState.Failed,
@@ -251,13 +260,47 @@ class ConversationUiStateTest {
         )
     }
 
+    @Test
+    fun `구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Listening(
+                    question = "누구에게?",
+                    clarification = clarificationOutcome(),
+                ),
+            ).closeVisible,
+        )
+        val finalizing = renderModelOf(ConversationUiState.Requesting("", finalizing = true))
+        assertFalse(finalizing.closeVisible)
+        assertFalse("빈 시니어 카드를 남기지 않는다", finalizing.utteranceVisible)
+        assertFalse(finalizing.micVisible)
+    }
+
+    @Test
+    fun `구체화 질문은 첫 문항만 읽는다`() {
+        assertTrue(shouldSpeakClarification(clarificationOutcome(questionIndex = 0, questionCount = 2)))
+        assertFalse(shouldSpeakClarification(clarificationOutcome(questionIndex = 1, questionCount = 2)))
+    }
+
+    @Test
+    fun `구체화 직접 발화는 무발화 계열 오류에서만 질문으로 돌아간다`() {
+        assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NO_MATCH))
+        assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
+        assertFalse(
+            canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS),
+        )
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizerHelper.ERROR_UNAVAILABLE))
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizerHelper.ERROR_START_FAILED))
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NETWORK))
+    }
+
     // --- 음성 모션 (#132) --------------------------------------------------------
 
     @Test
     fun `파도는 사용자가 말할 때만 보인다`() {
         // 이 있음·없음 자체가 발화 주체 구분이다(시안 메인 2·4에는 없고 3·5에는 있다).
-        assertTrue(renderModelOf(ConversationUiState.Listening()).waveVisible)
-        assertFalse(renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).waveVisible)
+        assertTrue(renderModelOf(ConversationUiState.Listening(micReady = true)).waveVisible)
+        assertFalse(renderModelOf(ConversationUiState.Clarifying(clarificationOutcome())).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Home()).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).waveVisible)
         assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).waveVisible)
@@ -266,7 +309,7 @@ class ConversationUiStateTest {
 
     @Test
     fun `듣는 중 글로우는 음량에 반응한다`() {
-        val model = renderModelOf(ConversationUiState.Listening())
+        val model = renderModelOf(ConversationUiState.Listening(micReady = true))
         assertTrue(model.glowVisible)
         assertTrue(model.glowReactsToVoice)
     }
@@ -292,7 +335,7 @@ class ConversationUiStateTest {
         assertTrue(renderModelOf(ConversationUiState.Requesting("발화")).loadingDotsVisible)
         assertFalse(renderModelOf(ConversationUiState.Home()).loadingDotsVisible)
         assertFalse(renderModelOf(ConversationUiState.Listening()).loadingDotsVisible)
-        assertFalse(renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).loadingDotsVisible)
+        assertFalse(renderModelOf(ConversationUiState.Clarifying(clarificationOutcome())).loadingDotsVisible)
         assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).loadingDotsVisible)
         assertFalse(renderModelOf(ConversationUiState.Failed).loadingDotsVisible)
     }
@@ -306,20 +349,21 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `다비가 말하는 중에는 파도도 글로우도 없다`() {
-        val model = renderModelOf(ConversationUiState.Speaking("질문", generation = 1L))
+    fun `첫 구체화 질문을 읽는 중에는 하단 파도와 마이크 글로우가 없다`() {
+        val model = renderModelOf(ConversationUiState.Clarifying(clarificationOutcome(), speaking = true))
         assertFalse(model.waveVisible)
         assertFalse(model.glowVisible)
+        assertTrue(model.cardGlowVisible)
     }
 
     @Test
     fun `듣고 있어요 레이블은 듣는 중에만 보인다`() {
         // 시안(메인 2~5)에서 이 레이블은 **사용자 차례라는 신호**다. 다비가 말하거나
         // 서버를 기다리는 동안 남아 있으면 "아직 내 차례"로 잘못 읽힌다.
-        assertTrue(renderModelOf(ConversationUiState.Listening()).utteranceLabelVisible)
+        assertTrue(renderModelOf(ConversationUiState.Listening(micReady = true)).utteranceLabelVisible)
         assertFalse(renderModelOf(ConversationUiState.Home()).utteranceLabelVisible)
         assertFalse(
-            renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).utteranceLabelVisible,
+            renderModelOf(ConversationUiState.Clarifying(clarificationOutcome())).utteranceLabelVisible,
         )
         assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).utteranceLabelVisible)
         assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).utteranceLabelVisible)
@@ -327,10 +371,64 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `마이크가 열리기 전에는 말하라는 신호 셋이 함께 꺼져 있다`() {
+        // 인식기가 붙는 동안(실기기 약 1초) 화면이 먼저 "듣고 있어요"라고 하면 그 말을 믿고
+        // 바로 말한 첫 음절이 잘린다(#273). 셋은 하나의 지시라 따로 놀면 안 된다 —
+        // 파도만 먼저 돌아도 사용자는 말하기 시작한다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening())
+        assertFalse(준비중.utteranceLabelVisible)
+        assertFalse(준비중.waveVisible)
+        assertFalse(준비중.glowVisible)
+        assertFalse(준비중.glowReactsToVoice)
+    }
+
+    @Test
+    fun `준비 중 흐림은 신호 셋과 정확히 반대로 움직인다`() {
+        // #277의 빈 0.9초를 채우는 흐림이다. 셋과 **같은 축이 아니다** — 셋은 "이제
+        // 말하세요"이고 이것은 "아직 아니다"라, 같이 켜지면 화면이 두 말을 한꺼번에 한다.
+        // 셋 중 하나라도 흐림과 같은 방향으로 붙으면 위 #273 계약이 소리 없이 깨진다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening())
+        assertTrue(준비중.signalsDimmed)
+
+        val 듣는중 = renderModelOf(ConversationUiState.Listening(micReady = true))
+        assertFalse(듣는중.signalsDimmed)
+        assertTrue(듣는중.waveVisible)
+
+        // 듣는 상태가 아니면 걷혀 있다 — 다비가 말하는 동안 화면이 흐리면 안 된다.
+        assertFalse(renderModelOf(ConversationUiState.Home()).signalsDimmed)
+        assertFalse(
+            renderModelOf(ConversationUiState.Clarifying(clarificationOutcome())).signalsDimmed,
+        )
+        assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).signalsDimmed)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).signalsDimmed)
+        assertFalse(renderModelOf(ConversationUiState.Failed).signalsDimmed)
+    }
+
+    @Test
+    fun `마이크가 열려도 카드와 배지는 그대로다`() {
+        // 준비 구간에서 바뀌는 것은 신호 셋뿐이다. 레이아웃까지 흔들리면 어긋남을 고치려다
+        // 화면이 덜컹거린다 — 어르신에게는 그 흔들림이 더 큰 방해다.
+        val 준비중 = renderModelOf(ConversationUiState.Listening(question = "누구에게 보내시겠어요?"))
+        val 듣는중 = renderModelOf(
+            ConversationUiState.Listening(question = "누구에게 보내시겠어요?", micReady = true),
+        )
+        assertEquals(듣는중.questionText, 준비중.questionText)
+        assertEquals(듣는중.logoVisible, 준비중.logoVisible)
+        assertEquals(듣는중.utteranceVisible, 준비중.utteranceVisible)
+        assertEquals(듣는중.cardQuestionFlexible, 준비중.cardQuestionFlexible)
+        assertEquals(듣는중.closeVisible, 준비중.closeVisible)
+        assertEquals(듣는중.micVisible, 준비중.micVisible)
+        assertEquals(듣는중.micEnabled, 준비중.micEnabled)
+        // 카드 그림자도 유지한다 — 이것까지 켜고 끄면 같은 덜컹임이 된다.
+        assertEquals(듣는중.utteranceSpeaking, 준비중.utteranceSpeaking)
+    }
+
+    @Test
     fun `받아쓰기 전에도 발화 카드는 자리를 지킨다`() {
-        // 레이블만 뜨고 문장은 비어 있는 상태(메인 2·4)다. 카드가 접히면 마이크를 누른
-        // 직후 화면이 크게 흔들린다.
-        val model = renderModelOf(ConversationUiState.Listening())
+        // 문장이 비어 있는 구간(메인 2·4)이다. 카드가 접히면 마이크를 누른 직후 화면이
+        // 크게 흔들린다. **레이블은 여기서 판단하지 않는다** — 시안 상태는 micReady=true
+        // 쪽이고, 기본값(준비 중)에서 레이블이 꺼지는 것은 위 #273 테스트가 따로 고정한다.
+        val model = renderModelOf(ConversationUiState.Listening(micReady = true))
         assertTrue(model.utteranceVisible)
         assertEquals("", model.utteranceText)
     }
@@ -342,7 +440,7 @@ class ConversationUiStateTest {
         assertTrue(renderModelOf(ConversationUiState.Listening()).utteranceSpeaking)
         assertFalse(renderModelOf(ConversationUiState.Home()).utteranceSpeaking)
         assertFalse(
-            renderModelOf(ConversationUiState.Speaking("질문", generation = 1L)).utteranceSpeaking,
+            renderModelOf(ConversationUiState.Clarifying(clarificationOutcome())).utteranceSpeaking,
         )
         assertFalse(renderModelOf(ConversationUiState.Requesting("발화")).utteranceSpeaking)
         assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).utteranceSpeaking)
@@ -356,7 +454,7 @@ class ConversationUiStateTest {
         for (state in listOf(
             ConversationUiState.Home(),
             ConversationUiState.Listening(),
-            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Clarifying(clarificationOutcome(), speaking = true),
             ConversationUiState.Requesting("발화"),
             ConversationUiState.Confirm("목표"),
             ConversationUiState.Failed,
@@ -377,7 +475,7 @@ class ConversationUiStateTest {
             ConversationUiState.Confirm("목표"),
             ConversationUiState.Confirm("목표", ConfirmKind.APP_AVAILABILITY_WARNING),
             ConversationUiState.Listening(),
-            ConversationUiState.Speaking("질문", generation = 1L),
+            ConversationUiState.Clarifying(clarificationOutcome()),
             ConversationUiState.Requesting("발화"),
         )) {
             assertTrue("$state 에서 카드가 고정 높이다", renderModelOf(state).cardQuestionFlexible)

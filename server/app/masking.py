@@ -16,13 +16,21 @@ from dataclasses import dataclass
 from typing import Any
 
 from .config import settings
-from .schemas import Screen
+from .schemas import GuideStep, Screen
 
 _TOKEN = "•••"
 
 # 새 텍스트 필드를 2차 마스킹 대상으로 추가할 때 이 목록만 확장한다.
 # dict/model 어댑터가 아래의 같은 순회 규칙을 공유하므로 한쪽만 빠지지 않는다.
 _MASKED_ELEMENT_TEXT_FIELDS = ("label",)
+
+# 스텝 이력에서 원문이 실릴 수 있는 자리(C11 개정, #270). 셋 다 화면 label에서 왔다 —
+# 안내 문장은 label을 인용하고, `target_label`은 label 그 자체이며, `screen_hint`는 모델이
+# 화면을 요약하며 고유명(장소명 등)을 인용하는 것이 실측됐다.
+_MASKED_STEP_TEXT_FIELDS = ("instruction", "target_label", "screen_hint")
+
+# 화면 단위 텍스트 필드. 요소 목록과 순회 축이 달라 따로 두되 규칙은 같다.
+_MASKED_SCREEN_TEXT_FIELDS = ("window_title",)
 
 # (이름, 정규식) — 오탐을 줄이려 형태가 뚜렷한 것부터. 필요 시 추가.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -68,27 +76,53 @@ def _mask_element_text_fields[ElementT](
 
 
 def mask_screen(screen: dict[str, Any]) -> dict[str, Any]:
-    """Screen dict의 모든 element label을 마스킹한 새 dict를 돌려준다(비파괴)."""
+    """Screen dict의 민감 텍스트를 마스킹한 새 dict를 돌려준다(비파괴)."""
     elements = _mask_element_text_fields(
         screen.get("elements", []),
         read_field=lambda element, field_name: element.get(field_name, ""),
         copy_with_updates=lambda element, updates: {**element, **updates},
     )
-    return {**screen, "elements": elements}
+    screen_updates = {
+        field_name: mask_text(screen[field_name])
+        for field_name in _MASKED_SCREEN_TEXT_FIELDS
+        if isinstance(screen.get(field_name), str)
+    }
+    return {**screen, **screen_updates, "elements": elements}
 
 
 def mask_screen_model(screen: Screen) -> Screen:
     """파이프라인용 Screen 모델을 직렬화 왕복 없이 비파괴로 2차 마스킹한다."""
 
-    return screen.model_copy(
-        update={
-            "elements": _mask_element_text_fields(
-                screen.elements,
-                read_field=lambda element, field_name: getattr(element, field_name),
-                copy_with_updates=lambda element, updates: element.model_copy(update=updates),
-            )
+    updates: dict[str, Any] = {
+        "elements": _mask_element_text_fields(
+            screen.elements,
+            read_field=lambda element, field_name: getattr(element, field_name),
+            copy_with_updates=lambda element, updates: element.model_copy(update=updates),
+        )
+    }
+    updates.update(
+        {
+            field_name: mask_text(value)
+            for field_name in _MASKED_SCREEN_TEXT_FIELDS
+            if isinstance(value := getattr(screen, field_name, None), str)
         }
     )
+    return screen.model_copy(update=updates)
+
+
+def mask_step_model(step: GuideStep) -> GuideStep:
+    """스텝 하나의 텍스트 필드를 비파괴로 2차 마스킹한다.
+
+    요소 label과 달리 **값이 없을 수 있다**(`target_label`·`screen_hint`). None은 그대로 둔다 —
+    빈 문자열로 바꾸면 "대상이 없는 동작"과 "대상 label을 못 실은 안내"가 섞인다.
+    """
+
+    updates: dict[str, str] = {}
+    for field_name in _MASKED_STEP_TEXT_FIELDS:
+        value = getattr(step, field_name)
+        if isinstance(value, str):
+            updates[field_name] = mask_text(value)
+    return step.model_copy(update=updates)
 
 
 @dataclass(frozen=True)
@@ -104,8 +138,8 @@ class MaskingPolicy:
     def apply_screen(self, screen: Screen) -> Screen:
         return mask_screen_model(screen) if self.enabled else screen
 
-    def apply_text(self, text: str) -> str:
-        return mask_text(text) if self.enabled else text
+    def apply_steps(self, steps: list[GuideStep]) -> list[GuideStep]:
+        return [mask_step_model(step) for step in steps] if self.enabled else steps
 
 
 #: 제품 기본값. 모든 프로필에서 이 정책이 기본이다.

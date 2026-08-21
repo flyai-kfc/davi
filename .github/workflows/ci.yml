@@ -89,8 +89,108 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       # 실기기/Gemini 시나리오는 opt-in이지만 androidTest 소스와 APK는 키 없이 항상 컴파일한다.
+      # assembleRelease는 preReleaseBuild를 거쳐 verifyReleaseConfiguration을 문다(#248) —
+      # DAVI_RELEASE_ACCESS_TOKEN이 없으면 여기서 항상 실패하므로 CI 전용 더미값을 준다.
       - name: debug/release/test APK 빌드 + 단위 테스트
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
+
+      # debug/release 산출물의 제품 경계를 산출물에서 직접 확인한다(#58). build.gradle.kts를
+      # 읽어 확인하면 "설정이 있다"만 보이고 **패키징까지 실제로 갔는지**는 못 본다 —
+      # 이 경계가 깨진 채 나간 빌드가 기기에서 서로를 밀어냈기 때문에 산출물로 고정한다.
+      - name: debug/release 앱 식별자·이름 경계 확인
+        run: |
+          aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)"
+          test -n "$aapt2"
+
+          # **파이프의 종료 코드에도 기대지 않는다.** `badging "$1" | grep -q` 는 종료 코드가
+          # grep의 것이라 aapt2가 실패해도 "패턴 없음"으로 읽혀 경계가 조용히 통과한다.
+          # 덤프를 파일로 떠 두고 실패·빈 출력을 그 자리에서 죽인다(PR #354 리뷰).
+          badging_to() {  # $1=apk $2=출력파일
+            "$aapt2" dump badging "$1" > "$2" || { echo "badging 실패: $1" >&2; exit 1; }
+            test -s "$2" || { echo "badging 출력이 비었다: $1" >&2; exit 1; }
+          }
+          # 키를 오타내도 조용히 다른 값을 돌려주지 않게 갈래를 닫는다.
+          meta() {
+            case "$2" in
+              applicationId) python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['applicationId'])" "$1" ;;
+              outputFile)    python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1" ;;
+              *) echo "meta: 알 수 없는 키 $2" >&2; exit 1 ;;
+            esac
+          }
+          appid() { meta "$1" applicationId; }
+
+          # **`!` + `set -e`에 기대지 않는다.** bash는 `!`로 부정된 명령에 errexit를 적용하지
+          # 않아(`set -e` 문서), `! cmd | grep -q PAT` 는 위반을 만나도 스텝을 죽이지 못한다.
+          # 스크립트의 **마지막 명령일 때만** 종료 코드가 스텝 결과가 되어 우연히 동작한다 —
+          # 그 밑에 한 줄만 덧붙이면 경계가 조용히 검사를 멈춘다(PR #281 리뷰에서 실측).
+          # 각 검사를 스스로 exit 하는 게이트로 만들고, 어느 경계가 깨졌는지도 함께 찍는다.
+          #
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #
+          # **방향은 인자가 아니라 이름에 박는다.** apk를 인자로 받으면 호출을 반대로 바꿔도
+          # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 이 스텝은 apk가 딱 둘이라 이 편이 짧다.
+          assert_absent_in_release() {  # $1=패턴 $2=설명
+            if grep -qE "$1" "$release_badging"; then
+              echo "release 경계 위반: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          assert_present_in_debug() {  # $1=패턴 $2=설명
+            if ! grep -qE "$1" "$debug_badging"; then
+              echo "빈 관문: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release 산출물은
+          # app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 실제 이름을 여기 적어 준다.
+          # `echo "$(…)"` 는 치환이 죽어도 echo가 0을 돌려준다 — `meta`의 exit 1도 `$( )` 안이라
+          # 서브셸만 죽인다. 아래 `test -f`가 받긴 하지만 화면에는 트레이스백만 남아
+          # "메타데이터를 못 읽었다"가 "APK가 없다"로 읽힌다(PR #354 리뷰).
+          apk_of() {  # $1=output-metadata.json
+            local name
+            name="$(meta "$1" outputFile)" \
+              || { echo "산출물 메타데이터를 읽지 못했다: $1" >&2; exit 1; }
+            echo "$(dirname "$1")/$name"
+          }
+
+          debug_meta=app/build/outputs/apk/debug/output-metadata.json
+          release_meta=app/build/outputs/apk/release/output-metadata.json
+          debug_apk="$(apk_of "$debug_meta")"
+          release_apk="$(apk_of "$release_meta")"
+          echo "debug=$debug_apk  release=$release_apk"
+          test -f "$debug_apk" && test -f "$release_apk"
+          debug_badging="$(mktemp)"
+          release_badging="$(mktemp)"
+          badging_to "$debug_apk" "$debug_badging"
+          badging_to "$release_apk" "$release_badging"
+
+          # 앱 식별자 — 함께 설치되려면 서로 달라야 한다.
+          test "$(appid "$debug_meta")" = com.davi.helper.debug
+          test "$(appid "$release_meta")" = com.davi.helper
+
+          # 앱 이름 — release는 제품 이름을 유지하고, debug 이름이 새어 들어가면 안 된다.
+          debug_label="$(sed -n "s/^application-label:'\(.*\)'$/\1/p" "$debug_badging")"
+          release_label="$(sed -n "s/^application-label:'\(.*\)'$/\1/p" "$release_badging")"
+          test "$debug_label" = '다비 (개발)'
+          test "$release_label" = '다비'
+
+          # release 산출물에 debug 식별자·이름이 없다는 것을 반대 방향으로도 못박는다.
+          assert_absent_in_release 'com\.davi\.helper\.debug' 'debug 식별자가 release에 실렸다'
+          assert_absent_in_release '개발' 'debug 앱 이름이 release에 실렸다'
+
+          # versionName 접미어도 같은 경계다 — 스토어에 -debug가 붙어 나가면 안 된다.
+          # release 쪽도 접미어의 유무로만 좁힌다. `debug` 통짜로 보면 badging 출력 어디에
+          # 그 글자가 스쳐도 이 경계와 무관한 이유로 빨개진다.
+          assert_present_in_debug "versionName='[^']*-debug'" 'debug versionName에서 -debug 접미어가 사라졌다'
+          assert_absent_in_release "versionName='[^']*-debug'" 'release versionName에 -debug가 붙었다'
 
       - name: 실기기 결과 문서 렌더러 테스트
         run: |
@@ -133,6 +233,11 @@ jobs:
         run: |
           ./gradlew generateDebugNetworkSecurityConfig
           config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
+          # **여기에 검사를 더한다면 `! grep -q` 로 적지 말 것.** 부정된 명령은 errexit를 타지
+          # 않아 조용히 통과한다(#293). 아래 세 줄은 부정도 파이프도 없는 맨 grep이라 지금은
+          # errexit가 살아 있고, 파일이 없으면 grep이 2로 죽어 스텝이 빨개진다 — 그래서 PR #354
+          # 배치에서 게이트로 바꾸지 않았다(헬퍼를 네 번째로 복제할 값이 없다). 검사를 늘릴
+          # 때는 형제 스텝 「debug Azure HTTPS endpoint 허용」의 게이트 모양을 그대로 가져온다.
           grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
           grep -q '<domain includeSubdomains="false">192.168.1.2</domain>' "$config"
           test "$(grep -c 'cleartextTrafficPermitted="true"' "$config")" -eq 1
@@ -144,9 +249,44 @@ jobs:
         run: |
           ./gradlew assembleDebug
           config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
-          grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
-          ! grep -q 'cleartextTrafficPermitted="true"' "$config"
-          ! grep -q '<domain-config' "$config"
+          # `!`로 부정된 명령은 errexit를 타지 않아 **마지막 줄만** 스텝 결과가 됐다. 그래서
+          # 평문 트래픽 허용(`cleartextTrafficPermitted="true"`)이 새어도 이 스텝은 초록이었다 —
+          # 산출물 검사에서 같은 결함을 고친 PR #281·#354와 같은 모양의 게이트로 바꾼다.
+          # **파일이 없을 때도 닫는다.** grep은 파일이 없으면 2로 죽는데, 부정 검사에서는
+          # 그게 "패턴 없음"으로 읽혀 또 하나의 빈 관문이 된다.
+          #
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          test -f "$config"
+          # **두 방향의 접두어를 나눈다.** 긍정 검사가 깨지는 것은 보안 사고가 아니라 **검사
+          # 문자열이 낡은 것**(AGP 출력 형태 변경)이다. 같은 접두어로 찍으면 받는 사람이 평문이
+          # 실제로 샌 줄 알고 산출물을 뒤진다(PR #354 리뷰).
+          assert_present_in_config() {  # $1=패턴 $2=설명
+            if ! grep -q "$1" "$config"; then
+              echo "빈 관문: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          assert_absent_in_config() {  # $1=패턴 $2=설명
+            if grep -q "$1" "$config"; then
+              echo "debug 네트워크 보안 경계 위반: $2 ($1)" >&2
+              exit 1
+            fi
+          }
+          # **순서가 메시지를 정한다 — 누출이 먼저 이름을 얻어야 한다.** 셋 다 자체 종료
+          # 게이트라 어느 것이 먼저 걸리든 스텝은 죽고, 순서는 *어느 메시지를 보여줄지*만
+          # 정한다. 빈 관문 검사를 앞에 두면 base-config가 통째로 `true`가 된 정책 회귀가
+          # `빈 관문: … 검사 문자열이 낡았다`로 찍혀, 받는 사람이 사고 대신 AGP 출력을 뒤진다
+          # (PR #354 리뷰). ①·③은 두 방향이 서로 다른 산출물을 봐서 이 문제가 없다 —
+          # 한 파일을 두 방향으로 보는 건 여기뿐이다. 정리한다고 되돌리지 말 것.
+          assert_absent_in_config 'cleartextTrafficPermitted="true"' '평문 트래픽 허용이 HTTPS 전용 설정에 새어 들어갔다'
+          assert_absent_in_config '<domain-config' 'HTTPS endpoint인데 domain-config 예외가 생겼다'
+          assert_present_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단 검사 문자열이 낡았다'
 
       - name: debug 임의 HTTPS endpoint 거부
         env:
@@ -172,6 +312,38 @@ jobs:
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
 
+      # 서버가 development 프로필이라 release도 접근 토큰을 요구한다(#248). 세 경계를 각각 고정한다
+      # — 미설정, 32자 미만, 정상값(통과 + BuildConfig 배선).
+      - name: release 접근 토큰 미설정 거부
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_RELEASE_ACCESS_TOKEN을 설정하세요" <<<"$output"
+
+      - name: release 접근 토큰 32자 미만 거부
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-short-token-0001
+        run: |
+          set +e
+          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "DAVI_RELEASE_ACCESS_TOKEN은 32자 이상이어야 합니다" <<<"$output"
+
+      - name: release 접근 토큰 정상값 통과 및 BuildConfig 배선 확인
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
+        run: |
+          ./gradlew verifyReleaseConfiguration
+          ./gradlew :app:generateReleaseBuildConfig
+          generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
+          test -f "$generated"
+          grep -q 'DEV_ACCESS_TOKEN = "ci-only-not-a-secret-release-token-0001"' "$generated"
+
       # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 값이 false여도 "설정이 있다는 것"
       # 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다. 두 입력 경로를 각각 확인한다.
       - name: release에서 마스킹 우회 속성 거부
@@ -196,12 +368,99 @@ jobs:
 
       # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
       # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.
+      # generateReleaseBuildConfig도 preReleaseBuild를 거쳐 verifyReleaseConfiguration을
+      # 물기 때문에(#248) 토큰이 없으면 이 단계도 실패한다.
       - name: release BuildConfig의 마스킹 상수 고정 확인
+        env:
+          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: |
           ./gradlew :app:generateReleaseBuildConfig
           generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
           test -f "$generated"
           grep -q 'PRIVACY_MASKING_DISABLED = false' "$generated"
+
+      # 화면 요소의 label·bounds 상세 로그는 debug 전용이다(#58). 마스킹은 패턴 기반이라
+      # 사람 이름·대화 내용처럼 패턴 밖 텍스트를 지우지 못하므로 "마스킹했으니 남겨도 된다"가
+      # 성립하지 않는다. **포맷 문자열이 산출물에 없으면 그 줄은 절대 나올 수 없다** —
+      # 소스를 읽는 정적 검사보다 이 편이 우회하기 어렵다.
+      #
+      # debug 쪽도 함께 본다. release만 검사하면 포맷이 바뀌었을 때 검사가 조용히 통과하는
+      # 빈 관문이 된다 — 카나리아가 사라진 걸 실패로 잡아야 검사가 살아 있다.
+      - name: release 산출물에 화면 상세 로그가 없는지 확인
+        run: |
+          # **덤프는 한 번만 뜨고 파일로 둔다.** `unzip -p … | strings` 는 파이프의 종료 코드가
+          # strings의 것이라 **unzip이 실패해도 0**이다. dex 이름·경로가 어긋나면 빈 문자열에서
+          # grep 하게 되어 검사가 조용히 통과한다 — 이 스텝이 닫으려는 것과 같은 종류의 빈 관문이
+          # release 쪽에 그대로 남는다. `set -o pipefail`만으로는 안 고쳐진다: 실패가 `if` 조건
+          # 안이면 errexit를 타지 않고 그냥 "패턴 없음"으로 읽힌다(PR #354 리뷰에서 위조 입력으로
+          # 양쪽 확인). 그래서 덤프 자체의 실패·빈 결과를 그 자리에서 죽인다.
+          # 덤으로 카나리아마다 2회씩 총 6회 돌던 전체 dex strings가 2회로 준다.
+          set -o pipefail
+          dump_to() {  # $1=apk $2=출력파일
+            unzip -p "$1" 'classes*.dex' | strings > "$2" \
+              || { echo "덤프 실패: $1 에서 classes*.dex를 읽지 못했다" >&2; exit 1; }
+            test -s "$2" || { echo "덤프가 비었다: $1" >&2; exit 1; }
+          }
+          # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release
+          # 산출물은 app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 output-metadata.json에
+          # 실제 이름을 적어 주므로 거기서 유도한다.
+          # `echo "$(…)"` 는 치환이 죽어도 echo가 0을 돌려준다. 아래 `test -f`가 받긴 하지만
+          # 화면에는 트레이스백만 남아 "메타데이터를 못 읽었다"가 "APK가 없다"로 읽힌다
+          # (PR #354 리뷰). 이 배치의 나머지 자리와 같은 모양으로 그 자리에서 죽인다.
+          apk_of() {  # $1=output-metadata.json
+            local name
+            name="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1")" \
+              || { echo "산출물 메타데이터를 읽지 못했다: $1" >&2; exit 1; }
+            echo "$(dirname "$1")/$name"
+          }
+          debug_apk="$(apk_of app/build/outputs/apk/debug/output-metadata.json)"
+          release_apk="$(apk_of app/build/outputs/apk/release/output-metadata.json)"
+          echo "debug=$debug_apk  release=$release_apk"
+          test -f "$debug_apk" && test -f "$release_apk"
+          debug_dump="$(mktemp)"
+          release_dump="$(mktemp)"
+          dump_to "$debug_apk" "$debug_dump"
+          dump_to "$release_apk" "$release_dump"
+
+          # GuideScreenLog의 debug 구현만 쓰는 포맷이다. 바꾸면 이 목록도 함께 고친다.
+          #
+          # `at=`는 **highlight 좌표 전용**이다. 앞의 둘은 요소 덤프 경로 소속이라, highlight가
+          # 좌표를 다시 찍어도 그 둘은 생기지 않아 검사가 통과해 버린다(PR #287 리뷰).
+          # 요소 덤프의 `bounds=`를 카나리아로 쓸 수 없는 이유는 UiElement의 자동 생성
+          # toString(`..., bounds=...`)이 release 산출물에도 남아 구분이 안 되기 때문이다.
+          # **`!` + `set -e`에 기대지 않는다.** bash는 `!`로 부정된 명령에 errexit를 적용하지
+          # 않으므로(`set -e` 문서), `! dump | grep -qF` 는 위반을 만나도 루프를 죽이지 못하고
+          # **마지막 반복의 종료 코드만** 스텝 결과가 된다. 그래서 제일 중요한 첫 카나리아
+          # (`label='` — release logcat에 화면 label 원문이 남지 않는다)의 위반이 통째로
+          # 지나갔다(#293). 같은 결함을 「debug/release 앱 식별자·이름 경계 확인」 스텝이
+          # assert_absent로 고쳤다(PR #281 리뷰).
+          #
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #
+          # **방향은 인자가 아니라 이름에 박는다.** 덤프를 인자로 받으면 호출을 반대로 바꿔도
+          # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 산출물이 딱 둘이라 이 편이 짧다.
+          assert_present_in_debug() {  # $1=카나리아
+            if ! grep -qF "$1" "$debug_dump"; then
+              echo "빈 관문: debug 상세 로그 포맷이 사라졌다 — 카나리아 [$1]가 debug 산출물에 없다" >&2
+              exit 1
+            fi
+          }
+          assert_absent_in_release() {  # $1=카나리아
+            if grep -qF "$1" "$release_dump"; then
+              echo "release 경계 위반: 화면 상세 로그가 release에 실렸다 — 카나리아 [$1]가 release 산출물에 있다" >&2
+              exit 1
+            fi
+          }
+          for canary in "label='" " scroll=" " at="; do
+            assert_present_in_debug "$canary"
+            assert_absent_in_release "$canary"
+          done
 
   backend:
     name: Backend (ruff + pytest)
@@ -240,11 +499,11 @@ jobs:
       # #30의 음성 경로(PII 탐지·원문 비노출·스키마 거부)는 하니스 스모크만으로 검증할 수 없다.
       - name: eval 린트
         working-directory: eval
-        run: ruff check harness.py judge.py tests
+        run: ruff check harness.py judge.py tests pingpong
 
       - name: eval 포맷 검사
         working-directory: eval
-        run: ruff format --check harness.py judge.py tests
+        run: ruff format --check harness.py judge.py tests pingpong
 
       - name: eval 테스트
         working-directory: eval
@@ -295,7 +554,7 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 20); do
             if curl --fail --silent --max-time 1 http://127.0.0.1:8000/health \
-              | python -c 'import json,sys; data=json.load(sys.stdin); assert data.get("status") == "ok"; assert data.get("environment") == "development"; assert data.get("model") == "gemini-3.5-flash-lite"; assert data.get("stub_llm") is True; assert data.get("privacy_masking_disabled") is False'; then
+              | python -c 'import json,sys; data=json.load(sys.stdin); assert data.get("status") == "ok"; assert data.get("environment") == "development"; assert data.get("provider") == "gemini"; assert data.get("model") == "gemini-3.5-flash-lite"; assert data.get("stub_llm") is True; assert data.get("privacy_masking_disabled") is False'; then
               exit 0
             fi
             sleep 1

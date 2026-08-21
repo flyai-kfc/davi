@@ -20,7 +20,7 @@
         </shape>
     </item>
     <item>
-        <ripple android:color="@color/davi_state_layer_pressed">
+        <ripple android:color="@color/davi_state_layer_pressed_on_light">
             <item>
                 <shape android:shape="oval">
                     <solid android:color="@color/davi_bg" />

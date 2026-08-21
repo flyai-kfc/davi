@@ -2,6 +2,9 @@
 
 HTTP 재시도, 로그, 서비스·평가 오류 분류는 호출자가 담당한다. 여기서는 두 경계가 공통으로
 지켜야 할 후보 텍스트 추출, 출력 상한 종료 판별, JSON fence 제거만 다룬다.
+
+`strip_json_fence`만은 공급자 중립이다 — 어느 모델이든 드물게 Markdown fence를 붙이므로
+Gemini·OpenAI·Anthropic 경로가 모두 이 함수를 쓴다.
 """
 
 from __future__ import annotations

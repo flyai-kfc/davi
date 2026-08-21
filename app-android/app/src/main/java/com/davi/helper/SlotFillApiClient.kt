@@ -109,12 +109,58 @@ class SlotFillApiClient(
     )
 
     private fun requireValidState(state: SlotFillState) {
-        require(state.message.isNotBlank()) { "slot-fill message is blank" }
+        require(state.message.isNotBlank() && state.message.length <= MAX_MESSAGE_LENGTH) {
+            "slot-fill message is invalid"
+        }
         when (state.status) {
-            IntentDialogueStatus.NEEDS_CLARIFICATION ->
+            IntentDialogueStatus.NEEDS_CLARIFICATION -> {
                 require(state.goal == null) { "clarification response includes goal" }
-            IntentDialogueStatus.READY ->
-                require(!state.goal.isNullOrBlank()) { "ready response has no goal" }
+                val questions = requireNotNull(state.clarification?.questions) {
+                    "clarification response has no questions"
+                }
+                require(questions.size in 1..MAX_CLARIFICATION_QUESTIONS) {
+                    "clarification question count is out of range"
+                }
+                require(questions.map { it.id }.distinct().size == questions.size) {
+                    "clarification question ids are duplicated"
+                }
+                questions.forEach { question ->
+                    require(
+                        question.id.isNotBlank() && question.id.length <= MAX_QUESTION_ID_LENGTH &&
+                            question.prompt.isNotBlank() &&
+                            question.prompt.length <= MAX_QUESTION_PROMPT_LENGTH,
+                    ) {
+                        "clarification question is blank"
+                    }
+                    require(question.options.size <= MAX_CLARIFICATION_OPTIONS) {
+                        "clarification option count is out of range"
+                    }
+                    require(
+                        question.options.all {
+                            it.isNotBlank() && it.length <= MAX_OPTION_LENGTH
+                        },
+                    ) {
+                        "clarification option is blank"
+                    }
+                    require(question.options.distinct().size == question.options.size) {
+                        "clarification options are duplicated"
+                    }
+                    require(question.allowFreeform) { "freeform answer is disabled" }
+                }
+                require(state.message == questions.first().prompt) {
+                    "message differs from first clarification question"
+                }
+            }
+            IntentDialogueStatus.READY -> {
+                require(!state.goal.isNullOrBlank() && state.goal.length <= MAX_GOAL_LENGTH) {
+                    "ready response has no valid goal"
+                }
+                require(state.clarification == null) { "ready response includes clarification" }
+            }
+            IntentDialogueStatus.UNABLE_TO_FINALIZE -> {
+                require(state.goal == null) { "unable response includes goal" }
+                require(state.clarification == null) { "unable response includes clarification" }
+            }
         }
     }
 
@@ -122,6 +168,13 @@ class SlotFillApiClient(
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
         val REQUEST_ID = Regex("[0-9a-f]{32}")
+        const val MAX_CLARIFICATION_QUESTIONS = 2
+        const val MAX_CLARIFICATION_OPTIONS = 3
+        const val MAX_MESSAGE_LENGTH = 300
+        const val MAX_GOAL_LENGTH = 500
+        const val MAX_QUESTION_ID_LENGTH = 32
+        const val MAX_QUESTION_PROMPT_LENGTH = 200
+        const val MAX_OPTION_LENGTH = 80
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)

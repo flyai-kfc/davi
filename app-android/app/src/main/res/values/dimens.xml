@@ -1,5 +1,21 @@
 <resources>
     <!--
+      **판정이 안 끝난 값의 표시 규약.** 아래 두 문자열이 원본이다 — `DESIGN-CONVENTIONS.md`가
+      개수도 목록도 갖지 않고 이 grep을 가리킨다.
+
+        ⚠ 값이 옛 환산이다   개정된 규칙에서는 다른 값인데, 배치가 움직여 아직 안 바꾼 것
+        판정 대기            어느 칸인지 규칙 자체가 아직 안 정해진 것
+
+      **문구를 바꾸면 grep에서 조용히 빠진다.** 표시를 새로 달 때는 이 철자를 그대로 쓰고,
+      뒤에 괄호로 받는 이슈 번호를 적는다. 표시를 지울 때는 근거를 대신 남긴다.
+
+        grep -n '⚠ 값이 옛 환산이다\|판정 대기' app-android/app/src/main/res/values/dimens.xml
+
+      **맨 위 세 건은 이 규약 블록 자신이다**(철자를 그대로 적어 둔 자리라 같이 걸린다).
+      그 아래부터가 실제 표시다. 한 토큰이 두 줄을 차지하는 자리도 있으니(메인 8의 카드 240은
+      검산표와 토큰 주석 양쪽에 있다) **건수를 항목 수로 세지 않는다.**
+    -->
+    <!--
       시니어 대상 기본값. sp는 시스템 글꼴 크기 설정을 따라간다(코드에서 px 계산 금지).
       터치 대상은 Android 권장 48dp보다 크게 잡는다.
     -->
@@ -56,7 +72,17 @@
     -->
     <dimen name="davi_overlay_hand_outline">2dp</dimen>
     <!--
-      읽는 중 테두리(GD-1). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
+      가장자리 제스처(#222)의 시작 지점 선 두께. 셰이드·앱 서랍은 시작 지점이 화면 변으로
+      고정이라 "어디에 손을 대는가"를 함께 그린다 — 색·후광·브리딩은 강조 사각형과 같고
+      **모양만 사각형이 아니라 변에 걸린 선 하나**다(2026-08-21 요청).
+
+      **사각형이면 "이 안을 눌러라"로 읽힌다.** 가리키는 것은 누를 영역이 아니라 손을 대고
+      끌기 시작하는 **경계**라, 면이 아니라 선이어야 뜻이 맞는다. 획의 절반이 화면 밖으로
+      나가 잘리는 것도 의도다 — 화면 밖에서 손이 들어온다는 것이 이 제스처의 내용이다.
+    -->
+    <dimen name="davi_overlay_edge_line">8dp</dimen>
+    <!--
+      읽는 중 테두리(GD-1·GD-2r). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
       확정 디자인이 모양을 다시 잡을 자리라 정합을 정밀하게 맞추지 않는다.
       radius는 기기 화면 코너 곡률의 근사치다.
     -->
@@ -91,7 +117,13 @@
     <dimen name="davi_overlay_window_stroke">1.5dp</dimen>
     <!--
       창과 화면 **아랫변** 사이(#234). 시안 근거가 있다 — GD-1·2·3 세 화면이 창 하단 574를
-      공유하고 프레임 620에서 46이다(46 × 1.2 = 55.2).
+      공유하고 프레임 620에서 **46**이다.
+
+      **⚠ 값이 옛 환산이다**(#265). 55는 `46 × 1.2`인데, 2026-08-19 규칙 개정 뒤로 세로
+      거리는 1:1이라 **개정 규칙에서는 46이다**(`DESIGN-CONVENTIONS.md`). 값을 안 바꾼 이유는
+      바꾸면 안내창이 앉는 자리가 **모든 안내에서** 9dp 올라가기 때문이다 — 실기기로 보고
+      정할 일이라 **#265가 받는다**. 이 블록 머리글이 "시안 값을 1:1로 쓴다"라
+      지금은 자기모순이다.
 
       **위쪽은 이 값이 아니다.** 시안에 위쪽 근거가 없어 구 값 20(overlay_instruction_margin)을
       그대로 지킨다. 상하를 한 값으로 묶으면 둘 중 하나가 근거 없는 값이 된다.
@@ -154,7 +186,7 @@
     <dimen name="davi_overlay_dot_size_max">9dp</dimen>
     <dimen name="davi_overlay_dot_size_min">5dp</dimen>
     <dimen name="davi_overlay_dot_spacing">7dp</dimen>
-    <!-- 점 셋이 앉을 자리(GD-1). 지름 9 + 아래 여백 18. 확인쌍과 같은 자리를 쓰지만 둘은
+    <!-- 점 셋이 앉을 자리(GD-1·GD-2r). 지름 9 + 아래 여백 18. 확인쌍과 같은 자리를 쓰지만 둘은
          동시에 뜨지 않는다 — 읽는 중과 확인 대기는 배타적이다(ReadingBorder). -->
     <dimen name="davi_overlay_dots_row">27dp</dimen>
     <!-- 확인쌍: 높이 56 캡슐 · gap 12. 폭은 창을 따르고 높이·반경만 고정한다. -->
@@ -167,7 +199,13 @@
     <dimen name="davi_overlay_confirm_inset">24dp</dimen>
     <dimen name="davi_overlay_confirm_gap">12dp</dimen>
     <dimen name="davi_overlay_confirm_shadow_y">3dp</dimen>
-    <!-- 안내 문구: GD-1 20sp · GD-2 18sp · 확인창 18sp. 전부 Pretendard Bold 가운데. -->
+    <!--
+      안내 문구: **읽는 중(GD-1·GD-2r) 20sp** · GD-2 18sp · 확인창 18sp.
+      전부 Pretendard Bold 가운데.
+
+      **20sp를 GD-1 문구 길이만 보고 조정하지 않는다**(#314) — 같은 페인트가 더 긴 GD-2r
+      문구(`overlay_reading_mid_guide`)도 접는다. 근거는 `GuideBoxStyle.readingTextPaint`.
+    -->
     <dimen name="davi_overlay_text_reading">20sp</dimen>
     <dimen name="davi_overlay_text_instruction">18sp</dimen>
 
@@ -258,14 +296,19 @@
       그 복잡도에 비해 얻는 게 0.75dp라 그대로 둔다.
     -->
     <dimen name="davi_card_border_width">1.5dp</dimen>
-    <dimen name="davi_button_padding_h">20dp</dimen>
-    <dimen name="davi_button_elevation">2dp</dimen>
     <!--
       메인 7 최종 확인의 캡슐 버튼쌍(#196). 시안 `v2/button/pair` — 오버레이의
       `v2/chip/confirm-pair`와 **별개 컴포넌트**다(캡슐 vs r14, 흰/빨강 vs 빨강/초록).
 
       **기하는 배율 1.2로 환산한다** — 시안 프레임 300을 검증 기기 폭 360dp로 옮긴 비율이다.
-        높이   60 -> 72dp      반지름 30 -> 36dp      간격 12 -> 14dp
+        높이   60 -> 72dp      <- 자기 크기라 x1.2
+        반지름 30 -> 36dp      <- **환산한 게 아니라 높이 72의 절반**이다(아래 캡슐 문단)
+        간격   12 -> 14dp      <- 버튼쌍은 나란해서 이건 가로 간격이라 x1.2 그대로다
+
+      **여기서 x1.2인 것은 객체의 자기 크기와 가로 거리뿐이다**(2026-08-19 개정, #244) —
+      **세로 거리(여백·간격)는 1:1**이고 반지름도 1:1이다(위 36은 캡슐이라 따로 나온 수다).
+      이 블록의 davi_button_pair_margin_top이 아직 옛 자인 것도 그래서다. 새 값을 뽑을 때는
+      DESIGN-CONVENTIONS.md의 판정 문장을 먼저 본다.
 
       **반지름은 높이의 절반이라 완전 캡슐이다.** 글자 배율이 커져 버튼이 세로로 늘면
       캡슐이 아니라 둥근 사각형이 된다 — 시안 의도는 캡슐이지만 잘리는 것보다 낫다.
@@ -278,12 +321,18 @@
     <dimen name="davi_button_pair_radius">36dp</dimen>
     <dimen name="davi_button_pair_gap">14dp</dimen>
     <dimen name="davi_button_pair_stroke">2dp</dimen>
-    <!-- 주 버튼 그림자를 아래로 내리는 거리. 시안 y3을 배율 1.2로 환산해 4dp. -->
+    <!-- 주 버튼 그림자를 아래로 내리는 거리. 시안 y3을 배율 1.2로 환산해 4dp.
+         **판정 대기**(#265) — 같은 시안 y3을 davi_card_shadow_offset_y는 1:1로 3dp로 쓴다.
+         그림자 오프셋이 "자기 몸"이냐 "세로 거리"냐가 개정 규칙에 없어 생긴 공백이다. -->
     <dimen name="davi_button_pair_shadow_offset_y">4dp</dimen>
     <!--
       버튼쌍과 위 카드 사이. 시안 메인 7의 다비 카드 하단 308 -> 버튼쌍 380 = 72,
       배율 1.2로 86dp다. **최종 확인에서 카드 weight가 0이라 열이 위에서부터 쌓이므로,
       이 여백만 주면 화면 아래가 저절로 빈다** — 시안이 아래를 비우는 배치와 같아진다.
+
+      **⚠ 값이 옛 환산이다**(#265). 두 요소 사이 여백이라 2026-08-19 개정 규칙(#244)에서는
+      세로 거리 1:1이라 **72**다. 값을 안 바꾼 이유는 메인 7 배치가 통째로 움직이기 때문이고,
+      실기기로 보고 정한다.
     -->
     <dimen name="davi_button_pair_margin_top">86dp</dimen>
 
@@ -291,25 +340,42 @@
       메인 9 안내 중 화면과 메인 10 종료 확인 모달(#197). 기하는 배율 1.2로 환산하고
       글자 크기는 1:1로 쓴다 — 메인 7과 같은 규칙이다.
 
+      **여기서 x1.2인 것은 객체의 자기 크기뿐이다**(2026-08-19 개정, #244) — **세로 거리
+      (여백·간격)는 1:1**이다. 이 블록의 davi_stacked_pair_margin_top이 아직 옛 자인 것도
+      그래서다. 새 값을 뽑을 때는 DESIGN-CONVENTIONS.md의 판정 문장을 먼저 본다.
+
       **버튼은 세로로 쌓인다.** 메인 7의 가로 캡슐쌍(v2/button/pair)과 별개 컴포넌트다.
       둘 다 시안 252x60 r12 — 착수 전에 46/52·r14/r12로 어긋나 있던 것을 v2/button
       마스터(240x60 r12)로 맞췄다.
 
-        높이   60 -> 72dp     반지름 12 -> 14dp     버튼 사이 29 -> 35dp
-        카드에서 첫 버튼까지  44 -> 53dp
-        마지막 버튼에서 하단 안내까지  44 -> 53dp
+        높이   60 -> 72dp                        <- 자기 크기라 x1.2
+        반지름 12 -> 14dp                        <- 개정 후엔 1:1이라 12
+        버튼 사이               29 (-> 35dp)     <- 세로 거리라 개정 후엔 29, 구현은 24
+        카드에서 첫 버튼까지     44 (-> 53dp)     <- 세로 거리라 개정 후엔 44
+        마지막 버튼에서 하단 안내 44 (-> 53dp)     <- 세로 거리라 개정 후엔 44, 구현은 20
+      괄호 안이 개정 전 값이다. 셋 다 세로 거리라 개정 규칙에서는 왼쪽 수가 기준이다.
     -->
     <dimen name="davi_stacked_button_height">72dp</dimen>
+    <!-- **⚠ 값이 옛 환산이다**(#265). 시안 r12인데 14는 x1.2다 — 개정 규칙에서 반지름은
+         1:1이라 **12**다. 메인 7의 36과 달리 캡슐 근거도 없다(높이 72의 절반은 36). -->
     <dimen name="davi_stacked_button_radius">14dp</dimen>
     <!--
-      두 버튼 사이. **시안(29 -> 35dp)보다 좁다** — 아래 하단 안내와 같은 사정이다.
+      두 버튼 사이. **시안 29보다 좁다** — 아래 하단 안내와 같은 사정이다.
+      (개정 전 문장은 "시안 29 -> 35dp보다 좁다"였다. 세로 거리라 개정 기준은 29이고,
+      24는 그보다도 좁으므로 주장은 그대로 선다.)
       배율 2.0에서 라벨이 두 줄로 늘면 버튼이 커지고 그만큼 아래가 밀린다.
       버튼끼리는 테두리·채움으로 이미 갈리므로 간격이 조금 좁아도 붙어 보이지 않는다.
     -->
     <dimen name="davi_stacked_button_gap">24dp</dimen>
+    <!-- #316 문답은 최대 다섯 조작을 기본 글꼴에서 같은 화면에 담는다. -->
+    <dimen name="davi_clarification_button_height">56dp</dimen>
+    <dimen name="davi_clarification_button_gap">10dp</dimen>
+    <!-- **⚠ 값이 옛 환산이다**(#265). 카드와 버튼 사이 여백이라 개정 규칙(#244)에서는
+         세로 거리 1:1로 **44**다. 배치가 통째로 움직여 실기기로 보고 정한다. -->
     <dimen name="davi_stacked_pair_margin_top">53dp</dimen>
     <!--
-      주 버튼과 하단 안내 사이. **시안(44 -> 53dp)보다 좁다.** 배율 2.0에서 하단 안내가
+      주 버튼과 하단 안내 사이. **시안 44보다 좁다.**(개정 전 문장은 "44 -> 53dp보다
+      좁다"였다. 세로 거리라 개정 기준은 44다.) 배율 2.0에서 하단 안내가
       세 줄로 늘면서 화면 밖으로 나갔고(실측 셋째 줄 "다비를 나가주세요"가 잘렸다),
       이 자리를 줄여 그 줄을 들여왔다.
 
@@ -319,15 +385,22 @@
     <dimen name="davi_guiding_bottom_margin_top">20dp</dimen>
     <!--
       메인 10 다이얼로그. 252x168 r20 -> 폭은 카드 폭 규칙(좌우 여백 24dp)을 따르고
-      높이·반지름만 환산한다. 확인쌍은 오버레이(GD-3·4)와 같은 v2/chip/confirm-pair라
-      기존 view_davi_confirm_pair를 그대로 쓴다 — 메인 7의 캡슐쌍과는 다른 컴포넌트다.
+      **높이만 환산한다** — 반지름은 개정 규칙에서 1:1이다(2026-08-19, #244). 확인쌍은
+      오버레이(GD-3·4)와 같은 v2/chip/confirm-pair라 기존 view_davi_confirm_pair를 그대로
+      쓴다 — 메인 7의 캡슐쌍과는 다른 컴포넌트다.
+
+        높이   168 -> 202dp    <- 자기 상자라 x1.2, 개정 후에도 맞다
+        반지름  20 -> 24dp     <- **⚠ 개정 후엔 1:1이라 20**(#265)
     -->
     <dimen name="davi_dialog_height">202dp</dimen>
+    <!-- **⚠ 값이 옛 환산이다**(#265). 24는 시안 r20의 x1.2다 — 개정 규칙에서 반지름은
+         1:1이라 **20**이다. -->
     <dimen name="davi_dialog_radius">24dp</dimen>
     <!-- 메인 10 확인 문구. 시안 Cafe24 Bold 18 — 글자는 1:1로 쓴다(#197). -->
     <dimen name="davi_type_dialog">18sp</dimen>
     <dimen name="davi_dialog_padding_top">22dp</dimen>
-    <!-- 시안 그림자 y8을 배율 1.2로 환산. blur 24는 근사에서 빠진다(drawable 주석). -->
+    <!-- 시안 그림자 y8을 배율 1.2로 환산. blur 24는 근사에서 빠진다(drawable 주석).
+         **판정 대기**(#265) — 그림자 오프셋 칸이 정해지면 셋을 함께 맞춘다. -->
     <dimen name="davi_dialog_shadow_offset_y">10dp</dimen>
     <dimen name="davi_dialog_pair_margin_top">26dp</dimen>
     <!--
@@ -336,16 +409,17 @@
     -->
     <dimen name="davi_type_guiding">17sp</dimen>
     <!--
-      메인 9 카드 위 패딩. **다른 화면(72dp)보다 얕다** — 이 화면은 문구가 둘이라 위가
-      깊으면 카드 안이 아래로 몰린다. 시안도 제목이 배지 바로 아래에서 시작한다.
+      세로 조작을 쌓는 메인 9와 #316 구체화 카드의 위 패딩. **다른 화면(72dp)보다 얕다** —
+      메인 9는 문구가 둘이고 구체화는 아래에 조작 최대 다섯 개가 있어 일반 패딩이면 화면 밖으로
+      밀린다. 시안도 제목이 배지 바로 아래에서 시작한다.
 
       값은 **배지가 카드를 파고든 깊이(davi_badge_overlap_negative 36dp) + 숨 여백 8dp**다.
       36보다 얕으면 배지가 글자를 덮는다 — 그래서 임의로 더 줄일 수 없다.
     -->
     <dimen name="davi_card_padding_top_guiding">44dp</dimen>
     <!--
-      안내 중 화면의 배지 위 여백. **다른 화면(72dp)보다 얕다** — 이 화면은 세로로 쌓는
-      것이 많아(카드 + 버튼 둘 + 하단 안내) 배율이 커지면 아래가 화면 밖으로 나간다.
+      안내 중·구체화 화면의 배지 위 여백. **다른 화면(72dp)보다 얕다** — 두 화면 모두 세로로
+      쌓는 조작이 많아 배율이 커지면 아래가 화면 밖으로 나간다.
       위를 줄여 그 자리를 아래에 준다. X 버튼이 없는 화면이라 위가 비어도 허전하지 않다.
     -->
     <dimen name="davi_badge_margin_top_guiding">24dp</dimen>
@@ -488,11 +562,15 @@
       메인 8 실패 화면(#208). **이 화면만 배지 대신 전신 캐릭터가 위를 차지한다.**
 
       기하는 시안 x1.2로 환산한다(인계문 §2).
-      **아래 검산표는 개정 전(두 축 x1.2) 판정이다**(2026-08-19, #244) — 지금 규칙에서는
-      캐릭터 크기와 겹침 깊이만 x1.2이고 '상단 51'은 세로 거리라 1:1이다. 값은 안 바꿨다.
-        캐릭터  254x259 -> 305x311dp    상단 51 -> 61dp
+      아래 검산표는 개정 전(두 축 x1.2) 판정이다(2026-08-19, #244) — 지금 규칙에서 x1.2인 것은
+      캐릭터 크기와 겹침 깊이뿐이고 '상단 51'은 세로 거리라 1:1이다. 값은 안 바꿨다.
+        캐릭터  254x259 -> 305x311dp
         겹침    44 -> 53dp              카드가 캐릭터 하단을 파고든다
-        카드    FIXED 200 -> 240dp      최소 176은 그대로 넘는다
+        상단    51 -> 61dp              **⚠ 값이 옛 환산이다**(#265) — 개정 후엔 51
+        카드    FIXED 200 -> 240dp      **판정 대기**(#207) — 최소 176은 그대로 넘는다
+
+      값을 안 바꾼 이유는 메인 8 배치가 통째로 움직이기 때문이고, **실기기로 보고 정한다**(#265).
+      카드 240은 #207이 카드 높이의 뜻 자체를 바꾸므로 그때 함께 본다.
 
       **절대 y로 옮기지 않는다.** 시안에서 이 화면의 카드만 y266인데 다른 화면은
       y108~134다 — 캐릭터가 위를 차지해 내려온 것이라, 좌표로 박으면 다른 화면과 어긋난다.
@@ -502,6 +580,9 @@
     <dimen name="davi_stand_height">311dp</dimen>
     <dimen name="davi_stand_margin_top">61dp</dimen>
     <dimen name="davi_stand_overlap_negative">-53dp</dimen>
+    <!-- **판정 대기**(#207). 240 = 시안 200 x1.2인데, 최소 높이가 어느 칸인지는
+         "객체가 그려지는 자기 몸이냐 콘텐츠가 채우는 하한이냐"로 갈린다. #207이 카드 높이의
+         뜻 자체를 바꾸므로(한쪽이 알약으로 접히는 구조) 그때 함께 정한다. -->
     <dimen name="davi_failed_card_height">240dp</dimen>
     <!--
       실패 문구 전용 19sp. **램프(28·24·20·17·14) 밖이지만 스냅하지 않는다**(인계문 §3) —
@@ -514,6 +595,9 @@
 
       **시안의 blur(대기 10 · 발화 12/14)는 구현되지 않았다.** drawable이 단색 도형을
       아래로 민 근사라 흐림이 없다. 근거는 colors.xml의 그림자 주석에 있다.
+
+      **판정 대기**(#265). 여기 셋은 시안 y를 1:1로 쓰는데 버튼쌍·모달은 같은 y를 ×1.2로
+      쓴다 — 그림자 오프셋이 어느 칸인지가 개정 규칙에 없다. 정해지면 셋을 함께 맞춘다.
     -->
     <dimen name="davi_card_shadow_offset_y">3dp</dimen>
     <dimen name="davi_card_shadow_offset_y_speaking">4dp</dimen>
@@ -647,11 +731,20 @@
     <dimen name="davi_home_sparkle_margin_top">24dp</dimen>
 
     <!--
-      ON-2 권한 화면(#236). 시안 프레임 300×620.
+      ON-2 권한 화면(#236 · 환산 정리 #253). 시안 프레임 300×620.
 
-      **이 블록은 아직 옛 자를 쓴다**(#253) — 세로 거리까지 x1.2다. 개정된 규칙은
-      `DESIGN-CONVENTIONS.md`에 있고(객체 x1.2 / 세로 거리 1:1), 값 정리는 실기기 확인이
-      따로 붙어 후속으로 뺐다.
+      환산은 `DESIGN-CONVENTIONS.md`의 세 갈래를 따른다 — **객체의 자기 크기는 x1.2, 세로
+      거리는 1:1**, 반지름·선 두께·글자는 1:1이다.
+
+        x1.2   카드 최소 높이 226(시안 188) · 버튼 최소 높이 72(60) · 슬롯 67(56) ·
+               톱니 47(시안 39) · 버튼 폭 288(240) · 가로 여백 29(24, 가로라 x1.2)
+        1:1    카드 위 56 · 카드↔버튼 42 · 버튼↔안내 24 · 카드 안 gap 8
+
+      **최소 높이 둘은 x1.2 쪽이다**(판정 문장: "객체가 그려지는 자기 몸이면 x1.2").
+      시안 카드 188은 내용(124)보다 큰 **고정 높이**이고 오토레이아웃 CENTER가 만든 값이라
+      그려지는 상자다. 버튼 60도 `v2/button`이 그린 상자이고 **폭도 288 절대치라 비례 논거가
+      그대로 선다** — 반면 카드는 폭이 match_parent - 29라 지킬 비례가 없어, 근거는 "내용보다
+      큰 고정 높이" 하나다. 둘 다 구현은 minHeight라 글자 배율에서 늘어난다.
 
       카드 높이는 시안이 188 고정이고 내용(56+8+28+8+24=124)보다 크다 — 오토레이아웃 정렬이
       CENTER라 위아래로 32씩 남는다. 그래서 이 값은 **고정 높이가 아니라 최소 높이**이고
@@ -667,7 +760,15 @@
       맞지만 분할 화면 같은 조건이 남는다. 시안 확인(#236)에서 카드 폭으로 갈지와 함께 본다.
     -->
     <dimen name="davi_onboarding_card_margin_h">29dp</dimen>
-    <dimen name="davi_onboarding_card_margin_top">67dp</dimen>
+    <!--
+      카드 위 여백. **시안 y90을 거리로 바꾼 값이다** — 프레임이 상태바 34를 그리고 있어
+      90 - 34 = 56이고, 세로 거리라 환산하지 않는다(1:1).
+
+      상태바 **아래**에서 재는 거리인 근거는 `OnboardingActivity`가 인셋 층
+      (`onboarding_insets`)에 `topMargin = bars.top`을 걸기 때문이다. 검증 기기 상태바가
+      34.3dp라 시안의 34와 사실상 같아, 근거를 안 적으면 절대 y와 구분이 안 된다.
+    -->
+    <dimen name="davi_onboarding_card_margin_top">56dp</dimen>
     <dimen name="davi_onboarding_card_min_height">226dp</dimen>
     <dimen name="davi_onboarding_card_radius">16dp</dimen>
     <dimen name="davi_onboarding_card_padding_h">19dp</dimen>
@@ -675,14 +776,44 @@
          20이면 10dp 상승이다. 이름을 padding으로 둔 것은 값을 그대로 읽게 하기 위해서다.
          시안에는 없는 값이다 — 실기기에서 톱니와 제목이 내려앉아 보여 조정했다(2026-08-19). -->
     <dimen name="davi_onboarding_card_padding_bottom">20dp</dimen>
-    <dimen name="davi_onboarding_card_gap">10dp</dimen>
+    <!-- 카드 안 세로 간격(시안 8). **카드 안 배치를 거의 안 움직인다** — 내용이 세로 가운데라
+         제목 자리 식에서 이 값이 상쇄된다. 실제로 움직이는 것은 본문 한 줄뿐이다. -->
+    <dimen name="davi_onboarding_card_gap">8dp</dimen>
     <dimen name="davi_onboarding_slot_size">67dp</dimen>
     <dimen name="davi_onboarding_icon_size">47dp</dimen>
     <dimen name="davi_onboarding_button_width">288dp</dimen>
     <dimen name="davi_onboarding_button_min_height">72dp</dimen>
     <dimen name="davi_onboarding_button_shadow_y">3dp</dimen>
-    <dimen name="davi_onboarding_button_margin_top">50dp</dimen>
-    <dimen name="davi_onboarding_hint_margin_top">29dp</dimen>
+    <dimen name="davi_onboarding_button_margin_top">42dp</dimen>
+    <dimen name="davi_onboarding_hint_margin_top">24dp</dimen>
+
+    <!--
+      온보딩 1 로그인(#266). 시안 SSoT › SCREENS › 온보딩 v2 › 「온보딩 1 — 로고 · 시작하기」
+      프레임 300x620 · 2026-08-18 실측. **ON-2와 같은 자다**(개정 규칙 #244).
+
+        객체 자기 크기 x1.2   아바타 96 -> 115
+        세로 거리 1:1         상태바 아래(y34) 기준으로 잰다
+        반지름·글자 1:1
+
+      **버튼은 ON-2 토큰을 그대로 쓴다**(288x72) — 시안이 둘 다 v2/button 240x60이다.
+      값을 다시 만들면 마스터가 바뀔 때 한쪽만 고쳐진다.
+    -->
+    <!--
+      **모서리 반지름 토큰이 없다.** 아바타의 모양은 에셋(ic_davi_logo)의 클립이 갖는
+      스퀘어클이라 코너 반지름으로 표현되지 않는다 — 크기만 주면 곡선이 함께 스케일된다.
+      "시안 r36을 1:1로 쓰나 비율로 쓰나"라는 물음 자체가 여기서는 성립하지 않는다.
+    -->
+    <dimen name="davi_login_avatar_size">115dp</dimen>
+    <!-- 아바타 위. 시안 y170에서 상태바 34를 뺀다 — 세로 거리라 1:1. -->
+    <dimen name="davi_login_avatar_margin_top">136dp</dimen>
+    <!-- 아바타 하단 266 -> 앱명 279, 앱명 하단 321 -> 부제 334. 둘 다 13이다. -->
+    <dimen name="davi_login_title_margin_top">13dp</dimen>
+    <!-- 부제 하단 360 -> 카카오 426. -->
+    <dimen name="davi_login_button_margin_top">66dp</dimen>
+    <!-- 카카오 하단 486 -> 스킵 502. -->
+    <dimen name="davi_login_button_gap">16dp</dimen>
+    <!-- 스킵 하단 562 -> 프레임 바닥 620. -->
+    <dimen name="davi_login_bottom_margin">58dp</dimen>
     <!-- 글자는 환산하지 않는다(1:1). 카드 제목 20 · 버튼 라벨 18 · 본문과 안내 17. -->
     <dimen name="davi_type_onboarding_title">20sp</dimen>
     <dimen name="davi_type_onboarding_button">18sp</dimen>

@@ -38,6 +38,7 @@ def _gemini_response(
 def _candidate_action(instruction: str = "카메라를 누르세요.") -> dict:
     return {
         "expected_result": "카메라 앱이 열린다",
+        "screen_summary": "런처 홈 화면",
         "evidence": "현재 화면에 카메라 아이콘이 보인다",
         "action_type": "tap",
         "target_node_id": "n8",

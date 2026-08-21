@@ -32,13 +32,26 @@ abstract class MotionView @JvmOverloads constructor(
         invalidate()
     }
 
-    private var motionActive = false
+    // **driver 뒤에 선언해야 한다** — 위에 두면 `driver::start`가 아직 초기화 전인 필드를 잡는다.
+    // `init`에서 sync를 부르지도 않는다: 서브클래스 필드가 서기 전에 전이 훅이 돌아
+    // [onMotionLifecycleChanged]가 미완성 객체 위에서 실행된다.
+    private val activation = MotionActivation(
+        onStart = driver::start,
+        onStop = driver::stop,
+        onTransition = ::onMotionLifecycleChanged,
+    )
 
     /**
      * 한 프레임분 상태를 갱신한다. 그리기는 하지 않는다 — 호출 뒤 [invalidate]가 따라온다.
      *
      * 모션이 꺼져 있으면 `(0f, 0f)`으로 **한 번만** 불린다. 그래서 이 함수는 "시간 0의 모습"이
      * 정지 프레임으로 쓸 만하도록 써야 하고, [onDraw]도 그 한 프레임만으로 그려낼 수 있어야 한다.
+     *
+     * **다만 그 한 장이 첫 프레임이라는 보장은 없다.** `areAnimatorsEnabled`의 프로세스 캐시가
+     * 콜드 스타트에서 늦게 동기화되면 움직이는 프레임 N장이 흐른 뒤에야 [MotionDriver]가 꺼짐을
+     * 알아채고 `(0f, 0f)`을 흘린다(`app-android/CLAUDE.md` 기기 함정 — SM-S921N 실측).
+     * 전제해도 되는 것은 "정지 프레임은 언젠가 한 장 온다"까지이고 "첫 프레임이 정지 프레임이다"는
+     * 아니다 — delta를 누적하는 뷰는 위상 0이 아니라 그때까지 쌓인 위상에서 얼어붙는다.
      */
     protected abstract fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float)
 
@@ -49,7 +62,7 @@ abstract class MotionView @JvmOverloads constructor(
      * `active`는 "프레임이 흐른다"가 아니라 **조건이 참이다**라는 뜻이다. 모션이 꺼져 있으면
      * 루프는 돌지 않지만(정지 프레임 한 장) 부수 상태는 여전히 전이를 따라가야 한다 —
      * 안 그러면 모션 끄기에서 지연이 영영 arm되지 않는다. 프레임 단위 상태는 여기가 아니라
-     * [onMotionFrame]에 걸 것.
+     * [onMotionFrame]에 걸 것. 전이 판정 자체는 [MotionActivation]에 있다(#249).
      */
     protected open fun onMotionLifecycleChanged(active: Boolean) {}
 
@@ -60,7 +73,7 @@ abstract class MotionView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         // syncDriver()를 못 쓴다 — 이 시점의 isAttachedToWindow는 아직 true라 조건이 안 걸린다.
-        setRunning(false)
+        activation.sync(false)
         super.onDetachedFromWindow()
     }
 
@@ -74,22 +87,12 @@ abstract class MotionView @JvmOverloads constructor(
         syncDriver()
     }
 
+    // 조건 셋을 읽어 넘기기만 한다 — 전이 판정·구동 조작·훅 순서는 [MotionActivation]에 있다.
     private fun syncDriver() {
-        setRunning(
+        activation.sync(
             isAttachedToWindow &&
                 visibility == VISIBLE &&
                 windowVisibility == VISIBLE,
         )
-    }
-
-    private fun setRunning(shouldRun: Boolean) {
-        // 전이일 때만 움직인다. 모션 끄기에서는 driver.running이 서지 않아 start()의 중복
-        // 가드가 안 걸리므로, 여기서 거르지 않으면 조건 유지 중의 가시성 이벤트마다 정지
-        // 프레임이 재방출돼 [onMotionFrame]의 "한 번만" 계약이 깨진다.
-        if (shouldRun == motionActive) return
-        motionActive = shouldRun
-        // driver 먼저 — 모션 끄기의 정지 프레임 한 장이 흐른 뒤에 전이 훅이 온다.
-        if (shouldRun) driver.start() else driver.stop()
-        onMotionLifecycleChanged(shouldRun)
     }
 }

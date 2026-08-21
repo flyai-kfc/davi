@@ -124,7 +124,7 @@ private object GuideControl {
                     .setComponent(
                         ComponentName(
                             GuideE2eContract.DAVI_PACKAGE,
-                            "${GuideE2eContract.DAVI_PACKAGE}.LoginActivity",
+                            "${GuideE2eContract.DAVI_CLASS_ROOT}.LoginActivity",
                         ),
                     )
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
@@ -154,7 +154,7 @@ private object GuideControl {
                 .setComponent(
                     ComponentName(
                         GuideE2eContract.DAVI_PACKAGE,
-                        "${GuideE2eContract.DAVI_PACKAGE}.GuideE2eControlReceiver",
+                        "${GuideE2eContract.DAVI_CLASS_ROOT}.GuideE2eControlReceiver",
                     ),
                 )
                 .putExtra(GuideE2eContract.EXTRA_GOAL, goal),
@@ -176,7 +176,7 @@ private object GuideControl {
             Intent(GuideE2eContract.ACTION_STOP).setComponent(
                 ComponentName(
                     GuideE2eContract.DAVI_PACKAGE,
-                    "${GuideE2eContract.DAVI_PACKAGE}.GuideE2eControlReceiver",
+                    "${GuideE2eContract.DAVI_CLASS_ROOT}.GuideE2eControlReceiver",
                 ),
             ),
             GuideE2eContract.PERMISSION,

@@ -7,6 +7,20 @@ from typing import Literal, Self
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 공급자별 기본 모델과 키 환경변수. `DAVI_MODEL`을 비워 두면 여기 값이 쓰인다.
+# 셋 다 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다 — 품질이 더 필요하면 DAVI_MODEL로
+# 올린다(예: gemini-3.6-flash, gpt-5.6-terra, claude-sonnet-5).
+DEFAULT_MODELS: dict[str, str] = {
+    "gemini": "gemini-3.5-flash-lite",
+    "openai": "gpt-5.6-luna",
+    "anthropic": "claude-haiku-4-5",
+}
+API_KEY_SETTINGS: dict[str, str] = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
@@ -17,13 +31,40 @@ class Settings(BaseSettings):
     # Container App·시크릿으로 운영해 앞으로 올 정식 production과 구분한다.
     davi_env: Literal["development", "beta", "production"] = "development"
 
-    # Gemini
+    # LLM 공급자. 셋 다 같은 구조화 JSON 계약을 쓰고, 교체는 이 값 하나다(`llm_provider.py`).
+    # 기본은 gemini — 기존 배포·eval·.env가 그대로 돌아야 한다.
+    davi_llm_provider: Literal["gemini", "openai", "anthropic"] = "gemini"
+
+    # 공급자 키. 고른 공급자의 키만 있으면 된다(아래 검증). 앱엔 절대 넣지 않는다.
     gemini_api_key: SecretStr = SecretStr("")
+    openai_api_key: SecretStr = SecretStr("")
+    anthropic_api_key: SecretStr = SecretStr("")
+
     # 모델은 환경변수로 둔다. HANDOFF §6: 아키텍처가 여기 묶여 있지 않다(교체 한 줄).
-    davi_model: str = "gemini-3.5-flash-lite"
+    # **비우면 공급자 기본 모델**(`DEFAULT_MODELS`)을 쓴다. 공급자만 바꾸고 모델을 안 고쳐서
+    # gemini id가 Anthropic으로 나가는 사고를 막으려고 이렇게 뒀다.
+    davi_model: str = ""
+    # 출력 토큰 상한 강제값. 0이면 공급자별로 계산한다(`llm_provider.build_provider`).
+    # 모델을 바꿨는데 답이 잘리거나 너무 비쌀 때만 손댄다.
+    davi_max_output_tokens: int = 0
+
+    # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는
+    # 늘되 느려지고 maxOutputTokens 예산을 다 써 응답이 잘릴 위험도 커진다(2026-08-18
+    # gemini-3.6-flash PARSE 실패 실기기 재현). 세 호출부가 각자 maxOutputTokens = 이 값 +
+    # 정상 응답 여유분으로 맞춰 잘림을 막는다. thinking이 없는 모델(flash-lite 등)에 보내도
+    # 조용히 무시된다(실측).
+    davi_gemini_thinking_budget: int = 800
+    # OpenAI에서 thinking에 해당하는 값. 속도를 위해 낮게 둔다. none이면 reasoning 토큰
+    # 여유분도 얹지 않는다. 판단이 얕으면 여기를 올리기 전에 모델을 올리는 편이 낫다.
+    davi_openai_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
 
     # 공용 개발 endpoint 보호용 토큰(#57). production에서는 설정 자체를 금지한다.
     davi_dev_access_token: SecretStr = SecretStr("")
+    # 외부 테스트 참가자에게 나눠 주는 둘째 토큰. 개발 토큰과 **병행**한다 — 서버는 둘 중
+    # 하나만 맞으면 통과시킨다. 하나로 합치지 않는 이유는 **폐기 시점이 다르기** 때문이다:
+    # 테스트가 끝나면 이 토큰만 지우면 되고, 팀의 개발 토큰은 그대로 살아 있다. 값이 새도
+    # 폐기 범위가 테스트 참가자로 제한된다.
+    davi_test_access_token: SecretStr = SecretStr("")
     # 공식 실행 스크립트가 uvicorn --host와 같은 값으로 설정한다.
     davi_bind_host: str = "127.0.0.1"
     # 같은 Wi-Fi 팀 전체가 공유하는 인프로세스 제한. Gemini 무료 티어(약 15 RPM)보다 낮게 둔다.
@@ -73,41 +114,101 @@ class Settings(BaseSettings):
     davi_external_daily_limit_requests: int = 900
     davi_external_daily_limit_per_source_requests: int = 200
 
-    @field_validator("gemini_api_key", mode="after")
+    @property
+    def access_tokens(self) -> dict[str, str]:
+        """이 서버가 받아들이는 개발용 토큰. 값이 있는 것만 담는다.
+
+        비어 있으면 토큰 게이트 자체가 꺼지고 loopback 검사만 남는다(`main.py`).
+        키는 로그에 남길 토큰 종류이고, 값은 절대 로그에 남기지 않는다.
+        """
+
+        candidates = {
+            "dev": self.davi_dev_access_token.get_secret_value().strip(),
+            "test": self.davi_test_access_token.get_secret_value().strip(),
+        }
+        return {kind: token for kind, token in candidates.items() if token}
+
+    @property
+    def kakao_auth_configured(self) -> bool:
+        """카카오 로그인 endpoint가 열려 있는가.
+
+        판정을 여기 하나로 둔다 — `kakao_auth.py`의 게이트와 `/health`가 각자 조건을 적으면
+        한쪽만 고쳐져 "배포는 통과했는데 로그인은 닫혀 있다"가 된다. `/health`가 이 값을
+        알리는 이유는 배포 검증이 `/v1/auth/kakao`를 찌를 수 없어서다(#279): 그 endpoint는
+        개발 토큰 게이트 뒤에 있다. 불리언만 알리고 앱 ID·서명 비밀은 노출하지 않는다.
+        """
+
+        return bool(self.davi_auth_jwt_secret.get_secret_value().strip()) and (
+            self.davi_kakao_app_id > 0
+        )
+
+    @field_validator("gemini_api_key", "openai_api_key", "anthropic_api_key", mode="after")
     @classmethod
-    def normalize_gemini_api_key(cls, value: SecretStr) -> SecretStr:
+    def normalize_api_key(cls, value: SecretStr) -> SecretStr:
         """검증한 키와 실제 HTTP 헤더에 쓰는 키가 같은 값이게 한다."""
 
         return SecretStr(value.get_secret_value().strip())
 
+    @property
+    def provider_api_key(self) -> SecretStr:
+        """지금 고른 공급자의 키. 나머지 공급자 키는 비어 있어도 된다."""
+
+        return {
+            "gemini": self.gemini_api_key,
+            "openai": self.openai_api_key,
+            "anthropic": self.anthropic_api_key,
+        }[self.davi_llm_provider]
+
+    @property
+    def resolved_model(self) -> str:
+        """실제로 호출에 쓰는 모델 id. 비어 있으면 공급자 기본값이다."""
+
+        return self.davi_model.strip() or DEFAULT_MODELS[self.davi_llm_provider]
+
     @model_validator(mode="after")
     def validate_runtime_profile(self) -> Self:
-        api_key = self.gemini_api_key.get_secret_value()
+        api_key = self.provider_api_key.get_secret_value()
         dev_access_token = self.davi_dev_access_token.get_secret_value().strip()
+        test_access_token = self.davi_test_access_token.get_secret_value().strip()
         bind_host = self.davi_bind_host.strip().lower()
-        model = self.davi_model.strip()
 
         if self.davi_env != "development" and self.davi_use_stub_llm:
             raise ValueError("beta·production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
         if not self.davi_use_stub_llm and not api_key:
-            raise ValueError("실제 LLM을 사용하려면 GEMINI_API_KEY가 필요합니다")
-        if not model:
-            raise ValueError("DAVI_MODEL은 비어 있을 수 없습니다")
+            key_setting = API_KEY_SETTINGS[self.davi_llm_provider]
+            raise ValueError(
+                f"실제 LLM을 사용하려면 {key_setting}가 필요합니다"
+                f" (DAVI_LLM_PROVIDER={self.davi_llm_provider})"
+            )
+        if self.davi_gemini_thinking_budget < 0:
+            raise ValueError("DAVI_GEMINI_THINKING_BUDGET은 0 이상이어야 합니다")
+        if self.davi_max_output_tokens < 0:
+            raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
         if self.davi_env != "development" and dev_access_token:
             raise ValueError("beta·production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env != "development" and test_access_token:
+            raise ValueError("beta·production에서는 DAVI_TEST_ACCESS_TOKEN을 설정할 수 없습니다")
         if dev_access_token and len(dev_access_token) < 32:
             raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
-        # beta·production의 외부 바인딩 자체는 더 이상 막지 않는다(#214). 이 프로필이 만들어진
-        # 시점(#59)엔 실사용자 인증이 없어 "loopback만"이 유일한 안전판이었지만, 지금은 카카오
-        # 로그인 세션 토큰이 그 자리를 대신한다(main.py `_external_access_error`) — 바인딩이
-        # 아니라 요청 자체를 인증한다. loopback으로 묶어 둘 이유가 없어진 development만
-        # 아래에서 별도로 계속 검사한다(공용 개발 endpoint는 세션 인증이 없어 여전히 필요).
+        if test_access_token and len(test_access_token) < 32:
+            raise ValueError("DAVI_TEST_ACCESS_TOKEN은 32자 이상이어야 합니다")
+        # 두 토큰이 같으면 "테스트 토큰만 폐기한다"가 성립하지 않는다. 폐기 범위를 나누려고
+        # 둘로 나눈 것이므로 같은 값을 쓰는 설정은 기동 때 막는다.
+        if dev_access_token and dev_access_token == test_access_token:
+            raise ValueError("DAVI_TEST_ACCESS_TOKEN은 DAVI_DEV_ACCESS_TOKEN과 달라야 합니다")
+        # beta·production의 외부 바인딩은 세션 인증이 지킨다(#214). development의 LAN
+        # 바인딩만 아래에서 개발·테스트 접근 토큰 중 하나를 요구한다.
+        # 토큰 게이트를 여는 것은 둘 중 **아무 토큰이나 하나**다. 테스트 기간에 개발 토큰을
+        # 잠시 비우고 테스트 토큰만 두는 운용도 막지 않는다.
         if (
             self.davi_env == "development"
             and bind_host not in {"127.0.0.1", "localhost", "::1"}
-            and not dev_access_token
+            and not (dev_access_token or test_access_token)
         ):
-            raise ValueError("development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN이 필요합니다")
+            raise ValueError(
+                "development LAN 바인딩에는 DAVI_DEV_ACCESS_TOKEN 또는 "
+                "DAVI_TEST_ACCESS_TOKEN이 필요합니다"
+            )
         # 2차 마스킹 우회는 "내 맥에서만 도는 development 서버"로 경계를 좁힌다(#203).
         # production은 물론이고, 개발 토큰이 있거나 loopback 밖에 바인딩한 순간
         # 그 서버는 팀이 공유하는 endpoint이므로 다른 사람의 기기 화면까지 원문으로 받게 된다.
@@ -122,10 +223,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DAVI_DISABLE_PRIVACY_MASKING은 loopback 바인딩에서만 사용할 수 있습니다"
                 )
-            if dev_access_token:
+            if dev_access_token or test_access_token:
                 raise ValueError(
-                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN 설정)에서는 "
-                    "DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
+                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
+                    "에서는 DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
                 )
         if self.davi_dev_rate_limit_requests <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")

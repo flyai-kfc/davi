@@ -33,8 +33,17 @@ object ActiveWindowResolver {
      */
     private const val FULL_SCREEN_MIN_AREA_RATIO = 0.9
 
-    /** 고른 창의 루트와 그 창이 화면에서 차지한 영역. [bounds]는 폴백 경로에서 null이다. */
-    data class Resolved(val root: AccessibilityNodeInfo, val bounds: Rect?)
+    /**
+     * 고른 창의 루트와 그 창이 화면에서 차지한 영역. [bounds]는 폴백 경로에서 null이다.
+     *
+     * [title]은 창 제목이다(API 24+). **없는 창이 흔하다** — 시스템·삼성 앱은 하위 화면까지
+     * 주지만 11번가·TMAP·플레이스토어는 null이었다(#269 실측). 폴백 경로에서도 null이다.
+     */
+    data class Resolved(
+        val root: AccessibilityNodeInfo,
+        val bounds: Rect?,
+        val title: CharSequence? = null,
+    )
 
     fun resolve(service: AccessibilityService): Resolved? {
         val ownPackage = service.packageName
@@ -54,8 +63,10 @@ object ActiveWindowResolver {
         return candidates
             .filter { (window, _) -> area(window).toDouble() / displayArea >= MIN_AREA_RATIO }
             .maxByOrNull { (window, _) -> area(window) }
-            ?.let { (window, root) -> Resolved(root, Rect().also { window.getBoundsInScreen(it) }) }
-            ?: fallbackRoot(service, ownPackage)?.let { Resolved(it, null) }
+            ?.let { (window, root) ->
+                Resolved(root, Rect().also { window.getBoundsInScreen(it) }, window.title)
+            }
+            ?: fallbackRoot(service, ownPackage)?.let { Resolved(it, null, null) }
     }
 
     /**

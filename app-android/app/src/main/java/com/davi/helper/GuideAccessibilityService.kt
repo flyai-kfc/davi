@@ -36,6 +36,27 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guideApiClient: GuideApiClient? = null
     private var e2ePublisher: GuideE2ePublisher? = null
 
+    /**
+     * 지금 안내 중인 대상의 label(#238). `source`가 회수된 순간에 눌림을 맞추는 유일한 축이다.
+     * 1차 마스킹을 거친 값이라 원본 개인정보가 아니다.
+     */
+    private var guidedTargetLabel: String? = null
+
+    /**
+     * 그 안내가 나간 화면의 package(#319). 클릭 이벤트는 창 구분 없이 온다 — 우리 오버레이의
+     * 중지 칩, IME 키, 셰이드, 권한 대화상자 전부 `TYPE_VIEW_CLICKED`를 낸다. 안내 앱이 아닌
+     * 창의 클릭을 `performed`로 적으면 "다른 곳을 누름"이 사용자가 하지도 않은 조작을
+     * 기록하게 되므로, **이 package의 이벤트만 판정에 들인다.**
+     */
+    private var guidedScreenPackage: String? = null
+
+    /**
+     * 안내 대상이 `clickable=true`였는가(#319). 비클릭 요소를 대상으로 안내하면(#311) 탭이
+     * 클릭 가능한 조상에서 발화해 중심이 대상 밖일 수 있다 — 시킨 대로 눌렀는데
+     * "다른 곳"이 되는 오탐이라, 그런 대상에서는 OFF_TARGET을 확신으로 쓰지 않는다.
+     */
+    private var guidedTargetClickable = false
+
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
 
@@ -43,6 +64,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private var dogfoodDeviceId: String? = null
     private val apiExecutor = Executors.newSingleThreadExecutor()
     private val requestInFlight = AtomicBoolean(false)
+
+    /** 직전에 보낸 읽는 중 여부. 전이일 때만 로그를 남긴다(폴링마다 찍으면 묻힌다). */
+    private var lastReading: Boolean? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val logicalRequests = LogicalRequestTracker()
     private var lastLoggedScreenSignature: String? = null
@@ -122,6 +146,10 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            lastReading = null
+            guidedTargetLabel = null
+            guidedScreenPackage = null
+            guidedTargetClickable = false
             errorNotice.reset()
             lastDecision = null
             if (goal == null) {
@@ -195,6 +223,9 @@ class GuideAccessibilityService : AccessibilityService() {
                             GuideSession.confirmRejected()
                             overlay?.clear()
                             display.reset()
+                            guidedTargetLabel = null
+                            guidedScreenPackage = null
+                            guidedTargetClickable = false
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
                             stability.markFailed()
@@ -283,6 +314,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
         if (GuideSession.active() == null) return
 
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
         scheduleSample(SETTLE_MS)
     }
 
@@ -323,6 +355,83 @@ class GuideAccessibilityService : AccessibilityService() {
         )
     }
 
+    /**
+     * 안내한 대상을 사용자가 **실제로 눌렀는지** 보고, 맞으면 눌림을 알리고 강조를 내리며(#238)
+     * 판정을 마지막 스텝의 `performed`에 적는다(#319).
+     *
+     * 화면 서명이 바뀌기 전이라 [ScreenStabilityTracker]는 아직 아무것도 모르는 구간이다.
+     * #225가 닫은 것이 그 **뒤** 구간이고 여기가 그 앞이다.
+     *
+     * **안내가 나간 화면의 package에서 난 클릭만 판정한다.** 이 서비스의 이벤트에는 창 구분이
+     * 없어 우리 오버레이(중지 칩)·IME 키·셰이드의 클릭도 여기로 온다 — 그걸 판정에 들이면
+     * 안내를 잘 따르는 사용자가 "다른 곳을 누름"으로 적힌다. 걸러서 잃는 것은 미탐뿐이다.
+     *
+     * **정체·진행 판정은 여전히 시간 기반이다.** 목록 끝에서 이벤트가 오지 않는 제약은 그대로라
+     * (`HANDOFF.md` §3), 이 이벤트의 쓰임은 표시·스텝 귀속 기록·정체 타이머의 기준점 셋이고
+     * "물을지 말지"는 계속 샘플러가 정한다 — 이벤트가 안 오면 `performed`가 null로 남고 정체
+     * 타이머가 안내 시점부터 돌 뿐, 안내는 멈추지 않는다. 미탐 → null 강등이 설계된 퇴화
+     * 경로다(`../CLAUDE.md`의 "조작 이벤트에 의존하지 않는다"). 눌림 확인이 여는 유일한 예외가
+     * 정체 시점의 재질의 1회다([GuideSession.consumePressRequery]).
+     */
+    private fun onTargetPressed(event: AccessibilityEvent) {
+        val bounds = display.pressTargetBounds() ?: return
+        val screenPackage = guidedScreenPackage ?: return
+        if (event.packageName?.toString() != screenPackage) return
+        when (pressVerdict(event, bounds)) {
+            PressMatch.Verdict.ON_TARGET -> {
+                // **표시가 먼저다.** 파동은 "방금 눌렀다"는 사실의 표시라 세션 상태에 매이지
+                // 않는다(#238, `docs/SCREENS.md` GD-2). 기록을 앞에 두면 세션이 막 끝난 좁은
+                // 구간에서 기록 실패가 표시까지 삼킨다(#333 리뷰).
+                display.consumePress()
+                Log.i(TAG, "press on target")
+                overlay?.pressFeedback(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
+                display.hideTarget()?.let { draw(it) }
+                GuideSession.active()?.generation?.let { generation ->
+                    GuideSession.observePress(generation, onTarget = true)
+                    // "안내 후 화면 그대로 7초"는 방금 조작한 시점부터 다시 센다.
+                    stability.markPressed(SystemClock.uptimeMillis())
+                }
+            }
+
+            // 좌표 축의 확신 불일치만 온다 — 표시(파동·강조)는 건드리지 않고 기록만 한다.
+            // press는 소비하지 않는다: 빗맞은 뒤 대상을 제대로 누르면 true로 덮여야 한다.
+            // 비클릭 대상(#311)의 불일치는 확신이 아니라서 버린다([guidedTargetClickable]).
+            PressMatch.Verdict.OFF_TARGET -> {
+                if (!guidedTargetClickable) return
+                val generation = GuideSession.active()?.generation ?: return
+                GuideSession.observePress(generation, onTarget = false)
+                Log.i(TAG, "press off target")
+            }
+
+            PressMatch.Verdict.UNKNOWN -> Unit
+        }
+    }
+
+    /**
+     * 두 축으로 맞춘다 — 좌표가 정확하지만 **항상 있지는 않다**([PressMatch]).
+     *
+     * **이벤트 텍스트는 비교에만 쓰고 어디에도 남기지 않는다.** 원본이라 개인정보일 수 있어
+     * 로그·전송 경로에 들어가면 안 된다(1차 마스킹은 직렬화 경로에만 걸려 있다). 좌표가 있으면
+     * 텍스트를 꺼내지도 않는다 — 판정에 안 쓰는 원본을 만들 이유가 없다.
+     */
+    private fun pressVerdict(event: AccessibilityEvent, bounds: List<Int>): PressMatch.Verdict {
+        val clicked = Rect()
+        event.source?.getBoundsInScreen(clicked)
+        if (!clicked.isEmpty) {
+            return PressMatch.judge(
+                bounds,
+                clicked.centerX() to clicked.centerY(),
+                guidedTargetLabel,
+                emptyList(),
+            )
+        }
+        val candidates = buildList {
+            event.text.forEach { item -> item?.toString()?.let { add(it) } }
+            event.contentDescription?.toString()?.let { add(it) }
+        }
+        return PressMatch.judge(bounds, null, guidedTargetLabel, candidates)
+    }
+
     private fun scheduleSample(delayMs: Long) {
         // 꺼진 화면에는 그릴 것도 물을 것도 없다. 되살리는 것은 [resumeAfterScreenOn]뿐이다.
         if (screenOff) return
@@ -342,6 +451,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val resolved = ActiveWindowResolver.resolve(this)
         activeWindowBounds = resolved?.bounds
+        val windowTitle = resolved?.title
         val root = resolved?.root
         if (root == null) {
             // 우리 앱이 앞에 있거나 읽을 창이 없다. 남은 강조를 지우고 계속 지켜본다.
@@ -368,7 +478,9 @@ class GuideAccessibilityService : AccessibilityService() {
         val windowTypes = runCatching { windows.map { it.type } }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
-        val result = runCatching { UiTreeSerializer.serialize(root, windowTypes) }.getOrElse {
+        val result = runCatching {
+            UiTreeSerializer.serialize(root, windowTypes, windowTitle)
+        }.getOrElse {
             Log.e(TAG, "serialize failed", it)
             scheduleSample(POLL_MS)
             return
@@ -433,11 +545,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         logScreenDetails(result)
                     }
                 }
-                // 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌
-                // 화면의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
-                if (requestNextStep(result.screen, signature, session)) {
-                    stability.markSent(signature, now)
-                }
+                sendStableScreen(result.screen, signature, now, session.generation)
                 scheduleSample(POLL_MS)
             }
 
@@ -446,14 +554,52 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 알리지 않는 데 그치지 않고 건너뛰는 이유는, stuckContent가 같은 내용으로
                 // 다시 그리면서 우리 창을 만져 스스로를 깨우기 때문이다(ControlOverlay 참고).
                 if (!GuideSession.awaitingConfirm) {
-                    Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                    showStuckNotice(signature)
+                    // 눌림 확인 재질의(#319). 안내한 대상을 눌렀는데(performed=true) 눌림
+                    // 시점부터 7초 동안 화면이 그대로면 오안내 신호다 — 이때만 같은 화면을
+                    // 한 번 더 묻는다. observeScreen이 같은 서명으로 screen_changed=false를
+                    // 적으므로 서버는 "누른 것이 확인됨 · 화면이 그대로임"을 읽는다.
+                    // 토큰은 눌림당 하나라(#39 예외의 상한) 다음 STUCK은 정체 문구다.
+                    // 요청이 시작되지 못하면(서비스 해제 경합 등) 정체 문구로 떨어진다 —
+                    // STUCK이 사용자에게 아무것도 안 보여 주는 경로를 만들지 않는다.
+                    val requeried =
+                        GuideSession.consumePressRequery(session.generation) &&
+                            sendStableScreen(result.screen, signature, now, session.generation)
+                    if (requeried) {
+                        Log.i(TAG, "press requery")
+                    } else {
+                        Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
+                        showStuckNotice(signature)
+                    }
                 }
                 scheduleSample(POLL_MS)
             }
 
             ScreenStabilityTracker.Decision.IDLE -> scheduleSample(POLL_MS)
         }
+    }
+
+    /**
+     * 안정된 현재 화면으로 요청 하나를 시작한다. SEND와 눌림 확인 재질의(#319)가 같은 절차를
+     * 쓴다 — 갈라 두면 다음 전송 규칙 변경이 한쪽만 고친다.
+     *
+     * 실제로 나간 요청만 "보냈다"로 기록한다. 보낸 셈 치면 in-flight 가드에 막힌 화면의 안내가
+     * 영영 오지 않는다(PR #61 리뷰 P1). 보내기 직전에 마지막 스텝의 `screen_changed`를
+     * 확정하고(C11 개정) **스냅샷을 그 뒤에 뜬다** — 샘플 처음의 스냅샷에는 방금 적은 값이
+     * 없어, 그대로 보내면 한 요청씩 늦는다.
+     *
+     * @return 요청이 실제로 시작됐는가.
+     */
+    private fun sendStableScreen(
+        screen: Screen,
+        signature: String,
+        now: Long,
+        generation: Long,
+    ): Boolean {
+        GuideSession.observeScreen(generation, signature)
+        val sending = GuideSession.active() ?: return false
+        if (!requestNextStep(screen, signature, sending)) return false
+        stability.markSent(signature, now)
+        return true
     }
 
     /**
@@ -469,11 +615,11 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1). 판정은 [ReadingBorder]에 있고 여기서는
+     * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1·GD-2r). 판정은 [ReadingBorder]에 있고 여기서는
      * 값을 모아 넘기기만 한다. 멱등이라 같은 값으로 반복 호출해도 안전하다.
      */
     private fun updateReading() {
-        overlay?.setReading(
+        val reading =
             ReadingBorder.isReading(
                 // 유무만 필요하다. active()는 잠금을 잡고 이력 리스트 두 개를 복사하는데,
                 // 그 잠금은 네트워크 스레드의 기록 경로와 공유한다.
@@ -486,8 +632,15 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 자리를 성공 tone 테두리가 쓰고(#139), 종료 확인(GD-4)은 그 자리를 아무도
                 // 안 쓴다 — 스크림은 다른 자리고 테두리가 없다(#193).
                 awaitingConfirm = GuideSession.awaitingConfirm,
-            ),
-        )
+            )
+        // 읽는 구간의 길이를 로그로 남긴다(#295). 문구 교체가 이 구간에 걸리므로, 구간이
+        // 너무 짧아 깜빡이는지를 이 전이로 판정한다. **백오프 대기는 여기 안 잡힌다** —
+        // ScreenStability가 IDLE을 내고 isReading이 false다(#29: 서버 실패는 안내창이 맡는다).
+        if (lastReading != reading) {
+            lastReading = reading
+            Log.i(TAG, "reading=$reading")
+        }
+        overlay?.setReading(reading)
     }
 
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
@@ -500,6 +653,7 @@ class GuideAccessibilityService : AccessibilityService() {
             content.actionType,
             content.direction,
             content.confirm,
+            content.targetSuppressed,
         )
     }
 
@@ -565,10 +719,9 @@ class GuideAccessibilityService : AccessibilityService() {
                     screen = screen,
                     // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
                     deviceId = dogfoodDeviceId,
-                    // 직전에 무엇을 안내했는지 모르면 모델이 같은 말을 반복한다(HANDOFF §3-10).
-                    recentInstructions = session.recentInstructions,
-                    // 문장과 별도로 실제 행동 의미를 보내 서버의 무상태 반복 가드가 사용한다.
-                    recentActions = session.recentActions,
+                    // 직전에 무엇을 안내했고 그래서 화면이 바뀌었는지 모르면 모델이 같은 말을
+                    // 반복한다(HANDOFF §3-10, C11 개정).
+                    steps = session.steps,
                     clientVersion = BuildConfig.VERSION_NAME,
                 )
                 when (val result = client.nextStep(request, logicalRequest)) {
@@ -588,7 +741,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 // scroll은 방향이 곧 안내다. 로그에 없으면 방향이 맞았는지
                                 // 실기기에서 확인할 길이 없다(#37).
                                 "direction=${action.direction?.name?.lowercase() ?: "-"} " +
-                                "history=${session.recentInstructions.size}",
+                                "history=${session.steps.size}",
                         )
                         mainHandler.post {
                             // 게이트는 결과를 통째로 받아 스스로 판정한다 — 분기에서 성공/실패를
@@ -831,19 +984,44 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
 
-        GuideSession.recordInstruction(session.generation, action.instruction)
-        GuideSession.recordAction(session.generation, response.screenSignature, action)
-
         val target = action.targetNodeId?.let { nodeId ->
             screen.elements.firstOrNull { it.nodeId == nodeId }
         }
         val bounds = target?.bounds?.takeIf { it.size == 4 }
-        if (bounds == null) {
+        guidedTargetLabel = target?.label?.takeIf { it.isNotBlank() }
+        // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
+        // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
+        guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }
+        guidedTargetClickable = target?.clickable == true
+
+        // 안내 하나 = 스텝 하나(C11 개정). **값을 모으기만 한다** — 조회한 target label 말고는
+        // 전부 응답 echo이고, 화면이 바뀌었는지는 다음 샘플이 채운다.
+        GuideSession.recordStep(
+            session.generation,
+            requestSignature,
+            GuideStep(
+                instruction = action.instruction,
+                actionType = action.actionType,
+                direction = action.direction,
+                targetLabel = guidedTargetLabel,
+                screenHint = action.screenSummary.takeIf { it.isNotBlank() },
+                structureSignature = response.screenSignature,
+            ),
+        )
+
+        val edge = EdgeGesture.specFor(action.actionType)
+        if (edge != null) {
+            // **miss가 아니다**(#222). 이 둘은 가리킬 노드가 애초에 없고 강조 좌표를 앱이 만든다.
+            // W로 찍으면 실기기 검증에서 진짜 miss와 섞여, 고칠 것이 없는 줄을 매번 다시 쫓는다
+            // (HANDOFF §9가 "유일한 MISS"로 적어 둔 자리가 여기다).
+            Log.i(TAG, "edge gesture edge=${edge.edge} finger=${edge.fingerDirection}")
+        } else if (bounds == null) {
             // 화면에 없는 node_id를 고르는 것은 경량 모델의 전형적 실수다. 안내문은 그대로 띄우되
             // 로그로 남긴다 — 앱 검증이 logcat 수동인 동안 이게 이 실패를 볼 유일한 창이다.
             Log.w(TAG, "highlight miss target=${action.targetNodeId ?: "-"}")
         } else {
-            Log.i(TAG, "highlight ${target?.nodeId} bounds=$bounds")
+            // bounds는 화면 위 좌표라 release에 남기지 않는다(#58). 구현이 variant마다 다르다.
+            GuideScreenLog.highlight(target?.nodeId, bounds)
         }
         // 서버 방향(보러 가는 쪽) → 손가락 방향. **변환은 여기 한 곳에서만** 한다(C17). 아래로 흘러가는 값은
         // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
@@ -877,24 +1055,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 "scrollable=${screen.hasScrollableElement ?: "?"}$page" +
                 if (result.truncated) " (truncated)" else "",
         )
-        screen.elements.take(MAX_LOGGED_ELEMENTS).forEach { e ->
-            Log.d(
-                TAG,
-                "  ${e.nodeId} ${if (e.clickable) "tap" else "text"} " +
-                    "role=${e.role} bounds=${e.bounds}${scrollInfo(e)} label='${e.label}'",
-            )
-        }
-        if (screen.elements.size > MAX_LOGGED_ELEMENTS) {
-            Log.d(TAG, "  ... ${screen.elements.size - MAX_LOGGED_ELEMENTS} more")
-        }
-    }
-
-    /** 스크롤 가능한 요소에만 붙는다. 방향 안내가 맞는지 로그에서 바로 보려고 찍는다. */
-    private fun scrollInfo(e: UiElement): String {
-        if (e.canScrollForward == null && e.canScrollBackward == null) return ""
-        val fwd = if (e.canScrollForward == true) "+${e.nextSwipeDirection?.name?.lowercase()}" else ""
-        val back = if (e.canScrollBackward == true) "-${e.prevSwipeDirection?.name?.lowercase()}" else ""
-        return " scroll=${e.scrollAxis?.name?.lowercase()}$fwd$back"
+        // 요소별 label·bounds는 **화면 내용 그 자체**라 main에서 찍지 않는다(#58).
+        // debug 구현만 상세를 남기고 release 구현은 no-op이다. 위 요약 줄은 패키지명과 개수뿐이라
+        // 비식별이므로 여기 남긴다 — release에서도 "몇 개짜리 화면을 봤나"는 볼 수 있어야 한다.
+        GuideScreenLog.elements(screen)
     }
 
     private fun isInteresting(eventType: Int): Boolean = isInterestingEvent(eventType)
@@ -961,7 +1125,6 @@ class GuideAccessibilityService : AccessibilityService() {
          */
         private const val POLL_MS = 700L
 
-        private const val MAX_LOGGED_ELEMENTS = 30
 
         /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */
         internal fun isInterestingEvent(eventType: Int): Boolean =
@@ -969,6 +1132,8 @@ class GuideAccessibilityService : AccessibilityService() {
                 eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                // 안내한 대상을 실제로 눌렀는지 보려고 받는다(#238). 진행 판정에는 쓰지 않는다.
+                eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
     }
 }

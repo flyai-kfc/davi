@@ -39,9 +39,15 @@ object GestureMotion {
      *
      * **방향 제스처만 그린다**(2026-08-14 결정). 탭은 후광(#147)만으로 충분하고, 대상 위에 손을
      * 겹치면 그 후광을 가린다. 캡처는 `ActionType`에 없어 서버가 낼 수 없다.
+     *
+     * **답이 참이 되는 길이 둘이고, 둘은 끝까지 갈린다**(#222). 하나는 서버 `direction`이 있는
+     * 스크롤이고([fingerDirectionFor]로 뒤집어 그린다), 다른 하나는 `direction`이 아예 오지 않는
+     * 가장자리 제스처다([EdgeGesture] — 방향이 액션 종류로 정해져 있어 뒤집을 것이 없다).
+     * 여기서 하나로 합치는 것은 "그리는가"뿐이고, "어떻게 그리는가"는 부르는 쪽이 다시 가른다.
      */
     fun isDemonstrated(actionType: ActionType?, direction: SwipeDirection?): Boolean =
-        actionType == ActionType.SCROLL && direction != null
+        (actionType == ActionType.SCROLL && direction != null) ||
+            EdgeGesture.specFor(actionType) != null
 
     /** 정반대 방향. 보정과 회귀 테스트가 함께 쓴다. */
     fun opposite(direction: SwipeDirection): SwipeDirection = when (direction) {
@@ -55,7 +61,7 @@ object GestureMotion {
      * 서버가 준 방향(= 보러 가는 쪽) → **실제로 그릴 손가락 방향**. 넷 모두 뒤집는다.
      *
      * **이것이 유일한 변환 지점이다.** 뒤집기를 [travelFor]나 뷰에 흩어 놓지 않았고,
-     * `recordAction`은 이 함수 앞에서 서버 원문을 기록해 `recent_actions`(C11 반복 가드)로
+     * `recordStep`은 이 함수 앞에서 서버 원문을 기록해 `steps`(C11 이력)로
      * 나가는 값이 오염되지 않는다.
      *
      * 계약이 바뀌지 않는 한 이 함수도 바뀌지 않는다. 아래 회귀 테스트 4건이 네 방향을 고정한다.
@@ -115,6 +121,41 @@ object GestureMotion {
         val half = bandHeight / 2f
         return center.coerceIn(canvasTop + half, canvasBottom - half)
     }
+
+    /**
+     * 손 모션이 놓일 **가로 중심**.
+     *
+     * 기본은 화면 한가운데다 — 스크롤은 어디서 시작해도 되므로 가리킬 가로 위치가 없다.
+     * 가장자리 제스처만 앵커([anchorLeft]~[anchorRight], 곧 강조한 띠)를 주고, 그때 손은 그
+     * 띠 한가운데서 출발한다(#222 정하고 갈 것 4).
+     *
+     * 앵커가 화면 가장자리에 붙어 있어도 손이 잘리지 않게 [handWidth]의 절반만큼은 안으로 물린다 —
+     * 잘린 손은 방향을 말하지 못한다([verticalCenterFor]가 세로에서 세운 것과 같은 규칙).
+     * 손이 캔버스보다 넓으면 물릴 곳이 없어 한가운데에 둔다.
+     */
+    fun horizontalCenterFor(
+        canvasLeft: Float,
+        canvasRight: Float,
+        handWidth: Float,
+        anchorLeft: Float? = null,
+        anchorRight: Float? = null,
+    ): Float {
+        val canvasCenter = (canvasLeft + canvasRight) / 2f
+        if (anchorLeft == null || anchorRight == null) return canvasCenter
+        if (handWidth > canvasRight - canvasLeft) return canvasCenter
+        val half = handWidth / 2f
+        return ((anchorLeft + anchorRight) / 2f).coerceIn(canvasLeft + half, canvasRight - half)
+    }
+
+    /**
+     * 가장자리에서 출발하는 손의 **이동 구간 중심**. [edgeY]에서 시작해 화면 안쪽으로 [travel]만큼 간다.
+     *
+     * 그리는 쪽은 중심에서 이동의 절반을 되돌려 출발점을 잡으므로([HighlightOverlayView] `drawHandAt`),
+     * 여기서 절반을 더해 두면 출발점이 정확히 변 위에 온다. 세로 회피([verticalCenterFor])를
+     * **쓰지 않는 자리**다 — 시작 지점이 고정인 것이 이 제스처의 전부라, 안내창을 피하겠다고
+     * 손을 옮기면 가르치려던 것이 사라진다. 안내창 쪽이 비켜야 한다.
+     */
+    fun edgeCenterFor(edgeY: Float, travel: Travel): Float = edgeY + travel.dy / 2f
 
     /**
      * 한 주기 안에서 손이 이동 구간의 어디쯤 있는가(0=출발, 1=도착).

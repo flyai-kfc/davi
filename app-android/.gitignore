@@ -2,7 +2,9 @@
 *.iml
 .gradle/
 build/
-/local.properties
+# `/local.properties`만으로는 `.bak`이 안 걸린다 — scripts/dev-driver.ps1의 `url set`이
+# 교체 전에 백업을 남기므로 sdk.dir(개인 PC 절대 경로)·개발 서버 IP가 새어 나갈 수 있다.
+/local.properties*
 .idea/
 .cxx/
 *.keystore

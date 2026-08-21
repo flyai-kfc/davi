@@ -10,9 +10,9 @@ from app.schemas import (
     ApiError,
     ErrorKind,
     GuideAction,
+    GuideStep,
     NextStepRequest,
     NextStepResponse,
-    RecentAction,
     Screen,
     SwipeDirection,
     UiElement,
@@ -157,57 +157,75 @@ def test_request_carries_client_version():
     assert NextStepRequest(goal="x", screen=Screen()).client_version is None
 
 
-def test_request_keeps_structured_action_history_separate_from_instructions():
-    signature = "a" * 64
-    action = RecentAction(
-        screen_signature=signature,
+def test_step_carries_the_whole_guidance_record():
+    """스텝 하나 = 안내 하나. 문장과 구조를 한 레코드로 합친 것이 C11 개정의 요점이다."""
+
+    step = GuideStep(
+        instruction="아래쪽으로 스크롤해 주세요.",
         action_type=ActionType.SCROLL,
-        direction=SwipeDirection.UP,
-        target_node_id="n1",
+        direction=SwipeDirection.DOWN,
+        target_label="연결",
+        screen_hint="설정 앱의 메뉴 목록 화면",
+        structure_signature="a" * 64,
+        screen_changed=True,
     )
-    req = NextStepRequest(
-        goal="x",
-        screen=Screen(),
-        recent_instructions=["문장 이력"],
-        recent_actions=[action],
-    )
+    req = NextStepRequest(goal="x", screen=Screen(), steps=[step])
 
-    assert req.recent_instructions == ["문장 이력"]
-    assert req.recent_actions == [action]
+    assert req.steps == [step]
+    # 앱이 아직 채우지 않는 content_signature는 없는 값으로 온다(#270 서브이슈 4).
+    # performed도 귀속 미확인이면 같은 규칙이다(#319) — None을 "안 누름"으로 읽지 않는다.
+    assert step.performed is None
+    assert step.content_signature is None
 
 
-def test_recent_action_rejects_non_digest_screen_signature():
+def test_step_rejects_non_digest_structure_signature():
     try:
-        RecentAction(screen_signature="raw screen label", action_type=ActionType.TAP)
+        GuideStep(
+            instruction="누르세요.",
+            action_type=ActionType.TAP,
+            structure_signature="raw screen label",
+        )
     except ValueError as error:
-        assert "screen_signature" in str(error)
+        assert "structure_signature" in str(error)
     else:
         raise AssertionError("화면 원문으로 쓸 수 있는 서명이 통과됐다")
 
 
-def test_recent_action_history_has_a_request_size_bound():
-    action = RecentAction(
-        screen_signature="a" * 64,
+def test_scroll_step_requires_a_direction():
+    """방향 없는 scroll 이력은 "무엇을 안내했는지"를 말하지 못한다(C3와 같은 이유)."""
+
+    try:
+        GuideStep(
+            instruction="넘겨 주세요.",
+            action_type=ActionType.SCROLL,
+            structure_signature="a" * 64,
+        )
+    except ValueError as error:
+        assert "direction" in str(error)
+    else:
+        raise AssertionError("방향 없는 scroll 스텝이 통과됐다")
+
+
+def test_step_history_has_a_request_size_bound():
+    step = GuideStep(
+        instruction="누르세요.",
         action_type=ActionType.TAP,
-        target_node_id="n1",
+        structure_signature="a" * 64,
     )
 
     try:
-        NextStepRequest(
-            goal="x",
-            screen=Screen(),
-            recent_actions=[action] * 11,
-        )
+        NextStepRequest(goal="x", screen=Screen(), steps=[step] * 11)
     except ValueError as error:
-        assert "recent_actions" in str(error)
+        assert "steps" in str(error)
     else:
-        raise AssertionError("행동 이력 상한을 넘긴 요청이 통과됐다")
+        raise AssertionError("스텝 이력 상한을 넘긴 요청이 통과됐다")
 
 
 def test_response_carries_server_generated_screen_signature():
     response = NextStepResponse(
         action=GuideAction(
             expected_result="완료",
+            screen_summary="테스트 화면",
             evidence="근거",
             action_type=ActionType.TAP,
             target_node_id="n1",
@@ -309,6 +327,7 @@ def test_scroll_action_without_direction_is_rejected():
     try:
         GuideAction(
             expected_result="다음 항목이 보임",
+            screen_summary="테스트 화면",
             evidence="목록이 보임",
             action_type=ActionType.SCROLL,
             instruction="화면을 쓸어 주세요.",
@@ -337,6 +356,7 @@ def test_app_drawer_action_needs_no_target():
     """화면 요소가 아니라 제스처다. target_node_id 없이 만들어져야 한다(C9)."""
     action = GuideAction(
         expected_result="앱 목록이 열린다",
+        screen_summary="테스트 화면",
         evidence="홈에 찾는 앱 아이콘이 없음",
         action_type=ActionType.OPEN_APP_DRAWER,
         instruction="화면 가운데를 위로 쓸어올려 주세요.",

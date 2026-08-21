@@ -1,7 +1,9 @@
 """추론 오류를 API 계약으로 바꾸는 경계.
 
-LLM 공급자·스텁 구현은 ``LlmError``만 내보낸다. HTTP 상태와 재시도 헤더는 이 모듈에서
-한 번만 결정해 FastAPI 라우터가 공급자별 오류 규칙을 알 필요가 없게 한다.
+LLM 공급자·스텁 구현은 ``LlmError``만 내보낸다. 공급자만 내는 것은 아니다 — 가드레일도
+모델의 답을 안전하게 고칠 수 없을 때 같은 예외로 닫는다(`reasoning._resolve_scroll`, #202).
+HTTP 상태와 재시도 헤더는 이 모듈에서 한 번만 결정해 FastAPI 라우터가 공급자별 오류 규칙을
+알 필요가 없게 한다.
 """
 
 from __future__ import annotations

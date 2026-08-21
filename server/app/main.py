@@ -166,8 +166,8 @@ def _development_access_error(request: Request) -> JSONResponse | None:
     if settings.davi_env != "development":
         return None
 
-    expected = settings.davi_dev_access_token.get_secret_value().strip()
-    if not expected:
+    accepted = settings.access_tokens
+    if not accepted:
         client_host = request.client.host if request.client else ""
         try:
             is_loopback = ip_address(client_host).is_loopback
@@ -177,9 +177,21 @@ def _development_access_error(request: Request) -> JSONResponse | None:
             return None
         return _development_auth_error(request)
 
+    # 팀 개발 토큰과 외부 테스트 토큰을 **둘 다** 받는다. 헤더는 하나뿐이고 값만 다르므로
+    # 앱은 고칠 것이 없다 — 테스터 빌드는 받은 값을 그대로 실으면 된다.
+    #
+    # 하나라도 맞으면 통과시키되 **모든 후보를 끝까지 비교한다.** 맞는 순간 끊으면 비교 횟수가
+    # 토큰 종류에 따라 달라져, 응답 시간으로 "어느 토큰이 맞았는지"를 재는 길이 열린다.
     supplied = request.headers.get(_DEV_TOKEN_HEADER)
-    if not token_matches(expected, supplied):
+    matched_kind: str | None = None
+    for kind, expected in accepted.items():
+        if token_matches(expected, supplied):
+            matched_kind = kind
+    if matched_kind is None:
         return _development_auth_error(request)
+    # 어느 토큰이 들어왔는지만 남긴다(값은 남기지 않는다). 테스트 기간에 참가자 트래픽과
+    # 팀 트래픽을 로그에서 갈라 보기 위한 것이다.
+    request.state.access_token_kind = matched_kind
 
     if request.url.path == _AUTH_KAKAO_PATH:
         # 로그인은 전용 리미터가 모든 프로필에서 따로 제한한다. dev 창은 팀 추론 쿼터
@@ -427,10 +439,13 @@ async def observe_request(request: Request, call_next):
                 element_count=metadata.get("element_count"),
                 client_version=metadata.get("client_version"),
                 conversation_message_count=metadata.get("conversation_message_count"),
+                clarification_answer_count=metadata.get("clarification_answer_count"),
+                intent_phase=metadata.get("intent_phase"),
                 candidate_count=metadata.get("candidate_count"),
                 resolution_phase=metadata.get("resolution_phase"),
                 resolution_status=metadata.get("resolution_status"),
                 error_kind=error_kind,
+                access_token_kind=getattr(request.state, "access_token_kind", None),
                 retry_after_seconds=getattr(request.state, "retry_after_seconds", None),
                 validation_error_count=getattr(request.state, "validation_error_count", None),
                 exception_class=getattr(request.state, "exception_class", None),
@@ -445,11 +460,17 @@ def health() -> dict:
     return {
         "status": "ok",
         "environment": settings.davi_env,
-        "model": settings.davi_model,
+        # provider와 model을 함께 알린다. DAVI_MODEL을 비워 두면 공급자 기본 모델이 쓰이므로,
+        # 둘 중 하나만 보면 "어느 공급자에 어떤 모델을 보내고 있는지"를 확인할 수 없다.
+        "provider": settings.davi_llm_provider,
+        "model": settings.resolved_model,
         "stub_llm": settings.davi_use_stub_llm,
         # 서버 2차 상태만 알린다. 앱 1차 상태는 앱이 logcat으로 따로 드러내며(GuideSvc의
         # privacyMasking=), 두 값을 합치지 않아야 한쪽만 우회한 상태를 오인하지 않는다(#203).
         "privacy_masking_disabled": settings.davi_disable_privacy_masking,
+        # 배포 워크플로가 카카오 로그인 배선을 확인하는 유일한 자리다(#279). production 분기는
+        # 그대로 status만 알린다 — 진단 값은 개발 환경에서만 드러낸다.
+        "kakao_auth_configured": settings.kakao_auth_configured,
     }
 
 
@@ -539,10 +560,12 @@ def post_kakao_login(
 
 @app.post("/v1/intent/slot-fill", response_model=SlotFillState)
 def post_slot_fill(req: SlotFillRequest, request: Request) -> SlotFillState | JSONResponse:
-    """현재 발화를 LLM으로 정리해 질문 하나 또는 기존 안내 세션용 목표를 돌려준다."""
+    """첫 호출은 질문 계획, 답을 담은 두 번째 호출은 목표 또는 안전 종료를 돌려준다."""
 
     request.state.request_metadata = {
         "conversation_message_count": len(req.conversation_history),
+        "clarification_answer_count": len(req.clarification_answers),
+        "intent_phase": "finalize" if req.clarification_answers else "plan",
     }
     try:
         return resolve_intent(req)

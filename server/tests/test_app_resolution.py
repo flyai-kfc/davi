@@ -9,8 +9,9 @@ import httpx
 import pytest
 from app.app_resolution import (
     APP_CANDIDATE_SCHEMA,
-    GeminiAppCandidateResolver,
+    RemoteAppCandidateResolver,
     StubAppCandidateResolver,
+    get_app_candidate_resolver,
     resolve_app_request,
 )
 from app.errors import LlmError
@@ -24,6 +25,8 @@ from app.schemas import (
     AppResolutionStatus,
     ErrorKind,
 )
+
+from tests.factories import gemini_app_candidate_resolver
 
 
 def _plan() -> AppCandidatePlan:
@@ -87,7 +90,7 @@ def test_invalid_package_hint_is_dropped_without_rejecting_valid_candidate():
             }
         ],
     }
-    resolver = GeminiAppCandidateResolver(
+    resolver = gemini_app_candidate_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(
@@ -119,7 +122,7 @@ def test_provider_status_class_is_logged_without_model_output(caplog):
         "capability": "camera",
         "candidates": [],
     }
-    resolver = GeminiAppCandidateResolver(
+    resolver = gemini_app_candidate_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(
@@ -143,7 +146,7 @@ def test_provider_status_class_is_logged_without_model_output(caplog):
         resolver.candidates("사진 찍기")
 
     events = [json.loads(record.getMessage()) for record in caplog.records]
-    finished = next(event for event in events if event["event"] == "gemini_attempt_finished")
+    finished = next(event for event in events if event["event"] == "llm_attempt_finished")
     assert finished["provider_status_class"] == "2xx"
     assert private_output not in json.dumps(events, ensure_ascii=False)
 
@@ -195,6 +198,9 @@ def test_nested_gemini_schema_caps_candidate_array_and_assigns_ids_server_side()
         body = json.loads(request.content)
         seen.append(body)
         assert body["generationConfig"]["responseSchema"] == APP_CANDIDATE_SCHEMA
+        # thinking 모델이 이 예산을 thinking 토큰으로 다 써 응답이 잘리는 걸 막는다
+        # (실기기 재현, 2026-08-18 gemini-3.6-flash PARSE/max_output_tokens 실패).
+        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
         prompt = body["contents"][0]["parts"][0]["text"]
         assert "설치 앱 목록은 알 수 없으며" in prompt
         return httpx.Response(
@@ -229,7 +235,7 @@ def test_nested_gemini_schema_caps_candidate_array_and_assigns_ids_server_side()
             },
         )
 
-    resolver = GeminiAppCandidateResolver(
+    resolver = gemini_app_candidate_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(handler)),
@@ -274,7 +280,7 @@ def test_invalid_model_contract_is_retried_once_without_raw_output():
             },
         )
 
-    resolver = GeminiAppCandidateResolver(
+    resolver = gemini_app_candidate_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(transport=httpx.MockTransport(handler)),
@@ -284,7 +290,7 @@ def test_invalid_model_contract_is_retried_once_without_raw_output():
 
 
 def test_second_invalid_model_contract_fails_as_parse():
-    resolver = GeminiAppCandidateResolver(
+    resolver = gemini_app_candidate_resolver(
         "test-key",
         "gemini-test",
         httpx.Client(
@@ -323,3 +329,23 @@ def test_resolved_goal_keeps_candidate_within_wire_length_limit():
     assert state.goal is not None
     assert len(state.goal) <= 500
     assert "사용할 앱: 배달 앱 A" in state.goal
+
+
+def test_get_app_candidate_resolver_wires_thinking_budget_from_settings(set_runtime_profile):
+    assert isinstance(get_app_candidate_resolver(), StubAppCandidateResolver)
+
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_model="gemini-test",
+        davi_gemini_thinking_budget=321,
+    )
+    get_app_candidate_resolver.cache_clear()
+
+    resolver = get_app_candidate_resolver()
+
+    assert isinstance(resolver, RemoteAppCandidateResolver)
+    # DAVI_GEMINI_THINKING_BUDGET이 공급자까지 흘러가는지(config.py) 확인한다.
+    # maxOutputTokens는 이 값 위에 원래 여유분(1024)을 얹은 것이어야 잘림을 안 만든다.
+    assert resolver.provider.thinking_budget == 321
+    assert resolver.provider.max_output_tokens == 321 + 1024

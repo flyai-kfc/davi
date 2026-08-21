@@ -16,7 +16,10 @@ else
 fi
 SERVER_URL="http://127.0.0.1:8000"
 RUNNER="com.davi.helper.e2edriver.test/com.davi.helper.e2e.DaviE2eRunner"
-SERVICE="com.davi.helper/com.davi.helper.GuideAccessibilityService"
+# 앞은 applicationId, 뒤는 클래스의 FQN이다 — **둘의 접두어가 다른 게 정상이다**(#58).
+# debug는 applicationIdSuffix로 com.davi.helper.debug가 되지만, 클래스 이름은 namespace
+# (com.davi.helper) 기준이라 그대로다. E2E는 debug 빌드를 몰기 때문에 앞쪽에 .debug가 붙는다.
+SERVICE="com.davi.helper.debug/com.davi.helper.GuideAccessibilityService"
 REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-report.py"
 PRIVATE_REPORT_RENDERER="$SCRIPT_DIR/render-device-e2e-private-report.py"
 SCENARIO_REGISTRY="$APP_DIR/device-e2e-scenarios.json"
@@ -25,6 +28,24 @@ LIST_SCENARIOS=false
 DETAILED_REPORT=true
 PRIVATE_TRACE_AVAILABLE=false
 DISABLE_PRIVACY_MASKING=false
+
+# dumpsys accessibility의 섹션 하나(`라벨:{...}`)를 통째로 잘라낸다. 섹션은 전부 `이름:{` 꼴이라
+# 다음 섹션 머리 직전까지가 한 블록이다.
+# **한 줄만 보면 안 된다** — 바인딩된 서비스가 둘 이상이면 두 번째부터 줄이 바뀌어서(#302 실측),
+# 한 줄 grep은 첫 서비스만 본다. debug/release가 함께 켜진 기기에서 실재하는 조합이다.
+#
+# **첫 섹션에서 끝낸다**(finished). dumpsys는 `User state[...]`를 사용자별로 찍으므로 직장 프로필·
+# 보조 사용자가 있으면 같은 라벨이 여러 번 나온다. 끝내지 않으면 뒤 사용자의 섹션에서 다시 들어가
+# 전부 이어 붙고, 보조 사용자에만 붙은 서비스를 우리 것으로 오탐한다. 계측이 도는 것은 현재
+# 사용자(=첫 블록)뿐이다. PowerShell·Kotlin 쪽 같은 이름의 함수도 첫 섹션만 본다.
+dumpsys_section() {
+    awk -v label="$1" '
+        finished { next }
+        !inside && $0 ~ "^[[:space:]]*" label "[[:space:]]*:[{]" { inside = 1; print; next }
+        inside && $0 ~ "^[[:space:]]*[A-Za-z][A-Za-z0-9 ]*:[{]" { inside = 0; finished = 1; next }
+        inside { print }
+    '
+}
 
 usage() {
     cat <<'EOF'
@@ -203,6 +224,12 @@ fi
 ./gradlew "${APP_INSTALL_ARGS[@]}" :app:installDebug
 ./gradlew :e2e-driver:installDebug :e2e-driver:installDebugAndroidTest
 
+# 갓 설치된 앱은 첫 실행에서 알림 권한 다이얼로그를 띄운다. 그게 대화 화면을 덮으면 드라이버가
+# 마이크 화면을 못 찾아 시나리오가 davi_conversation_not_ready로 0단계 종료된다(2026-08-21 실측).
+# 접근성·오버레이와 달리 이건 평범한 런타임 권한이라 실행기가 미리 부여해도 되는 성격이다.
+# Android 12 이하에는 이 권한이 없어 실패하므로 결과를 보지 않는다.
+"${ADB_DEVICE[@]}" shell pm grant "${SERVICE%%/*}" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+
 "${ADB_DEVICE[@]}" logcat -c
 restore_davi_accessibility
 
@@ -242,14 +269,18 @@ if [[ "$ENABLED_SERVICES" != *"$SERVICE"* ]]; then
     printf 'Davi 접근성 서비스를 다시 바인딩하지 못했습니다. 설정에서 직접 켜세요.\n' >&2
     exit 2
 fi
+# 오버레이 권한(SYSTEM_ALERT_WINDOW)은 더 이상 점검하지 않는다. #240이 매니페스트에서 걷어냈고
+# 안내 오버레이는 TYPE_ACCESSIBILITY_OVERLAY라 그 권한 없이 그려진다(#56). 앱이 요청하지 않는
+# op라 설정에 토글도 없어, 남겨 두면 **아무도 통과할 수 없는 관문**이 된다(2026-08-19 실측).
 ACCESSIBILITY_STATE="$("${ADB_DEVICE[@]}" shell dumpsys accessibility)"
-if ! grep -q 'Bound services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE" ||
-    grep -q 'Crashed services:.*com\.davi\.helper' <<<"$ACCESSIBILITY_STATE"; then
+# 컴포넌트 전체로 본다(#58·#302). 패키지 접두어만 보면 release가 bound된 기기에서 debug가 죽어
+# 있어도 통과한다 — 두 앱이 함께 깔릴 수 있게 된 뒤로 실재하는 조합이다.
+# debug는 클래스가 applicationId로 시작하지 않아 dumpsys가 축약형(`pkg/.Cls`)으로 줄이지 못한다.
+# 그래서 완전형 하나만 보면 된다(실측).
+BOUND_SECTION="$(dumpsys_section 'Bound services' <<<"$ACCESSIBILITY_STATE")"
+CRASHED_SECTION="$(dumpsys_section 'Crashed services' <<<"$ACCESSIBILITY_STATE")"
+if [[ "$BOUND_SECTION" != *"$SERVICE"* || "$CRASHED_SECTION" == *"$SERVICE"* ]]; then
     printf 'Davi 접근성 서비스가 bound 상태가 아닙니다. 설정에서 껐다 켠 뒤 다시 실행하세요.\n' >&2
-    exit 2
-fi
-if ! "${ADB_DEVICE[@]}" shell appops get com.davi.helper SYSTEM_ALERT_WINDOW | grep -q 'allow'; then
-    printf 'Davi의 다른 앱 위에 표시 권한을 기기 설정에서 허용하세요.\n' >&2
     exit 2
 fi
 

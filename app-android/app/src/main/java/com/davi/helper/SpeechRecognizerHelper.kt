@@ -25,6 +25,41 @@ class SpeechRecognizerHelper(
         fun onError(error: Int)
 
         /**
+         * 인식기를 새로 붙이는 중 — 아직 마이크는 닫혀 있다. [onMicReady]와 한 쌍이다.
+         *
+         * **온디바이스→네트워크 폴백에서도 다시 불린다.** 완료 쪽만 받으면 그 폴백에서
+         * 화면은 "듣고 있어요"를 켠 채인데 마이크만 닫혔다 다시 열린다(#273).
+         */
+        fun onMicPreparing() = Unit
+
+        /**
+         * **마이크가 실제로 소리를 넘기기 시작했다.** 화면이 "듣고 있어요"를 띄우는 시점이
+         * 이 신호다(#273).
+         *
+         * 근거는 셋 중 **먼저 오는 것** 하나다 — 첫 음량, 발화 시작, 첫 부분 인식.
+         * 셋 다 "이미 받아들이고 있다"의 확정 신호라 이르다가 될 수 없고, 세기를 주지 않는
+         * 인식기에서는 뒤의 둘이 받는다. 세기 하나에만 걸면 그런 인식기에서 **받아쓰기가
+         * 찍히는 중인데 화면은 "아직 안 듣는다"고 말하는** 거울상이 생긴다(PR #276 리뷰).
+         *
+         * **"마이크가 열렸다"와 "인식이 시작됐다"가 다르다**는 것이 2026-08-19 실측의 핵심이다
+         * (SM-S921N, 청취 8회). `startListening()` 기준으로 오디오 정책의 입력 개시와 시스템
+         * 마이크 표시는 +60ms, `onReadyForSpeech`는 +240~290ms, 첫 음량은 +890~940ms에 왔다.
+         * 그런데 **첫 음량 전에 한 말은 마이크가 열려 있어도 인식되지 않았다** — 사용자가
+         * 겪은 잘림이 이 구간이다. `onReadyForSpeech`는 이름 그대로 "엔드포인터가 준비됐다"이지
+         * "녹음한 것을 받아들인다"가 아니라서 화면 기준으로 쓸 수 없다.
+         */
+        fun onMicReady() = Unit
+
+        /**
+         * `onReadyForSpeech` 그대로 — **진단용**이다. 화면 판단에 쓰지 않는다.
+         *
+         * 이 신호와 [onMicReady] 사이가 기기·인식기마다 얼마나 벌어지는지를 로그에 남겨
+         * 두려고 유지한다. 위 실측에서 그 간격은 약 650ms였고, 다른 기기에서 다시 확인할 때도
+         * 이 두 줄의 간격이 답이다.
+         */
+        fun onEndpointerReady() = Unit
+
+        /**
          * 마이크 입력 세기(dB). 파도·글로우가 목소리에 반응하는 데만 쓴다(#132).
          *
          * **원시 오디오가 아니라 세기 하나뿐이다** — 내용이 남지 않으므로 이 클래스의
@@ -37,6 +72,9 @@ class SpeechRecognizerHelper(
     private var recognizer: SpeechRecognizer? = null
     private var usingOnDevice = false
     private var fallbackAttempted = false
+
+    /** 이번 인식 세션에서 [Listener.onMicReady]를 이미 보냈는가. 첫 음량 이벤트에서만 보낸다. */
+    private var micReadySignalled = false
 
     val isAvailable: Boolean
         get() = onDeviceAvailable() || SpeechRecognizer.isRecognitionAvailable(appContext)
@@ -53,6 +91,9 @@ class SpeechRecognizerHelper(
     }
 
     private fun startRecognizer(onDevice: Boolean) {
+        // 폴백 재시작도 이 함수를 타므로 "준비 중"이 그때마다 다시 나간다(#273).
+        micReadySignalled = false
+        listener.onMicPreparing()
         try {
             usingOnDevice = onDevice
             val created = createRecognizer(onDevice)
@@ -71,6 +112,7 @@ class SpeechRecognizerHelper(
         destroyRecognizer()
         usingOnDevice = false
         fallbackAttempted = false
+        micReadySignalled = false
     }
 
     private fun destroyRecognizer() {
@@ -108,8 +150,21 @@ class SpeechRecognizerHelper(
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
+    /**
+     * "이제 들린다"를 한 번만 알린다. 부르는 자리가 셋이라(첫 음량·발화 시작·첫 부분 인식)
+     * 한곳으로 모은다 — 어느 것이 먼저 오는지는 인식기마다 다르고, 우리에겐 먼저 온 것이 답이다.
+     */
+    private fun signalMicReadyOnce() {
+        if (micReadySignalled) return
+        micReadySignalled = true
+        listener.onMicReady()
+    }
+
     private val recognitionListener = object : RecognitionListener {
         override fun onPartialResults(partialResults: Bundle) {
+            // 받아쓰기가 왔다는 것 자체가 이미 듣고 있다는 뜻이다. 화면을 먼저 "듣는 중"으로
+            // 돌리고 나서 문장을 넘긴다 — 순서가 반대면 그 프레임에 문장만 있고 레이블이 없다.
+            signalMicReadyOnce()
             firstResult(partialResults)?.let(listener::onPartialResult)
         }
 
@@ -133,9 +188,14 @@ class SpeechRecognizerHelper(
                 listener.onError(error)
             }
         }
-        override fun onReadyForSpeech(params: Bundle?) = Unit
-        override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = listener.onRmsChanged(rmsdB)
+        override fun onReadyForSpeech(params: Bundle?) = listener.onEndpointerReady()
+        override fun onBeginningOfSpeech() = signalMicReadyOnce()
+        override fun onRmsChanged(rmsdB: Float) {
+            // 첫 음량 = 마이크가 실제로 소리를 넘기기 시작한 지점(#273). 값보다 **도착 자체**가
+            // 정보다. 알림을 세기 전달보다 먼저 보내 화면이 파도를 켜고 나서 값을 받게 한다.
+            signalMicReadyOnce()
+            listener.onRmsChanged(rmsdB)
+        }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
         override fun onEvent(eventType: Int, params: Bundle?) = Unit

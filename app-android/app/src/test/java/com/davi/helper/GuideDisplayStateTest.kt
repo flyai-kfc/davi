@@ -19,6 +19,7 @@ class GuideDisplayStateTest {
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
     private val stuck = "화면이 그대로예요."
+    private val pressBounds = listOf(10, 20, 110, 220)
     private val scrollText = "아래쪽으로 스크롤해 주세요"
     private val confirmText = "다 됐어요! 해결되셨나요?"
     private val errorText = "인터넷 연결이 원활하지 않아요."
@@ -256,8 +257,10 @@ class GuideDisplayStateTest {
 
         state.show(sigB, null, "설정을 누르세요.")
 
+        // 다른 화면의 정체라 억제 신호가 함께 선다(PR #343 리뷰 P1) — 이 테스트의 주제는
+        // 접미사 규칙이고, 신호 자체는 위 가장자리 제스처 테스트들이 고정한다.
         assertEquals(
-            GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck"),
+            GuideDisplayState.Content(null, "설정을 누르세요.\n$stuck", targetSuppressed = true),
             state.stuckContent(stuck, sigA),
         )
     }
@@ -456,9 +459,37 @@ class GuideDisplayStateTest {
         state.show(sigA, listOf(1, 2, 3, 4), scrollText, ActionType.SCROLL, SwipeDirection.DOWN)
 
         assertEquals(
-            GuideDisplayState.Content(null, scrollText, ActionType.SCROLL, null),
+            GuideDisplayState.Content(null, scrollText, ActionType.SCROLL, null, targetSuppressed = true),
             state.hideTarget(),
         )
+    }
+
+    /**
+     * 가장자리 제스처는 bounds·direction 없이 actionType만으로 선·손을 그린다(#222) —
+     * `copy(bounds = null, direction = null)` 규약만으로는 못 내리고, 명시 신호가 있어야
+     * 사용자가 셰이드를 끌어내리기 시작한 화면 위에 선·손이 남지 않는다(PR #343 리뷰 P1-1).
+     */
+    @Test
+    fun `가장자리 제스처도 흔들리는 동안 시연이 내려간다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        val hidden = state.hideTarget()
+
+        assertEquals(true, hidden?.targetSuppressed)
+        assertEquals(ActionType.OPEN_QUICK_SETTINGS, hidden?.actionType)
+        assertNull(state.hideTarget())
+    }
+
+    /** 잠깐 흔들렸을 뿐 같은 화면이면 가장자리 시연도 억제 없이 돌아온다. */
+    @Test
+    fun `가장자리 제스처 시연은 같은 화면에서 되살아난다`() {
+        val shown = state.show(sigA, null, "화면 맨 아래에서 위로 쓸어올리세요", ActionType.OPEN_APP_DRAWER)
+        state.hideTarget()
+
+        val restored = state.restoreTarget(sigA)
+
+        assertEquals(shown, restored)
+        assertEquals(false, restored?.targetSuppressed)
     }
 
     /** 샘플마다 같은 내용을 다시 그리면 조작 오버레이가 자기 창을 만져 스스로를 깨운다. */
@@ -547,5 +578,139 @@ class GuideDisplayStateTest {
 
         assertNull(content?.bounds)
         assertEquals("확인을 누르세요\n$stuck", content?.text)
+    }
+
+    /**
+     * bounds를 지우는 것만으로는 actionType에서 파생되는 가장자리 선·손이 살아남아, 이전
+     * 화면의 시연이 새 화면 위에 그려진다(PR #343 리뷰 P1-2). 억제는 명시 신호로 나간다.
+     */
+    @Test
+    fun `다른 화면의 정체는 가장자리 시연도 그리지 않는다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        val content = state.stuckContent(stuck, sigB)
+
+        assertEquals(true, content?.targetSuppressed)
+        assertEquals("화면 맨 위에서 아래로 쓸어내리세요\n$stuck", content?.text)
+    }
+
+    /** 같은 화면의 정체는 시연을 그대로 둔다 — 억제 신호가 서면 안 된다. */
+    @Test
+    fun `같은 화면의 정체는 가장자리 시연을 남긴다`() {
+        state.show(sigA, null, "화면 맨 위에서 아래로 쓸어내리세요", ActionType.OPEN_QUICK_SETTINGS)
+
+        assertEquals(false, state.stuckContent(stuck, sigA)?.targetSuppressed)
+    }
+
+    // ── 눌림 감지(#238) ──────────────────────────────────────────────
+
+    /** 눌림을 맞출 때도 파동을 그릴 때도 이 자리를 쓴다. */
+    @Test
+    fun `탭 안내가 떠 있으면 대상 자리를 돌려준다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /** 입력 안내도 필드를 먼저 눌러야 하므로 눌림을 받는다. */
+    @Test
+    fun `입력 안내도 눌림을 받는다`() {
+        state.show(sigA, pressBounds, "입력칸을 누르세요", ActionType.TYPE)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * scroll도 컨테이너를 target으로 잡아 bounds가 있는데, 그 안 항목을 잘못 눌러도 중심
+     * 포함이라 맞아 버린다 — 파동이 "잘 됐다"고 답하고 손 시연까지 함께 내려간다(PR #264 리뷰 1).
+     */
+    @Test
+    fun `스크롤 안내에서는 눌림을 받지 않는다`() {
+        state.show(sigA, pressBounds, scrollText, ActionType.SCROLL, SwipeDirection.DOWN)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /**
+     * 화면 전환이 빠르면 WAIT이 클릭 이벤트보다 먼저 들어와 강조가 이미 내려가 있다.
+     * 그때도 자리는 알려줘야 한다 — 파동은 "방금 누른 곳"이라 여전히 참이다(실측 회귀).
+     */
+    @Test
+    fun `강조가 내려간 뒤에도 대상 자리는 남는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.hideTarget()
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 화면이 바뀌어도 visible은 안 내려가므로, 같은 자리를 한 번 더 누르면 아무것도 없는 곳에
+     * 파동이 뜬다. 안내 하나당 한 번만 받는다(PR #264 리뷰 2).
+     */
+    @Test
+    fun `눌림은 안내 하나당 한 번만 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 새 안내는 새 눌림을 받아야 한다. */
+    @Test
+    fun `새 안내가 뜨면 눌림을 다시 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+
+        state.show(sigA, pressBounds, "다음을 누르세요", ActionType.TAP)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 눌렀는데 화면이 안 바뀌어 강조가 되살아난 경우다. 다시 눌러도 파동이 없고 내려가지도
+     * 않으면, "제대로 눌렀는지 모른 채 다시 누르는" 바로 그 사용자가 아무 답을 못 받는다
+     * (PR #264 재리뷰 1).
+     */
+    @Test
+    fun `강조가 되살아나면 눌림도 다시 받는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigA)
+
+        assertEquals(pressBounds, state.pressTargetBounds())
+    }
+
+    /**
+     * 다른 화면에서는 강조도 눌림도 되살아나지 않는다 — 재무장이 리뷰 2가 막은 경우
+     * (옛 자리로 두 번 답하기)를 다시 열면 안 된다.
+     */
+    @Test
+    fun `다른 화면에서는 눌림을 다시 받지 않는다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.consumePress()
+        state.hideTarget()
+
+        state.restoreTarget(sigB)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 확인 화면은 가리킬 대상이 없다([GuideDisplayState.Content.bounds]가 null). */
+    @Test
+    fun `확인 화면에는 누를 대상이 없다`() {
+        state.showConfirm(sigA, confirmText)
+
+        assertNull(state.pressTargetBounds())
+    }
+
+    /** 오버레이가 걷힌 동안에는 맞출 대상도 없다. */
+    @Test
+    fun `오버레이가 지워졌으면 대상 자리가 없다`() {
+        state.show(sigA, pressBounds, "확인을 누르세요", ActionType.TAP)
+        state.onCleared()
+
+        assertNull(state.pressTargetBounds())
     }
 }

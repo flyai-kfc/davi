@@ -13,8 +13,9 @@ import androidx.core.content.res.use
  * 시안 근거: Figma SSoT SCREENS "메인 v2" 메인 6(승인 대기) — "잠시만요" 문구 **아래**,
  * 다비 카드 안에 놓인다. 문구를 대체하지 않는다.
  *
- * 움직임 계산은 [LoadingDotsMotion]에 있다(JVM 테스트 대상). 이 뷰는 그리기만 한다 —
- * [VoiceWaveView]가 [WaveMotion]에 계산을 맡긴 것과 같은 구조다.
+ * 움직임 계산은 [LoadingDotsMotion]에, **드러났는가**의 판정은 [LoadingDotsGate]에 있다
+ * (둘 다 JVM 테스트 대상). 이 뷰는 그리기와 트리거만 한다 — [VoiceWaveView]가 [WaveMotion]에
+ * 계산을 맡긴 것과 같은 구조다.
  *
  * **지연 표시는 핸들러가 센다**(#148 — 오버레이 onset과 같은 방식). 응답이 빠르면 점이
  * 깜빡 스쳐 산만하므로 일정 시간 뒤에만 띄우는데, 이 지연을 프레임 경과 시간으로 재면
@@ -72,35 +73,25 @@ class LoadingDotsView @JvmOverloads constructor(
         resources.getInteger(R.integer.davi_motion_dots_stagger_ms) / MILLIS_PER_SECOND
     private val delayMs = resources.getInteger(R.integer.davi_motion_dots_delay_ms).toLong()
 
-    private var elapsedSeconds = 0f
-    private var delayElapsed = false
-
-    /**
-     * 점이 처음 보인 순간의 프레임 시각. 핸들러(벽시계)와 프레임 시계는 다른 시계라,
-     * delay 상수를 빼는 대신 **드러난 순간의 프레임 시각**을 빼야 첫 프레임이 정확히
-     * 시안의 정지 화면이 된다 — 메인 스레드가 밀려 핸들러가 늦게 발화해도 어긋나지 않는다.
-     */
-    private var shownAtSeconds = 0f
+    // 드러났는가·언제 드러났는가의 판정은 전부 여기 있다(#249) — 뷰는 트리거만 건다.
+    private val gate = LoadingDotsGate()
 
     private val showDots = Runnable {
-        delayElapsed = true
-        shownAtSeconds = elapsedSeconds
+        gate.reveal()
         invalidate()
     }
 
     override fun onMotionFrame(elapsedSeconds: Float, deltaSeconds: Float) {
-        this.elapsedSeconds = elapsedSeconds
+        gate.onFrame(elapsedSeconds)
     }
 
     // 지연은 구동 조건 전이마다 처음부터 다시 센다 — 대기에 다시 들어갈 때(GONE→VISIBLE)
     // 점이 지연 없이 곧장 튀어나오지 않게. driver도 같은 전이에서 재시작돼 주기도 0부터다.
     override fun onMotionLifecycleChanged(active: Boolean) {
+        removeCallbacks(showDots)
         if (active) {
-            removeCallbacks(showDots)
-            delayElapsed = false
+            gate.rearm()
             postDelayed(showDots, delayMs)
-        } else {
-            removeCallbacks(showDots)
         }
     }
 
@@ -117,9 +108,9 @@ class LoadingDotsView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         // 지연 구간에는 아무것도 그리지 않는다 — 이때 화면에는 "잠시만요" 문구만 있다.
-        if (!delayElapsed) return
+        if (!gate.isRevealed()) return
 
-        val animationSeconds = LoadingDotsMotion.animationSecondsAt(elapsedSeconds, shownAtSeconds)
+        val animationSeconds = gate.animationSeconds()
         // 가장 큰 점 기준으로 한 칸씩. 점이 작아져도 중심은 그대로라 자리가 흔들리지 않는다.
         val step = dotSizeMax + dotSpacing
         val rowWidth = step * LoadingDotsMotion.DOT_COUNT - dotSpacing

@@ -25,7 +25,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ### 지금 상태만 보고 싶다면
 
-아무것도 바꾸지 않고 기기·설치 패키지·접근성·오버레이 상태를 한 줄씩 출력한다.
+아무것도 바꾸지 않고 기기·설치 패키지·접근성 상태를 한 줄씩 출력한다.
 
 ```powershell
 ./scripts/dev-install.ps1 -Status
@@ -33,10 +33,11 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ```
 기기      : SM-S921N [R3CX...] 
-패키지    : com.davi.helper 0.1.0 설치됨
+패키지    : com.davi.helper.debug 0.2.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
-오버레이  : 설정된 적 없음(미허용) — 설정에서 "다른 앱 위에 표시"를 켤 것
 ```
+
+오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
 있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
@@ -66,7 +67,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 패키지명은 `app/build/outputs/apk/debug/output-metadata.json`의 `applicationId`에서 읽는다.
 debug 앱 ID에 접미어가 붙어도 올바른 접근성 서비스를 켜기 위해서다. 산출물이 없으면
-`com.davi.helper`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
+`com.davi.helper.debug`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
 
 ### 특수 권한은 접근성 하나뿐이다
 
@@ -101,6 +102,11 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
   다른 JDK로 열면 Gradle이 해당 JDK를 자동으로 내려받는다.
 - `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
   이 속성이 깨지지 않게 유지할 것 — 깨지면 리눅스 CI에서 실행되지 않는다.
+- **macOS: 셸에서는 파일이 읽히는데 빌드만 `Operation not permitted`로 죽으면 데몬 탓이다**
+  (2026-08-21 실측). 증상은 `java.io.FileNotFoundException: .../gradle.properties (Operation not permitted)`.
+  Gradle 데몬은 한 번 뜨면 오래 사는데, **접근 권한이 없던 때에 뜬 데몬은 나중에 권한이
+  생겨도 계속 막힌다.** `./gradlew --stop`으로 죽이면 다음 빌드가 새로 뜬다.
+  권한이 왜 끊겼는지는 `CONTRIBUTING.md` §로컬 검사.
 - AGP/Gradle/Kotlin 버전은 `gradle/libs.versions.toml`의 **시작 버전**이다. Studio가 업그레이드를 제안하면 따라도 된다.
 
 ### Android Studio는 언제 쓰나
@@ -110,6 +116,10 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 ## 도그푸딩 관통 절차 (실기기)
 
 닫힌 루프를 처음부터 끝까지 한 번 돌리는 절차다. **USB로 붙은 기기는 터널이 필요 없다.**
+
+> **Windows라면 `scripts/dev-driver.ps1`이 아래 절차를 감싼다** — `env`로 전제조건을 한 번에
+> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 안 돌므로
+> **아래 수동 절차가 그대로 유효하다**(이식은 #72). `scripts/README.md` 참고.
 
 ```powershell
 # 1) 서버 (스텁으로 먼저)
@@ -132,9 +142,11 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 오프라인 선호 힌트를 보낸다. 최초 사용 때 `RECORD_AUDIO`를 요청하며 영구 거부 뒤에는 앱 설정으로
 이동한다.
 
-인식된 현재 발화와 이전에 끝난 user/assistant 쌍을 `/v1/intent/slot-fill`에 보낸다. 서버가
-`needs_clarification`이면 `message`를 화면에 표시하고 Android TTS로 읽은 뒤 자동으로 다음 발화를
-듣는다. `ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
+최초 인식 발화를 `/v1/intent/slot-fill`에 보낸다. 서버가 `needs_clarification`이면 최대 두 질문과
+각 최대 세 보기를 받아 한 화면에 한 질문씩 표시하고 첫 질문을 Android TTS로 읽는다. 보기 선택은
+서버를 호출하지 않으며 `직접 말하기`와 `모르거나 답변하지 않기`를 항상 함께 제공한다. 답을 메모리에
+모은 뒤 원발화와 함께 두 번째 요청 한 번으로 최종화한다. 문답 중에는 취소 버튼을 두지 않는다.
+`ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
 기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 앱 하나를
 확정하거나 goal을 다시 쓰지 않는다. `launchable` 후보가 하나 이상이면 원래 goal의 최종 확인으로,
 하나도 없거나 index가 불안정하거나 후보 요청이 실패하면 “이 과정에 필요한 앱이 설치되어 있지 않을
@@ -149,9 +161,10 @@ index는 `QUERY_ALL_PACKAGES`를 쓰지 않고 현재 접근 가능한 profile�
 profile·package의 launcher activity가 여러 개여도 한 앱으로 판정한다. 전체 목록과 기기에서만 발견한
 package·label·component·profile은 서버·파일·상세 로그에 나가지 않는다.
 
-대화는 무작위 UUID별 최대 5왕복을 프로세스 메모리에만 두고 화면 이탈·재시작 때 폐기한다. 늦은
-응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고, 발화·질문·goal·
-대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 이전 턴은 의미 보존을 위해 서버와
+대화는 무작위 UUID별 원발화·최대 두 질문·답을 프로세스 메모리에만 두고 화면 이탈·재시작 때
+폐기한다. 두 번째 응답이 `unable_to_finalize`이면 재시작/홈 안전 종료 화면을 보이고 세 번째 요청을
+하지 않는다. 늦은 응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고,
+발화·질문·답·goal·대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 답은 의미 보존을 위해 서버와
 Gemini에 전달된다는 내부 도그푸딩 경계는 `../SPEC.md` §4에 명시돼 있다.
 
 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)는 접근성 서비스 연결 시
@@ -207,16 +220,23 @@ DAVI_DISABLE_PRIVACY_MASKING=false
 `10.0.2.2`와 RFC1918 사설 IPv4 literal의 8000 포트만 허용하며, URL에 별도 경로를 둘 수
 없다. 사설 Wi-Fi 주소에는 토큰이 필수다. Azure 공유 개발 서버는 기본 443 포트의
 `*.azurecontainerapps.io` **HTTPS** URL만 허용하며 원격 host이므로 토큰이 필수다. HTTPS에는
-평문 통신 예외를 만들지 않는다. 그 밖의 공개 endpoint와 터널은 허용하지 않으며, release에는
-어느 개발 값도 들어가지 않는다.
+평문 통신 예외를 만들지 않는다. 그 밖의 공개 endpoint와 터널은 허용하지 않는다. release에는
+**`DAVI_DEBUG_*` 계열이 들어가지 않는다** — 다만 release는 자기 몫의 Azure URL·접근 토큰을
+따로 갖는다(아래).
 
 일회성 자동 검증은 파일에 토큰을 기록하지 않도록 같은 이름의 환경변수를 사용할 수 있다.
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
 개발 설정으로 취급한다.
 
-release는 `https://example.invalid` 안전 placeholder와 빈 토큰으로만 빌드되고 평문 HTTP를
-거부한다. `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이
-남아 있으면 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
+**release는 Azure 개발 서버를 바라본다**(2026-08-19, #248). URL은 공개 식별자라 상수이고
+(`build.gradle.kts`의 `releaseServerUrl`), 접근 토큰은 `local.properties`의
+`DAVI_RELEASE_ACCESS_TOKEN`을 **`localSetting`으로** 읽는다 — release가 정당하게 쓰는 값이라
+`debugSetting`이 막는 대상에 넣으면 안 된다. **값이 비면 `verifyReleaseConfiguration`이 빌드를
+실패시킨다.** 토큰은 APK에서 추출되므로 비밀이 아니고 **회전으로 다룬다**(내부 테스트 종료 즉시
+서버에서 무효화). 평문 HTTP는 그대로 거부한다.
+
+`local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이 남아 있으면
+release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
 
 `DAVI_DISABLE_PRIVACY_MASKING`도 마찬가지로 release 관문에 걸린다 — **값이 `false`여도
 설정이 남아 있다는 것 자체를 실패로 본다.** `-PdaviDisablePrivacyMasking`을 준 release 빌드도
@@ -337,11 +357,12 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
-- Gradle 구성(버전 카탈로그, viewBinding, debug 전용 서버 URL·개발 토큰 주입), 매니페스트, 접근성 서비스 등록.
-- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 두 권한이 갖춰지면 대화 화면으로
+- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL·접근 토큰 주입 — debug는 `DAVI_DEBUG_*`,
+  release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`), 매니페스트, 접근성 서비스 등록.
+- `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
-- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, LLM 후속 질문/TTS, 완성 goal 전달까지
+- 음성 목표 경로 — 마이크 권한, 온디바이스 우선 STT, 첫 LLM 질문 TTS, 로컬 답 수집, 완성 goal 전달까지
   연결된다. 앱은 고정 슬롯을 조합하거나 음성만으로 안내를 자동 시작하지 않는다.
 - `res/values/dimens.xml` — 시니어용 글자·터치 대상 기본값.
 - `GuideAccessibilityService` — **세션이 있을 때만** 활성 화면 루트를 고르고 최소 화면 트리로 직렬화해 `/v1/next-step`에 보낸다. 세션이 없으면 화면을 아예 읽지 않는다.
@@ -359,9 +380,11 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **관통에서 드러난 것 (다음 작업의 근거)**
-- ~~**같은 안내를 반복한다.**~~ 문장 이력은 모델 프롬프트에 유지하고, 별도의
-  `recent_actions`를 서버 `_apply_guardrails`가 비교한다(#36). 앱은 서버가 label 없이 만든
-  화면 서명과 구조화 행동을 활성 세션에 최대 10개만 보관하며 세션 재시작 때 비운다.
+- ~~**같은 안내를 반복한다.**~~ 안내 하나를 스텝 하나로 묶어 `steps`로 보낸다(#36 → C11 개정,
+  #270). 문장과 구조를 따로 보내던 동안 모델은 "무엇을 안내했는지"만 알고 그래서 화면이
+  바뀌었는지를 몰랐다. 앱은 활성 세션에 최대 10개만 보관하며 세션 재시작 때 비운다.
+  **서버가 이 이력으로 반복을 세던 정책은 #202에서 걷혔다** — 헛도는 scroll은 대상 해석
+  실패로 첫 요청에 걸린다.
 - ~~**앱 진입 직후 트리가 덜 그려진 상태로 요청이 나간다.**~~ 같은 화면 연속 샘플을 확인한 뒤
   요청하고, 응답 대기 중 화면 변화와 정체를 폴링으로 판정한다(#39).
 - ~~권한 상태·오류 문구가 화면에 없어 서버가 꺼지면 사용자는 이유를 알 수 없다.~~

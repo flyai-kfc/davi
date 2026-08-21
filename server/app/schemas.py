@@ -8,15 +8,18 @@
   그게 곧 생성 순서 = 추론 순서다. action을 앞에 두면 모델이 근거를 나중에 대충 채운다.
   순서는 `gemini_schema.build_response_schema()`가 **이 선언에서 자동으로 뽑는다**(C1).
   따라서 필드 순서를 바꾸면 프롬프트 동작이 바뀐다 — 무심코 재배치하지 말 것.
-- **"해당 없음"은 빈 문자열이 아니라 필드 생략으로 표현한다.** enum에 빈 문자열을 넣으면
-  Gemini가 HTTP 400으로 거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+- **"해당 없음"은 빈 문자열로 표현하지 않는다.** enum에 빈 문자열을 넣으면 Gemini가 HTTP 400으로
+  거부한다. 그래서 선택 필드는 전부 `X | None = None`이다.
+  **실제로 무엇을 보내는지는 공급자마다 다르다** — Gemini는 필드 생략, OpenAI·Anthropic strict
+  모드는 null이다. 그 규약을 여기 선언에 쓰지 않는 이유는 아래 `GuideAction.direction` 주석에
+  있다. 규약 문장은 각 스키마 변환기가 붙인다(`gemini_schema.py` / `json_schema.py`).
 """
 
 from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -84,6 +87,17 @@ class UiElement(BaseModel):
     # 입력 원문은 label에 넣지 않는다. 이 둘은 접근성 상태만 전달한다(#112).
     editable: bool = False
     focused: bool = False
+
+    # 행동 상태 (C18). clickable/editable은 뷰의 설정값이라 이걸 대신하지 못한다.
+    #   None = 낡은 앱이 안 보냄(미관측). **False로 기본값을 두지 않는다** — 침묵을
+    #   "비활성/꺼짐"으로 읽으면 안내가 통째로 막힌다(C10과 같은 세 상태 규약).
+    enabled: bool | None = None
+    # 켤 수 없는 요소는 None이다. 그 False는 "꺼짐"이 아니라 해당 없음이다.
+    checked: bool | None = None
+    selected: bool | None = None
+    # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
+    showing_hint_text: bool | None = None
+
     bounds: list[int] | None = None  # [left, top, right, bottom]
 
     # 스크롤 상태 (C4). 방향·끝 판정이 여기서 나온다.
@@ -103,6 +117,10 @@ class Screen(BaseModel):
     """
 
     package_name: str = ""
+    # 창 제목(C18). package만으로는 화면을 알 수 없다 — 설정>배터리가 com.samsung.android.lool로
+    # 오는데 창 제목은 '배터리'를 바로 준다(#269 실측, SM-S921N). 제목이 없는 창이 흔해서
+    # None이 정상이고, 값이 있으면 **label과 같은 2차 마스킹 대상이다**(대화방 제목 = 사람 이름).
+    window_title: str | None = None
     elements: list[UiElement] = Field(default_factory=list)
     current_page: int | None = None
     total_pages: int | None = None
@@ -117,18 +135,55 @@ class Screen(BaseModel):
     ime_visible: bool | None = None
 
 
-class RecentAction(BaseModel):
-    """같은 세션에서 직전에 실제 표시한 행동의 구조화 기록.
+MAX_STEPS = 10
 
-    ``screen_signature``는 서버가 응답에 넣어 준 구조 기반 서명을 앱이 그대로 되돌려 보낸다.
-    화면 label이나 안내 문장은 포함하지 않는다. 문장 이력은 모델 프롬프트용
-    ``recent_instructions``와 역할을 분리한다(C11).
+
+class GuideStep(BaseModel):
+    """안내 한 번의 기록. **스텝 하나 = 안내 하나**다(C11 개정, #270).
+
+    ``recent_instructions``(문장)와 ``recent_actions``(구조)로 나뉘어 있던 두 이력을 합친 것이다.
+    나뉘어 있던 동안 모델은 "무엇을 안내했는지"만 알고 **그래서 화면이 바뀌었는지**를 몰랐고,
+    구조 쪽은 소비자가 사라져 빈 계약으로 남아 있었다(#251).
+
+    값의 출처는 두 가지뿐이다 — **서버 응답의 echo**(``instruction``·``action_type``·
+    ``direction``·``target_label``·``screen_hint``·``structure_signature``)와 **앱의 관측**
+    (``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
+    해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
+    붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
+
+    **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다
+    (``prompt._step_line``, #305).
+
+    ``structure_signature``는 응답 ``screen_signature``의 echo다. 스텝 안에서만 이름이 다른
+    이유는 내용 기반 서명(``content_signature``)이 같은 레코드에 함께 서기 때문이다 —
+    구조와 내용을 한 이름으로 부르면 어느 쪽인지 읽을 수 없다.
     """
 
-    screen_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    instruction: str
     action_type: ActionType
     direction: SwipeDirection | None = None
-    target_node_id: str | None = None
+    # 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다.
+    target_label: str | None = None
+    # 그 안내가 나간 화면이 무엇이었는지. 응답 `GuideAction.screen_summary`의 echo다.
+    screen_hint: str | None = None
+    structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # 그 안내 뒤 화면이 실제로 바뀌었는가. True/False/None(아직 모름)을 구분한다 —
+    # 앱은 안내를 표시한 시점에 스텝을 만들고, 이 값은 그다음 관측에서 확정된다.
+    # False는 같은 화면을 다시 묻는 모든 경로에서 온다 — 오류 백오프 재시도·미검증 done
+    # 재질의 등, 그리고 눌림 확인 재질의(#319 — 안내한 대상을 누르고도 7초 무변화면 앱이
+    # 한 번 더 묻는다). 마지막을 뺀 경로들은 "사용자가 아직 안 했다"가 흔한 자리라 False만으로
+    # 오안내를 단정하면 안 된다 — 단정은 performed=True와 겹칠 때만이다
+    # (prompt.PRESSED_UNCHANGED_INSTRUCTION).
+    screen_changed: bool | None = None
+    # 안내한 대상을 사용자가 실제로 눌렀는가(앱 `PressMatch`, #319). 세 상태다 —
+    # True는 좌표·텍스트 어느 축이든 일치, False는 **좌표 축의 확신 불일치**(클릭된 노드
+    # 중심이 대상 밖)에서만 온다. None은 귀속 미확인이다: 클릭 이벤트가 안 왔거나(미조작
+    # 또는 미탐), source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다 —
+    # **None을 "안 누름"으로 읽지 않는다.**
+    performed: bool | None = None
+    # 구조가 같고 내용만 바뀐 화면과 A→B→A 회귀를 서버가 이력 간 비교로 가르기 위한 값
+    # (기기 시그니처 + 세션 salt 해시). **아직 앱이 채우지 않는다** — #270 서브이슈 4.
+    content_signature: str | None = None
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:
@@ -141,12 +196,10 @@ class NextStepRequest(BaseModel):
     goal: str
     screen: Screen
     device_id: str | None = None
-    # 반복 안내 방지용 최근 안내 이력. 오래된 것이 앞에 온다. HANDOFF §3-10.
-    # 서버는 프롬프트에 넣을 때 MAX_HISTORY개로 자른다 — 앱이 더 보내도 계약 위반은 아니다.
-    recent_instructions: list[str] = Field(default_factory=list)
-    # 반복 가드 전용 구조화 이력. 서버 상태 대신 활성 앱 세션이 보관하고, 오래된 것이 앞에 온다.
-    # 앱과 서버 모두 10개로 제한해 요청 크기와 세션 메모리에 상한을 둔다(C11).
-    recent_actions: list[RecentAction] = Field(default_factory=list, max_length=10)
+    # 이 세션에서 실제로 표시한 안내들. 오래된 것이 앞에 온다(HANDOFF §3-10).
+    # 서버 상태 대신 활성 앱 세션이 보관하고, 앱과 서버 모두 MAX_STEPS개로 제한해 요청 크기와
+    # 세션 메모리에 상한을 둔다(C11).
+    steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
 
@@ -159,6 +212,23 @@ class GuideAction(BaseModel):
     """
 
     expected_result: str = Field(description="목표만 보고 정한 최종 상태")
+    # 화면 정체성을 **모델이 정한다**(C11 개정, #270). 창 제목·코드 휴리스틱을 버린 근거는
+    # 서드파티 실측이다 — 카카오T 택시 흐름 5화면의 창 제목이 null/'카카오 T' 둘뿐이고
+    # 배민 주문 흐름 6화면이 전부 '배달의민족'이라 내부 화면을 가르지 못했다(2026-08-19 SM-S921N).
+    #
+    # **자리는 두 번째다.** `expected_result` 앞에 두면 "목표만 보고 정한 최종 상태"가 현재
+    # 화면에 끌려간다 — 완료 검증이 조기 종료를 잡는 근거가 거기서 나온다(SPEC §4). 뒤이어
+    # 화면 관측(요약) → 근거(evidence) 순으로 이어진다. 필드 순서 = 추론 순서다(C1).
+    #
+    # **공백 검증을 두지 않는다.** 요약 한 줄이 비었다고 안내 전체를 실패로 닫으면, 부수적인
+    # 필드가 주 기능을 죽인다. 앱은 빈 값을 이력에 싣지 않는 것으로 처리한다.
+    screen_summary: str = Field(
+        description=(
+            "지금 사용자가 보고 있는 화면이 무엇인지 한국어 한 줄로 짧게. "
+            "어느 앱의 어떤 화면인지가 드러나게 쓴다 — 예: '설정 앱의 연결 목록 화면', "
+            "'카카오T의 출발지 설정 화면'. 다음에 할 행동은 여기 쓰지 않는다."
+        )
+    )
     # 이 설명은 주석이 아니라 responseSchema를 타고 모델에게 간다. 무스키마 폴백에서는 스키마
     # JSON이 프롬프트 본문에 통째로 붙으므로, `prompt.EVIDENCE_INSTRUCTION`과 **같은 뜻**이어야
     # 한다. 한쪽이 "짧게 적어라"가 되면 한 프롬프트에 정반대 지시가 둘 들어간다(PR #62 리뷰).
@@ -167,20 +237,26 @@ class GuideAction(BaseModel):
     )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
-    # 않아서**다 — `gemini_schema.build_response_schema`가 싣는 것은 필드 description뿐이라
-    # 기준이 모델에게 도달하지 않았다(#109 원인, `../CLAUDE.md`의 "Gemini 구조화 출력 함정").
+    # 않아서**다 — 스키마 변환기가 싣는 것은 필드 description뿐이라 기준이 모델에게 도달하지
+    # 않았다(#109 원인, `../CLAUDE.md`의 "구조화 출력 함정").
     # `prompt.SCROLL_DIRECTION_INSTRUCTION`과 같은 뜻이어야 한다.
+    #
+    # **"해당 없을 때 어떻게 표현하는가"는 여기 쓰지 않는다.** 그 규약이 공급자마다 다르기
+    # 때문이다 — Gemini는 필드 생략, OpenAI·Anthropic strict 모드는 null이다. 여기에 한쪽
+    # 규약을 박으면 다른 쪽 스키마와 정반대 지시가 한 프롬프트에 함께 들어간다(PR #62 리뷰가
+    # 금지한 패턴). 규약은 각 변환기가 자기 표현에 맞게 덧붙인다.
     direction: SwipeDirection | None = Field(
         default=None,
         description=(
             "scroll일 때 화면이 이동할 방향, 즉 사용자가 보러 가는 쪽. "
             "아래 내용을 보려면 down, 위로 되돌아가려면 up, "
-            "다음 페이지로 넘어가려면 right, 이전 페이지로 돌아가려면 left. 그 외에는 생략한다."
+            "다음 페이지로 넘어가려면 right, 이전 페이지로 돌아가려면 left. "
+            "scroll이 아니면 방향이 없다."
         ),
     )
     target_node_id: str | None = Field(
         default=None,
-        description="동작 대상 요소의 node_id. 대상이 없는 동작이면 생략한다.",
+        description="동작 대상 요소의 node_id. 대상이 없는 동작에는 값이 없다.",
     )
     # 문장은 `direction`과 **같은 말**로 쓴다. 손가락 동작은 앱이 그림으로 보여주므로 문장까지
     # 손가락으로 쓰면 시니어가 읽는 말이 부자연스러워진다(C17).
@@ -238,6 +314,11 @@ class ApiError(BaseModel):
 MAX_VOICE_TEXT_LENGTH = 500
 MAX_CONVERSATION_MESSAGES = 10
 MAX_INTENT_MESSAGE_LENGTH = 300
+MAX_CLARIFICATION_QUESTIONS = 2
+MAX_CLARIFICATION_OPTIONS = 3
+MAX_CLARIFICATION_ID_LENGTH = 32
+MAX_CLARIFICATION_PROMPT_LENGTH = 200
+MAX_CLARIFICATION_OPTION_LENGTH = 80
 
 
 class ConversationRole(StrEnum):
@@ -263,6 +344,83 @@ class ConversationTurn(BaseModel):
 class IntentDialogueStatus(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
     READY = "ready"
+    UNABLE_TO_FINALIZE = "unable_to_finalize"
+
+
+class ClarificationAnswerSource(StrEnum):
+    OPTION = "option"
+    FREEFORM = "freeform"
+    UNKNOWN_OR_DECLINED = "unknown_or_declined"
+
+
+class ClarificationQuestion(BaseModel):
+    """앱이 추가 호출 없이 한 화면씩 보여 줄 객관식 질문."""
+
+    id: str = Field(min_length=1, max_length=MAX_CLARIFICATION_ID_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_CLARIFICATION_PROMPT_LENGTH)
+    options: list[
+        Annotated[str, Field(min_length=1, max_length=MAX_CLARIFICATION_OPTION_LENGTH)]
+    ] = Field(
+        max_length=MAX_CLARIFICATION_OPTIONS,
+    )
+    allow_freeform: bool = Field(
+        description="항상 true. 앱은 보기 외 직접 말하기를 함께 제공한다.",
+    )
+
+    @field_validator("id", "prompt")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("질문 식별자와 문장은 공백일 수 없다")
+        return stripped
+
+    @field_validator("options")
+    @classmethod
+    def normalize_options(cls, value: list[str]) -> list[str]:
+        normalized = [option.strip() for option in value]
+        if any(not option for option in normalized):
+            raise ValueError("보기는 공백일 수 없다")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("보기는 중복될 수 없다")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_freeform(self) -> Self:
+        if not self.allow_freeform:
+            raise ValueError("모든 질문은 자유 발화를 허용해야 한다")
+        return self
+
+
+class ClarificationPlan(BaseModel):
+    questions: list[ClarificationQuestion] = Field(
+        min_length=1,
+        max_length=MAX_CLARIFICATION_QUESTIONS,
+    )
+
+    @model_validator(mode="after")
+    def require_unique_question_ids(self) -> Self:
+        ids = [question.id for question in self.questions]
+        if len(set(ids)) != len(ids):
+            raise ValueError("질문 식별자는 중복될 수 없다")
+        return self
+
+
+class ClarificationAnswer(BaseModel):
+    """첫 응답의 질문과 앱에서 받은 답을 두 번째 요청에 되돌리는 무상태 계약."""
+
+    question_id: str = Field(min_length=1, max_length=MAX_CLARIFICATION_ID_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_CLARIFICATION_PROMPT_LENGTH)
+    answer: str = Field(min_length=1, max_length=MAX_VOICE_TEXT_LENGTH)
+    source: ClarificationAnswerSource
+
+    @field_validator("question_id", "prompt", "answer")
+    @classmethod
+    def normalize_answer_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("질문과 답변은 공백일 수 없다")
+        return stripped
 
 
 class SlotFillRequest(BaseModel):
@@ -279,6 +437,11 @@ class SlotFillRequest(BaseModel):
     conversation_history: list[ConversationTurn] = Field(
         default_factory=list,
         max_length=MAX_CONVERSATION_MESSAGES,
+    )
+    clarification_answers: list[ClarificationAnswer] = Field(
+        default_factory=list,
+        max_length=MAX_CLARIFICATION_QUESTIONS,
+        description="첫 응답의 질문에 앱이 로컬로 모은 답. 있으면 최종 두 번째 요청이다.",
     )
 
     @field_validator("utterance")
@@ -297,22 +460,29 @@ class SlotFillRequest(BaseModel):
             expected = ConversationRole.USER if index % 2 == 0 else ConversationRole.ASSISTANT
             if turn.role is not expected:
                 raise ValueError("대화 이력은 user와 assistant가 번갈아야 한다")
+        answer_ids = [answer.question_id for answer in self.clarification_answers]
+        if len(set(answer_ids)) != len(answer_ids):
+            raise ValueError("구체화 답변의 질문 식별자는 중복될 수 없다")
         return self
 
 
 class SlotFillState(BaseModel):
-    """고정 슬롯 없이 추가 질문 또는 최종 목표 하나를 돌려주는 응답."""
+    """최대 두 질문의 구체화 계획, 최종 목표 또는 안전 종료를 돌려주는 응답."""
 
-    status: IntentDialogueStatus = Field(description="추가 질문 필요 또는 목표 준비 완료")
+    status: IntentDialogueStatus = Field(description="추가 질문, 목표 준비 완료 또는 안전 종료")
     message: str = Field(
         min_length=1,
         max_length=MAX_INTENT_MESSAGE_LENGTH,
-        description="TTS로 읽을 한국어 질문 또는 목표 준비 완료 안내 한 문장",
+        description="TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장",
     )
     goal: str | None = Field(
         default=None,
         max_length=MAX_VOICE_TEXT_LENGTH,
         description="ready일 때 기존 안내 세션에 넘길 구체적인 목표",
+    )
+    clarification: ClarificationPlan | None = Field(
+        default=None,
+        description="needs_clarification일 때 앱이 로컬에서 진행할 질문 계획",
     )
 
     @field_validator("message")
@@ -335,10 +505,21 @@ class SlotFillState(BaseModel):
 
     @model_validator(mode="after")
     def validate_status_and_goal(self) -> Self:
-        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION and self.goal is not None:
-            raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
-        if self.status is IntentDialogueStatus.READY and self.goal is None:
-            raise ValueError("준비 완료 상태에는 goal이 필요하다")
+        if self.status is IntentDialogueStatus.NEEDS_CLARIFICATION:
+            if self.goal is not None:
+                raise ValueError("추가 질문 상태에는 goal이 없어야 한다")
+            if self.clarification is None:
+                raise ValueError("추가 질문 상태에는 clarification이 필요하다")
+            if self.message != self.clarification.questions[0].prompt:
+                raise ValueError("message는 첫 구체화 질문과 같아야 한다")
+        elif self.status is IntentDialogueStatus.READY:
+            if self.goal is None:
+                raise ValueError("준비 완료 상태에는 goal이 필요하다")
+            if self.clarification is not None:
+                raise ValueError("준비 완료 상태에는 clarification이 없어야 한다")
+        else:
+            if self.goal is not None or self.clarification is not None:
+                raise ValueError("안전 종료 상태에는 goal과 clarification이 없어야 한다")
         return self
 
 

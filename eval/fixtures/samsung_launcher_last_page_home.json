@@ -1,0 +1,297 @@
+{
+  "id": "samsung-launcher-last-page-home",
+  "description": "페이지 2/2까지 넘긴 삼성 런처 홈의 익명화 화면. 스크롤 노드가 0개인데 모델이 대상 없는 scroll을 고른 지점이다(#202 실측 ①).",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-08-18",
+    "issue": 202,
+    "device_model": "SM-S921N",
+    "os_version": "Android 16",
+    "ui_version": "One UI 8.0",
+    "anonymization": [
+      "앱 아이콘 label을 순서 기반 일반 요소로 치환",
+      "요소 수·클릭 가능 수·페이지·스크롤 메타는 실측 로그 값이고 label 원문은 로그에 없어 넣지 않음",
+      "device_id와 모델 응답 원문은 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "open camera app",
+    "screen": {
+      "package_name": "com.sec.android.app.launcher",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "일반 요소 1",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            70,
+            400,
+            290,
+            660
+          ]
+        },
+        {
+          "node_id": "n2",
+          "label": "일반 요소 2",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            320,
+            400,
+            540,
+            660
+          ]
+        },
+        {
+          "node_id": "n3",
+          "label": "일반 요소 3",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            570,
+            400,
+            790,
+            660
+          ]
+        },
+        {
+          "node_id": "n4",
+          "label": "일반 요소 4",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            820,
+            400,
+            1040,
+            660
+          ]
+        },
+        {
+          "node_id": "n5",
+          "label": "일반 요소 5",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            70,
+            700,
+            290,
+            960
+          ]
+        },
+        {
+          "node_id": "n6",
+          "label": "일반 요소 6",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            320,
+            700,
+            540,
+            960
+          ]
+        },
+        {
+          "node_id": "n7",
+          "label": "일반 요소 7",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            570,
+            700,
+            790,
+            960
+          ]
+        },
+        {
+          "node_id": "n8",
+          "label": "일반 요소 8",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            820,
+            700,
+            1040,
+            960
+          ]
+        },
+        {
+          "node_id": "n9",
+          "label": "일반 요소 9",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            70,
+            1000,
+            290,
+            1260
+          ]
+        },
+        {
+          "node_id": "n10",
+          "label": "일반 요소 10",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            320,
+            1000,
+            540,
+            1260
+          ]
+        },
+        {
+          "node_id": "n11",
+          "label": "일반 요소 11",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            570,
+            1000,
+            790,
+            1260
+          ]
+        },
+        {
+          "node_id": "n12",
+          "label": "일반 요소 12",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            820,
+            1000,
+            1040,
+            1260
+          ]
+        },
+        {
+          "node_id": "n13",
+          "label": "일반 요소 13",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            70,
+            1300,
+            290,
+            1560
+          ]
+        },
+        {
+          "node_id": "n14",
+          "label": "일반 요소 14",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            320,
+            1300,
+            540,
+            1560
+          ]
+        },
+        {
+          "node_id": "n15",
+          "label": "일반 요소 15",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            570,
+            1300,
+            790,
+            1560
+          ]
+        },
+        {
+          "node_id": "n16",
+          "label": "일반 요소 16",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            820,
+            1300,
+            1040,
+            1560
+          ]
+        },
+        {
+          "node_id": "n17",
+          "label": "일반 요소 17",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            70,
+            1600,
+            290,
+            1860
+          ]
+        },
+        {
+          "node_id": "n18",
+          "label": "일반 요소 18",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            320,
+            1600,
+            540,
+            1860
+          ]
+        },
+        {
+          "node_id": "n19",
+          "label": "일반 요소 19",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            570,
+            1600,
+            790,
+            1860
+          ]
+        },
+        {
+          "node_id": "n20",
+          "label": "일반 요소 20",
+          "role": "TextView",
+          "clickable": true,
+          "bounds": [
+            820,
+            1600,
+            1040,
+            1860
+          ]
+        },
+        {
+          "node_id": "n21",
+          "label": "1 페이지",
+          "role": "page_dot",
+          "clickable": false,
+          "bounds": [
+            500,
+            2180,
+            530,
+            2210
+          ]
+        },
+        {
+          "node_id": "n22",
+          "label": "2 페이지",
+          "role": "page_dot",
+          "clickable": false,
+          "bounds": [
+            540,
+            2180,
+            570,
+            2210
+          ]
+        }
+      ],
+      "current_page": 2,
+      "total_pages": 2,
+      "has_scrollable_element": false,
+      "ime_visible": false
+    }
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

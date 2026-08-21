@@ -1,7 +1,8 @@
 # eval — davi 평가 하니스
 
 기기와 API 키 없이 `fixtures/*.json`을 읽어 `[화면 fixture → 다음 안내]` 파이프라인을 회귀
-검증한다. 서버 추론 코드를 직접 import하며, 현재 단계(#30)는 평가 3층 중 입력 보존 계층이다.
+검증한다. 서버 추론 코드를 직접 import한다. 평가 3층 중 **1층(입력 보존, #30)과 2층(결정론적 가드레일
+회귀, #202)이 항상 돌고**, 3층 LLM-judge는 `main`에서 주 1회·수동 관측만 한다(#68).
 
 ## 실행 (Python 3.12)
 
@@ -83,8 +84,9 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
 - #112 이전 실기기 fixture는 `editable`·`focused`·`ime_visible`을 생략한 구버전 관측으로
   그대로 유지한다. 새 입력 fixture는 실제 관측값만 넣고, 편집 요소의 입력 원문이나 IME 키 목록을
   재구성해 넣지 않는다.
-- `recent_instructions`는 모델 프롬프트용 문장 이력이고, `recent_actions`는 서버 반복 가드용
-  구조화 이력이다. fixture는 세션 시작 화면이므로 빈 `recent_actions`를 명시하거나 생략할 수 있다.
+- `steps`는 앱이 세션 안에 보관하는 안내 이력이다 — **스텝 하나 = 안내 하나**이고, 서버가
+  프롬프트의 이력 줄을 여기서 뽑는다(C11 개정, #270). fixture는 세션 시작 화면이므로 빈
+  `steps`를 명시하거나 생략할 수 있다.
 - `source.observed_model_action`은 실기기 실호출에서 관측한 구조화 메타데이터다. 원문 모델 응답을
   저장하는 곳이 아니며, 스텁 기대값으로 채점하지 않는다.
 - 관측 행동이 있으면 `source.observed_model_action_review`도 반드시 둔다. `unreviewed`는 아직
@@ -147,8 +149,8 @@ SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 �
 ## 평가 계층
 
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존
-2. 항상 실행: 결정론적 fake LLM 반복 가드 회귀(#36). 실기기 fixture를 로더로 읽고 같은
-   `screen_signature + action_type + direction + target_node_id`의 세 번째 후보를 검사한다.
+2. 항상 실행: 결정론적 fake LLM 가드레일 회귀(#202). 실기기 fixture를 로더로 읽고 대상 없는
+   scroll이 앱까지 나가지 않는지 — 교정·앱서랍 전환·실패로 갈리는지 — 를 검사한다.
    목표 앱 후보는 fake resolver로 후보 누락·오패키지 `not_found`·복수 후보·접근 가능한 profile의
    조회 실패 `unknown`을 재현해 자동 선택이나 미설치 단정을 막는다(#128).
 3. `main` 주 1회·수동 관측: 실제 모델 + LLM judge(#42, #68)

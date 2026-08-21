@@ -25,6 +25,25 @@ data class UiElement(
     val editable: Boolean = false,
     /** 현재 접근성 입력 포커스를 가진 요소인가. */
     val focused: Boolean = false,
+    /**
+     * 지금 조작할 수 있는 상태인가(#271).
+     *
+     * **[clickable]은 뷰의 설정값이지 상태가 아니다** — 비활성 버튼도 대개 `clickable=true`로 온다.
+     * `null`은 미관측이다. 낡은 앱의 침묵을 "비활성"으로 읽으면 tap 안내가 통째로 막히므로
+     * 기본값을 `false`로 두지 않는다(C10의 세 상태와 같은 이유).
+     */
+    val enabled: Boolean? = null,
+    /** 켬/끔 상태. 켤 수 없는(`checkable`이 아닌) 요소는 `null`이다 — 그 `false`는 "꺼짐"이 아니다. */
+    val checked: Boolean? = null,
+    /** 목록·탭에서 지금 선택된 항목인가. */
+    val selected: Boolean? = null,
+    /**
+     * 입력칸에 지금 보이는 글자가 hint인가. `true` 비어 있음 / `false` 값이 들어 있음 /
+     * `null` 입력칸이 아니거나 미관측.
+     *
+     * **입력 원문은 여전히 보내지 않는다**(#112). 비었는지 여부만 알려 준다.
+     */
+    @SerialName("showing_hint_text") val showingHintText: Boolean? = null,
     /** [left, top, right, bottom] 화면 좌표. */
     val bounds: List<Int>? = null,
     @SerialName("can_scroll_forward") val canScrollForward: Boolean? = null,
@@ -37,6 +56,14 @@ data class UiElement(
 @Serializable
 data class Screen(
     @SerialName("package_name") val packageName: String = "",
+    /**
+     * 지금 창의 제목. `package_name`만으로는 화면을 알 수 없다 — 설정>배터리가
+     * `com.samsung.android.lool`로 오는데 창 제목은 '배터리'를 바로 준다(#269 실측).
+     *
+     * **label과 같은 취급이다** — 대화방 제목은 사람 이름이고 문서 뷰어는 파일명을 싣는다.
+     * 기기 1차·서버 2차 마스킹을 그대로 통과한다. 제목이 없는 창이 흔해서 `null`이 정상이다.
+     */
+    @SerialName("window_title") val windowTitle: String? = null,
     val elements: List<UiElement> = emptyList(),
     /** 페이지 위치는 화면 단위 상태다(C5). 페이지 dot에서 읽는다(HANDOFF §3-3). */
     @SerialName("current_page") val currentPage: Int? = null,
@@ -56,12 +83,11 @@ data class NextStepRequest(
     val goal: String,
     val screen: Screen,
     @SerialName("device_id") val deviceId: String? = null,
-    @SerialName("recent_instructions") val recentInstructions: List<String> = emptyList(),
     /**
-     * 반복 가드 전용 구조화 이력. 안내 문장과 역할을 섞지 않는다(C11).
+     * 이 세션에서 실제로 표시한 안내들. **스텝 하나 = 안내 하나**다(C11 개정, #270).
      * 활성 [GuideSession] 안에서만 최대 10개를 보관하므로 서버 상태나 기기 식별자가 필요 없다.
      */
-    @SerialName("recent_actions") val recentActions: List<RecentAction> = emptyList(),
+    val steps: List<GuideStep> = emptyList(),
     @SerialName("client_version") val clientVersion: String? = null,
 )
 
@@ -88,6 +114,15 @@ data class NextStepResponse(
 @Serializable
 data class GuideAction(
     @SerialName("expected_result") val expectedResult: String,
+    /**
+     * 모델이 쓴 현재 화면 한 줄 요약(C11 개정, #270). 앱은 **해석하지 않고** 스텝의
+     * `screen_hint`로 되돌려 보낸다 — 화면당 한 번 생성되고 이후로는 echo만 돈다.
+     *
+     * 서버 스키마는 required지만 여기 기본값을 두는 이유는 하나뿐이다 — 앱이 먼저 올라간
+     * 구간에서 이 필드가 없는 응답을 만나면 **안내 전체가 파싱 실패로 죽는다.** 값이 비면
+     * 이력에 싣지 않는 것으로 끝난다.
+     */
+    @SerialName("screen_summary") val screenSummary: String = "",
     val evidence: String,
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
@@ -95,12 +130,37 @@ data class GuideAction(
     val instruction: String,
 )
 
+/**
+ * 안내 한 번의 기록(C11 개정, #270). 기준은 서버 `GuideStep`이다.
+ *
+ * 값의 출처는 둘뿐이다 — **서버 응답 echo**([instruction]·[actionType]·[direction]·
+ * [targetLabel]·[screenHint]·[structureSignature])와 **앱 관측**([screenChanged]·[performed]·
+ * [contentSignature]). 앱은 나르기만 하고 해석하지 않는다. [targetLabel]만 `target_node_id`로
+ * 현재 화면에서 찾아 붙이는데, 강조를 그리려고 어차피 하는 조회다.
+ *
+ * [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 4). 필드를 먼저 두는 것은
+ * 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
+ */
 @Serializable
-data class RecentAction(
-    @SerialName("screen_signature") val screenSignature: String,
+data class GuideStep(
+    val instruction: String,
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
-    @SerialName("target_node_id") val targetNodeId: String? = null,
+    /** 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다. */
+    @SerialName("target_label") val targetLabel: String? = null,
+    /** 그 안내가 나간 화면이 무엇이었는지. 응답 [GuideAction.screenSummary]의 echo. */
+    @SerialName("screen_hint") val screenHint: String? = null,
+    /** 응답 [NextStepResponse.screenSignature]의 echo. 앱이 만들지 않는다. */
+    @SerialName("structure_signature") val structureSignature: String,
+    /** 그 안내 뒤 화면이 실제로 바뀌었는가. `null`은 아직 모른다는 뜻이다. */
+    @SerialName("screen_changed") val screenChanged: Boolean? = null,
+    /**
+     * 안내한 대상을 사용자가 실제로 눌렀는가(`PressMatch`, #319). `false`는 좌표 축의 확신
+     * 불일치(다른 노드를 누름)에서만 나오고, `null`은 귀속 미확인이다 — 이벤트가 안 왔거나,
+     * source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다.
+     */
+    val performed: Boolean? = null,
+    @SerialName("content_signature") val contentSignature: String? = null,
 )
 
 /**
@@ -119,9 +179,19 @@ enum class ActionType {
     @SerialName("tap") TAP,
     @SerialName("scroll") SCROLL,
     @SerialName("type") TYPE,
+    /**
+     * 화면 요소가 아니라 **가장자리 제스처**다(#222) — `target_node_id` 없이 오고, 시작 지점
+     * 선과 손 모션은 앱이 [EdgeGesture]의 표에서 만들어 그린다. "강조 없이 안내문만 뜬다"(#35)는
+     * #222 이전 동작이다.
+     *
+     * `direction`도 안 오는 것이 관측이지만 **계약 보장은 아니다** — 서버 스키마는 scroll에서만
+     * 필수로 요구할 뿐 다른 액션에서 금지하지 않는다(`server/app/schemas.py`의
+     * `validate_scroll_direction`). 모델이 실어 보내도 앱은 표의 손가락 방향에 우선권을 줘
+     * 무시한다(`HighlightOverlayView.setGuide`).
+     */
     @SerialName("open_quick_settings") OPEN_QUICK_SETTINGS,
 
-    /** 화면 요소가 아니라 제스처다. `target_node_id`가 없으므로 강조 없이 안내문만 뜬다(#35). */
+    /** [OPEN_QUICK_SETTINGS]와 같은 가장자리 제스처다(#222) — 계약도 표현 규칙도 같다. */
     @SerialName("open_app_drawer") OPEN_APP_DRAWER,
     @SerialName("done") DONE,
 }
@@ -207,7 +277,8 @@ enum class ConversationRole {
 }
 
 /**
- * 고정 슬롯을 노출하지 않는 음성 목표 요청. 이력은 완결된 user/assistant 쌍 최대 5왕복이다.
+ * 고정 슬롯을 노출하지 않는 음성 목표 요청. #316 앱은 [clarificationAnswers]를 두 번째이자 마지막
+ * 요청에 싣고, [conversationHistory]는 이전 앱 wire 호환을 위해서만 남긴다.
  * [sessionId]는 무작위 대화 경계이며 원문·기기 값에서 만들거나 로그에 남기지 않는다.
  */
 @Serializable
@@ -215,21 +286,55 @@ data class SlotFillRequest(
     val utterance: String,
     @SerialName("session_id") val sessionId: String,
     @SerialName("conversation_history") val conversationHistory: List<ConversationTurn> = emptyList(),
+    @SerialName("clarification_answers")
+    val clarificationAnswers: List<ClarificationAnswer> = emptyList(),
+)
+
+@Serializable
+data class ClarificationAnswer(
+    @SerialName("question_id") val questionId: String,
+    val prompt: String,
+    val answer: String,
+    val source: ClarificationAnswerSource,
+)
+
+@Serializable
+enum class ClarificationAnswerSource {
+    @SerialName("option") OPTION,
+    @SerialName("freeform") FREEFORM,
+    @SerialName("unknown_or_declined") UNKNOWN_OR_DECLINED,
+}
+
+@Serializable
+data class ClarificationQuestion(
+    val id: String,
+    val prompt: String,
+    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기와 모름 답은 항상 가능하다. */
+    val options: List<String>,
+    @SerialName("allow_freeform") val allowFreeform: Boolean,
+)
+
+@Serializable
+data class ClarificationPlan(
+    val questions: List<ClarificationQuestion>,
 )
 
 @Serializable
 data class SlotFillState(
     val status: IntentDialogueStatus,
-    /** 화면에 보여주고 TTS로 읽을 질문 또는 준비 완료 문장. 운영 로그에는 남기지 않는다. */
+    /** 화면에 보여줄 질문 또는 준비 완료 문장. 질문 계획에서는 첫 문항만 TTS로 읽는다. */
     val message: String,
     /** READY일 때만 존재하며, 사용자가 확인할 기존 목표 입력칸에 넣는다. */
     val goal: String? = null,
+    /** NEEDS_CLARIFICATION일 때 한 화면씩 진행할 최대 두 질문. */
+    val clarification: ClarificationPlan? = null,
 )
 
 @Serializable
 enum class IntentDialogueStatus {
     @SerialName("needs_clarification") NEEDS_CLARIFICATION,
     @SerialName("ready") READY,
+    @SerialName("unable_to_finalize") UNABLE_TO_FINALIZE,
 }
 
 /** 서버가 제안한 후보 하나. package/alias는 서버 원본이며 기기 index 값을 역으로 채우지 않는다. */

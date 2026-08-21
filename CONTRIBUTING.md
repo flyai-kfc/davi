@@ -77,12 +77,29 @@ CI와 같은 것을 돌린다.
 cd server && ruff check . && ruff format --check . && pytest
 ```
 
-앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화·오버레이 권한 확인이
-끝난다(`-Status`는 아무것도 바꾸지 않고 상태만 본다).
+앱은 CLI로 빌드·설치한다. `app-android/scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화가
+끝난다(`-Status`는 아무것도 바꾸지 않고 상태만 본다). 특수 권한은 접근성 하나다(#212).
+**Windows에서 실기기 루프를 자주 돈다면** 그 위에 `scripts/dev-driver.ps1`이 있다 — 서버 기동·
+서버 URL 교체·기기 조작·관측을 같은 진입점에서 하고, 판정·설치는 위 스크립트에 위임한다
+(`scripts/README.md`). 맥에서는 안 돈다.
 Android Studio는 디버거·Layout Inspector가 필요할 때만 쓴다. Gradle Wrapper(`./gradlew`)가 저장소에 있고 CI는 그걸 쓰지만,
 개발 PC에 따라 Gradle CLI가 `Unable to establish loopback connection`으로 실패할 수 있다.
 원인은 AF_UNIX 소켓 임시 폴더이고 `app-android/scripts/dev-install.ps1`이 이를 흡수한다 —
 자세한 건 `app-android/README.md`.
+
+**macOS: 보호 폴더가 통째로 막힐 수 있다.** `ls: Operation not permitted`가 나고
+`Documents`·`Desktop`·`Downloads` 아래 전부에 걸린다 — 앱 빌드만이 아니라 `server/`의 pytest도,
+eval 픽스처 읽기도 같이 죽는다.
+
+**실측된 것은 여기까지다: 증상, 그리고 그 도구를 재시작하면 풀린다는 것**(2026-08-21).
+겪은 자리는 **에이전트 CLI**(`~/Library/Application Support/Claude/claude-code/<버전>/claude.app`)를
+통해 돌린 명령들이었다. 셸을 새로 띄우는 것만으로는 안 풀렸다. 개인정보 보호 설정에서 접근을 다시 허용해야 할 수도 있다.
+
+원인은 **확인하지 못했다.** 관측된 정황은 그 실행 파일 경로에 버전이 박혀 있고
+업데이트가 그 폴더를 갈아치웠다는 것인데, macOS는 앱을 번들 ID와 코드 서명으로도 식별하므로
+"경로가 바뀌어서"가 원인이라고 단정할 수 없다. **1회 관측이다.** 다시 겪으면 그때 좁힌다.
+
+Gradle은 여기에 더해 데몬이 옛 맥락을 물고 사는 문제가 겹친다 — `app-android/README.md` §Gradle.
 
 `gradlew`는 실행 비트와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`가 강제). Windows에서 이 속성이
 깨지면 리눅스 CI에서 실행되지 않으니, wrapper 파일을 건드린 PR은 `git ls-files --stage app-android/gradlew`가

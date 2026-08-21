@@ -46,10 +46,11 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 
 ## 음성 목표 대화 계약
 
-`/v1/intent/slot-fill`은 PR #88의 엔드포인트 모양만 참고하고 규칙 기반 슬롯 분류는 이식하지
-않았다. `conversation_history`에는 **이전에 끝난** user/assistant 쌍만 오래된 순으로 넣고,
-`utterance`가 이번 요청의 현재 사용자 발화다. 이력은 최대 10개 메시지(5왕복)이며
-`session_id`는 무작위 UUID다.
+`/v1/intent/slot-fill`은 규칙 기반 슬롯 분류를 이식하지 않는다. 첫 요청은 최초 `utterance`와
+무작위 `session_id`를 보낸다. 서버는 충분하면 즉시 ready, 부족하면 앱이 로컬에서 진행할 최대
+두 질문과 질문별 보기 0~3개를 한 번에 돌려준다. 근거 있는 보기가 없으면 빈 배열이 정상이다.
+`conversation_history`는 이전 앱 호환을 위해 남아 있지만 #316 앱은
+질문별 답을 `clarification_answers`로 모아 두 번째이자 마지막 요청에 보낸다.
 
 ```json
 {
@@ -59,15 +60,47 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 }
 ```
 
-모델이 정보가 더 필요하다고 판단하면 한 질문만 돌려준다.
+모델이 정보가 더 필요하다고 판단하면 질문 계획을 돌려준다.
 
 ```json
 {
   "status": "needs_clarification",
-  "message": "사진을 어디로 보내고 싶으세요?",
-  "goal": null
+  "message": "어느 방식으로 보내고 싶으세요?",
+  "goal": null,
+  "clarification": {
+    "questions": [{
+      "id": "q1",
+      "prompt": "어느 방식으로 보내고 싶으세요?",
+      "options": ["카카오톡", "문자"],
+      "allow_freeform": true
+    }]
+  }
 }
 ```
+
+앱은 선택 때 서버를 호출하지 않는다. 모든 문항을 마치면 원발화와 답을 함께 보낸다.
+
+```json
+{
+  "utterance": "사진을 보내고 싶어",
+  "session_id": "2c8a6a21-0d5a-4868-a394-694684f494df",
+  "clarification_answers": [{
+    "question_id": "q1",
+    "prompt": "어느 방식으로 보내고 싶으세요?",
+    "answer": "문자",
+    "source": "option"
+  }]
+}
+```
+
+두 번째 요청은 `ready` 또는 goal 없는 `unable_to_finalize`로만 끝난다. 모델이 다시 질문해도 서버가
+안전 종료로 정규화해 세 번째 제품 호출을 만들지 않는다. 보기에는 일반 범주만 허용하고, 자유 발화와
+`unknown_or_declined`는 모든 질문에서 열어 둔다.
+
+배포는 **서버 먼저, 앱 다음** 순서다. 기존 앱은 JSON의 새 `clarification`을 무시하고 첫 질문과 같은
+`message`를 기존 자유 발화 질문으로 읽을 수 있다. 그래서 `message == questions[0].prompt`를 계약으로
+검증하고 `conversation_history`도 당분간 유지한다. 반대로 새 앱은 질문 계획이 없는 옛
+`needs_clarification`을 계약 오류로 닫으므로 서버 배포가 선행돼야 한다.
 
 충분하면 기존 `/v1/next-step`의 `goal`로 바로 쓸 정규화된 목표를 돌려준다.
 
@@ -116,10 +149,10 @@ capability와 일반 후보를 최대 5개 반환하고 candidate ID는 서버�
 대화 UUID나 프로세스 캐시에 후보 상태를 저장하지 않는다. 기기에서만 발견한 package·label·component·
 profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`, phase, 최종 status만 운영 로그에 남는다.
 
-Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과
-운영 로그에 포함하지 않는다. `needs_clarification`에 goal이 함께 온 경우 유효한 질문만 남기고 goal을
-제거한다. ready goal 누락·공백 또는 텍스트 상한 위반은 이전 모델 원문 없이 고정 진단만 덧붙여 한 번
-교정한다. schema 400 폴백을 포함해 공급자 호출은 요청당 최대 2회이며, 그 뒤에는 `PARSE`로 실패한다.
+모델은 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과 운영
+로그에 포함하지 않는다. #316 음성 목표 경로는 첫 판단과 최종화에 공급자를 각각 한 번만 호출한다.
+첫 판단의 계약 위반은 `PARSE`, 답을 실은 최종화의 계약 위반은 재호출 없는 `unable_to_finalize`다.
+`needs_clarification`에 goal이 함께 왔고 질문 계획이 유효한 경우에만 goal을 제거해 정규화한다.
 
 ## 카카오 로그인 세션 (#165)
 
@@ -130,7 +163,11 @@ Gemini는 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결�
 `DAVI_AUTH_SESSION_TTL_SECONDS`(기본 30일)다.
 
 - `DAVI_KAKAO_APP_ID`·`DAVI_AUTH_JWT_SECRET`이 비어 있으면 endpoint는 `SERVER`(503)로 닫힌다.
-  변수 목록과 형식은 `.env.example`의 카카오 절 참고.
+  변수 목록과 형식은 `.env.example`의 카카오 절 참고. 둘 다 채워졌는지는 development `/health`의
+  `kakao_auth_configured`로 드러난다 — 값은 노출하지 않고 불리언만 알린다(#279).
+- Azure 공유 개발 서버에서는 이 두 값을 손으로 배선하지 않는다. 서명 비밀은 Key Vault,
+  앱 ID는 GitHub environment 변수이며 자동 배포가 함께 싣는다
+  (`../docs/development/azure-dev-server.md`). 손으로 배선하면 다음 배포가 조용히 지운다.
 - 세션 토큰이 담긴 성공 응답은 `Cache-Control: no-store`로 캐시를 금지한다.
 - 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
   출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
@@ -156,10 +193,11 @@ rate limit을 쓰는 `development`를 유지한다.
 | 설정 | development | beta / production |
 |---|---|---|
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
-| `DAVI_USE_STUB_LLM=false` | non-empty `GEMINI_API_KEY` 필수 | non-empty `GEMINI_API_KEY` 필수 |
+| `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
-| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 32자 이상 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
-| `/v1/next-step` 등 추론 endpoint | dev 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
+| `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
+| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 접근 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
+| `/v1/next-step` 등 추론 endpoint | dev·test 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
 검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
@@ -169,14 +207,83 @@ rate limit을 쓰는 `development`를 유지한다.
 세션 토큰이 없거나 무효한 요청과 카카오 회원번호별·전역 요청 제한(짧은 창 + 하루 상한)을
 `main.py` `_external_access_error`가 막는다 — 로그인(`/v1/auth/kakao`)만 이 검사 밖이며
 별도 리미터가 프로필과 무관하게 로그인 폭주를 막는다.
-모델 선택 정책 자체는 바꾸지 않으며, 키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+키와 접근 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+
+### LLM 공급자 교체
+
+`DAVI_LLM_PROVIDER`로 **Gemini·OpenAI·Anthropic**을 바꾼다. 셋 다 같은 pydantic 선언에서
+뽑은 구조화 JSON 계약을 쓰므로 프롬프트·가드레일·완료 검증은 그대로다(`app/llm_provider.py`).
+
+| 공급자 | API | 기본 모델 | 필요한 키 | 추론 깊이 조절 |
+|---|---|---|---|---|
+| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | `DAVI_GEMINI_THINKING_BUDGET` |
+| `openai` | Responses(`text.format`) | `gpt-5.6-luna` | `OPENAI_API_KEY` | `DAVI_OPENAI_REASONING_EFFORT` |
+| `anthropic` | Messages(`output_config.format`) | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` | 없음(모델을 올린다) |
+
+기본 모델 셋은 모두 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다. `DAVI_MODEL`을
+**비우면 공급자 기본 모델**이 쓰인다 — 공급자만 바꾸고 모델을 안 고쳐서 gemini id가
+Anthropic으로 나가는 사고를 막으려는 기본값이다. 품질이 더 필요하면 `DAVI_MODEL`로 올린다
+(`gemini-3.6-flash`, `gpt-5.6-terra`, `claude-sonnet-5`).
+
+Anthropic 경로는 **thinking 파라미터를 보내지 않고, 대신 예산에 추론 몫을 얹는다.** 끄지
+않는 이유는 끄는 방법이 모델마다 다르고 **어떤 모델은 아예 못 끄기** 때문이다 —
+`claude-haiku-4-5`는 생략하면 thinking이 안 돌지만 `claude-sonnet-5`·`claude-opus-5`는
+생략해도 adaptive thinking이 기본으로 켜져 있고(기본 effort는 high),
+`thinking: {"type": "disabled"}`는 Sonnet 5는 받지만 Opus 5는 effort가 xhigh 이상이면 400,
+Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모양이 없어서, 어느 모델이 와도
+안 깨지는 쪽(예산에 얹기)을 골랐다. thinking이 안 도는 모델에서는 상한이 남을 뿐 비용은
+늘지 않는다 — 상한은 배정이 아니라 천장이다.
+
+**보이지 않는 추론 토큰이 출력 예산을 같이 먹는다.** thinking·reasoning 토큰이 예산을 다
+쓰면 응답이 잘려 PARSE 실패로 이어진다(2026-08-18 `gemini-3.6-flash` 실기기 재현). 그래서
+next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
+추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
+OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
+모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+
+#### #316 목표 구체화 모델·예산 결정 (2026-08-21)
+
+목표 구체화 전용 설정은 이번 변경에서 추가하지 않고 공용 `DAVI_MODEL`·추론 설정을 유지한다.
+같은 익명 시나리오(“사진 보내기” → 첫 보기 선택)를 실제 OpenAI 구조화 출력으로 각각 한 번씩
+관측한 결과는 아래와 같다. 원문 질문·보기·goal은 출력하거나 저장하지 않았다.
+
+| 설정 | 첫 응답 | 질문 수 | 최종 응답 | 2호출 경과 |
+|---|---|---:|---|---:|
+| Luna / low | needs_clarification | 2 | ready | 9.97초 |
+| Luna / medium | needs_clarification | 2 | ready | 8.25초 |
+| Terra / low | needs_clarification | 2 | ready | 6.80초 |
+
+세 설정 모두 계약과 기능 결과가 같았고 표본이 1개라 품질·속도 우위를 주장할 근거는 없다. 따라서
+기본 Luna/low를 유지한다. operation별 knob를 먼저 만들면 측정되지 않은 설정 조합만 늘어나므로,
+여러 목표의 2회 이내 ready율·goal 유효성·환각률·선택 편향·TTS 길이를 같은 eval에서 비교해 실제
+차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
+
+**Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
+상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이
+1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
+`DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
+느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
+
+### 테스트 참가자 토큰
+
+외부 테스트 기간에는 `DAVI_TEST_ACCESS_TOKEN`을 하나 더 둔다. 서버는 개발 토큰과 이
+토큰을 **둘 다** 받아들이고, 헤더는 기존 `X-Davi-Dev-Token` 하나 그대로다 — 그래서 **앱은
+고칠 것이 없다.** 참가자 빌드의 `local.properties`에 `DAVI_DEBUG_ACCESS_TOKEN=<테스트 토큰>`을
+넣으면 된다.
+
+하나로 합치지 않고 둘로 둔 이유는 **폐기 시점이 다르기 때문**이다. 테스트가 끝나면 이 토큰만
+지우면 되고 팀의 개발 토큰은 그대로 살아 있다. 값이 새더라도 폐기 범위가 참가자로 제한된다.
+같은 값을 쓰면 그 구분이 사라지므로 기동 때 거부한다.
+
+어느 토큰으로 들어왔는지는 요청 로그의 `access_token_kind`(`dev`/`test`)로 갈라 볼 수 있다.
+토큰 값 자체는 어떤 프로필에서도 로그에 남기지 않는다.
 
 `/health` 응답도 프로필에 따라 다르다.
 
 development:
 
 ```json
-{"status":"ok","environment":"development","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false}
+{"status":"ok","environment":"development","provider":"gemini","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false,"kakao_auth_configured":false}
 ```
 
 beta / production:
@@ -284,10 +391,11 @@ cd server
 
 PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
 PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰고 시작 시 7일보다 오래된 파일을
-정리한다. 정상 추론은 `request_received` → `gemini_attempt_started` →
-`gemini_attempt_finished` → `request_finished`로 이어지고 request ID·Logical Request ID·attempt로
+정리한다. 정상 추론은 `request_received` → `llm_attempt_started` →
+`llm_attempt_finished` → `request_finished`로 이어지고(두 이벤트는 `provider` 필드로 어느
+공급자였는지 남긴다) request ID·Logical Request ID·attempt로
 대조한다. 정상 `/health`와 기본 Uvicorn access log는 생략해 반복 I/O와 IP/port 보존을 막는다.
-목표·화면 label·최근 안내·요청 본문·프롬프트·Gemini 응답·API 키·개발 토큰은 기록하지 않는다.
+목표·화면 label·최근 안내·요청 본문·프롬프트·모델 응답·API 키·개발 토큰은 기록하지 않는다.
 
 ### 장애 확인 순서
 
@@ -308,8 +416,10 @@ GitHub Actions가 `main`에 병합된 서버·인프라 변경을 ACR image와 �
 이번 run의 정확한 revision과 image가 active·healthy·traffic 100%인지 대조한 다음 `/health`를
 검사하므로 이전 revision의 정상 응답으로 성공하지 않는다. PR은 공유 서버를 바꾸지 않는다.
 
-외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. Gemini 키와 개발 토큰은
+외부 ingress는 HTTPS만 허용하고 API는 32자 이상 개발 토큰을 요구한다. 공급자 API 키와 개발 토큰은
 Key Vault의 versionless secret으로만 보관하며 Container App의 user-assigned identity가 읽는다.
+공급자(`DAVI_LLM_PROVIDER`)와 그 키 secret 이름은 GitHub environment 변수로 고른다 — 비우면
+`gemini`이고, 바꿀 때는 키 secret을 **먼저** 만든다.
 앱에는 Azure URL과 개발 토큰만 debug 설정으로 전달한다. Azure의 도그푸딩 allowlist는 비워 raw
 화면 데이터를 저장하지 않는다. 최초 권한·GitHub OIDC 연결과 장애 확인은
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
@@ -350,14 +460,16 @@ pytest
 | `app/reasoning.py` | 실행→검증 파이프라인. **HTTP 모름** → eval이 직접 import. |
 | `app/masking.py` | 2차 마스킹 그물. 순수 변환, 저장·로깅 안 함. |
 | `app/prompt.py` | 마스킹된 요청 → LLM 프롬프트. HTTP 없이 검증 가능한 순수 직렬화. |
-| `app/llm.py` | 스텁/Gemini 클라이언트. HTTP 호출·스키마 400 폴백·응답 파싱. |
+| `app/llm.py` | 스텁/실공급자 클라이언트. 스키마 400 폴백·direction 교정·응답 파싱. |
+| `app/llm_provider.py` | **공급자 교체 지점.** Gemini·OpenAI·Anthropic REST 호출, 오류 분류, 시도 로그. |
 | `app/intent_prompt.py` | 이전 턴+현재 발화 → 고정 슬롯 없는 음성 목표 프롬프트. |
-| `app/intent_resolution.py` | 음성 목표 스텁/Gemini 경계, 구조화 질문·goal 검증. |
+| `app/intent_resolution.py` | 음성 목표 스텁/실공급자 경계, 구조화 질문·goal 검증. |
 | `app/app_resolution_prompt.py` | goal → 일반 앱 후보 최대 5개 프롬프트. |
-| `app/app_resolution.py` | 후보 Gemini 경계와 기기 ID/status의 무상태 최종 판정. |
+| `app/app_resolution.py` | 후보 생성 경계와 기기 ID/status의 무상태 최종 판정. |
 | `app/observability.py` | 비식별 요청 문맥·고정 이벤트·안전한 JSON Lines formatter. |
 | `app/logging.json` | Uvicorn access log를 끄고 서버 진단을 JSON Lines로 통합하는 설정. |
 | `app/gemini_schema.py` | 모델 선언 → Gemini responseSchema(`propertyOrdering` 자동 생성). |
+| `app/json_schema.py` | 모델 선언 → OpenAI·Anthropic strict JSON Schema(선택 필드는 nullable). |
 | `app/config.py` | 실행 프로필·환경변수와 fail-fast 검증. |
 
 ## 지금 무엇이 진짜인가
@@ -366,8 +478,10 @@ pytest
 - `app/masking.py` — 이메일·주민번호·카드·휴대폰·계좌 5종 정규식 치환. 비파괴.
   dict/model 입력은 같은 텍스트 필드 순회 규칙을 사용한다.
 - `app/schemas.py` — 다음 안내·음성 목표·앱 후보 대조 계약. C1~C15를 계약 테스트가 고정한다.
-- `app/gemini_schema.py` — 모델 선언 → Gemini `responseSchema`. `propertyOrdering`(추론 순서)과
-  `required`를 자동 생성하고, 빈 문자열 enum을 배포 전에 막는다.
+- `app/gemini_schema.py` / `app/json_schema.py` — 모델 선언 → 공급자별 구조화 출력 스키마.
+  Gemini는 `propertyOrdering`(추론 순서)과 `required`를 자동 생성하고, OpenAI·Anthropic은 같은
+  선언에서 strict JSON Schema를 만든다(선택 필드는 "생략" 대신 nullable). 둘 다 빈 문자열
+  enum을 배포 전에 막는다.
 - `app/main.py` + `app/errors.py` — `/health`, `/v1/next-step`, `/v1/intent/slot-fill`,
   `/v1/intent/app-resolution`, `/v1/auth/kakao` 라우팅과 `LlmError` → HTTP 상태·응답·재시도
   헤더 매핑.
@@ -379,11 +493,14 @@ pytest
   정상 `/health`, IP/port, 사용자 입력과 token은 기록하지 않는다.
 - `app/reasoning.py:next_step` — 파이프라인 배선(2차 마스킹 → 추론 → 가드 → 검증)은 실제로 흐른다. 모델을 dict로 덤프·재검증하지 않고 비파괴 복사로 마스킹한다.
 - `app/llm.py:StubLlmClient` — 규칙 기반 선택(tap → scroll → 막히면 LlmError). **LLM 품질을 대변하지 않는다.**
-- `app/prompt.py` + `app/llm.py:GeminiLlmClient` — 프롬프트 구성과 Gemini REST `generateContent` 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
-  프롬프트를 만들고, `GUIDE_ACTION_SCHEMA` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
+- `app/prompt.py` + `app/llm.py:RemoteLlmClient` — 프롬프트 구성과 공급자 호출을 분리한다. 목표·화면 요소·최근 안내 이력으로
+  프롬프트를 만들고, `GUIDE_ACTION_CONTRACT` 구조화 출력으로 `GuideAction`을 검증한다. 스키마 400이면
   JSON 계약을 프롬프트로 옮겨 무스키마 호출을 한 번 재시도한다.
-  HTTP 목 테스트는 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
-- `app/intent_prompt.py` + `app/intent_resolution.py:GeminiIntentResolver` — 완결된 이전 턴과 현재
+  HTTP 목 테스트는 세 공급자 각각의 성공·400 폴백·429·인증·네트워크·서버·파싱 오류를 덮는다.
+- `app/llm_provider.py` — Gemini `generateContent`, OpenAI Responses, Anthropic Messages를 한
+  경계 뒤에 둔다. 같은 pydantic 선언에서 공급자별 스키마 표현을 만들고, HTTP 상태 → `ErrorKind`
+  분류와 시도 로그를 한 자리에 모은다. 공급자를 바꿔도 앱이 받는 계약은 같다는 것을 테스트가 고정한다.
+- `app/intent_prompt.py` + `app/intent_resolution.py:RemoteIntentResolver` — 완결된 이전 턴과 현재
   발화를 분리해 직렬화하고 `needs_clarification`/`ready` 구조화 출력으로 질문 또는 goal을 만든다.
   내부 판단 근거를 status보다 먼저 생성하되 wire·로그에는 버리고, 안전한 goal 제거와 총 2회 안의
   계약 교정만 허용한다. `StubIntentResolver`는 keyless 스모크 전용이며 자연어 품질을 대변하지 않는다.
@@ -396,10 +513,7 @@ pytest
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,
   SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
-
-**껍데기** (호출하면 아무 일도 없거나 raise)
-- `reasoning._plan` — 목표를 그대로 1개 태스크로 돌려준다. **계획 단계가 무기한 연기돼
-  (`../SPEC.md` §3 비목표) 결과를 쓰지 않는다.** 이 파일을 다음에 여는 사람이 함께 걷는다
-  (`CLAUDE.md` 추론 아키텍처 절) — 남은 TODO 둘은 SPEC의 연기 결정과 정반대를 말한다.
-- `reasoning._apply_guardrails` — 같은 삼성 런처 화면의 동일 scroll 세 번째 후보를
-  `open_app_drawer`로 전환하는 좁은 반복 가드가 단일 지점에 있다(#36).
+- `reasoning._apply_guardrails` — 단일 결정 지점. `scroll`의 대상을 요구한다(#202): 화면의
+  스크롤 요소로 교정하거나, 런처처럼 대체 행동이 있는 화면은 `open_app_drawer`로 돌리거나,
+  둘 다 없으면 SERVER 오류로 닫는다. 정책은 `CLAUDE.md` "scroll 대상 정책".
+  #36의 반복 카운트 fallback은 여기서 걷혔다 — 대상 해석 실패가 같은 증거를 첫 요청에 준다.

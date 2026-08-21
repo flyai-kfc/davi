@@ -45,9 +45,11 @@ def test_development_health_includes_diagnostics():
     assert r.json() == {
         "status": "ok",
         "environment": "development",
+        "provider": "gemini",
         "model": "gemini-3.5-flash-lite",
         "stub_llm": True,
         "privacy_masking_disabled": False,
+        "kakao_auth_configured": False,
     }
 
 
@@ -59,6 +61,40 @@ def test_development_health_reports_the_masking_bypass(set_runtime_profile):
 
     assert r.status_code == 200
     assert r.json()["privacy_masking_disabled"] is True
+
+
+def test_development_health_reports_kakao_auth_wiring(set_runtime_profile):
+    """Azure 배포 검증이 카카오 배선을 확인하는 유일한 경로다(#279).
+
+    `/v1/auth/kakao`는 개발 토큰 게이트 뒤에 있어 배포 워크플로가 찌를 수 없다.
+    """
+
+    app_id = 987654
+    secret = "kakao-session-signing-secret-value-1234"
+    set_runtime_profile(davi_kakao_app_id=app_id, davi_auth_jwt_secret=secret)
+
+    r = client.get("/health")
+
+    assert r.status_code == 200
+    assert r.json()["kakao_auth_configured"] is True
+    # 불리언만 알린다. 앱 ID와 서명 비밀은 응답 어디에도 없다.
+    assert str(app_id) not in r.text
+    assert secret not in r.text
+
+
+def test_development_health_reports_half_wired_kakao_auth_as_unconfigured(set_runtime_profile):
+    """한쪽만 채운 배포는 로그인이 503으로 닫힌 상태다 — 검증이 통과하면 안 된다."""
+
+    set_runtime_profile(davi_kakao_app_id=987654, davi_auth_jwt_secret="")
+
+    assert client.get("/health").json()["kakao_auth_configured"] is False
+
+    set_runtime_profile(
+        davi_kakao_app_id=0,
+        davi_auth_jwt_secret="kakao-session-signing-secret-value-1234",
+    )
+
+    assert client.get("/health").json()["kakao_auth_configured"] is False
 
 
 def test_production_health_only_includes_status(set_runtime_profile):
@@ -236,11 +272,20 @@ def test_production_next_step_logs_only_safe_metadata(
     secret_goal = "민감한 목표 원문"
     secret_label = "개인정보 hong@example.com"
     secret_instruction = "최근 민감 안내 원문"
+    secret_screen_hint = "민감한 화면 요약 원문"
     secret_token = "development-access-secret"
     payload = {
         "goal": secret_goal,
         "client_version": "0.1.0",
-        "recent_instructions": [secret_instruction],
+        "steps": [
+            {
+                "instruction": secret_instruction,
+                "action_type": "tap",
+                "target_label": secret_label,
+                "screen_hint": secret_screen_hint,
+                "structure_signature": "a" * 64,
+            }
+        ],
         "screen": {
             "package_name": "com.sec.android.app.launcher",
             "elements": [
@@ -280,5 +325,73 @@ def test_production_next_step_logs_only_safe_metadata(
     assert all(secret_goal not in message for message in messages)
     assert all(secret_label not in message for message in messages)
     assert all(secret_instruction not in message for message in messages)
+    assert all(secret_screen_hint not in message for message in messages)
     assert all(secret_token not in message for message in messages)
     assert all("시계" not in message for message in messages)
+
+
+def test_test_access_token_is_accepted_alongside_the_dev_token(monkeypatch):
+    """테스터에게 나눠 준 토큰도 같은 헤더로 통과한다. 앱은 값만 다르게 실으면 된다."""
+
+    dev_token = "d" * 32
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(dev_token))
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    with_dev = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": dev_token},
+    )
+    with_test = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": test_token},
+    )
+    with_wrong = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": "w" * 32},
+    )
+
+    assert with_dev.status_code == 200
+    assert with_test.status_code == 200
+    assert with_wrong.status_code == 401
+
+
+def test_test_access_token_alone_opens_the_gate(monkeypatch):
+    """테스트 기간에 개발 토큰을 비우고 테스트 토큰만 두는 운용도 막지 않는다."""
+
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(""))
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    allowed = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers={"X-Davi-Dev-Token": test_token},
+    )
+    denied = client.post("/v1/next-step", json=_next_step_payload())
+
+    assert allowed.status_code == 200
+    # 토큰이 하나라도 설정되면 loopback 예외는 닫힌다 — TestClient도 토큰을 내야 한다.
+    assert denied.status_code == 401
+
+
+def test_matched_token_kind_is_logged_without_the_token_value(monkeypatch, caplog):
+    """테스트 기간에 참가자 트래픽과 팀 트래픽을 로그에서 갈라 보기 위한 필드다."""
+
+    test_token = "t" * 32
+    monkeypatch.setattr(settings, "davi_test_access_token", SecretStr(test_token))
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.davi.requests"):
+        client.post(
+            "/v1/next-step",
+            json=_next_step_payload(),
+            headers={"X-Davi-Dev-Token": test_token},
+        )
+
+    events = _request_events(caplog)
+    finished = next(event for event in events if event["event"] == "request_finished")
+    assert finished["access_token_kind"] == "test"
+    assert test_token not in json.dumps(events)

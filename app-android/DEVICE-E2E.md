@@ -43,7 +43,8 @@ SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 �
 ## 실행 전 준비
 
 - USB 또는 무선 adb로 삼성 테스트 기기를 연결한다.
-- 기기에서 Davi 접근성 서비스와 다른 앱 위에 표시 권한을 허용한다.
+- 기기 설정의 접근성 목록에서 **「다비 (개발)」**을 허용한다(특수 권한은 이것 하나다, #212).
+  debug와 release가 함께 깔리면 항목이 둘 뜨는데 **E2E가 도는 것은 (개발) 쪽뿐이다**(#58).
 - Mac의 `server/.env`에 실제 서버용 `GEMINI_API_KEY`와 모델을 설정한다.
 - 서버는 `DAVI_USE_STUB_LLM=false`로 `127.0.0.1:8000`에서 실행한다.
 - 서버에 `DAVI_DEV_ACCESS_TOKEN`이 있다면 같은 값을 `DAVI_DEBUG_ACCESS_TOKEN` 환경변수로
@@ -106,7 +107,7 @@ build/reports/device-e2e-private/<scenario>/latest.md
 ```
 
 기본 보고서는 구조화 action과 판정 메타데이터만 사용한다. 상세 보고서는 각 가이드의 요청 당시
-`Screen.elements`, `recent_instructions`, `recent_actions`와 응답의 `expected_result`, `evidence`,
+`Screen.elements`, 스텝 이력(`steps`)과 응답의 `expected_result`, `screen_summary`, `evidence`,
 `instruction`, `action_type`, `direction`, `target_node_id`를 함께 보여 준다. 상세 파일은 마스킹 뒤에도
 개인 앱 이름 등이 남을 수 있는 **로컬 민감 산출물**이며 `.gitignore` 대상이다. PR·이슈에 첨부하지
 않는다. 직접 생성하지 않으려면 `--no-detailed-report` 또는 `-NoDetailedReport`를 사용한다.

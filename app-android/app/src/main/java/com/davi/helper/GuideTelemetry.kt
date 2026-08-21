@@ -78,6 +78,16 @@ object GuideTelemetry {
                 "clickable_count" to screen.elements.count { it.clickable },
                 "editable_count" to screen.elements.count { it.editable },
                 "focused_count" to screen.elements.count { it.focused },
+                // 행동 상태의 관측 빈도(C18 · #271). **개수만 남긴다** — 어느 요소인지는
+                // label이 있어야 알 수 있고 그건 비식별 로그에 넣지 않는다.
+                // 비활성 tap 가드레일을 넣을지는 이 수치를 실측한 뒤에 정한다.
+                "disabled_count" to screen.elements.count { it.enabled == false },
+                "checkable_count" to screen.elements.count { it.checked != null },
+                "checked_count" to screen.elements.count { it.checked == true },
+                "selected_count" to screen.elements.count { it.selected == true },
+                "empty_input_count" to screen.elements.count { it.showingHintText == true },
+                // 제목 원문은 label과 같은 등급이라 로그에 쓰지 않는다. 있고 없고만 남긴다.
+                "window_title" to if (screen.windowTitle != null) "present" else "absent",
                 "ime_visible" to (screen.imeVisible ?: "unknown"),
                 "scrollable" to (screen.hasScrollableElement ?: "unknown"),
                 "current_page" to screen.currentPage,

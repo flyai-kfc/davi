@@ -4,7 +4,7 @@
 없으면 명시적으로 skip하고 종료 코드 0을 반환한다. 활성화된 실행의 HTTP·파싱 오류와 오답
 판정은 실패다.
 
-서버의 ``GeminiLlmClient``를 재사용하지 않는다. 평가 호출의 실패·출력 정책이 서비스 호출과
+서버의 ``RemoteLlmClient``를 재사용하지 않는다. 평가 호출의 실패·출력 정책이 서비스 호출과
 다르므로 이 파일에 별도 HTTP 경계를 둔다. 서버의 프롬프트와 추론 파이프라인은 그대로 통과해
 실제 제품이 사용자에게 보여줄 최종 안내를 평가한다.
 """
@@ -100,7 +100,7 @@ class EvalJudgeError(RuntimeError):
 class JudgeConfig:
     api_key: str
     judge_model: str
-    candidate_model: str = settings.davi_model
+    candidate_model: str = settings.resolved_model
 
     @classmethod
     def from_environment(cls) -> JudgeConfig:
@@ -108,7 +108,9 @@ class JudgeConfig:
             api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             judge_model=os.getenv("DAVI_EVAL_JUDGE_MODEL", "").strip(),
             candidate_model=(
-                os.getenv("DAVI_MODEL", "").strip() or settings.davi_model
+                # DAVI_MODEL을 비우면 공급자 기본 모델이 쓰인다. 채점 기록에는 실제로
+                # 호출된 모델 id가 남아야 하므로 resolved_model로 떨어뜨린다.
+                os.getenv("DAVI_MODEL", "").strip() or settings.resolved_model
             ),
         )
 
@@ -243,7 +245,9 @@ def build_judge_prompt(
     evaluation_data = {
         "goal": request.goal,
         "screen": request.screen.model_dump(mode="json"),
-        "recent_instructions": request.recent_instructions,
+        "steps": [
+            step.model_dump(mode="json", exclude_none=True) for step in request.steps
+        ],
         "reference_action": reference.model_dump(mode="json", exclude_none=True),
         "candidate_action": candidate.model_dump(mode="json", exclude_none=True),
     }

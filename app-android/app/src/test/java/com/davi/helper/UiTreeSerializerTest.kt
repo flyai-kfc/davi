@@ -138,6 +138,75 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `켤 수 없는 요소의 꺼짐은 상태가 아니다`() {
+        // isChecked는 checkable이 아닌 노드에서도 false로 온다. 그걸 "꺼짐"으로 실으면
+        // 모델이 화면의 모든 요소를 꺼진 토글로 읽는다.
+        assertNull(UiTreeSerializer.checkedState(checkable = false, checked = false))
+        assertEquals(false, UiTreeSerializer.checkedState(checkable = true, checked = false))
+        assertEquals(true, UiTreeSerializer.checkedState(checkable = true, checked = true))
+    }
+
+    @Test
+    fun `라벨을 흡수하면 자손의 켬끔도 함께 올린다`() {
+        // 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면 그 자식은 흡수돼
+        // 별도 요소로 나가지 않는다. 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다(#288 리뷰).
+        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = null, descendant = true))
+        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = null, descendant = false))
+        assertNull(UiTreeSerializer.hoistedCheckedState(own = null, descendant = null))
+    }
+
+    @Test
+    fun `자기 상태가 있으면 자손보다 우선한다`() {
+        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = false, descendant = true))
+        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = true, descendant = false))
+    }
+
+    @Test
+    fun `이름 없는 클릭 노드는 상태를 조상에 맡긴다`() {
+        // 실측(One UI 8.5 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
+        // 자기 요소로 못 나간다. 조상이 안 올리면 켬/끔이 화면에서 사라진다(#288 리뷰).
+        assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "", editable = false))
+        assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "   ", editable = false))
+    }
+
+    @Test
+    fun `이름이 있거나 입력칸이면 자기 상태를 자기가 들고 간다`() {
+        assertEquals(true, UiTreeSerializer.emitsOwnElement(label = "Wi-Fi", editable = false))
+        assertEquals(true, UiTreeSerializer.emitsOwnElement(label = "", editable = true))
+    }
+
+    @Test
+    fun `hint 여부는 입력칸에만 있다`() {
+        assertNull(UiTreeSerializer.hintTextState(editable = false, showingHintText = false))
+        assertEquals(true, UiTreeSerializer.hintTextState(editable = true, showingHintText = true))
+        assertEquals(false, UiTreeSerializer.hintTextState(editable = true, showingHintText = false))
+    }
+
+    @Test
+    fun `창 제목은 label과 같은 1차 마스킹을 거친다`() {
+        // 대화방 제목은 사람 이름이고 문서 뷰어는 파일명을 싣는다(#269).
+        assertEquals(
+            "••• 님",
+            UiTreeSerializer.windowTitleOf("010-1234-5678 님", PrivacyMaskingLabelMasker),
+        )
+    }
+
+    @Test
+    fun `창 제목도 label과 같은 정규화를 거친다`() {
+        assertEquals(
+            "설정 배터리",
+            UiTreeSerializer.windowTitleOf("  설정\n  배터리 ", PrivacyMaskingLabelMasker),
+        )
+    }
+
+    @Test
+    fun `제목이 없는 창은 null이다`() {
+        // 11번가·TMAP·플레이스토어는 제목이 없었다(#269 실측). null이 정상 값이다.
+        assertNull(UiTreeSerializer.windowTitleOf(null, PrivacyMaskingLabelMasker))
+        assertNull(UiTreeSerializer.windowTitleOf("   ", PrivacyMaskingLabelMasker))
+    }
+
+    @Test
     fun `편집 요소 라벨은 입력 원문 대신 hint만 쓴다`() {
         assertEquals("검색어 입력", UiTreeSerializer.editableLabel(" 검색어 입력 "))
         assertNull(UiTreeSerializer.editableLabel(null))
