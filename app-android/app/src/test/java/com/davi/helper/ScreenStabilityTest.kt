@@ -263,6 +263,38 @@ class ScreenStabilityTrackerTest {
         assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt + 1_000))
     }
 
+    /** "안내 후 화면 그대로 7초"는 사용자가 방금 조작했으면 그 조작부터 센다(#319). */
+    @Test
+    fun `눌림이 오면 정체 타이머가 그 시점부터 다시 돈다`() {
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+        tracker.markFinished()
+
+        tracker.markPressed(5_000)
+
+        val stuckAt = 5_000 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1))
+        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt))
+    }
+
+    /** 정체가 이미 보고된 뒤의 눌림도 다음 정체(와 눌림 확인 재질의)를 되살린다. */
+    @Test
+    fun `정체 보고 후에도 눌림이 오면 정체가 다시 뜬다`() {
+        tracker.onSample("a", 0)
+        tracker.onSample("a", 100)
+        tracker.markSent("a", 100)
+        tracker.markFinished()
+        val firstStuck = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.STUCK, tracker.onSample("a", firstStuck))
+
+        tracker.markPressed(firstStuck + 1_000)
+
+        val secondStuck = firstStuck + 1_000 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.IDLE, tracker.onSample("a", secondStuck - 1))
+        assertEquals(Decision.STUCK, tracker.onSample("a", secondStuck))
+    }
+
     @Test
     fun `화면이 바뀌면 정체 판정이 풀린다`() {
         tracker.onSample("a", 0)
