@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
+from .metrics import transcript_metrics
 from .models import ScenarioFile, ScenarioResult, StopReason, Transcript
 from .report import write_run
 from .runner import MAX_REQUESTS, run_scenario
@@ -113,6 +114,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print(f"준비 실패: {error}", file=sys.stderr)
         return 1
 
+    judge_failures = 0
     for result in picked:
         try:
             result.judge = run_judge(
@@ -120,6 +122,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
             )
         except LlmError as error:
             print(f"[{result.scenario_id}] 채점 실패: {error}", file=sys.stderr)
+            judge_failures += 1
             continue
         print(
             f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}"
@@ -142,6 +145,9 @@ def cmd_judge(args: argparse.Namespace) -> int:
     report = write_run(run_dir, results, meta)
     print(f"\n보고서 갱신: {report}")
     print(f"이번 채점 추정 크레딧: {meta['평가자_추정크레딧']}")
+    if judge_failures:
+        print(f"채점 실패 {judge_failures}건 (보고서에는 남겼다)", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -167,6 +173,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     user = UserSimulator(user_client, rng=random.Random(args.seed))
     results = []
     openings: list[str] = []
+    judge_failures = 0
 
     for scenario in scenarios:
         adapter = SlotFillHttpAdapter(
@@ -179,23 +186,25 @@ def cmd_run(args: argparse.Namespace) -> int:
                 user,
                 adapter,
                 avoid_openings=openings,
-                max_rounds=args.max_rounds,
+                max_requests=args.max_requests,
             )
         except (PingpongError, LlmError) as error:
             # 한 건이 죽어도 나머지를 계속 돌린다. 실패도 결과다 — 보고서에 남긴다.
+            # 지표는 성공 경로와 같은 계약으로 만든다 — 키가 다르면 집계·표가 깨진다.
             print(f"[{scenario.id}] 건너뜀: {str(error)[:120]}", file=sys.stderr)
+            transcript = Transcript(
+                scenario_id=scenario.id,
+                opening="",
+                stop_reason=StopReason.ERROR,
+                error=str(error)[:500],
+            )
             results.append(
                 ScenarioResult(
                     scenario_id=scenario.id,
                     difficulty=scenario.difficulty,
                     factors=scenario.factors,
-                    transcript=Transcript(
-                        scenario_id=scenario.id,
-                        opening="",
-                        stop_reason=StopReason.ERROR,
-                        error=str(error)[:500],
-                    ),
-                    metrics={"라운드수": 0, "종료사유": "error"},
+                    transcript=transcript,
+                    metrics=transcript_metrics(transcript),
                 )
             )
             continue
@@ -208,6 +217,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 result.judge = run_judge(judge_client, scenario, result.transcript)
             except LlmError as error:
                 print(f"[{scenario.id}] 채점 실패: {error}", file=sys.stderr)
+                judge_failures += 1
         results.append(result)
         achievement = result.judge.achievement.value if result.judge else "미채점"
         print(
@@ -242,6 +252,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     path = write_run(out_dir, results, meta)
     print(f"\n보고서: {path}")
     print(json.dumps(_headline(results), ensure_ascii=False, indent=2))
+
+    # 한 건씩 계속 돌리되, 실패가 있었다는 사실은 exit code로 드러낸다 —
+    # 0으로 끝나면 스모크·자동화가 깨진 실행을 정상 기준선으로 오해한다.
+    run_failures = sum(
+        1 for r in results if r.transcript.stop_reason is StopReason.ERROR
+    )
+    if run_failures or judge_failures:
+        print(
+            f"실패 포함: 실행 {run_failures}건 · 채점 {judge_failures}건 "
+            "(보고서에는 남겼다)",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -307,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:
     judge_cmd.add_argument("--limit", type=int)
     judge_cmd.add_argument(
         "--dry-run", action="store_true", help="호출 없이 대상만 센다"
+    )
+    judge_cmd.add_argument(
+        "--allow-scenario-drift",
+        action="store_true",
+        help="시나리오 파일이 실행 당시와 달라도 알고 채점한다(수치 비교 불가)",
     )
     judge_cmd.set_defaults(func=cmd_judge)
 

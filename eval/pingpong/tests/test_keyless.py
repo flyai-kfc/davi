@@ -364,6 +364,156 @@ def test_빠진_슬롯만_정확으로_보충한다(scenarios):
     assert verdicts == {"앱": "누락", "행위": "정확", "대상": "정확"}
 
 
+class _StubGemini:
+    model = "stub-user"
+
+
+class _WiredAdapter(_ClarificationAdapter):
+    """cli가 만드는 그대로의 시그니처로 #326 두-요청 흐름을 흉내 낸다."""
+
+    def __init__(self, base_url, *, session_id, dev_token=None):
+        super().__init__()
+
+    def preflight(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class _DeadAdapter(_WiredAdapter):
+    def preflight(self):
+        raise PingpongError("서버에 닿지 못했다")
+
+
+def _patch_run(monkeypatch, adapter_cls):
+    from pingpong_eval import cli
+
+    monkeypatch.setattr(cli, "GeminiClient", _StubGemini)
+    monkeypatch.setattr(cli, "UserSimulator", lambda client, rng=None: _FakeUser())
+    monkeypatch.setattr(cli, "SlotFillHttpAdapter", adapter_cls)
+    return cli
+
+
+def test_run_명령이_끝까지_배선돼_돈다(monkeypatch, tmp_path):
+    """파서가 만든 인자 이름과 run_scenario의 시그니처가 어긋나면 여기서 죽는다."""
+
+    cli = _patch_run(monkeypatch, _WiredAdapter)
+    code = cli.main(
+        [
+            "run",
+            "--scenarios",
+            str(ROOT / DEFAULT_SCENARIOS),
+            "--limit",
+            "1",
+            "--out",
+            str(tmp_path),
+            "--no-judge",
+        ]
+    )
+    assert code == 0
+    (run_dir,) = tmp_path.iterdir()
+    assert (run_dir / "report.md").exists()
+    assert (run_dir / "transcripts.jsonl").exists()
+
+
+def test_실행_실패는_현_지표_계약으로_남고_exit_code로_드러난다(monkeypatch, tmp_path):
+    """실패 결과의 지표 키가 성공 경로와 다르면 집계·요약이 깨지고,
+    exit 0이면 깨진 실행이 정상 기준선처럼 남는다."""
+
+    import json
+
+    from pingpong_eval.models import ScenarioResult
+
+    cli = _patch_run(monkeypatch, _DeadAdapter)
+    code = cli.main(
+        [
+            "run",
+            "--scenarios",
+            str(ROOT / DEFAULT_SCENARIOS),
+            "--limit",
+            "2",
+            "--out",
+            str(tmp_path),
+            "--no-judge",
+        ]
+    )
+    assert code == 1
+    (run_dir,) = tmp_path.iterdir()
+    lines = (run_dir / "transcripts.jsonl").read_text(encoding="utf-8").splitlines()
+    results = [ScenarioResult.model_validate_json(line) for line in lines]
+    assert len(results) == 2
+    for result in results:
+        assert result.metrics["종료사유"] == "error"
+        assert result.metrics["질문수"] == 0  # 성공 경로와 같은 키가 있어야 한다
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["전체"]["건수"] == 2
+
+
+def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(monkeypatch, tmp_path):
+    """안내 문구가 가리키는 --allow-scenario-drift 가 실제로 있어야 복구 경로가 된다."""
+
+    import json
+
+    from pingpong_eval import cli
+    from pingpong_eval.models import ScenarioResult, StopReason, Transcript
+
+    scenario = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "meta.json").write_text(
+        json.dumps({"시나리오해시": "실행당시와다름"}), encoding="utf-8"
+    )
+    result = ScenarioResult(
+        scenario_id=scenario.id,
+        difficulty=scenario.difficulty,
+        factors=scenario.factors,
+        transcript=Transcript(
+            scenario_id=scenario.id, opening="사진 보내줘", stop_reason=StopReason.READY
+        ),
+    )
+    (run_dir / "transcripts.jsonl").write_text(
+        result.model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    base = ["judge", str(run_dir), "--scenarios", str(ROOT / DEFAULT_SCENARIOS)]
+    assert cli.main([*base, "--dry-run"]) == 1
+    assert cli.main([*base, "--dry-run", "--allow-scenario-drift"]) == 0
+
+
+def test_보고서_표는_헤더와_값의_열이_맞는다(scenarios):
+    """헤더가 6열인데 값이 7개면 표가 밀려 엉뚱한 열 아래 값이 보인다(실측)."""
+
+    from pingpong_eval.metrics import summarize, transcript_metrics
+    from pingpong_eval.models import ScenarioResult
+    from pingpong_eval.report import render
+
+    scenario = scenarios[0]
+    transcript = _transcript(scenario)
+    results = [
+        ScenarioResult(
+            scenario_id=scenario.id,
+            difficulty=scenario.difficulty,
+            factors=scenario.factors,
+            transcript=transcript,
+            metrics=transcript_metrics(transcript),
+        )
+    ]
+    text = render(summarize(results), results, meta={})
+
+    assert "평균 질문수" in text and "확정실패" in text
+    assert "평균 라운드" not in text and "상한도달" not in text
+
+    width = None
+    for line in text.splitlines():
+        if line.startswith("|"):
+            if width is None:
+                width = line.count("|")
+            assert line.count("|") == width, f"열 수가 어긋난 행: {line}"
+        else:
+            width = None  # 표가 끝났다 — 다음 표는 새로 잰다
+
+
 def test_시나리오_해시는_내용이_바뀌면_달라진다(tmp_path):
     """run과 judge 사이에 정답이 바뀌면 비교할 수 없는 수치가 된다."""
 
