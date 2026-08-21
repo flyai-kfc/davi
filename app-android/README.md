@@ -102,6 +102,11 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
   다른 JDK로 열면 Gradle이 해당 JDK를 자동으로 내려받는다.
 - `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
   이 속성이 깨지지 않게 유지할 것 — 깨지면 리눅스 CI에서 실행되지 않는다.
+- **macOS: 셸에서는 파일이 읽히는데 빌드만 `Operation not permitted`로 죽으면 데몬 탓이다**
+  (2026-08-21 실측). 증상은 `java.io.FileNotFoundException: .../gradle.properties (Operation not permitted)`.
+  Gradle 데몬은 한 번 뜨면 오래 사는데, **접근 권한이 없던 때에 뜬 데몬은 나중에 권한이
+  생겨도 계속 막힌다.** `./gradlew --stop`으로 죽이면 다음 빌드가 새로 뜬다.
+  권한이 왜 끊겼는지는 `CONTRIBUTING.md` §로컬 검사.
 - AGP/Gradle/Kotlin 버전은 `gradle/libs.versions.toml`의 **시작 버전**이다. Studio가 업그레이드를 제안하면 따라도 된다.
 
 ### Android Studio는 언제 쓰나
