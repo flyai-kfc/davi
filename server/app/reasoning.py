@@ -48,10 +48,39 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     HANDOFF §5-4 경고: 가드가 서로 덮어써 불안정했던 전례가 있다.
     새 가드는 이 함수에 우선순위를 드러내 추가하고, 서로 연쇄 적용하지 않는다.
     """
+    # 0. **가려진 대상은 어떤 행동으로도 내보낼 수 없다.** 이것만은 교정이 아니라 전제 검사라
+    #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
+    _reject_obscured_target(action, req.screen)
+
     # scroll만 교정 대상이다. 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
     if action.action_type is not ActionType.SCROLL:
         return action
     return _resolve_scroll(action, req.screen)
+
+
+def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
+    """모델이 **가려진 요소**를 대상으로 골랐으면 실패로 닫는다.
+
+    실패 모양이 #202의 대상 없는 scroll과 같다: 사용자가 볼 수도 누를 수도 없는 자리를
+    가리키면 화면이 그대로고 → 정체 판정 → **정체에서는 서버를 다시 부르지 않으므로**(#39)
+    회복 경로가 없다. 실패로 닫으면 앱이 백오프 후 같은 화면을 다시 물어본다(`retryThisScreen`).
+
+    프롬프트에도 같은 사실을 싣지만(`prompt.OBSCURED_ELEMENT_INSTRUCTION`) 그건 지시일 뿐이라
+    여기서 한 번 더 막는다. 실측에서 모델은 시트 뒤의 '치킨' 버튼을 골랐다.
+
+    **다른 대상을 대신 고르지 않는다** — 가드는 교정이지 재선택이 아니다(`_resolve_scroll`과
+    같은 경계). 무엇을 눌러야 하는지는 가려지지 않은 요소를 보고 모델이 다시 정할 일이다.
+
+    `obscured`가 `None`(낡은 앱의 미관측)이면 아무 판정도 하지 않는다 — 침묵을 "가려짐"으로도
+    "안 가려짐"으로도 읽지 않는다(C10의 세 상태 규약).
+    """
+    target = _element_by_id(screen, action.target_node_id)
+    if target is None or target.obscured is not True:
+        return
+    raise LlmError(
+        ErrorKind.SERVER,
+        "안내 대상이 다른 요소에 완전히 가려져 있어 사용자가 보거나 누를 수 없음",
+    )
 
 
 def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
