@@ -60,10 +60,54 @@ internal object GuidedAppOps {
             ?: device.wait(Until.findObject(By.desc(pattern)), half)
     }
 
+    /**
+     * fragment가 보이는 노드를 찾아 누른다. 누르기 직전에 다시 찾는다.
+     *
+     * 목록·달력처럼 계속 다시 그려지는 화면에서는 잡아 둔 노드가 누르기 전에 stale이 된다
+     * (2026-08-21 에이닷 캘린더 실측에서 StaleObjectException으로 정리가 죽었다).
+     *
+     * @return 눌렀는가. 못 찾았거나 재시도까지 stale이면 거짓.
+     */
+    fun clickVisibleLabelLike(
+        device: UiDevice,
+        fragment: String,
+        timeoutMs: Long,
+    ): Boolean {
+        repeat(CLICK_ATTEMPTS) {
+            val node = waitForVisibleLabelLike(device, fragment, timeoutMs) ?: return false
+            if (runCatching { node.click() }.isSuccess) return true
+        }
+        return false
+    }
+
+    /**
+     * label이 **정확히** 그 문구인 노드를 찾아 누른다.
+     *
+     * 부분 문자열로는 구분이 안 되는 자리에 쓴다 — 예: 확인 대화상자의 "삭제"는 뒤에 남은
+     * 상세 화면의 "일정 삭제"에도 걸린다(2026-08-21 에이닷 실측).
+     */
+    fun clickExactLabel(
+        device: UiDevice,
+        label: String,
+        timeoutMs: Long,
+    ): Boolean {
+        repeat(CLICK_ATTEMPTS) {
+            val half = (timeoutMs / 2).coerceAtLeast(1L)
+            val node = device.wait(Until.findObject(By.text(label)), half)
+                ?: device.wait(Until.findObject(By.desc(label)), half)
+                ?: return false
+            if (runCatching { node.click() }.isSuccess) return true
+        }
+        return false
+    }
+
     fun containsPattern(fragment: String): Pattern = Pattern.compile(
         ".*" + Pattern.quote(fragment) + ".*",
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL,
     )
+
+    /** stale 재시도 횟수. 다시 그려지는 중이면 한 번 더 찾으면 대개 잡힌다. */
+    private const val CLICK_ATTEMPTS = 3
 
     private const val LAUNCH_TIMEOUT_MS = 10_000L
     private const val IDLE_TIMEOUT_MS = 1_500L
