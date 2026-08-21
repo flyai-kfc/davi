@@ -69,7 +69,7 @@ object WaveMotion {
      * 확인할 대상이며 지금은 첫 추정치다.
      *
      * **SM-S921N에서는 실제로 -2..10 안에 있었다**(973표본, 양 끝값이 정확히 반복 —
-     * PR #324 · [MicTone.AMPLITUDE] 참고). **한 기기 · 그때 붙은 인식기 하나의 관측이라
+     * PR #324 · [MicTone]의 `AMPLITUDE` 주석 참고). **한 기기 · 그때 붙은 인식기 하나의 관측이라
      * 접는 것은 그대로 둔다** — 벗어나는 기기를 본 적이 있으면 여기에 적는다.
      */
     fun normalizeRms(rmsdB: Float): Float {
