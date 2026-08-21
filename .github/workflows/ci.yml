@@ -37,8 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # v4가 필요하다. 아래 android 필터의 `!` 제외 패턴은 predicate-quantifier
-      # 'some-with-excludes'에서만 동작하고, 그 값은 v4에 들어왔다. v3에서 `!`를 쓰면
-      # 조용히 무시돼 제외가 걸리지 않는다.
+      # 'some-with-excludes'에서만 동작하고, 그 값은 **v4.0.3**에 들어왔다(v4.0.2 이하에
+      # 핀하면 입력이 거부된다 — action.yml로 확인했다). v3에서도 `!` 패턴 자체는 파싱되지만,
+      # 기본 quantifier `some` 아래서는 파일이 `app-android/**` 하나만 맞아도 포함돼
+      # 제외가 무력화된다.
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -53,7 +55,10 @@ jobs:
               # Android 잡을 부르지 않게 하려는 것이다. 여기 있는 것들이 바뀌어도 APK와
               # 검사 결과는 바이트로 같다 — 시나리오 정의(device-e2e-scenarios.json)와
               # scripts/ 는 렌더러 테스트가 실제로 읽으므로 빼지 않는다.
-              - '!app-android/**/*.md'
+              # `**/*.md`가 아니라 최상위만이다. 추적 중인 .md 7개가 전부 app-android/ 바로
+              # 아래이고, 하위 트리를 통째로 빼면 나중에 assets/*.md 같은 **빌드 입력**이
+              # 생겼을 때 그것만 바꾼 PR에서 Android 잡이 조용히 건너뛰어진다.
+              - '!app-android/*.md'
               - '!app-android/.gitignore'
               - '!app-android/licenses/**'
             backend:
@@ -101,13 +106,25 @@ jobs:
             $bytes = [System.IO.File]::ReadAllBytes($Path)
             return ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
           }
-          $ps1 = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter *.ps1)
-          $sh = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter *.sh)
+          # **대상 목록은 git에서 받는다.** 원래 `Get-ChildItem -Recurse`였는데 둘을 틀렸다.
+          # ① pwsh는 Unix에서 점으로 시작하는 항목을 hidden으로 취급해 `-Force` 없이는 빼먹는다.
+          #    러너가 리눅스라 `.claude/hooks/`의 .ps1 셋이 통째로 스캔에서 빠져 있었다 —
+          #    추적 중인 .ps1은 6개인데 CI 로그는 "3개"를 찍고 있었다. 하필 그 셋이 한글 주석이
+          #    든 Windows PowerShell 5.1 대상 훅이라 이 규칙의 정면 대상이다. 개발 PC(Windows)
+          #    에서는 점 폴더가 hidden이 아니라 로컬로 돌리면 멀쩡히 통과해 보인다.
+          # ② .git·빌드 산출물처럼 우리가 쓰지 않은 파일까지 잡는다.
+          $ps1 = @(git ls-files '*.ps1')
+          $sh = @(git ls-files '*.sh')
+          # **빈 목록을 통과로 읽지 않는다.** 목록이 비면 아래 검사가 통째로 공회전해 초록이 된다.
+          # git이 죽거나 glob이 낡으면 정확히 그 모양이 된다.
+          if ($ps1.Count -eq 0 -or $sh.Count -eq 0) {
+            throw "빈 관문: 검사 대상을 못 찾았다 (.ps1 $($ps1.Count)개 / .sh $($sh.Count)개)."
+          }
           $bad = @()
-          $bad += @($ps1 | Where-Object { -not (Test-Bom $_.FullName) } |
-            ForEach-Object { "BOM 없음 (.ps1은 필수): $($_.FullName)" })
-          $bad += @($sh | Where-Object { Test-Bom $_.FullName } |
-            ForEach-Object { "BOM 있음 (.sh는 금지 — 셔뱅이 깨진다): $($_.FullName)" })
+          $bad += @($ps1 | Where-Object { -not (Test-Bom $_) } |
+            ForEach-Object { "BOM 없음 (.ps1은 필수): $_" })
+          $bad += @($sh | Where-Object { Test-Bom $_ } |
+            ForEach-Object { "BOM 있음 (.sh는 금지 — 셔뱅이 깨진다): $_" })
           if ($bad) {
             $bad
             throw '셸 스크립트 인코딩 규칙 위반.'
@@ -564,7 +581,6 @@ jobs:
           DAVI_EVAL_JUDGE_MODEL: ''
         run: python judge.py
 
-
       - name: Bicep 템플릿 빌드
         if: needs.changes.outputs.infrastructure == 'true'
         run: |
@@ -589,9 +605,14 @@ jobs:
             --env DAVI_DEV_ACCESS_TOKEN=ci-only-not-a-secret-token-value-0001 \
             "$image"
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
+          # **아래 단언은 stdlib만 쓴다.** 잡을 합치면서 setup-python이 조건부가 됐다 —
+          # infrastructure만 바뀐 PR에서는 러너 기본 인터프리터가 잡힌다. 여기 서드파티
+          # import를 한 줄 넣으면 `server/app/**`을 건드린 PR에서만 통과하고 Dockerfile만
+          # 고친 PR에서 ModuleNotFoundError로 죽는다 — 재현 조건이 "어느 파일을 건드렸나"라
+          # 진단이 길어지는 종류다.
           for attempt in $(seq 1 20); do
             if curl --fail --silent --max-time 1 http://127.0.0.1:8000/health \
-              | python -c 'import json,sys; data=json.load(sys.stdin); assert data.get("status") == "ok"; assert data.get("environment") == "development"; assert data.get("provider") == "gemini"; assert data.get("model") == "gemini-3.5-flash-lite"; assert data.get("stub_llm") is True; assert data.get("privacy_masking_disabled") is False'; then
+              | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("status") == "ok"; assert data.get("environment") == "development"; assert data.get("provider") == "gemini"; assert data.get("model") == "gemini-3.5-flash-lite"; assert data.get("stub_llm") is True; assert data.get("privacy_masking_disabled") is False'; then
               exit 0
             fi
             sleep 1
