@@ -700,11 +700,20 @@ def test_pressed_but_unchanged_steer_is_limited_to_the_last_tap_step():
             _step(instruction="다음 안내", screen_changed=True),
         )
     )
+    # 빈 안내문 스텝은 줄을 안 만들 뿐 그 뒤에 안내가 나갔다는 사실은 남는다 — 판정이
+    # 프롬프트에 실린 목록의 끝을 보면 이미 해소된 조합에 단정이 붙는다(#333 리뷰).
+    resolved_by_blank = build_prompt(
+        _with_steps(
+            _step(performed=True, screen_changed=False),
+            _step(instruction="   ", screen_changed=True),
+        )
+    )
     typing = build_prompt(
         _with_steps(_step(action_type=ActionType.TYPE, performed=True, screen_changed=False))
     )
 
     assert PRESSED_UNCHANGED_INSTRUCTION not in resolved_later
+    assert PRESSED_UNCHANGED_INSTRUCTION not in resolved_by_blank
     assert PRESSED_UNCHANGED_INSTRUCTION not in typing
 
 

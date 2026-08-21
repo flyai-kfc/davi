@@ -312,7 +312,12 @@ def _history_instruction(req: NextStepRequest) -> str:
     # 단정은 **마지막 스텝**이 tap이고 눌림 확인 + 화면 그대로일 때만이다. 과거 스텝의 이
     # 조합은 그 뒤 진행으로 이미 해소됐을 수 있고(느린 화면 전환이 재질의 직후 일어난 경우),
     # type은 눌림 확인이 "입력칸을 눌렀다"까지라 "아직 안 했다"가 배제되지 않는다.
-    last = steps[-1] if steps else None
+    #
+    # **여기만 `req.steps`를 본다.** 위 두 줄은 "그 관측이 줄로 실렸는가"가 조건이라 `_history`가
+    # 맞지만, 이 단정의 근거는 "**지금** 화면이 그 상태다"이므로 프롬프트에 실리는 목록이 아니라
+    # 원본 이력의 끝을 봐야 한다 — 빈 안내문 스텝은 줄을 안 만들 뿐 그 뒤에 안내가 나갔다는
+    # 사실은 남는다(#333 리뷰).
+    last = req.steps[-1] if req.steps else None
     if (
         last is not None
         and last.action_type is ActionType.TAP
