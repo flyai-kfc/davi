@@ -377,14 +377,18 @@ class GuideAccessibilityService : AccessibilityService() {
         if (event.packageName?.toString() != screenPackage) return
         when (pressVerdict(event, bounds)) {
             PressMatch.Verdict.ON_TARGET -> {
-                val generation = GuideSession.active()?.generation ?: return
-                GuideSession.observePress(generation, onTarget = true)
-                // "안내 후 화면 그대로 7초"는 방금 조작한 시점부터 다시 센다.
-                stability.markPressed(SystemClock.uptimeMillis())
+                // **표시가 먼저다.** 파동은 "방금 눌렀다"는 사실의 표시라 세션 상태에 매이지
+                // 않는다(#238, `docs/SCREENS.md` GD-2). 기록을 앞에 두면 세션이 막 끝난 좁은
+                // 구간에서 기록 실패가 표시까지 삼킨다(#333 리뷰).
                 display.consumePress()
                 Log.i(TAG, "press on target")
                 overlay?.pressFeedback(Rect(bounds[0], bounds[1], bounds[2], bounds[3]))
                 display.hideTarget()?.let { draw(it) }
+                GuideSession.active()?.generation?.let { generation ->
+                    GuideSession.observePress(generation, onTarget = true)
+                    // "안내 후 화면 그대로 7초"는 방금 조작한 시점부터 다시 센다.
+                    stability.markPressed(SystemClock.uptimeMillis())
+                }
             }
 
             // 좌표 축의 확신 불일치만 온다 — 표시(파동·강조)는 건드리지 않고 기록만 한다.
@@ -976,7 +980,9 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         val bounds = target?.bounds?.takeIf { it.size == 4 }
         guidedTargetLabel = target?.label?.takeIf { it.isNotBlank() }
-        guidedScreenPackage = screen.packageName
+        // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
+        // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
+        guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }
         guidedTargetClickable = target?.clickable == true
 
         // 안내 하나 = 스텝 하나(C11 개정). **값을 모으기만 한다** — 조회한 target label 말고는
