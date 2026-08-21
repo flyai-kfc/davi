@@ -39,7 +39,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 1
     for scenario in file.scenarios:
         if not scenario.first_slots:
-            print(f"[{scenario.id}] 처음부터 말할 수 있는 슬롯이 하나도 없다", file=sys.stderr)
+            print(
+                f"[{scenario.id}] 처음부터 말할 수 있는 슬롯이 하나도 없다",
+                file=sys.stderr,
+            )
             return 1
     print(f"시나리오 {len(file.scenarios)}개 · 슬롯 {total_slots}개 · 검증 통과")
     for level in ("쉬움", "중간", "어려움"):
@@ -89,11 +92,15 @@ def cmd_judge(args: argparse.Namespace) -> int:
 
     for result in picked:
         try:
-            result.judge = run_judge(judge_client, scenarios[result.scenario_id], result.transcript)
+            result.judge = run_judge(
+                judge_client, scenarios[result.scenario_id], result.transcript
+            )
         except LlmError as error:
             print(f"[{result.scenario_id}] 채점 실패: {error}", file=sys.stderr)
             continue
-        print(f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}")
+        print(
+            f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}"
+        )
 
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     meta.update(
@@ -103,7 +110,8 @@ def cmd_judge(args: argparse.Namespace) -> int:
             "평가자_입력토큰": judge_client.input_tokens,
             "평가자_출력토큰": judge_client.output_tokens,
             "평가자_추정크레딧": round(
-                estimate_credits(judge_client.input_tokens, judge_client.output_tokens), 1
+                estimate_credits(judge_client.input_tokens, judge_client.output_tokens),
+                1,
             ),
             "채점범위": args.difficulty or args.only or "전체",
         }
@@ -144,7 +152,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         try:
             adapter.preflight()
             result = run_scenario(
-                scenario, user, adapter, avoid_openings=openings, max_rounds=args.max_rounds
+                scenario,
+                user,
+                adapter,
+                avoid_openings=openings,
+                max_rounds=args.max_rounds,
             )
         except (PingpongError, LlmError) as error:
             # 한 건이 죽어도 나머지를 계속 돌린다. 실패도 결과다 — 보고서에 남긴다.
@@ -190,7 +202,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         "평가자_입력토큰": judge_client.input_tokens if judge_client else 0,
         "평가자_출력토큰": judge_client.output_tokens if judge_client else 0,
         "평가자_추정크레딧": (
-            round(estimate_credits(judge_client.input_tokens, judge_client.output_tokens), 1)
+            round(
+                estimate_credits(judge_client.input_tokens, judge_client.output_tokens),
+                1,
+            )
             if judge_client
             else 0
         ),
@@ -225,7 +240,9 @@ def _davi_sha(repo: str | None) -> str | None:
     try:
         return subprocess.run(
             ["git", "-C", repo, "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return None
@@ -246,7 +263,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--only", help="쉼표로 구분한 시나리오 id")
     run.add_argument("--limit", type=int)
     run.add_argument("--max-rounds", type=int, default=MAX_ROUNDS)
-    run.add_argument("--seed", type=int, default=None, help="숨길 슬롯 선택의 난수 시드")
+    run.add_argument(
+        "--seed", type=int, default=None, help="숨길 슬롯 선택의 난수 시드"
+    )
     run.add_argument("--no-judge", action="store_true", help="평가자 LLM 없이 대화만")
     run.add_argument("--davi-repo", default=None, help="davi 체크아웃 경로(sha 기록용)")
     run.add_argument(
@@ -262,7 +281,9 @@ def main(argv: list[str] | None = None) -> int:
     judge_cmd.add_argument("--difficulty", help="쉬움/중간/어려움 (쉼표 구분)")
     judge_cmd.add_argument("--only", help="쉼표로 구분한 시나리오 id")
     judge_cmd.add_argument("--limit", type=int)
-    judge_cmd.add_argument("--dry-run", action="store_true", help="호출 없이 대상만 센다")
+    judge_cmd.add_argument(
+        "--dry-run", action="store_true", help="호출 없이 대상만 센다"
+    )
     judge_cmd.set_defaults(func=cmd_judge)
 
     args = parser.parse_args(argv)

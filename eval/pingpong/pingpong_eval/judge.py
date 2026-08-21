@@ -25,17 +25,26 @@ _SYSTEM = """당신은 시니어용 스마트폰 안내 앱의 '목표 구체화
 def build_prompt(scenario: Scenario, transcript: Transcript) -> str:
     슬롯 = "\n".join(
         f"- {s.key}: {s.value}"
-        + {"처음": "", "되물음": " (사용자가 되물어야 말해 주는 값)", "미상": " (사용자도 모르는 값 — 도우미가 지어내면 안 된다)"}[s.exposure.value]
+        + {
+            "처음": "",
+            "되물음": " (사용자가 되물어야 말해 주는 값)",
+            "미상": " (사용자도 모르는 값 — 도우미가 지어내면 안 된다)",
+        }[s.exposure.value]
         for s in scenario.slots
     )
     대화 = [f"사용자: {transcript.opening}"]
     for round_ in transcript.rounds:
         선택지 = (
-            " [선택지: " + " / ".join(round_.pingpong.options) + ("+기타" if round_.pingpong.has_other else "") + "]"
+            " [선택지: "
+            + " / ".join(round_.pingpong.options)
+            + ("+기타" if round_.pingpong.has_other else "")
+            + "]"
             if round_.pingpong.options
             else ""
         )
-        대화.append(f"(라운드 {round_.index}) 도우미: {round_.pingpong.question}{선택지}")
+        대화.append(
+            f"(라운드 {round_.index}) 도우미: {round_.pingpong.question}{선택지}"
+        )
         if round_.reply is not None:
             표시 = "선택" if round_.reply.chosen_option is not None else "직접 입력"
             대화.append(f"사용자({표시}): {round_.reply.text}")
@@ -88,14 +97,18 @@ def build_prompt(scenario: Scenario, transcript: Transcript) -> str:
    round_index에는 그 질문이 나온 라운드 번호를, quote에는 문제가 된 문장의 앞부분(30자 이내)을 넣습니다."""
 
 
-def judge(client: ClaudeJudge, scenario: Scenario, transcript: Transcript) -> JudgeResult:
+def judge(
+    client: ClaudeJudge, scenario: Scenario, transcript: Transcript
+) -> JudgeResult:
     """평가자는 문제 있는 조각만 쓰고, 나머지는 여기서 '정확'으로 채운다.
 
     출력 토큰이 입력의 5배로 과금되므로, 6조각짜리 시나리오에서 '정확 6줄'을 받아쓰는 것이
     곧 비용이다. 판정에 필요한 정보는 그대로 남는다 — 목록에 없으면 정확이다.
     """
 
-    result = client.parse(build_prompt(scenario, transcript), JudgeResult, system=_SYSTEM)
+    result = client.parse(
+        build_prompt(scenario, transcript), JudgeResult, system=_SYSTEM
+    )
     scored = {score.key for score in result.slot_scores}
     result.slot_scores = list(result.slot_scores) + [
         SlotScore(key=slot.key, verdict=SlotVerdict.CORRECT, evidence="")

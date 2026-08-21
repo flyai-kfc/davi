@@ -55,7 +55,9 @@ class SlotFillHttpAdapter:
         """서버가 떠 있고 스텁이 아닌지 본다. 스텁이면 채점이 무의미하다."""
 
         try:
-            response = self._client.get(f"{self._base_url}/health", headers=self._headers)
+            response = self._client.get(
+                f"{self._base_url}/health", headers=self._headers
+            )
         except httpx.RequestError as error:
             raise PingpongError(
                 f"davi 서버에 닿지 못했다({self._base_url}). "
@@ -96,7 +98,9 @@ class SlotFillHttpAdapter:
                 "(=DAVI_DEV_ACCESS_TOKEN 또는 DAVI_TEST_ACCESS_TOKEN)을 넣는다."
             )
         if response.is_error:
-            raise PingpongError(f"핑퐁 HTTP {response.status_code}: {response.text[:200]}")
+            raise PingpongError(
+                f"핑퐁 HTTP {response.status_code}: {response.text[:200]}"
+            )
 
         return _parse(response.json(), latency_ms)
 
@@ -108,7 +112,9 @@ def _parse(body: dict[str, Any], latency_ms: int) -> PingpongTurn:
     try:
         status = PingpongStatus(body["status"])
     except (KeyError, ValueError) as error:
-        raise PingpongError(f"핑퐁 응답에 status가 없거나 모르는 값이다: {body!r}") from error
+        raise PingpongError(
+            f"핑퐁 응답에 status가 없거나 모르는 값이다: {body!r}"
+        ) from error
 
     options = next(
         (list(body[key]) for key in _OPTION_KEYS if isinstance(body.get(key), list)), []

@@ -15,13 +15,21 @@ def transcript_metrics(transcript: Transcript) -> dict:
         "라운드수": len(asked),
         "종료사유": transcript.stop_reason.value,
         "총_소요ms": transcript.elapsed_ms,
-        "핑퐁_지연ms_평균": round(mean([r.pingpong.latency_ms for r in rounds])) if rounds else 0,
-        "질문_평균길이": round(mean([len(r.pingpong.question) for r in asked])) if asked else 0,
+        "핑퐁_지연ms_평균": round(mean([r.pingpong.latency_ms for r in rounds]))
+        if rounds
+        else 0,
+        "질문_평균길이": round(mean([len(r.pingpong.question) for r in asked]))
+        if asked
+        else 0,
         "선택지_제시_라운드": len(with_options),
         "기타_사용": sum(1 for r in asked if r.reply and r.reply.used_other),
         "선택지_적중률": (
             round(
-                sum(1 for r in with_options if r.reply and r.reply.chosen_option is not None)
+                sum(
+                    1
+                    for r in with_options
+                    if r.reply and r.reply.chosen_option is not None
+                )
                 / len(with_options),
                 3,
             )
@@ -40,12 +48,22 @@ def summarize(results: list[ScenarioResult]) -> dict:
         return {
             "건수": len(subset),
             "충족": sum(1 for r in judged if r.judge.achievement is Achievement.FULL),
-            "부분": sum(1 for r in judged if r.judge.achievement is Achievement.PARTIAL),
+            "부분": sum(
+                1 for r in judged if r.judge.achievement is Achievement.PARTIAL
+            ),
             "실패": sum(1 for r in judged if r.judge.achievement is Achievement.FAIL),
-            "평균_라운드": round(mean([r.metrics.get("라운드수", 0) for r in subset]), 2) if subset else 0,
+            "평균_라운드": round(
+                mean([r.metrics.get("라운드수", 0) for r in subset]), 2
+            )
+            if subset
+            else 0,
             "상한도달": sum(1 for r in subset if r.metrics.get("종료사유") == "limit"),
             "슬롯_정확률": (
-                round(sum(1 for s in slots if s.verdict is SlotVerdict.CORRECT) / len(slots), 3)
+                round(
+                    sum(1 for s in slots if s.verdict is SlotVerdict.CORRECT)
+                    / len(slots),
+                    3,
+                )
                 if slots
                 else None
             ),
@@ -63,7 +81,9 @@ def summarize(results: list[ScenarioResult]) -> dict:
     violations: dict[str, int] = {}
     for result in results:
         for violation in result.judge.violations if result.judge else []:
-            violations[violation.axis.value] = violations.get(violation.axis.value, 0) + 1
+            violations[violation.axis.value] = (
+                violations.get(violation.axis.value, 0) + 1
+            )
 
     return {
         "전체": block(results),

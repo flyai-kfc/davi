@@ -36,7 +36,9 @@ class GeminiClient:
     ) -> None:
         self.api_key = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
         self._max_retries = max_retries
-        self.model = (model or os.getenv("PINGPONG_USER_MODEL", "")).strip() or "gemini-3.5-flash-lite"
+        self.model = (
+            model or os.getenv("PINGPONG_USER_MODEL", "")
+        ).strip() or "gemini-3.5-flash-lite"
         if not self.api_key:
             raise LlmError("GEMINI_API_KEY가 없다. 사용자 LLM을 돌릴 수 없다.")
         self._client = client or httpx.Client(timeout=timeout)
@@ -73,16 +75,21 @@ class GeminiClient:
             except httpx.RequestError as error:
                 if attempt >= self._max_retries:
                     raise LlmError(f"사용자 LLM 네트워크 오류: {error}") from error
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
 
-            if response.status_code in (429, 500, 502, 503) and attempt < self._max_retries:
+            if (
+                response.status_code in (429, 500, 502, 503)
+                and attempt < self._max_retries
+            ):
                 time.sleep(_gemini_retry_delay(response, attempt))
                 continue
             break
 
         if response.is_error:
-            raise LlmError(f"사용자 LLM HTTP {response.status_code}: {response.text[:200]}")
+            raise LlmError(
+                f"사용자 LLM HTTP {response.status_code}: {response.text[:200]}"
+            )
 
         try:
             candidates = response.json()["candidates"]
@@ -110,18 +117,28 @@ class ClaudeJudge:
         try:
             import anthropic
         except ImportError as error:  # pragma: no cover
-            raise LlmError("anthropic 패키지가 없다. requirements.txt를 설치한다.") from error
+            raise LlmError(
+                "anthropic 패키지가 없다. requirements.txt를 설치한다."
+            ) from error
         # 학교 LLM 게이트웨이처럼 Anthropic 네이티브 호환 엔드포인트를 쓸 수 있다.
         # SDK가 base_url 뒤에 /v1/messages를 붙이므로 게이트웨이 접두어까지만 준다.
-        self.base_url = (base_url or os.getenv("PINGPONG_JUDGE_BASE_URL", "")).strip() or None
-        self._client = anthropic.Anthropic(**({"base_url": self.base_url} if self.base_url else {}))
-        self.model = (model or os.getenv("PINGPONG_JUDGE_MODEL", "")).strip() or "claude-opus-5"
+        self.base_url = (
+            base_url or os.getenv("PINGPONG_JUDGE_BASE_URL", "")
+        ).strip() or None
+        self._client = anthropic.Anthropic(
+            **({"base_url": self.base_url} if self.base_url else {})
+        )
+        self.model = (
+            model or os.getenv("PINGPONG_JUDGE_MODEL", "")
+        ).strip() or "claude-opus-5"
         self._max_tokens = max_tokens
         # 게이트웨이 크레딧은 상한이 있다. 실행마다 쓴 양을 남겨야 다음 실행을 계획할 수 있다.
         self.input_tokens = 0
         self.output_tokens = 0
 
-    def parse(self, prompt: str, response_model: type[T], *, system: str | None = None) -> T:
+    def parse(
+        self, prompt: str, response_model: type[T], *, system: str | None = None
+    ) -> T:
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self._max_tokens,
@@ -132,7 +149,9 @@ class ClaudeJudge:
             kwargs["system"] = system
         try:
             response = self._client.messages.parse(**kwargs)
-        except Exception as error:  # SDK 예외 계층은 여기서 나누지 않는다 — 실행을 세우는 게 목적이다.
+        except (
+            Exception
+        ) as error:  # SDK 예외 계층은 여기서 나누지 않는다 — 실행을 세우는 게 목적이다.
             raise LlmError(f"평가자 LLM 호출 실패: {error}") from error
         usage = getattr(response, "usage", None)
         if usage is not None:
@@ -152,7 +171,7 @@ def _strip_fence(text: str) -> str:
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[-1]
         if stripped.endswith("```"):
-            stripped = stripped[: -3]
+            stripped = stripped[:-3]
     return stripped.strip()
 
 
@@ -182,4 +201,4 @@ def _gemini_retry_delay(response: httpx.Response, attempt: int) -> float:
                 return min(float(raw[:-1]) + 1, 65)
     except (KeyError, TypeError, ValueError):
         pass
-    return min(2 ** attempt, 60)
+    return min(2**attempt, 60)

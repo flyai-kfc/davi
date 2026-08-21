@@ -41,14 +41,41 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         "",
         "## 전체",
         "",
-        _table(["구간", "건수", "충족", "부분", "실패", "평균 라운드", "상한도달", "슬롯 정확률", "위반"]),
+        _table(
+            [
+                "구간",
+                "건수",
+                "충족",
+                "부분",
+                "실패",
+                "평균 라운드",
+                "상한도달",
+                "슬롯 정확률",
+                "위반",
+            ]
+        ),
         _row("전체", summary["전체"]),
     ]
     for name, block in summary["난이도별"].items():
         lines.append(_row(name, block))
-    lines += ["", "## 난이도 요인별", "", _table(
-        ["요인", "건수", "충족", "부분", "실패", "평균 라운드", "상한도달", "슬롯 정확률", "위반"]
-    )]
+    lines += [
+        "",
+        "## 난이도 요인별",
+        "",
+        _table(
+            [
+                "요인",
+                "건수",
+                "충족",
+                "부분",
+                "실패",
+                "평균 라운드",
+                "상한도달",
+                "슬롯 정확률",
+                "위반",
+            ]
+        ),
+    ]
     for name, block in summary["요인별"].items():
         lines.append(_row(name, block))
 
@@ -60,7 +87,13 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
     else:
         lines.append("없음.")
 
-    lines += ["", "## 시나리오별", "", "| id | 난이도 | 도달 | 라운드 | 종료 | 최종 goal |", "|---|---|---|---|---|---|"]
+    lines += [
+        "",
+        "## 시나리오별",
+        "",
+        "| id | 난이도 | 도달 | 라운드 | 종료 | 최종 goal |",
+        "|---|---|---|---|---|---|",
+    ]
     for result in results:
         achievement = result.judge.achievement.value if result.judge else "-"
         goal = (result.transcript.final_goal or "-").replace("|", "/")

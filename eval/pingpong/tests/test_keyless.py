@@ -11,7 +11,6 @@ from pingpong_eval.models import (
     Exposure,
     PingpongStatus,
     PingpongTurn,
-    Scenario,
     Slot,
     UserReply,
 )
@@ -102,7 +101,9 @@ class _FakeAdapter:
                 options=["딸", "아들"],
                 has_other=True,
             )
-        return PingpongTurn(status=PingpongStatus.READY, question="이거 맞으세요?", goal="확정된 목표")
+        return PingpongTurn(
+            status=PingpongStatus.READY, question="이거 맞으세요?", goal="확정된 목표"
+        )
 
 
 class _FakeUser:
@@ -148,12 +149,19 @@ def test_429는_기다렸다_다시_보낸다(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls["n"] += 1
-        assert request.headers["X-Davi-Dev-Token"] == "dev-token-abcdefghijklmnopqrstuvwxyz123456"
+        assert (
+            request.headers["X-Davi-Dev-Token"]
+            == "dev-token-abcdefghijklmnopqrstuvwxyz123456"
+        )
         if calls["n"] == 1:
             return httpx.Response(
-                429, json={"kind": "QUOTA", "retry_after_seconds": 1}, headers={"Retry-After": "1"}
+                429,
+                json={"kind": "QUOTA", "retry_after_seconds": 1},
+                headers={"Retry-After": "1"},
             )
-        return httpx.Response(200, json={"status": "ready", "message": "확인", "goal": "목표"})
+        return httpx.Response(
+            200, json={"status": "ready", "message": "확인", "goal": "목표"}
+        )
 
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
     adapter = SlotFillHttpAdapter(
@@ -176,7 +184,9 @@ def test_401은_토큰_안내로_끝난다():
         "http://azure.example",
         session_id="s",
         client=httpx.Client(
-            transport=httpx.MockTransport(lambda _r: httpx.Response(401, json={"kind": "AUTH"}))
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(401, json={"kind": "AUTH"})
+            )
         ),
     )
     with pytest.raises(PingpongError, match="PINGPONG_DEV_TOKEN"):
@@ -210,7 +220,12 @@ def test_사용자_LLM은_429를_재시도한다(monkeypatch):
         "error": {
             "code": 429,
             "message": "quota",
-            "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "3s"}],
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                    "retryDelay": "3s",
+                }
+            ],
         }
     }
 
@@ -219,7 +234,12 @@ def test_사용자_LLM은_429를_재시도한다(monkeypatch):
         if calls["n"] < 3:
             return httpx.Response(429, json=quota)
         return httpx.Response(
-            200, json={"candidates": [{"content": {"parts": [{"text": '{"utterance":"안녕"}'}]}}]}
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [{"text": '{"utterance":"안녕"}'}]}}
+                ]
+            },
         )
 
     slept = []
@@ -236,7 +256,6 @@ def test_사용자_LLM은_429를_재시도한다(monkeypatch):
 def test_불필요_질문_축이_있다():
     """과잉 명세가 30건 기준선의 실패 원인이었다 — 증상(반복)과 따로 세야 한다."""
 
-    from pingpong_eval.judge import build_prompt
     from pingpong_eval.models import ViolationAxis
 
     assert ViolationAxis("불필요_질문") is ViolationAxis.UNNECESSARY_QUESTION
@@ -248,7 +267,9 @@ def test_채점_프롬프트가_불필요_질문을_정의한다(scenarios):
 
     prompt = build_prompt(
         scenarios[0],
-        Transcript(scenario_id="e01", opening="사진 보내줘", stop_reason=StopReason.LIMIT),
+        Transcript(
+            scenario_id="e01", opening="사진 보내줘", stop_reason=StopReason.LIMIT
+        ),
     )
     assert "불필요_질문" in prompt
     assert "정답 목표에 없는 조각" in prompt

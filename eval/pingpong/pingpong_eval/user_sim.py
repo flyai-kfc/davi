@@ -41,13 +41,17 @@ _REPLY_SCHEMA = {
 
 
 class UserSimulator:
-    def __init__(self, client: GeminiClient, *, rng: random.Random | None = None) -> None:
+    def __init__(
+        self, client: GeminiClient, *, rng: random.Random | None = None
+    ) -> None:
         self._client = client
         self._rng = rng or random.Random()
 
     # --- 첫 발화 ------------------------------------------------------------
 
-    def opening(self, scenario: Scenario, *, avoid: list[str] | None = None) -> tuple[str, list[Slot]]:
+    def opening(
+        self, scenario: Scenario, *, avoid: list[str] | None = None
+    ) -> tuple[str, list[Slot]]:
         """빼먹을 슬롯을 코드가 고르고, 남은 것만으로 말하게 한다. (발화, 말한 슬롯)"""
 
         revealed = self._pick_revealed(scenario)
@@ -55,7 +59,9 @@ class UserSimulator:
         for attempt in range(2):
             body = self._client.generate_json(prompt, _OPENING_SCHEMA, system=_SYSTEM)
             utterance = str(body.get("utterance", "")).strip()
-            leaked = leaked_slots(utterance, [s for s in scenario.slots if s not in revealed])
+            leaked = leaked_slots(
+                utterance, [s for s in scenario.slots if s not in revealed]
+            )
             if utterance and not leaked:
                 return utterance, revealed
             prompt = (
@@ -75,26 +81,40 @@ class UserSimulator:
         first = scenario.first_slots
         always = [slot for slot in first if slot.key == "행위"]
         pool = [slot for slot in first if slot not in always]
-        hide = min(_HIDE_BUDGET[scenario.difficulty], len(pool) if always else max(len(pool) - 1, 0))
+        hide = min(
+            _HIDE_BUDGET[scenario.difficulty],
+            len(pool) if always else max(len(pool) - 1, 0),
+        )
         hidden = set(self._rng.sample(range(len(pool)), hide)) if hide else set()
         kept = [slot for index, slot in enumerate(pool) if index not in hidden]
         return [slot for slot in first if slot in always or slot in kept]
 
-    def _opening_prompt(self, scenario: Scenario, revealed: list[Slot], avoid: list[str]) -> str:
+    def _opening_prompt(
+        self, scenario: Scenario, revealed: list[Slot], avoid: list[str]
+    ) -> str:
         말할것 = "\n".join(f"- {s.key}: {s.value}" for s in revealed) or "- (없음)"
-        숨길것 = "\n".join(
-            f"- {s.key}"
-            + (f" (물어보면 그때 '{s.value}'라고 답한다)" if s.exposure is Exposure.ON_ASK else "")
-            for s in scenario.slots
-            if s not in revealed
-        ) or "- (없음)"
+        숨길것 = (
+            "\n".join(
+                f"- {s.key}"
+                + (
+                    f" (물어보면 그때 '{s.value}'라고 답한다)"
+                    if s.exposure is Exposure.ON_ASK
+                    else ""
+                )
+                for s in scenario.slots
+                if s not in revealed
+            )
+            or "- (없음)"
+        )
         회피 = (
             "\n\n아래 표현들은 최근에 이미 쓴 것입니다. 뜻은 같아도 **다른 말투와 다른 어순**으로 말하세요.\n"
             + "\n".join(f"- {a}" for a in avoid[-5:])
             if avoid
             else ""
         )
-        메모 = f"\n\n당신에 대한 메모: {scenario.user_note}" if scenario.user_note else ""
+        메모 = (
+            f"\n\n당신에 대한 메모: {scenario.user_note}" if scenario.user_note else ""
+        )
         return f"""당신은 지금 스마트폰 도우미 앱을 처음 켜고 무엇을 하고 싶은지 말하려고 합니다.
 
 말해도 되는 것(이것만 말합니다):
@@ -133,11 +153,17 @@ class UserSimulator:
             ),
         )
 
-    def _reply_prompt(self, scenario: Scenario, turn: PingpongTurn, said: list[str]) -> str:
+    def _reply_prompt(
+        self, scenario: Scenario, turn: PingpongTurn, said: list[str]
+    ) -> str:
         아는것 = "\n".join(
             f"- {s.key}: {s.value}"
             + (" ← 물어보면 답한다" if s.exposure is Exposure.ON_ASK else "")
-            + (" ← 당신은 이걸 모릅니다. 물어보면 '몰라요'라고만 답합니다." if s.exposure is Exposure.UNKNOWN else "")
+            + (
+                " ← 당신은 이걸 모릅니다. 물어보면 '몰라요'라고만 답합니다."
+                if s.exposure is Exposure.UNKNOWN
+                else ""
+            )
             for s in scenario.slots
         )
         이미 = ", ".join(said) if said else "(아직 없음)"
