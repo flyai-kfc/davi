@@ -226,7 +226,15 @@ internal object OverlayWindowParams {
             //
             // **곁가지로 읽는 중 테두리·종료 스크림도 화면 끝까지 간다.** 시안이 전면인 쪽이라
             // 되돌릴 이유가 없지만, 그 확정은 #178 몫이고 여기서 앞당긴 것은 아니다.
-            if (!touchable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            //
+            // **API 30(R)부터만 올린다**(PR #343 리뷰 P3). 컷아웃 모드 자체는 P부터 있지만,
+            // 안내창을 상태표시줄 밖에 잡아 두는 가드(`safeBounds`)가 API 30 미만에서는 null이라
+            // 그 시절엔 **창 프레임이 컷아웃을 피해 잡히는 것 자체가 상단 가드**였다. 28~29
+            // 컷아웃 기기에서 이 창을 위로 올리면 두 가드가 동시에 사라져, 하단 강조로 위로
+            // 밀린 안내창이 상태표시줄에 걸치고 그 밴드의 스와이프를 조작 창이 흡수한다(#169와
+            // 같은 모양 — 셰이드 내리기를 가르치는 앱이 셰이드 내리기를 막는다). 그 기기에서는
+            // 상단 선이 상태표시줄 아래(#222 이전 동작)로 남는 쪽을 감수한다.
+            if (!touchable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             }
