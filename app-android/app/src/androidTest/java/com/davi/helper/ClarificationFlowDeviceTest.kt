@@ -75,7 +75,7 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
-    fun allThreeOptionsAndFallbackActionsAreVisibleWithoutScrolling() {
+    fun threeOptionsAndDirectSpeechAreVisibleWithoutScrolling() {
         val current = launchConversation()
         showClarification(current, questionCount = 1, optionCount = 3)
 
@@ -91,7 +91,6 @@ class ClarificationFlowDeviceTest {
             R.id.btn_option_2,
             R.id.btn_option_3,
             R.id.btn_direct_speak,
-            R.id.btn_unknown,
         ).forEach { id ->
             val action = current.findViewById<View>(id)
             assertFullyVisible(action, viewportBounds)
@@ -119,13 +118,12 @@ class ClarificationFlowDeviceTest {
             R.id.btn_option_2,
             R.id.btn_option_3,
             R.id.btn_direct_speak,
-            R.id.btn_unknown,
         )
         if (choices.canScrollVertically(1)) {
             instrumentation.runOnMainSync { choices.fullScroll(View.FOCUS_DOWN) }
             instrumentation.waitForIdleSync()
             val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
-            assertFullyVisible(current.findViewById(R.id.btn_unknown), viewportBounds)
+            assertFullyVisible(current.findViewById(R.id.btn_direct_speak), viewportBounds)
         } else {
             val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
             actionIds.forEach { id -> assertFullyVisible(current.findViewById(id), viewportBounds) }

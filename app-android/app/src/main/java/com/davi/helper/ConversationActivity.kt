@@ -306,12 +306,6 @@ class ConversationActivity : AppCompatActivity() {
         binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
             beginClarificationSpeech()
         }
-        binding.clarificationChoices.btnUnknown.setOnClickListener {
-            submitClarificationAnswer(
-                ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
-                getString(R.string.clarification_unknown_answer),
-            )
-        }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
         // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
         // o가 "이대로 안내 시작"인데 여기서는 x가 안내를 계속하고 o가 끝낸다. 화면 문구가
@@ -611,7 +605,7 @@ class ConversationActivity : AppCompatActivity() {
             },
         )
         // 세로 조작을 쌓는 안내·구체화 화면은 배지 위 여백이 얕다. 구체화는 세 보기와
-        // 직접 말하기·모름을 기본 글꼴에서 한 화면에 모두 보여야 하므로, 일반 72dp를 쓰면
+        // 직접 말하기를 기본 글꼴에서 한 화면에 모두 보여야 하므로, 일반 72dp를 쓰면
         // 선택 영역 전체가 실기기 화면 아래로 밀린다(#316 리뷰).
         binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
             topMargin = resources.getDimensionPixelSize(
@@ -964,7 +958,7 @@ class ConversationActivity : AppCompatActivity() {
         val clarification = listening.clarification
         if (clarification != null && canResumeClarificationAfterSpeechError(error)) {
             // 직접 말하기 실패는 질문을 취소한 것이 아니다. 원발화와 앞 답을 세션에 둔 채
-            // 같은 선택 화면으로 돌아가 보기 또는 모름 답을 계속 고를 수 있게 한다. 권한·서비스·
+            // 같은 선택 화면으로 돌아가 보기 또는 직접 말하기를 다시 고를 수 있게 한다. 권한·서비스·
             // 시작 실패까지 여기서 삼키면 직접 말하기가 무반응으로 반복되므로 그 오류는 아래의
             // 기존 홈 오류 문구로 종료한다.
             speechRecognizerHelper?.stop()

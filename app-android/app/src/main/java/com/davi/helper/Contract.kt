@@ -292,6 +292,8 @@ data class ClarificationAnswer(
 enum class ClarificationAnswerSource {
     @SerialName("option") OPTION,
     @SerialName("freeform") FREEFORM,
+
+    /** #316 초기 APK가 보낸 값의 wire 호환용. 새 UI는 모름·거절도 직접 발화로 보낸다. */
     @SerialName("unknown_or_declined") UNKNOWN_OR_DECLINED,
 }
 
@@ -299,7 +301,7 @@ enum class ClarificationAnswerSource {
 data class ClarificationQuestion(
     val id: String,
     val prompt: String,
-    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기와 모름 답은 항상 가능하다. */
+    /** 대화가 뒷받침하는 보기 0~3개. 비어도 직접 말하기는 항상 가능하다. */
     val options: List<String>,
     @SerialName("allow_freeform") val allowFreeform: Boolean,
 )

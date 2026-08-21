@@ -140,8 +140,9 @@ cd app-android; ./scripts/dev-install.ps1 -ClearLog
 
 최초 인식 발화를 `/v1/intent/slot-fill`에 보낸다. 서버가 `needs_clarification`이면 최대 두 질문과
 각 최대 세 보기를 받아 한 화면에 한 질문씩 표시하고 첫 질문을 Android TTS로 읽는다. 보기 선택은
-서버를 호출하지 않으며 `직접 말하기`와 `모르거나 답변하지 않기`를 항상 함께 제공한다. 답을 메모리에
-모은 뒤 원발화와 함께 두 번째 요청 한 번으로 최종화한다. 문답 중에는 취소 버튼을 두지 않는다.
+서버를 호출하지 않으며 보기 아래에는 `직접 말하기` 하나만 항상 제공한다. 모름·답변 거절도 직접
+발화로 받아 자유 답변으로 저장한다. 답을 메모리에 모은 뒤 원발화와 함께 두 번째 요청 한 번으로
+최종화한다. 문답 중에는 취소 버튼을 두지 않는다.
 `ready`이면 `/v1/intent/app-resolution`에서 서버의 일반 앱 후보(최대 5개)를 받고,
 기기 메모리의 `LaunchableAppIndex`와 package exact→정규화 label alias 순으로 대조한다. 앱 하나를
 확정하거나 goal을 다시 쓰지 않는다. `launchable` 후보가 하나 이상이면 원래 goal의 최종 확인으로,

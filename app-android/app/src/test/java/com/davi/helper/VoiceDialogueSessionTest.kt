@@ -73,7 +73,7 @@ class VoiceDialogueSessionTest {
     }
 
     @Test
-    fun `unknown answer remains explicit and is never inferred`() {
+    fun `legacy unknown answer source remains wire compatible`() {
         val session = VoiceDialogueSession { SESSION_ID }
         session.start()
         val first = requireNotNull(session.nextRequest("사진 보내기"))
@@ -95,6 +95,30 @@ class VoiceDialogueSessionTest {
             ClarificationAnswerSource.UNKNOWN_OR_DECLINED,
             final.pending.request.clarificationAnswers.single().source,
         )
+    }
+
+    @Test
+    fun `spoken unknown phrase is sent as freeform`() {
+        val session = VoiceDialogueSession { SESSION_ID }
+        session.start()
+        val first = requireNotNull(session.nextRequest("사진 보내기"))
+        session.applyResponse(
+            first,
+            SlotFillState(
+                IntentDialogueStatus.NEEDS_CLARIFICATION,
+                "어느 앱인가요?",
+                clarification = ClarificationPlan(listOf(question("q1", "어느 앱인가요?"))),
+            ),
+        )
+
+        val final = session.answerCurrent(
+            ClarificationAnswerSource.FREEFORM,
+            "잘 모르겠어요",
+        ) as VoiceDialogueSession.AnswerOutcome.FinalRequest
+        val answer = final.pending.request.clarificationAnswers.single()
+
+        assertEquals(ClarificationAnswerSource.FREEFORM, answer.source)
+        assertEquals("잘 모르겠어요", answer.answer)
     }
 
     @Test
