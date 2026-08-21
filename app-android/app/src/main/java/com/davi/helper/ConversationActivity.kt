@@ -582,7 +582,7 @@ class ConversationActivity : AppCompatActivity() {
     private fun renderVoiceMotion(model: ConversationRenderModel) {
         if (!model.waveVisible) binding.voiceWave.resetLevel()
         binding.voiceWave.isVisible(model.waveVisible)
-        // [프로토타입 #277] 준비 중에는 **화면 전체**를 흐리게 덮는다. 실제로 듣기 시작하면
+        // 준비 중에는 **화면 전체**를 흐리게 덮는다(#277). 실제로 듣기 시작하면
         // 걷히고 그때 띠링이 함께 울린다 — 걷히는 순간이 곧 "지금 말하세요"다.
         binding.preparingScrim.isVisible(model.signalsDimmed)
 
@@ -922,6 +922,12 @@ class ConversationActivity : AppCompatActivity() {
         //
         // **누를 때가 아니라 여기다.** 누르고 실제로 들리기까지 약 0.9초가 걸리는데(#278에서
         // 줄이려다 실패했다), 누를 때 소리를 내면 **아직 안 듣는 동안 말하게 된다.**
+        //
+        // **상한 타이머로 들어와도 운다**(2026-08-21 결정 · PR #317 리뷰). 그쪽은 열렸다는
+        // 확증이 없어 "이미 말하는 중에 소리가 겹칠 수 있다"는 위험이 있지만, 막으면 음량을
+        // 안 주는 인식기에서 **띠링이 아예 없어져 #313이 그 기기에서 통째로 사라진다.**
+        // 실측(SM-S921N 8회)에서 상한이 돈 적은 없어 지금은 가정상의 위험이다 —
+        // 다른 기기 로그에 `mic_ready_fallback`이 보이면 그때 이 자리를 다시 본다.
         micTone.play()
         // 상태 이름은 setState가 남기지 않는다(같은 클래스라 전이가 아니다). 준비까지 걸린
         // 시간은 이 줄과 직전 listening 줄의 간격으로 로그에서 읽는다.

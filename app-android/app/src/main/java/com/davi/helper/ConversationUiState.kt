@@ -130,7 +130,7 @@ data class ConversationRenderModel(
      */
     val waveVisible: Boolean = false,
     /**
-     * [프로토타입 #277] 인식 준비 중이라 **화면 전체를 흐림으로 덮는가.**
+     * 인식 준비 중이라 **화면 전체를 흐림으로 덮는가**(#277).
      *
      * 신호 셋과 다른 축이다 — 셋은 "이제 말하세요"이고 이것은 "아직 아니다"다. 그래서
      * 함께 켜지지 않고 **서로 반대로** 움직인다.
@@ -220,7 +220,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         closeVisible = true,
         // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
         // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
-        // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277 프로토타입).
+        // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
         waveVisible = state.micReady,
         glowVisible = state.micReady,
         glowReactsToVoice = state.micReady,
