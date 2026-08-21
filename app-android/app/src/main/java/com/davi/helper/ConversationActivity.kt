@@ -1,7 +1,9 @@
 package com.davi.helper
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -34,6 +36,16 @@ internal const val EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY =
     "com.davi.helper.extra.INSTRUMENTATION_SKIP_ACCESSIBILITY"
 internal const val EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER =
     "com.davi.helper.extra.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER"
+
+/** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
+internal object ConversationInstrumentationConfiguration {
+    @Volatile
+    var fontScale: Float? = null
+}
+
+/** 구체화 답을 보존하고 선택 화면으로 돌아가도 되는, 사용자 무발화 계열 오류만 고른다. */
+internal fun canResumeClarificationAfterSpeechError(error: Int): Boolean =
+    error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
 /**
  * 음성 대화 화면 — 홈(MA-1)부터 구체화·안전 종료·최종 확인·실패까지 한 레이아웃에서
@@ -210,6 +222,22 @@ class ConversationActivity : AppCompatActivity() {
                 binding.voiceWave.onRmsChanged(rmsdB)
                 binding.glowMic.onRmsChanged(rmsdB)
             }
+        }
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        val testFontScale = if (BuildConfig.DEBUG) {
+            ConversationInstrumentationConfiguration.fontScale
+        } else {
+            null
+        }
+        if (testFontScale != null && testFontScale > 0f) {
+            val configuration = Configuration(newBase.resources.configuration).apply {
+                fontScale = testFontScale
+            }
+            super.attachBaseContext(newBase.createConfigurationContext(configuration))
+        } else {
+            super.attachBaseContext(newBase)
         }
     }
 
@@ -484,13 +512,19 @@ class ConversationActivity : AppCompatActivity() {
         // 길이 없다. weight를 주면 카드가 **남는 공간만** 갖고, 모자라면 카드가 줄어
         // 버튼이 보장된다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
         binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
-            weight = if (model.cardQuestionFlexible) CARD_WEIGHT_DAVI else 0f
+            // 구체화에서는 아래 선택 ScrollView가 남은 높이를 받는다. 질문 카드까지 weight로
+            // 줄이면 2.0x 배율에서 176dp 하한이 깨져 질문 한 줄도 남지 않는다(#326 리뷰).
+            weight = if (model.cardQuestionFlexible && !model.clarificationVisible) {
+                CARD_WEIGHT_DAVI
+            } else {
+                0f
+            }
         }
         binding.cardQuestionContainer.isVisible(questionVisible || model.loadingDotsVisible)
         binding.cardQuestion.isVisible(questionVisible)
         binding.glowCard.isVisible(model.cardGlowVisible)
         // 글로우가 화자를 가리킨다 — 다비가 말하면 위, 사용자가 말하면 아래(2026-08-17).
-        // 둘은 상태가 배타적이라 동시에 켜지지 않는다(Speaking / Listening).
+        // 둘은 상태가 배타적이라 동시에 켜지지 않는다(다비 TTS / 사용자 Listening).
         binding.glowUtterance.isVisible(model.utteranceSpeaking)
         // 발화 중인 카드는 그림자가 진해지고 윗변에 유리 하이라이트가 얹힌다(시안).
         // 배경 drawable을 통째로 바꾼다 — 그림자가 layer-list 안에 있어 부분 교체가 안 된다.
@@ -600,11 +634,11 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
         binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
         binding.stackedPair.btnStackedSecondary.setText(
-            if (model.safeEndVisible) R.string.clarification_go_home
+            if (model.safeEndVisible) R.string.clarification_restart
             else R.string.conversation_guiding_resume,
         )
         binding.stackedPair.btnStackedPrimary.setText(
-            if (model.safeEndVisible) R.string.clarification_restart
+            if (model.safeEndVisible) R.string.clarification_go_home
             else R.string.conversation_guiding_stop,
         )
         binding.guidingBottom.isVisible(model.guidingVisible)
@@ -679,7 +713,7 @@ class ConversationActivity : AppCompatActivity() {
 
     private fun onStackedSecondaryTapped() {
         if (uiState is ConversationUiState.SafeEnd) {
-            setState(ConversationUiState.Home())
+            beginVoiceDialogue()
         } else {
             finish()
         }
@@ -687,7 +721,7 @@ class ConversationActivity : AppCompatActivity() {
 
     private fun onStackedPrimaryTapped() {
         if (uiState is ConversationUiState.SafeEnd) {
-            beginVoiceDialogue()
+            setState(ConversationUiState.Home())
         } else {
             setState(ConversationUiState.StopConfirm)
         }
@@ -927,9 +961,12 @@ class ConversationActivity : AppCompatActivity() {
     private fun handleSpeechError(error: Int) {
         GuideTelemetry.voiceState("recognition_error", error)
         val listening = uiState as? ConversationUiState.Listening ?: return
-        listening.clarification?.let { clarification ->
+        val clarification = listening.clarification
+        if (clarification != null && canResumeClarificationAfterSpeechError(error)) {
             // 직접 말하기 실패는 질문을 취소한 것이 아니다. 원발화와 앞 답을 세션에 둔 채
-            // 같은 선택 화면으로 돌아가 보기 또는 모름 답을 계속 고를 수 있게 한다.
+            // 같은 선택 화면으로 돌아가 보기 또는 모름 답을 계속 고를 수 있게 한다. 권한·서비스·
+            // 시작 실패까지 여기서 삼키면 직접 말하기가 무반응으로 반복되므로 그 오류는 아래의
+            // 기존 홈 오류 문구로 종료한다.
             speechRecognizerHelper?.stop()
             setState(ConversationUiState.Clarifying(clarification, speaking = false))
             return

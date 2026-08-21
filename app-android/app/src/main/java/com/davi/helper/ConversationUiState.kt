@@ -288,7 +288,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
 
 /**
  * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
- * (Listening=인식 타임아웃, Speaking=TTS 완료, Requesting=서버 응답).
+ * (Listening=인식 타임아웃, Clarifying의 첫 질문=TTS 완료, Requesting=서버 응답).
  *
  * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
  * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.

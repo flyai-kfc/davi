@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.speech.SpeechRecognizer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -279,6 +280,18 @@ class ConversationUiStateTest {
     fun `구체화 질문은 첫 문항만 읽는다`() {
         assertTrue(shouldSpeakClarification(clarificationOutcome(questionIndex = 0, questionCount = 2)))
         assertFalse(shouldSpeakClarification(clarificationOutcome(questionIndex = 1, questionCount = 2)))
+    }
+
+    @Test
+    fun `구체화 직접 발화는 무발화 계열 오류에서만 질문으로 돌아간다`() {
+        assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NO_MATCH))
+        assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
+        assertFalse(
+            canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS),
+        )
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizerHelper.ERROR_UNAVAILABLE))
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizerHelper.ERROR_START_FAILED))
+        assertFalse(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NETWORK))
     }
 
     // --- 음성 모션 (#132) --------------------------------------------------------

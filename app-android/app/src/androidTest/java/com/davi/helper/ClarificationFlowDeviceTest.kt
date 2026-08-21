@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.speech.SpeechRecognizer
 import android.view.View
 import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -23,6 +24,7 @@ class ClarificationFlowDeviceTest {
 
     @After
     fun tearDown() {
+        ConversationInstrumentationConfiguration.fontScale = null
         activity?.let { current ->
             instrumentation.runOnMainSync { current.finishAndRemoveTask() }
         }
@@ -91,11 +93,98 @@ class ClarificationFlowDeviceTest {
             R.id.btn_direct_speak,
             R.id.btn_unknown,
         ).forEach { id ->
-            val bounds = Rect()
             val action = current.findViewById<View>(id)
-            assertTrue("action $id is not visible", action.getGlobalVisibleRect(bounds))
-            assertTrue("action $id is below the viewport", bounds.bottom <= viewportBounds.bottom)
+            assertFullyVisible(action, viewportBounds)
         }
+    }
+
+    @Test
+    fun twoTimesFontScalePreservesQuestionAndKeepsEveryChoiceReachable() {
+        val current = launchConversation(fontScale = 2f)
+        showClarification(current, questionCount = 1, optionCount = 3)
+
+        assertEquals(2f, current.resources.configuration.fontScale, 0.01f)
+        val questionCard = current.findViewById<View>(R.id.card_question_container)
+        val question = current.findViewById<TextView>(R.id.card_question)
+        val minimumCardHeight = current.resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
+        assertTrue("question card lost its minimum height", questionCard.height >= minimumCardHeight)
+        assertTrue(
+            "question card cannot show one line",
+            questionCard.height - questionCard.paddingTop - questionCard.paddingBottom >= question.lineHeight,
+        )
+        val choices = current.findViewById<ScrollView>(R.id.clarification_choices)
+        assertTrue("choices did not receive remaining height", choices.height > 0)
+        val actionIds = listOf(
+            R.id.btn_option_1,
+            R.id.btn_option_2,
+            R.id.btn_option_3,
+            R.id.btn_direct_speak,
+            R.id.btn_unknown,
+        )
+        if (choices.canScrollVertically(1)) {
+            instrumentation.runOnMainSync { choices.fullScroll(View.FOCUS_DOWN) }
+            instrumentation.waitForIdleSync()
+            val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
+            assertFullyVisible(current.findViewById(R.id.btn_unknown), viewportBounds)
+        } else {
+            val viewportBounds = Rect().also { choices.getGlobalVisibleRect(it) }
+            actionIds.forEach { id -> assertFullyVisible(current.findViewById(id), viewportBounds) }
+        }
+    }
+
+    @Test
+    fun directSpeechStartFailureEndsWithVisibleFeedback() {
+        val current = launchConversation()
+        showClarification(current, questionCount = 1)
+
+        instrumentation.runOnMainSync {
+            current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+            invokeSpeechError(current, SpeechRecognizerHelper.ERROR_START_FAILED)
+        }
+        instrumentation.waitForIdleSync()
+
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.home_head).visibility)
+        assertEquals(
+            current.getString(R.string.voice_recognition_error),
+            current.findViewById<TextView>(R.id.home_bubble_text).text.toString(),
+        )
+        assertEquals(VoiceDialogueSession.Stage.IDLE, voiceSession(current).stage)
+    }
+
+    @Test
+    fun safeEndKeepsContinueActionAboveExitAction() {
+        val current = launchConversation()
+        setUiState(current, ConversationUiState.SafeEnd("목표를 정하지 못했어요."))
+
+        val continueButton = current.findViewById<Button>(R.id.btn_stacked_secondary)
+        val exitButton = current.findViewById<Button>(R.id.btn_stacked_primary)
+        assertEquals(current.getString(R.string.clarification_restart), continueButton.text.toString())
+        assertEquals(current.getString(R.string.clarification_go_home), exitButton.text.toString())
+
+        instrumentation.runOnMainSync { continueButton.performClick() }
+        instrumentation.waitForIdleSync()
+        assertEquals(VoiceDialogueSession.Stage.LISTENING, voiceSession(current).stage)
+
+        voiceSession(current).cancel()
+        setUiState(current, ConversationUiState.SafeEnd("목표를 정하지 못했어요."))
+        instrumentation.runOnMainSync { exitButton.performClick() }
+        instrumentation.waitForIdleSync()
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.home_head).visibility)
+    }
+
+    private fun assertFullyVisible(action: View, viewportBounds: Rect) {
+        val visibleBounds = Rect()
+        assertTrue("action ${action.id} is not visible", action.getGlobalVisibleRect(visibleBounds))
+        val location = IntArray(2)
+        action.getLocationOnScreen(location)
+        val fullBounds = Rect(
+            location[0],
+            location[1],
+            location[0] + action.width,
+            location[1] + action.height,
+        )
+        assertEquals("action ${action.id} is clipped", fullBounds, visibleBounds)
+        assertTrue("action ${action.id} is outside the viewport", viewportBounds.contains(fullBounds))
     }
 
     @Test
@@ -131,7 +220,8 @@ class ClarificationFlowDeviceTest {
         )
     }
 
-    private fun launchConversation(): ConversationActivity {
+    private fun launchConversation(fontScale: Float? = null): ConversationActivity {
+        ConversationInstrumentationConfiguration.fontScale = fontScale
         val intent = Intent(instrumentation.targetContext, ConversationActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             .putExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, true)
@@ -146,6 +236,27 @@ class ClarificationFlowDeviceTest {
         val sessionField = ConversationActivity::class.java.getDeclaredField("voiceSession")
         sessionField.isAccessible = true
         return sessionField.get(current) as VoiceDialogueSession
+    }
+
+    private fun invokeSpeechError(current: ConversationActivity, error: Int) {
+        val handleSpeechError = ConversationActivity::class.java.getDeclaredMethod(
+            "handleSpeechError",
+            Int::class.javaPrimitiveType,
+        )
+        handleSpeechError.isAccessible = true
+        handleSpeechError.invoke(current, error)
+    }
+
+    private fun setUiState(current: ConversationActivity, state: ConversationUiState) {
+        instrumentation.runOnMainSync {
+            val setState = ConversationActivity::class.java.getDeclaredMethod(
+                "setState",
+                ConversationUiState::class.java,
+            )
+            setState.isAccessible = true
+            setState.invoke(current, state)
+        }
+        instrumentation.waitForIdleSync()
     }
 
     private fun showClarification(
