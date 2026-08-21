@@ -976,9 +976,6 @@ class ConversationActivity : AppCompatActivity() {
          */
         const val MIC_READY_FALLBACK_MS = 2_000L
 
-        /** [프로토타입 #277] 준비 중 신호의 흐림 정도. */
-        const val DIMMED_SIGNAL_ALPHA = 0.3f
-
         /** `ImageButton.imageAlpha`의 불투명 값. 흐린 쪽은 리소스에서 온다. */
         const val OPAQUE_IMAGE_ALPHA = 255
 

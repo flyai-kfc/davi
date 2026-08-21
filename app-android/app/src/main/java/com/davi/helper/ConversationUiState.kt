@@ -128,6 +128,7 @@ data class ConversationRenderModel(
      * 바꾸는 게 아니라 아예 그리지 않는다. 이 있음/없음이 발화 주체 구분 그 자체다
      * (시안 메인 2·4에는 없고 3·5에는 있다).
      */
+    val waveVisible: Boolean = false,
     /**
      * [프로토타입 #277] 인식 준비 중이라 **화면 전체를 흐림으로 덮는가.**
      *
@@ -135,7 +136,6 @@ data class ConversationRenderModel(
      * 함께 켜지지 않고 **서로 반대로** 움직인다.
      */
     val signalsDimmed: Boolean = false,
-    val waveVisible: Boolean = false,
     /** 마이크 글로우. 듣는 중(음량 반응)과 홈 유도(고정 숨쉬기) 두 자리에서 쓴다. */
     val glowVisible: Boolean = false,
     /**

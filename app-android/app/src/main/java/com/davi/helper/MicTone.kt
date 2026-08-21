@@ -2,7 +2,6 @@ package com.davi.helper
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
 import kotlin.math.PI
@@ -10,10 +9,15 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /**
- * 마이크를 누른 **즉시** 나는 짧은 「띠링」(#313).
+ * **마이크가 실제로 열린 순간** 한 번 울리는 짧은 「띠링」(#313).
  *
- * **왜 필요한가** — 누른 뒤 인식기가 준비되기까지 시간이 걸리고 그동안 화면에 변화가 없다.
- * 시니어 사용자가 "눌렸는지 모르겠다"고 했다(2026-08-20 관찰).
+ * **왜 누를 때가 아닌가** — 누르고 실제로 들리기까지 약 0.9초가 걸린다(#278에서 줄이려다
+ * 실패했다). 누를 때 울리면 **아직 안 듣는 동안 말하게 되어** 첫 음절이 잘린다 — #273이
+ * 「듣고 있어요」에서 고친 것과 같은 함정이다. 그래서 파도·레이블·글로우와 **같은 신호**에
+ * 걸어 넷이 함께 선다.
+ *
+ * **왜 소리가 필요한가** — 그 셋은 **보고 있어야** 알 수 있다. 시니어 사용자가 "언제 말해야
+ * 할지 모르겠다"고 한 자리라(2026-08-20 관찰), 화면을 안 보고 있어도 귀로 알게 한다.
  *
  * **왜 시스템 인식기의 시작음에 기대지 않는가** — 그 소리는 엔진이 낸다. 네트워크 인식기는
  * 내고 구글 온디바이스(SODA)는 안 낸다. `on_device_recognition_service`가 빈 기기에서 실제로
@@ -69,8 +73,11 @@ class MicTone {
         return AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    // **미디어다.** TTS(TextToSpeech 기본값)가 STREAM_MUSIC을 타므로 같게 둔다.
+                    // SONIFICATION은 STREAM_SYSTEM이라 무음 모드에서 **차임만 죽고 목소리는
+                    // 나오는** 조합이 생긴다 — 클래스 문서가 피하려던 그 조합이다.
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build(),
             )
             .setAudioFormat(
@@ -83,7 +90,12 @@ class MicTone {
             .setBufferSizeInBytes(pcm.size * 2)
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
-            .apply { write(pcm, 0, pcm.size) }
+            .apply {
+                // **짧게 쓰이면 조용히 무음이 된다.** 실패해도 대화를 멈추지는 않지만
+                // (소리는 거들 뿐이다) 왜 안 들렸는지는 로그에 남긴다.
+                val written = write(pcm, 0, pcm.size)
+                if (written < pcm.size) Log.w(TAG, "mic tone short write: $written/${pcm.size}")
+            }
     }
 
     fun release() {

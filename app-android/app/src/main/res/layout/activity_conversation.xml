@@ -564,6 +564,24 @@
     </FrameLayout>
 
     <!--
+      [프로토타입 #277] 인식 준비 중 화면 전체를 덮는 흐림.
+      실제로 듣기 시작하면(micReady) 걷히고, 그때 띠링이 함께 울린다.
+
+      **종료 확인 모달보다 앞에 둔다.** 지금은 안내 중이면 마이크가 잠겨 둘이 같이 뜨지
+      않지만, 마지막 자식으로 두면 스크림이 모달을 덮는 배치가 되어 나중에 물린다.
+
+      **터치를 막지 않는다.** clickable을 켜지 않은 일반 View라 터치가 뒤로 통과한다 —
+      준비 중에도 X로 취소할 수 있어야 한다(실기기 확인).
+    -->
+    <View
+        android:id="@+id/preparing_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/davi_preparing_scrim"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
+    <!--
       메인 10 종료 확인 모달(#197). **루트 FrameLayout의 마지막 자식이라 모든 것 위에 뜬다** —
       스크림이 인셋 층 밖에 있어 상태표시줄·내비게이션까지 덮는다(시안이 전면이다).
 
@@ -615,17 +633,5 @@
                 android:layout_marginTop="@dimen/davi_dialog_pair_margin_top" />
         </LinearLayout>
     </FrameLayout>
-
-    <!--
-      [프로토타입 #277] 인식 준비 중 화면 전체를 덮는 흐림.
-      실제로 듣기 시작하면(micReady) 걷히고, 그때 띠링이 함께 울린다.
-    -->
-    <View
-        android:id="@+id/preparing_scrim"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#66FFFFFF"
-        android:visibility="gone"
-        android:importantForAccessibility="no" />
 
 </FrameLayout>
