@@ -124,7 +124,17 @@ object UiTreeSerializer {
         cover: List<RectCover.Box>,
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
-        if (!node.isVisibleToUser) return
+        // **가시성은 트리 아래로 단조롭지 않다.** 부모가 false인데 자식이 전부 true인 화면이 있다
+        // (#332 실측: 배민 메뉴 상세의 상·하단 바 컨테이너가 `visibleToUser=false`인데 그 안의
+        // `담기` 버튼·`뒤로가기`·제목은 true였다). 그래서 여기서 서브트리를 끊지 않는다 —
+        // 이 노드만 건너뛰고 자식은 계속 훑는다. 화면 밖 목록 항목은 **자기 자신이** false라
+        // 그대로 걸러지므로, 이 규칙이 원래 막으려던 것은 그대로 막힌다.
+        if (!node.isVisibleToUser) {
+            if (shouldInspectDescendants(node.isEditable)) {
+                walkChildren(node, ctx, absorbed, depth, cover)
+            }
+            return
+        }
 
         // 이 노드가 **위에 그려진 형제에게 완전히 덮였는지**. isVisibleToUser는 형제 가림을
         // 보지 않으므로(안드로이드 스펙) 여기서 따로 센다.
@@ -190,6 +200,20 @@ object UiTreeSerializer {
         }
 
         if (!shouldInspectDescendants(node.isEditable)) return
+        walkChildren(node, ctx, childrenAbsorbed, depth, cover)
+    }
+
+    /**
+     * 자식들을 훑는다. 보이는 노드와 [walk]가 건너뛴 노드가 **같은 규칙으로** 자식을 훑도록
+     * 한 곳에 둔다 — 건너뛴 노드는 자기 자신을 내보내지 않을 뿐, 아래는 그대로 살아 있다(#358).
+     */
+    private fun walkChildren(
+        node: AccessibilityNodeInfo,
+        ctx: Ctx,
+        childrenAbsorbed: Boolean,
+        depth: Int,
+        cover: List<RectCover.Box>,
+    ) {
         val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
