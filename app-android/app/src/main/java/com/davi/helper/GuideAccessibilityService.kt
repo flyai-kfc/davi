@@ -500,9 +500,16 @@ class GuideAccessibilityService : AccessibilityService() {
         // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
         // 단 **안정 판정 뒤에만** — 과도기(WAIT)나 label 없는 UNREADABLE의 서명으로 폐기하면
         // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
-        display.redisplay(signature, decision.isStableForGuideRedisplay())?.let {
-            Log.i(TAG, "redisplay guide")
-            draw(it)
+        when (val redisplay = display.redisplay(signature, decision.isStableForGuideRedisplay())) {
+            GuideDisplayState.RedisplayResult.Unchanged -> Unit
+            GuideDisplayState.RedisplayResult.Clear -> {
+                Log.i(TAG, "clear unreadable guide")
+                overlay?.clear()
+            }
+            is GuideDisplayState.RedisplayResult.Show -> {
+                Log.i(TAG, "redisplay guide")
+                draw(redisplay.content)
+            }
         }
 
         // 화면이 흔들리는 동안에는 강조가 **이미 사라진 대상**을 가리킨다(#225). 자리만 내리고

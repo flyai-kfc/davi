@@ -56,6 +56,21 @@ class GuideDisplayState {
         val targetSuppressed: Boolean = false,
     )
 
+    /**
+     * [redisplay]가 실제 오버레이에 요구하는 변경.
+     *
+     * nullable [Content]만 돌려주면 "그릴 것이 없다"와 "지금 떠 있는 것을 걷어라"가 둘 다
+     * null이 된다. 읽기 불가 안내를 다른 안정 화면에서 폐기할 때 상태만 비고 오버레이 문구가
+     * 남았던 이유다(PR #352 재리뷰). 서비스가 [Clear]를 빠뜨릴 수 없게 결과를 전수로 가른다.
+     */
+    sealed interface RedisplayResult {
+        data object Unchanged : RedisplayResult
+
+        data object Clear : RedisplayResult
+
+        data class Show(val content: Content) : RedisplayResult
+    }
+
     private var guide: Content? = null
 
     /**
@@ -378,14 +393,14 @@ class GuideDisplayState {
      * 덜 그려졌거나 label 없는 트리의 서명은 화면의 정체가 아니라서, 그걸 근거로 폐기하면 안정된
      * 원래 화면이 돌아왔을 때 되살릴 안내가 이미 없다(4차 리뷰 P1, PR #352 재리뷰).
      */
-    fun redisplay(currentSignature: String, screenStable: Boolean): Content? {
-        if (!screenStable) return null
+    fun redisplay(currentSignature: String, screenStable: Boolean): RedisplayResult {
+        if (!screenStable) return RedisplayResult.Unchanged
         // 읽기 불가 안내에서 중지 확인으로 들어갈 수 있다. 그때 아래 unreadable 복구가 먼저
         // 돌면 화면 변화만으로 확인창을 걷어 버린다. 확인은 답하기 전까지 화면을 따라다닌다.
         guide?.takeIf { it.confirm != null }?.let { confirming ->
-            if (visible) return null
+            if (visible) return RedisplayResult.Unchanged
             markVisible()
-            return confirming
+            return RedisplayResult.Show(confirming)
         }
         if (unreadableNoticeActive) {
             val preserved = unreadableStash
@@ -395,19 +410,21 @@ class GuideDisplayState {
                 guideSignature = preserved.signature
                 stuckSuffixAllowed = preserved.stuckSuffixAllowed
                 markVisible()
-                return preserved.guide
+                return RedisplayResult.Show(preserved.guide)
             }
             reset()
-            return null
+            // 읽기 불가 안내는 visible=true인 채 실제 오버레이에 떠 있었다. 다른 안정 화면이면
+            // 보존 상태뿐 아니라 그 문구도 함께 걷어야 한다(PR #352 재리뷰).
+            return RedisplayResult.Clear
         }
-        val current = guide ?: return null
-        if (visible) return null
+        val current = guide ?: return RedisplayResult.Unchanged
+        if (visible) return RedisplayResult.Unchanged
         if (current.confirm == null && guideSignature != currentSignature) {
             reset()
-            return null
+            return RedisplayResult.Unchanged
         }
         markVisible()
-        return current
+        return RedisplayResult.Show(current)
     }
 
     private fun clearUnreadableState() {
