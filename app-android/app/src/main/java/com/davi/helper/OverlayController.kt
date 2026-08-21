@@ -76,6 +76,9 @@ class OverlayController(
      * [confirm]이 있으면 확인 화면이다 — 컨트롤 행이 확인쌍이 되고 종류에 맞는 크롬이 함께
      * 켜진다(완료 확인은 성공 tone 테두리, 종료 확인은 전면 스크림). 읽는 중 테두리와 달리
      * **안내창과 한 몸이라** [clear]가 같이 지운다.
+     *
+     * [targetSuppressed]는 강조·손 시연을 그리지 말라는 명시 신호다
+     * ([GuideDisplayState.Content.targetSuppressed], PR #343 리뷰 P1).
      */
     fun showGuide(
         bounds: Rect?,
@@ -84,12 +87,13 @@ class OverlayController(
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
         confirm: GuideDisplayState.ConfirmKind? = null,
+        targetSuppressed: Boolean = false,
     ) {
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid, actionType, direction)
+        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed)
     }
 
     fun clear() {

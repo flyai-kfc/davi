@@ -565,6 +565,7 @@ class GuideAccessibilityService : AccessibilityService() {
             content.actionType,
             content.direction,
             content.confirm,
+            content.targetSuppressed,
         )
     }
 

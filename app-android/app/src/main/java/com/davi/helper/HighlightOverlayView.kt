@@ -443,22 +443,34 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (!breathing.isStarted) breathing.start()
     }
 
-    /** 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다. */
+    /**
+     * 강조할 영역(없으면 null)과 안내문. 서버가 화면에 없는 대상을 골라도 안내문은 보여준다.
+     *
+     * [targetSuppressed]가 서면 **강조·손 시연을 무엇도 그리지 않는다** — 문구만 남는 억제
+     * 상태다([GuideDisplayState.hideTarget]·`stuckContent`). bounds·direction이 지워진 것만
+     * 믿으면 가장자리 제스처(#222)가 [actionType]에서 되살아나므로 신호를 직접 본다
+     * (PR #343 리뷰 P1). [actionType] 자체는 남긴다 — 안내창 회피(IME hard 판정)가 쓴다.
+     */
     fun setGuide(
         bounds: Rect?,
         instruction: String,
         avoid: List<GuideBoxLayout.Avoid> = emptyList(),
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
+        targetSuppressed: Boolean = false,
     ) {
-        hasTarget = bounds != null
+        hasTarget = bounds != null && !targetSuppressed
         // 방향 제스처만 시연한다(#152). 판정은 GestureMotion이 하고 여기서는 결과만 든다.
         //
         // **가장자리 제스처는 서버 값을 거치지 않는다**(#222). 방향이 액션 종류로 정해져 있어
         // [GestureMotion.fingerDirectionFor]를 태울 것이 없고, 태우면 없는 값을 뒤집게 된다.
-        edgeGesture = EdgeGesture.specFor(actionType)
-        gestureDirection = edgeGesture?.fingerDirection
-            ?: direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
+        edgeGesture = if (targetSuppressed) null else EdgeGesture.specFor(actionType)
+        gestureDirection = if (targetSuppressed) {
+            null
+        } else {
+            edgeGesture?.fingerDirection
+                ?: direction.takeIf { GestureMotion.isDemonstrated(actionType, direction) }
+        }
         if (bounds != null) target.set(bounds)
         // 가장자리 선는 서버 target을 덮는다 — 이 액션에 노드가 올 일은 없지만, 와도 가리킬 것은
         // "손을 대는 자리"지 그 노드가 아니다.
