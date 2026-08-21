@@ -330,11 +330,46 @@
       배율 1.2로 86dp다. **최종 확인에서 카드 weight가 0이라 열이 위에서부터 쌓이므로,
       이 여백만 주면 화면 아래가 저절로 빈다** — 시안이 아래를 비우는 배치와 같아진다.
 
-      **⚠ 값이 옛 환산이다**(#265). 두 요소 사이 여백이라 2026-08-19 개정 규칙(#244)에서는
-      세로 거리 1:1이라 **72**다. 값을 안 바꾼 이유는 메인 7 배치가 통째로 움직이기 때문이고,
-      실기기로 보고 정한다.
+      **2026-08-21 시안에서 58로 바뀌었다**(#348). 옛 값 86의 근거였던 #196의
+      「버튼쌍이 카드 바로 아래에 있고 **화면 아래는 비운다**」가 **앱 바로가기 행이 생기면서
+      깨졌다.** 58은 구분선을 축으로 위 묶음(버튼쌍+캡션)과 아래 묶음(구분+행)이 28/26
+      대칭이 되도록 잡은 값이라 **행이 있어야 성립한다** — 행 없이 58만 넣으면 버튼쌍만
+      올라가고 아래가 빈다. **#196을 근거로 86으로 되돌리지 않는다.**
+
+      **#265의 「세로 거리 넷」에서 이 값은 빠진다** — 개정 규칙(1:1)이 아니라 시안이 정했다.
+      다만 58 = 48프레임 x1.2라 개정 규칙과는 어긋나므로, 이 화면은 프레임 좌표로 잡은
+      묶음이라 통째로 x1.2로 옮긴다는 것을 여기 적어 둔다(실기기 확인 대상).
     -->
-    <dimen name="davi_button_pair_margin_top">86dp</dimen>
+    <dimen name="davi_button_pair_margin_top">58dp</dimen>
+
+    <!--
+      MA-4 앱 바로가기 블록(#348). 시안 세로 리듬을 그대로 옮긴 값이다 —
+      카드 108~308 → 48 → 버튼쌍 356~416 → 8 → 캡션 424~441 → 28 → 구분 469~486 →
+      26 → 행 512~572 → 하단 48. 프레임 값에 x1.2다(위 주석 참고).
+
+      행 높이 72dp는 D1(터치 타깃 56dp)을 넉넉히 넘는다.
+    -->
+    <dimen name="davi_confirm_caption_margin_top">10dp</dimen>
+    <dimen name="davi_confirm_divider_margin_top">34dp</dimen>
+    <dimen name="davi_shortcut_row_margin_top">31dp</dimen>
+    <dimen name="davi_shortcut_row_margin_bottom">58dp</dimen>
+    <dimen name="davi_shortcut_row_height">72dp</dimen>
+    <!-- 반지름·선·글자는 1:1이다(환산 규칙) — 시안 r16·r12·1px·12/14/20을 그대로 쓴다. -->
+    <dimen name="davi_shortcut_row_radius">16dp</dimen>
+    <dimen name="davi_shortcut_row_elevation">6dp</dimen>
+    <dimen name="davi_shortcut_icon_size">48dp</dimen>
+    <dimen name="davi_shortcut_icon_radius">12dp</dimen>
+    <!-- 가로 거리는 x1.2다 — 시안 프레임 폭 300을 기기 360dp로 옮긴 비율이 가로에서 정확하다. -->
+    <dimen name="davi_shortcut_side_padding">19dp</dimen>
+    <dimen name="davi_shortcut_chevron_width">10dp</dimen>
+    <dimen name="davi_shortcut_chevron_height">24dp</dimen>
+    <dimen name="davi_divider_label_gap">12dp</dimen>
+    <dimen name="davi_divider_thickness">1dp</dimen>
+    <dimen name="davi_divider_dash_on">1dp</dimen>
+    <dimen name="davi_divider_dash_off">4dp</dimen>
+    <dimen name="davi_type_confirm_caption">12sp</dimen>
+    <dimen name="davi_type_divider_label">14sp</dimen>
+    <dimen name="davi_type_shortcut_label">20sp</dimen>
 
     <!--
       메인 9 안내 중 화면과 메인 10 종료 확인 모달(#197). 기하는 배율 1.2로 환산하고

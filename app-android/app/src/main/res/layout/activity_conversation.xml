@@ -508,6 +508,108 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/davi_button_pair_margin_top" />
 
+        <!--
+          MA-4 앱 바로가기 블록(#348) — 캡션 · 구분 · 행. 셋이 함께 뜨고 함께 숨는다.
+
+          **「다비는 대신 버튼을 누르지 않는다」의 명시적 예외**로 팀 전원이 합의했다
+          (2026-08-21). 「앱을 굳이 열고 싶지 않다」는 니즈이고, **누르는 것은 여전히
+          사용자다** — 다비는 앱을 열어 줄 뿐 그 안에서 아무것도 누르지 않는다.
+          원칙을 근거로 지우지 말 것.
+
+          **사전 점검이 미확인이면 셋 다 숨는다** — 열 수 있는지 모르는 앱으로 보내면 안 된다.
+          판단은 ConversationUiState의 shortcutVisible이 한다.
+        -->
+        <TextView
+            android:id="@+id/confirm_caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_confirm_caption_margin_top"
+            android:gravity="center"
+            android:text="@string/conversation_confirm_caption"
+            android:textAppearance="@style/TextAppearance.Davi.ConfirmCaption"
+            android:visibility="gone" />
+
+        <!--
+          구분 — 점선 사이에 라벨. **라벨 뒤에 배경을 깔지 않는다** — 배경이 분홍 메시
+          그라디언트라 어떤 단색을 깔아도 그 자리만 뜬다. 선을 좌우로 갈라 라벨 자리를
+          비우는 쪽이 배경과 무관하게 맞는다.
+        -->
+        <LinearLayout
+            android:id="@+id/shortcut_divider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_confirm_divider_margin_top"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/davi_divider_thickness"
+                android:layout_weight="1"
+                android:background="@drawable/bg_davi_divider_dash"
+                android:layerType="software" />
+
+            <TextView
+                android:id="@+id/shortcut_divider_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="@dimen/davi_divider_label_gap"
+                android:layout_marginRight="@dimen/davi_divider_label_gap"
+                android:text="@string/conversation_shortcut_divider"
+                android:textAppearance="@style/TextAppearance.Davi.DividerLabel" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/davi_divider_thickness"
+                android:layout_weight="1"
+                android:background="@drawable/bg_davi_divider_dash"
+                android:layerType="software" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/shortcut_row"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/davi_shortcut_row_height"
+            android:layout_marginTop="@dimen/davi_shortcut_row_margin_top"
+            android:layout_marginBottom="@dimen/davi_shortcut_row_margin_bottom"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="@dimen/davi_shortcut_side_padding"
+            android:paddingRight="@dimen/davi_shortcut_side_padding"
+            android:background="@drawable/bg_davi_shortcut_row"
+            android:elevation="@dimen/davi_shortcut_row_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/shortcut_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:background="@drawable/bg_davi_shortcut_icon"
+                android:scaleType="fitCenter"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:id="@+id/shortcut_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="@dimen/davi_shortcut_side_padding"
+                android:layout_marginRight="@dimen/davi_shortcut_side_padding"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ShortcutLabel" />
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_chevron_width"
+                android:layout_height="@dimen/davi_shortcut_chevron_height"
+                android:src="@drawable/ic_davi_chevron_right"
+                android:scaleType="fitCenter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+
         <Space
             android:id="@+id/space_home_mid"
             android:layout_width="match_parent"

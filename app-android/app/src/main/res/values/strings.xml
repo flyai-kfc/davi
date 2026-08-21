@@ -162,7 +162,7 @@
     -->
     <string name="voice_home_title_desc">어려운 건 물어보세요</string>
     <string name="voice_home_subtitle">· 하나씩 알려드릴게요 ·</string>
-    <string name="voice_home_bubble">'띠링' 소리가 나면 말해주세요!</string>
+    <string name="voice_home_bubble">\'띠링\' 소리가 나면 말해주세요!</string>
     <string name="voice_home_caption">· 눌러서 말하기 ·</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
 
@@ -190,6 +190,16 @@
     <string name="conversation_guiding_bottom">계속 보시려면 뒤로가기를 눌러\n다비를 나가주세요</string>
     <string name="conversation_guiding_resume">기존 안내 이어서하기</string>
     <string name="conversation_guiding_stop">안내 종료</string>
+
+    <!--
+      MA-4 앱 바로가기 행(#348). **`%1$s으로 바로 가기`가 아닌 이유는 조사다** —
+      앱 이름 받침에 따라 카카오톡**으로** / 메시지**로**로 갈려 **한 포맷으로는 절반이 틀린다.**
+      `바로 가기 · %1$s`는 조사를 쓰지 않아 어느 이름에도 맞는다. 순서를 바꾸지 말 것.
+    -->
+    <string name="conversation_shortcut_label">바로 가기 · %1$s</string>
+    <string name="conversation_shortcut_desc">%1$s 열기</string>
+    <string name="conversation_confirm_caption">처음부터 안내해 드려요</string>
+    <string name="conversation_shortcut_divider">어떤 방법으로 시작할까요?</string>
     <!--
       메인 10 확인쌍의 **스크린리더 설명**(#197). 이 화면은 기존 확인쌍 컴포넌트를 재사용하는데
       **기본 설명이 정반대다** — 최종 확인 기준으로 x가 "처음부터 다시", o가 "이대로 안내 시작"인데

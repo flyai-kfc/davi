@@ -133,6 +133,27 @@
         <item name="android:textSize">@dimen/davi_type_guiding</item>
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
+
+    <!--
+      MA-4 앱 바로가기 블록(#348). **셋 다 Pretendard다**(부모 Body) — 다비가 하는 말이
+      아니라 화면이 주는 안내라 C1의 Cafe24 대상이 아니다. 행 라벨도 앱 이름이라 마찬가지다.
+
+      **캡션 12sp는 램프(28·24·20·17·14) 밖이다.** 시안 값이고 배율 2.0에서 24sp가 되어
+      폭은 견딘다. **읽기 어려우면 먼저 14sp로 올린다** — 자리를 줄이거나 문구를 자르지
+      않는다. 이 예외를 근거로 다른 화면의 캡션을 14 아래로 내리지 않는다.
+    -->
+    <style name="TextAppearance.Davi.ConfirmCaption" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_confirm_caption</item>
+        <item name="android:textColor">@color/davi_text_primary</item>
+    </style>
+    <style name="TextAppearance.Davi.DividerLabel" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_divider_label</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <style name="TextAppearance.Davi.ShortcutLabel" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_shortcut_label</item>
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
     <!--
       ON-2 권한 화면(#236). 카드 제목·본문과 버튼 라벨은 다비가 하는 말이라 Cafe24다(C1) —
       서체는 부모(Title.Davi)에서 온다. **안내 문구만 Pretendard**다. 시안이 그렇게 잡았다

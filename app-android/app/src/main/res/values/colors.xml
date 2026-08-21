@@ -22,6 +22,9 @@
       #383838은 각각 11.73 / 7.81 / 11.01:1이다. Figma color/text/secondary는 grey/700로 옮겨져 있다.
     -->
     <color name="davi_text_secondary">#383838</color>
+
+    <!-- MA-4 구분 점선(#348). 시안 `#A56E85` 55% — 알파 0x8C가 55%다. 장식이라 A2 대상이 아니다. -->
+    <color name="davi_divider_dash">#8CA56E85</color>
     <color name="davi_bg">#FFFFFF</color>
     <color name="davi_surface">#F4F4F6</color>
     <color name="davi_border">#D9D9D9</color>

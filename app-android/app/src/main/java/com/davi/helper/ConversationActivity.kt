@@ -100,6 +100,9 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 이번 듣기 턴에서 차임이 아직 안 울렸는가. [startListeningTurn]이 무장한다. */
     private var micToneArmed = false
+
+    /** 바로가기 행에 아이콘을 이미 붙인 패키지. 같은 앱이면 다시 조회하지 않는다(#348). */
+    private var shownShortcutPackage: String? = null
     private val micReadyHandler = Handler(Looper.getMainLooper())
     private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
 
@@ -286,6 +289,7 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.Home())
         }
         binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
+        binding.shortcutRow.setOnClickListener { openShortcut() }
         // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
         // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
         // 뒤로가기를 모르는 사람을 위한 지름길이다.
@@ -663,6 +667,7 @@ class ConversationActivity : AppCompatActivity() {
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라
         // 스크린 리더에게만 구분을 줄 수 있었는데, 이제 글자가 있어 눈으로도 갈린다.
         binding.buttonPair.btnPairAccept.setText(model.confirmAcceptTextRes)
+        renderShortcutRow(model)
         binding.btnClose.isVisible(model.closeVisible)
 
         // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
@@ -845,6 +850,7 @@ class ConversationActivity : AppCompatActivity() {
                     logicalRequest,
                     slotResult,
                     appOutcome.availability,
+                    appOutcome.launchableApp,
                 )
             }
         }
@@ -867,6 +873,7 @@ class ConversationActivity : AppCompatActivity() {
         logicalRequest: LogicalRequestAttempt,
         result: SlotFillResult,
         appAvailability: AppAvailabilityPreflight? = null,
+        launchableApp: LaunchableAppRecord? = null,
     ) {
         when (result) {
             is SlotFillResult.Success -> {
@@ -877,7 +884,8 @@ class ConversationActivity : AppCompatActivity() {
                 }
                 when (outcome) {
                     is VoiceDialogueSession.Outcome.Clarify -> showClarification(outcome)
-                    is VoiceDialogueSession.Outcome.Ready -> showReadyGoal(outcome, appAvailability)
+                    is VoiceDialogueSession.Outcome.Ready ->
+                        showReadyGoal(outcome, appAvailability, launchableApp)
                     is VoiceDialogueSession.Outcome.UnableToFinalize,
                     VoiceDialogueSession.Outcome.InvalidResponse,
                     -> {
@@ -923,13 +931,15 @@ class ConversationActivity : AppCompatActivity() {
     private fun showReadyGoal(
         outcome: VoiceDialogueSession.Outcome.Ready,
         appAvailability: AppAvailabilityPreflight?,
+        launchableApp: LaunchableAppRecord? = null,
     ) {
         val warning = appAvailability == AppAvailabilityPreflight.UNCONFIRMED
         val goalConfirmation = stateForOutcome(outcome) as ConversationUiState.Confirm
         val confirmation = if (warning) {
             goalConfirmation.copy(kind = ConfirmKind.APP_AVAILABILITY_WARNING)
         } else {
-            goalConfirmation
+            // 경고 쪽에는 싣지 않는다 — 열 수 있는지 모르는 앱으로 보내면 안 된다(#348).
+            goalConfirmation.copy(shortcutApp = launchableApp?.toShortcutApp())
         }
         setState(confirmation)
         GuideTelemetry.voiceState(if (warning) "app_availability_warning" else "goal_ready")
@@ -1122,6 +1132,54 @@ class ConversationActivity : AppCompatActivity() {
             intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER, false)
         ) return
         speechHelper().start()
+    }
+
+    /**
+     * MA-4 앱 바로가기 블록(#348). 캡션·구분·행이 **함께 뜨고 함께 숨는다** — 셋이 하나의
+     * 제안이라 따로 놀면 "구분선 아래가 빈" 화면이 된다.
+     *
+     * **아이콘은 그릴 때마다 조회하지 않는다** — 같은 앱이면 이미 붙은 것을 그대로 둔다.
+     * render는 상태가 바뀔 때마다 여러 번 돌고, `PackageManager` 조회는 그때마다 할 일이
+     * 아니다.
+     */
+    private fun renderShortcutRow(model: ConversationRenderModel) {
+        binding.confirmCaption.isVisible(model.shortcutVisible)
+        binding.shortcutDivider.isVisible(model.shortcutVisible)
+        binding.shortcutRow.isVisible(model.shortcutVisible)
+        if (!model.shortcutVisible) {
+            shownShortcutPackage = null
+            return
+        }
+        binding.shortcutLabel.text =
+            getString(R.string.conversation_shortcut_label, model.shortcutAppName)
+        binding.shortcutRow.contentDescription =
+            getString(R.string.conversation_shortcut_desc, model.shortcutAppName)
+
+        val app = (uiState as? ConversationUiState.Confirm)?.shortcutApp ?: return
+        if (shownShortcutPackage == app.packageName) return
+        shownShortcutPackage = app.packageName
+        // 앱마다 아이콘 모양이 달라(원형·스퀘어클·사각) 그대로 두면 줄이 안 맞는다.
+        // 배경 도형의 윤곽으로 깎아 같은 실루엣으로 세운다.
+        binding.shortcutIcon.clipToOutline = true
+        binding.shortcutIcon.setImageDrawable(
+            runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull(),
+        )
+    }
+
+    /**
+     * 바로가기 행을 연다. **여기서 여는 것은 앱뿐이다** — 그 안에서 다비가 무엇을 누르지
+     * 않는다. 「대신 조작하지 않는다」가 깨지는 자리가 아니다.
+     */
+    private fun openShortcut() {
+        val app = (uiState as? ConversationUiState.Confirm)?.shortcutApp ?: return
+        GuideTelemetry.voiceState("shortcut_opened")
+        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+        if (intent == null) {
+            // 사전 점검과 탭 사이에 지워졌을 수 있다. 조용히 넘기지 않고 화면을 되돌린다.
+            setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
+            return
+        }
+        runCatching { startActivity(intent) }
     }
 
     private fun speechHelper(): SpeechRecognizerHelper =

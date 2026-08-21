@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  바로가기 행 오른쪽 셰브런(#348). Lucide `chevron-right`.
+  시안 8x20 · #383838 · 두께 2 · round cap. 뷰포트를 시안 상자에 맞춰 두께가 1:1로 간다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="8dp"
+    android:height="20dp"
+    android:viewportWidth="8"
+    android:viewportHeight="20">
+    <path
+        android:pathData="M1,1 L7,10 L1,19"
+        android:strokeColor="@color/davi_text_secondary"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
