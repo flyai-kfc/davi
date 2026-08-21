@@ -331,9 +331,31 @@ jobs:
           # 좌표를 다시 찍어도 그 둘은 생기지 않아 검사가 통과해 버린다(PR #287 리뷰).
           # 요소 덤프의 `bounds=`를 카나리아로 쓸 수 없는 이유는 UiElement의 자동 생성
           # toString(`..., bounds=...`)이 release 산출물에도 남아 구분이 안 되기 때문이다.
+          # **`!` + `set -e`에 기대지 않는다.** bash는 `!`로 부정된 명령에 errexit를 적용하지
+          # 않으므로(`set -e` 문서), `! dump | grep -qF` 는 위반을 만나도 루프를 죽이지 못하고
+          # **마지막 반복의 종료 코드만** 스텝 결과가 된다. 그래서 제일 중요한 첫 카나리아
+          # (`label='` — release logcat에 화면 label 원문이 남지 않는다)의 위반이 통째로
+          # 지나갔다(#293). 같은 결함을 「debug/release 앱 식별자·이름 경계 확인」 스텝이
+          # assert_absent로 고쳤다(PR #281 리뷰).
+          #
+          # 두 스텝은 덤프 방식이 서로 달라(badging / dex strings) 헬퍼를 공유하지 않고 각자
+          # 둔다. 대신 게이트의 모양과 이 근거 주석을 맞춘다 — 한쪽만 고치면 다른 쪽이 같은
+          # 결함으로 되돌아간다.
+          assert_present() {  # $1=apk $2=카나리아 $3=설명
+            if ! dump "$1" | grep -qF "$2"; then
+              echo "빈 관문: $3 — 카나리아 [$2]가 debug 산출물에 없다" >&2
+              exit 1
+            fi
+          }
+          assert_absent() {  # $1=apk $2=카나리아 $3=설명
+            if dump "$1" | grep -qF "$2"; then
+              echo "release 경계 위반: $3 — 카나리아 [$2]가 release 산출물에 있다" >&2
+              exit 1
+            fi
+          }
           for canary in "label='" " scroll=" " at="; do
-            dump "$debug_apk"   | grep -qF "$canary"
-            ! dump "$release_apk" | grep -qF "$canary"
+            assert_present "$debug_apk"   "$canary" 'debug 상세 로그 포맷이 사라졌다'
+            assert_absent  "$release_apk" "$canary" '화면 상세 로그가 release에 실렸다'
           done
 
   backend:
