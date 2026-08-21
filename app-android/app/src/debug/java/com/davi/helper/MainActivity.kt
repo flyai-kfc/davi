@@ -131,6 +131,36 @@ class MainActivity : AppCompatActivity() {
         binding.btnVoice.setOnClickListener { onVoiceInputTapped() }
         binding.btnStart.setOnClickListener { startGuide() }
         binding.btnStop.setOnClickListener { GuideSession.stop() }
+
+        applyDebugGoalIntent(intent)
+    }
+
+    /**
+     * 실행 중에 `am start`를 다시 하면 새 인텐트가 이 화면으로 배달되는데, **읽어 주지 않으면
+     * 첫 회차만 동작한다**(조건만 바꿔 연달아 던지는 게 이 진입점의 주 용도다). 매니페스트의
+     * `launchMode="singleTop"`과 짝이다 — 그게 없으면 이 콜백이 아예 안 불린다.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyDebugGoalIntent(intent)
+    }
+
+    /**
+     * 인텐트로 온 목표를 입력칸에 넣고, `autostart`면 **버튼과 같은 경로**로 안내를 시작한다(#323).
+     * 분기를 새로 만들지 않는 이유는 접근성 준비 판정([canStartGuide])을 우회하지 않기 위해서다 —
+     * 준비가 안 됐으면 시작하지 않고 화면이 이유를 보여 준다.
+     */
+    private fun applyDebugGoalIntent(intent: Intent?) {
+        val request = DebugGoalIntent.fromIntent(intent) ?: return
+        binding.goalInput.setText(request.goal)
+        if (!request.autoStart) return
+        if (GuideSession.isActive) return
+        if (!canStartGuide()) {
+            refreshUi()
+            return
+        }
+        startGuide()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

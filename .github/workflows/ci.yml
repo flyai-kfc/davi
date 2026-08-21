@@ -489,21 +489,32 @@ jobs:
           #
           # **방향은 인자가 아니라 이름에 박는다.** 덤프를 인자로 받으면 호출을 반대로 바꿔도
           # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 산출물이 딱 둘이라 이 편이 짧다.
-          assert_present_in_debug() {  # $1=카나리아
+          # **설명을 인자로 받는다.** 이 스텝이 지키는 경계가 둘이 되면서(화면 상세 로그 ·
+          # debug 전용 진입점) 메시지를 한 문장으로 박아 두면 엉뚱한 경계를 가리킨다.
+          # ①「debug/release 앱 식별자·이름 경계 확인」이 이미 같은 두 인자 모양이다.
+          assert_present_in_debug() {  # $1=카나리아 $2=무엇을 지키는가
             if ! grep -qF "$1" "$debug_dump"; then
-              echo "빈 관문: debug 상세 로그 포맷이 사라졌다 — 카나리아 [$1]가 debug 산출물에 없다" >&2
+              echo "빈 관문: $2 — 카나리아 [$1]가 debug 산출물에 없다" >&2
               exit 1
             fi
           }
-          assert_absent_in_release() {  # $1=카나리아
+          assert_absent_in_release() {  # $1=카나리아 $2=무엇을 지키는가
             if grep -qF "$1" "$release_dump"; then
-              echo "release 경계 위반: 화면 상세 로그가 release에 실렸다 — 카나리아 [$1]가 release 산출물에 있다" >&2
+              echo "release 경계 위반: $2 — 카나리아 [$1]가 release 산출물에 있다" >&2
               exit 1
             fi
           }
           for canary in "label='" " scroll=" " at="; do
-            assert_present_in_debug "$canary"
-            assert_absent_in_release "$canary"
+            assert_present_in_debug "$canary" 'debug 상세 로그 포맷이 사라졌다'
+            assert_absent_in_release "$canary" '화면 상세 로그가 release에 실렸다'
+          done
+
+          # 목표를 인텐트로 넣는 debug 전용 진입점(#323)도 같은 게이트로 본다. 클래스가 debug
+          # 소스셋에만 있어 구조적으로도 안 들어가지만, 그 전제가 깨지는 것을 산출물에서 직접
+          # 잡는다 — 이 키가 release에 있으면 아무 앱이나 목표를 밀어 넣을 수 있다.
+          for canary in "davi.goal.b64" "davi.autostart"; do
+            assert_present_in_debug "$canary" 'debug 목표 주입 진입점이 사라졌다'
+            assert_absent_in_release "$canary" 'debug 목표 주입 진입점이 release에 실렸다'
           done
 
   # 서버 스택 검사를 한 잡에 모은다. 나뉘어 있을 땐 각각 20초·33초를 쓰고도 **1분씩**
