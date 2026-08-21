@@ -8,7 +8,10 @@ package com.davi.helper
  * 가장자리 선를 강조하고, 손은 그 선에서 출발한다.
  *
  * **[GestureMotion.fingerDirectionFor]를 태우지 않는다**(#222 정하고 갈 것 3). 저쪽은 서버가 준
- * `direction`(= 보러 가는 쪽)을 뒤집는 자리인데, 이 액션들에는 `direction`이 애초에 오지 않는다.
+ * `direction`(= 보러 가는 쪽)을 뒤집는 자리인데, 이 액션들에는 `direction`이 오지 않는다 —
+ * 단 이것은 모델 행동의 관측이지 **계약 보장은 아니다**(서버 스키마는 scroll에서만 필수를
+ * 강제할 뿐 다른 액션에서 금지하지 않는다, `server/app/schemas.py`). 와도 결과는 같다:
+ * `HighlightOverlayView.setGuide`가 이 표의 [Spec.fingerDirection]에 우선권을 준다.
  * 여기 [Spec.fingerDirection]은 **처음부터 손가락 방향**이라 뒤집지 않고 그대로 쓴다. 두 경로가
  * 갈리는 지점이 이 파일이다.
  *

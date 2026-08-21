@@ -62,6 +62,15 @@
       방향 제스처 시연의 손 크기·이동 거리·선 두께(#152). 화면 중앙에 그리므로 대상 크기와
       무관하다. 시니어가 멀리서도 알아볼 수 있게 아이콘치고 크게 잡는다.
     -->
+    <dimen name="davi_overlay_hand_size">96dp</dimen>
+    <dimen name="davi_overlay_hand_travel">140dp</dimen>
+    <!-- 그림자를 얼마나 어긋나게 깔지. 밝은 배경에서 손에 깊이를 주는 용도다. -->
+    <dimen name="davi_overlay_hand_shadow_offset">3dp</dimen>
+    <!--
+      손 둘레를 감싸는 윤곽선의 두께. 흰 배경에서 흰 손이 묻히지 않게 하는 것이 목적이라
+      멀리서도 보이는 굵기여야 하지만, 굵으면 손 모양 자체가 뭉개진다.
+    -->
+    <dimen name="davi_overlay_hand_outline">2dp</dimen>
     <!--
       가장자리 제스처(#222)의 시작 지점 선 두께. 셰이드·앱 서랍은 시작 지점이 화면 변으로
       고정이라 "어디에 손을 대는가"를 함께 그린다 — 색·후광·브리딩은 강조 사각형과 같고
@@ -72,15 +81,6 @@
       나가 잘리는 것도 의도다 — 화면 밖에서 손이 들어온다는 것이 이 제스처의 내용이다.
     -->
     <dimen name="davi_overlay_edge_line">8dp</dimen>
-    <dimen name="davi_overlay_hand_size">96dp</dimen>
-    <dimen name="davi_overlay_hand_travel">140dp</dimen>
-    <!-- 그림자를 얼마나 어긋나게 깔지. 밝은 배경에서 손에 깊이를 주는 용도다. -->
-    <dimen name="davi_overlay_hand_shadow_offset">3dp</dimen>
-    <!--
-      손 둘레를 감싸는 윤곽선의 두께. 흰 배경에서 흰 손이 묻히지 않게 하는 것이 목적이라
-      멀리서도 보이는 굵기여야 하지만, 굵으면 손 모양 자체가 뭉개진다.
-    -->
-    <dimen name="davi_overlay_hand_outline">2dp</dimen>
     <!--
       읽는 중 테두리(GD-1·GD-2r). PoC 실측값을 dp 토큰으로 옮긴 임시치이고 램프 밖이다.
       확정 디자인이 모양을 다시 잡을 자리라 정합을 정밀하게 맞추지 않는다.

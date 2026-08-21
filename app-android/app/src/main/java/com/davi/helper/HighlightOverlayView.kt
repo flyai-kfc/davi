@@ -826,6 +826,12 @@ class HighlightOverlayView(context: Context) : View(context) {
         val frame = HighlightMotion.frame(readingPhase, edgeLine, highlightGlowSpread)
         // 끝을 둥글게 — 퀵세팅은 화면 절반에서 끊기므로 각지게 자르면 잘린 상자로 되읽힌다.
         // 사각형 경로는 drawRoundRect라 cap을 보지 않으므로 되돌릴 필요가 없다.
+        //
+        // **cap은 선 구간 밖으로 획 절반만큼 나간다 — 의도된 범위다**(PR #343 리뷰). 퀵세팅의
+        // 안쪽 끝(x = 폭 × 0.5)에서 후광까지 12px이 알림창 절반으로 넘어간 것을 실측했다
+        // (2026-08-21, 획 528~ / 구간 경계 540). 잘라내면 각진 끝으로 되돌아가고, 12px은
+        // 시작 위치를 오독시킬 크기가 아니다. [highlightBounds]·안내창 회피가 이 돌출을 안
+        // 치는 것도 같은 크기라 무해하다. 화면 변 쪽 끝의 돌출은 화면 밖이라 캔버스가 자른다.
         strokePaint.strokeCap = Paint.Cap.ROUND
         highlightGlowPaint.strokeCap = Paint.Cap.ROUND
         // 획은 중심선에 칠해지므로 절반을 안으로 물려야 잉크의 바깥이 변에 맞는다.
