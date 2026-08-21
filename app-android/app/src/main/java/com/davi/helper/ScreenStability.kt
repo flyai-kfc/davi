@@ -36,6 +36,10 @@ object ScreenSignature {
             append(state(element.checked, on = 'c', off = 'u'))
             append(state(element.selected, on = 's', off = 'n'))
             append(state(element.showingHintText, on = 'h', off = 'v'))
+            // 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 보통은 요소 수도 함께
+            // 변해 서명이 어차피 바뀌지만, 투명 오버레이가 내용을 얻는 경우처럼 구조가
+            // 그대로인 전환도 있어 상태로 남긴다(#271과 같은 결).
+            append(state(element.obscured, on = 'o', off = 'p'))
             append(element.role).append(':')
             append(stableLabel(element))
             append(';')

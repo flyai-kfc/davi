@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import android.graphics.Rect
+import android.graphics.Region
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -27,6 +28,9 @@ object UiTreeSerializer {
 
     /** 한 화면에서 만들 요소 수 상한. 초과분은 버리고 로그로 알린다. */
     private const val MAX_ELEMENTS = 200
+
+    /** 가림 판정에서 "내용이 있나"를 볼 때 내려갈 깊이. */
+    private const val MAX_CONTENT_DEPTH = 6
 
     /** 라벨을 만들 때 자손을 몇 단계까지 훑을지. */
     private const val MAX_MERGE_DEPTH = 4
@@ -91,7 +95,7 @@ object UiTreeSerializer {
             .coerceAtLeast(1L)
 
         val ctx = Ctx(screenArea, masker)
-        walk(root, ctx, absorbed = false, depth = 0)
+        walk(root, ctx, absorbed = false, depth = 0, cover = Region())
 
         val truncated = ctx.elements.size > MAX_ELEMENTS
         return Result(
@@ -117,9 +121,14 @@ object UiTreeSerializer {
         ctx: Ctx,
         absorbed: Boolean,
         depth: Int,
+        cover: Region,
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
         if (!node.isVisibleToUser) return
+
+        // 이 노드가 **위에 그려진 형제에게 완전히 덮였는지**. isVisibleToUser는 형제 가림을
+        // 보지 않으므로(안드로이드 스펙) 여기서 따로 센다.
+        val occluded = isCovered(boundsOf(node), cover)
 
         val hasScrollActions = hasScrollActions(node)
         ctx.hasScrollableElement = observeScrollable(
@@ -139,7 +148,7 @@ object UiTreeSerializer {
         if (isPageDot) {
             readPageDot(ownTextValue!!, node, ctx)
             ctx.elements.add(
-                element(node, ownTextValue, ctx, role = ROLE_PAGE_DOT, clickable = false),
+                element(node, ownTextValue, ctx, role = ROLE_PAGE_DOT, clickable = false, obscured = occluded),
             )
             emitted = true
         } else if (node.isClickable || node.isEditable) {
@@ -156,14 +165,14 @@ object UiTreeSerializer {
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
             if (label.isNotBlank() || node.isEditable) {
-                ctx.elements.add(element(node, label, ctx, checked = checked))
+                ctx.elements.add(element(node, label, ctx, checked = checked, obscured = occluded))
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
             }
         } else if (!absorbed) {
             if (ownTextValue != null) {
-                ctx.elements.add(element(node, ownTextValue, ctx))
+                ctx.elements.add(element(node, ownTextValue, ctx, obscured = occluded))
                 emitted = true
                 // 시계처럼 자기 글자가 이미 자손의 요약인 **작은** 노드는 자손을 또 내보내지 않는다
                 // (실측: 잠금화면 시계가 '오후12:23' + 낱개 숫자 '1','2','2','3'으로 5개가 됐다).
@@ -177,13 +186,46 @@ object UiTreeSerializer {
         // 더 넘어가는지조차 모르고, 넘기라고 정해도 무엇을 쓸어야 하는지 가리킬 수단이 없다.
         // (실측: 설정 앱에서 scroll 메타가 한 건도 안 나왔다.)
         if (!emitted && hasScrollActions) {
-            ctx.elements.add(element(node, "", ctx))
+            ctx.elements.add(element(node, "", ctx, obscured = occluded))
         }
 
         if (!shouldInspectDescendants(node.isEditable)) return
-        for (i in 0 until node.childCount) {
-            walk(node.getChild(i), ctx, childrenAbsorbed, depth + 1)
+        val kids = (0 until node.childCount).mapNotNull { i -> node.getChild(i)?.let { i to it } }
+        for ((_, child) in kids) {
+            // 이 자식보다 **위에 그려지고 내용이 있는** 형제만 가림으로 친다.
+            // 내용 조건이 없으면 배민의 빈 투명 오버레이(draw=5)가 시트를 가린 것으로 잡힌다(실측).
+            val childCover = Region(cover)
+            for ((_, other) in kids) {
+                if (other === child) continue
+                if (other.drawingOrder <= child.drawingOrder) continue
+                if (!hasPaintedContent(other, 0)) continue
+                childCover.union(boundsOf(other))
+            }
+            walk(child, ctx, childrenAbsorbed, depth + 1, childCover)
         }
+    }
+
+    /** [rect]가 [cover]에 **빈틈없이** 들어가는지. 스크림+패널처럼 여러 조각의 합집합도 받는다. */
+    private fun isCovered(rect: Rect, cover: Region): Boolean {
+        if (cover.isEmpty) return false
+        val remainder = Region(rect)
+        remainder.op(cover, Region.Op.DIFFERENCE)
+        return remainder.isEmpty
+    }
+
+    /**
+     * 이 서브트리가 실제로 무언가를 그리는지. **투명한 빈 오버레이를 가림에서 빼려고** 둔다.
+     * 접근성 트리에는 알파가 없어서 이것이 유일한 대용 신호다.
+     */
+    private fun hasPaintedContent(node: AccessibilityNodeInfo, depth: Int): Boolean {
+        if (depth > MAX_CONTENT_DEPTH || !node.isVisibleToUser) return false
+        if (node.isClickable) return true
+        if (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()) return true
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (hasPaintedContent(child, depth + 1)) return true
+        }
+        return false
     }
 
     /**
@@ -216,6 +258,7 @@ object UiTreeSerializer {
         role: String? = null,
         clickable: Boolean? = null,
         checked: Boolean? = null,
+        obscured: Boolean = false,
     ): UiElement {
         ctx.counter++
         val r = boundsOf(node)
@@ -234,6 +277,7 @@ object UiTreeSerializer {
             // 페이지 dot은 clickable=true지만 약 50x50px이라 시니어가 조준할 수 없다.
             // 탭 대상이 아니라 **정보원**으로만 쓴다(HANDOFF §3-3)는 결정을 여기서 못박는다.
             clickable = clickable ?: node.isClickable,
+            obscured = obscured,
             editable = node.isEditable,
             focused = node.isFocused,
             // 여기부터가 "지금 어떤 상태인가"다. clickable/editable은 뷰의 설정값이라 이걸 대신하지
