@@ -21,6 +21,9 @@ jobs:
     # workflow_dispatch도 main 외의 ref에서는 공유 서버를 변경하지 않는다.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # revision 검증 루프가 18회×10초라 정상 배포는 3~4분이면 끝난다. 상한이 없으면
+    # 어딘가 매달렸을 때 GitHub 기본값 360분을 그대로 청구받는다.
+    timeout-minutes: 30
     environment: davi-development
     permissions:
       contents: read
