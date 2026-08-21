@@ -350,6 +350,7 @@ class IntentDialogueStatus(StrEnum):
 class ClarificationAnswerSource(StrEnum):
     OPTION = "option"
     FREEFORM = "freeform"
+    # #316 초기 APK 요청 호환용. 새 앱은 모름·거절도 직접 발화의 freeform으로 보낸다.
     UNKNOWN_OR_DECLINED = "unknown_or_declined"
 
 

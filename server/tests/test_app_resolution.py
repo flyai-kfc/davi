@@ -16,6 +16,9 @@ from app.app_resolution import (
 )
 from app.errors import LlmError
 from app.schemas import (
+    MAX_APP_CANDIDATES,
+    MAX_APP_LABEL_ALIASES,
+    MAX_APP_PACKAGE_NAMES,
     AppCandidate,
     AppCandidateAvailability,
     AppCandidatePlan,
@@ -246,7 +249,11 @@ def test_nested_gemini_schema_caps_candidate_array_and_assigns_ids_server_side()
     assert len(seen) == 1
     candidate_schema = APP_CANDIDATE_SCHEMA["properties"]["candidates"]
     assert candidate_schema["type"] == "ARRAY"
+    assert candidate_schema["maxItems"] == MAX_APP_CANDIDATES
     assert candidate_schema["items"]["type"] == "OBJECT"
+    candidate_properties = candidate_schema["items"]["properties"]
+    assert candidate_properties["package_names"]["maxItems"] == MAX_APP_PACKAGE_NAMES
+    assert candidate_properties["label_aliases"]["maxItems"] == MAX_APP_LABEL_ALIASES
 
 
 def test_invalid_model_contract_is_retried_once_without_raw_output():

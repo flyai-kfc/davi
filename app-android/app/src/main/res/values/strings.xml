@@ -216,8 +216,6 @@
     <string name="conversation_close_desc">대화 그만하기</string>
     <string name="clarification_progress">질문 %1$d / %2$d</string>
     <string name="clarification_direct_speak">직접 말하기</string>
-    <string name="clarification_unknown">잘 모르겠어요 · 답하지 않을래요</string>
-    <string name="clarification_unknown_answer">모르거나 답변하지 않음</string>
     <string name="clarification_restart">처음부터 다시 말하기</string>
     <string name="clarification_go_home">홈으로</string>
 </resources>

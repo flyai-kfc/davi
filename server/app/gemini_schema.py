@@ -22,6 +22,7 @@ import enum
 import types
 import typing
 
+from annotated_types import MaxLen, MinLen
 from pydantic import BaseModel
 
 # Gemini 스키마의 타입 이름. 표준 JSON Schema의 소문자와 다르다.
@@ -73,6 +74,17 @@ def _field_schema(tp: typing.Any) -> dict:
     raise TypeError(f"아직 지원하지 않는 타입이다: {tp!r}. 필요하면 이 변환기를 넓힐 것.")
 
 
+def _apply_field_constraints(schema: dict, metadata: list[typing.Any]) -> None:
+    """Gemini가 지원하는 Pydantic 필드 제약을 생성 스키마에도 보존한다."""
+    if schema.get("type") != "ARRAY":
+        return
+    for constraint in metadata:
+        if isinstance(constraint, MinLen):
+            schema["minItems"] = constraint.min_length
+        elif isinstance(constraint, MaxLen):
+            schema["maxItems"] = constraint.max_length
+
+
 def build_response_schema(model: type[BaseModel]) -> dict:
     """모델 선언에서 Gemini responseSchema를 만든다.
 
@@ -87,6 +99,7 @@ def build_response_schema(model: type[BaseModel]) -> dict:
 
     for name, field in model.model_fields.items():
         schema = _field_schema(hints[name])
+        _apply_field_constraints(schema, field.metadata)
         optional = not field.is_required()
         if field.description:
             schema["description"] = field.description + (_OMIT_HINT if optional else "")
