@@ -117,6 +117,10 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 
 닫힌 루프를 처음부터 끝까지 한 번 돌리는 절차다. **USB로 붙은 기기는 터널이 필요 없다.**
 
+> **Windows라면 `scripts/dev-driver.ps1`이 아래 절차를 감싼다** — `env`로 전제조건을 한 번에
+> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 안 돌므로
+> **아래 수동 절차가 그대로 유효하다**(이식은 #72). `scripts/README.md` 참고.
+
 ```powershell
 # 1) 서버 (스텁으로 먼저)
 cd server; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config app/logging.json

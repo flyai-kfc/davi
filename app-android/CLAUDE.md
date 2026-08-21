@@ -199,6 +199,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 ## 디버깅
 - 1순위: `adb logcat -s GuideSvc`. 재현 직전 `adb logcat -c`로 버퍼 비우기.
 - 접근성에 안 보이는 속성(`selected`, 정확한 bounds)은 `adb shell uiautomator dump`. XML은 UTF-8로 읽기.
+  **단 dump는 UiAutomation이 접근성 서비스를 unbind해 진행 중 안내 세션을 끊는다.** 세션 중에는
+  쓰지 말 것 — debug 빌드가 요소 `label`·`bounds`를 `Log.d`로 남기므로 트리를 보려고 부를 이유가 대개 없다.
+  **후유증도 봤다**(2026-08-21, 1회 관측·원인 미확정): 세션 밖에서 여러 번 부른 뒤 `안내 시작`이
+  `connected server=`까지만 찍고 안내 루프가 돌지 않았다. `dumpsys accessibility`는 `Bound services`에
+  서비스를 보여 주고 있었고 `-A11yOnly`로는 안 살아났으며, **전체 재설치 후에야** 붙었다.
+- **앱의 "접근성 서비스 켜기" 배너를 상태 신호로 믿지 말 것**(2026-08-21 관측). 배너가 떠 있는
+  상태에서 안내 세션이 정상으로 돌았다. 판정은 `dumpsys accessibility`의 `Bound services`로 한다.
 - 로그가 비어 있으면 "안 돌았다"는 뜻. 앱 프로세스 생존은 `FreecessHandler ... com.davi.helper.debug`로
   확인(debug 기준 — release는 접미어가 없다).
 
@@ -206,7 +213,32 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 셸·adb 쪽 함정이라 기기와 무관하다. 기기 동작 지식은 여기 적지 말고 픽스처로 쌓는다(#47).
 - **Git Bash에서 adb에 `/sdcard/...`를 넘길 땐 `MSYS_NO_PATHCONV=1`**(2026-07-28 실측). 없으면 MSYS가 경로를 Windows 경로로 바꿔 파일을 못 찾는다.
 - **PowerShell `>`가 `adb exec-out screencap` 바이너리를 깨뜨린다**(2026-07-28 실측). 인코딩이 끼어든다 → `adb shell screencap -p /sdcard/x.png` + `adb pull`.
+  깨뜨리는 것은 **PowerShell의 `>`뿐이다** — `cmd /c` 리다이렉트로는 PNG가 멀쩡했다(2026-08-21 실측,
+  헤더 `89 50 4E 47` 확인). 다만 `exec-out`이 1485ms로 위 경로(1518ms)보다 빠르지도 않아 쓸 이유가 없다.
 - **`adb shell input text`는 한글을 못 넣는다**(2026-07-28 실측). 목표 입력은 기기에서 직접 치거나 다른 경로로.
+  **버전·기기 문제가 아니라 구조다**(2026-08-21 조사) — AOSP `InputShellCommand`가 `KeyCharacterMap`으로
+  문자를 키 이벤트로 바꾸는데 가상 키보드 kcm에 없는 글자는 이벤트가 아예 안 난다. `cmd clipboard`
+  부재도 삼성이 뺀 게 아니라 **AOSP에 원래 없다**(`ClipboardService`에 `onShellCommand` 구현 없음) —
+  다른 기기로 바꿔도 안 된다. 대안은 #323.
+- **자판 좌표를 탭해 한글을 넣을 땐 기기 셸 한 번에 몰아친다**(2026-08-21 실측). 탭마다 adb를 부르면
+  16탭에 4075ms, `adb shell "input tap ..; input tap .."`로 묶으면 **960ms**다(결과 문자열 동일).
+  **`input tap x1 y1 x2 y2`처럼 좌표를 나열하는 건 안 된다 — 첫 쌍만 먹고 조용히 끝난다.**
+- **IME가 올라오기 전에 치면 조용히 빈 문자열이 들어간다**(2026-08-21 실측, 두 번 걸렸다).
+  탭이 키보드가 아니라 아래 앱으로 새는데 오류가 없다. 입력칸을 탭한 뒤
+  `adb shell dumpsys input_method`의 `mInputShown=true`를 확인하고 치기 시작할 것.
+- **`logcat -t N`을 쓰지 말 것**(2026-08-21 실측, 두 세션에서 독립 확인). 태그 필터보다 **먼저**
+  버퍼 마지막 N줄을 자른다 — 같은 버퍼에서 `-s GuideSvc`가 182줄일 때 `-t 400 -s GuideSvc`는
+  **0줄**이었다. 빨라 보이는 게 아니라 아무것도 안 준다. 구간은 시간으로만 자른다:
+  `-T 'MM-DD HH:MM:SS.mmm'`(epoch `'<초>.000'`도 받는다). 버퍼가 쌓이면 `logcat -d -s`가
+  13초까지 가므로 그 자리를 `-T`가 메운다.
+- **`-s GuideSvc`의 레벨을 올리면 화면 상세가 통째로 사라진다**(2026-08-21 실측).
+  `-s GuideSvc` = `-s GuideSvc:D`인데 요소 `label`·`bounds`(`GuideScreenLog`)가 `Log.d`라
+  `:I`로 올리면 안 나온다. E2E 러너가 `GuideSvc:I`를 쓰는 것은 **비식별 검증**이 목적이라 다르다.
+- **`screencap`의 1.3초는 전송이 아니라 기기의 PNG 인코딩이다**(2026-08-21 실측: 인코딩 없는 raw
+  263ms, `pull`은 2.4MB에 106ms·27MB/s). 그래서 왕복을 줄이는 방향은 헛수고다.
+  조작 흐름에서 걷어내려면 **비동기로 미루는 수밖에 없다** — 백그라운드로 던지면 호출자는 0.1초만 쓴다.
+  세션 중에도 캡처는 980ms로 유휴(1336ms)보다 느려지지 않았고, 캡처가 안내 루프를 방해하지도
+  않았다(`screencap`은 SurfaceFlinger 경로라 접근성 이벤트를 만들지 않는다 — 캡처 5회 동안 새 로그 0줄).
 - **`animator_duration_scale`을 바꿔도 이미 떠 있는 프로세스에는 안 먹는다**(2026-08-19 실측).
   접근성 서비스는 세션 밖에서도 계속 살아 있어서, 배율을 0으로 내려도 그 프로세스가 캐시한
   "켜짐"을 계속 읽는다. **모션 끄기를 검증하려면 배율을 바꾼 뒤 재설치해 프로세스를 새로 띄운다.**
