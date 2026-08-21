@@ -552,6 +552,25 @@ class GuideAccessibilityService : AccessibilityService() {
                 scheduleSample(POLL_MS)
             }
 
+            ScreenStabilityTracker.Decision.UNREADABLE -> {
+                // label 없는 화면은 서버에 보내지 않는다. 다만 영구 빈 WebView·카메라에서도
+                // 읽는 중 표시가 무한히 돌면 안 되므로 로컬 안내로 빠져나갈 길을 준다(#350).
+                // 완료·종료 확인은 화면을 따라다니는 더 강한 상태라 덮지 않는다.
+                if (!GuideSession.awaitingConfirm) {
+                    display.showUnreadableNotice(
+                        signature,
+                        getString(R.string.guide_screen_unreadable),
+                    )?.let {
+                        Log.w(
+                            TAG,
+                            "screen unreadable for ${ScreenStabilityTracker.UNREADABLE_AFTER_MS}ms",
+                        )
+                        draw(it)
+                    }
+                }
+                scheduleSample(POLL_MS)
+            }
+
             ScreenStabilityTracker.Decision.STUCK -> {
                 // 확인 대기 중 화면이 안 바뀌는 것은 사용자가 답을 고르는 동안 당연하다.
                 // 알리지 않는 데 그치지 않고 건너뛰는 이유는, stuckContent가 같은 내용으로
@@ -952,7 +971,11 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 상한에서도 done으로 끝내지 않는다 — 막힘이 성공으로 보인다. 세션을 살려 두고
                     // 종료 결정을 사용자에게 넘긴다(가르치기, SPEC §2). 확신 있는 경로와 같은
                     // 화면이고 문구만 다르다. 문구 확정은 #29.
-                    Log.w(TAG, "done unverified x${GuideSession.MAX_UNVERIFIED_DONE}, asking user")
+                    Log.w(
+                        TAG,
+                        "done retry cap perScreen=${GuideSession.MAX_UNVERIFIED_DONE} " +
+                            "total=${GuideSession.MAX_UNVERIFIED_DONE_TOTAL}, asking user",
+                    )
                     draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_unsure)))
                     updateReading()
                 }
@@ -960,7 +983,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 GuideSession.DoneOutcome.NOTICE_ONLY -> {
                     // 사용자가 이미 아니라고 답한 화면인데 완료 신호가 상한까지 반복됐다.
                     // 같은 질문을 다시 하지 않으면서 재질의도 멈춘다 — 문구만 남기고 칩으로 넘긴다.
-                    Log.w(TAG, "done after reject x${GuideSession.MAX_UNVERIFIED_DONE}, notice only")
+                    Log.w(TAG, "done retry cap after reject, notice only")
                     draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
                 }
 

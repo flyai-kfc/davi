@@ -89,6 +89,27 @@ class GuideDisplayStateTest {
     }
 
     @Test
+    fun `읽기 불가 안내는 빈 화면 시그니처가 흔들려도 한 번만 그린다`() {
+        assertEquals(
+            GuideDisplayState.Content(null, errorText),
+            state.showUnreadableNotice(sigA, errorText),
+        )
+
+        assertNull(state.showUnreadableNotice(sigB, errorText))
+    }
+
+    @Test
+    fun `읽기 불가 안내는 오버레이 청소 뒤 다시 그린다`() {
+        state.showUnreadableNotice(sigA, errorText)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, errorText),
+            state.showUnreadableNotice(sigB, errorText),
+        )
+    }
+
+    @Test
     fun `상한 안내는 지워진 뒤 같은 화면에서 재표시된다`() {
         state.showCapNotice(sigA, capNotice)
 
@@ -430,13 +451,13 @@ class GuideDisplayStateTest {
         val tracker = ScreenStabilityTracker()
         // 서비스 sampleScreen의 배선 그대로: 판정을 먼저 얻고, WAIT가 아닐 때만 재표시/폐기.
         fun sync(signature: String, at: Long): GuideDisplayState.Content? {
-            val decision = tracker.onSample(signature, at)
+            val decision = tracker.onSample(signature, at, hasLabeledElement = true)
             return state.redisplay(signature, decision != ScreenStabilityTracker.Decision.WAIT)
         }
 
         // A 안정 → 요청 → 응답으로 상한 안내 표시(서비스의 SEND→applyAction에 해당)
-        tracker.onSample(sigA, 0)
-        tracker.onSample(sigA, 100)
+        tracker.onSample(sigA, 0, hasLabeledElement = true)
+        tracker.onSample(sigA, 100, hasLabeledElement = true)
         tracker.markSent(sigA, 100)
         tracker.markFinished()
         state.showCapNotice(sigA, capNotice)

@@ -118,6 +118,22 @@ class GuideDisplayState {
     }
 
     /**
+     * label 없는 상태가 오래 이어진 화면에 로컬 안내를 표시한다(#350). 서버 오류와 달리
+     * 재시도 중인 요청은 없지만, 같은 문구를 매 폴링 다시 그리면 오버레이가 만든 이벤트로
+     * 샘플러를 스스로 깨운다. 떠 있는 동안은 화면 시그니처가 흔들려도 한 번만 그린다.
+     * root=null 청소 뒤에는 [visible]이 false라 다시 표시한다.
+     */
+    fun showUnreadableNotice(signature: String, text: String): Content? {
+        if (visible && guide?.text == text) return null
+        val content = Content(bounds = null, text = text)
+        guide = content
+        guideSignature = signature
+        stuckSuffixAllowed = false
+        markVisible()
+        return content
+    }
+
+    /**
      * [signature] 화면에 안내 중 서버 오류를 표시한다(#29). 기존 안내를 **덮는다** — 오류가
      * 걷히면 다음 성공 응답의 [show]가 다시 덮으므로 되살릴 것을 따로 기억하지 않는다.
      *

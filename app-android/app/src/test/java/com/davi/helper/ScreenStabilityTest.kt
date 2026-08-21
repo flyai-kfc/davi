@@ -243,16 +243,16 @@ class ScreenStabilityTrackerTest {
 
     @Test
     fun `흔들리는 동안에는 보내지 않는다`() {
-        assertEquals(Decision.WAIT, tracker.onSample("a", 0))
-        assertEquals(Decision.WAIT, tracker.onSample("b", 100))
-        assertEquals(Decision.WAIT, tracker.onSample("c", 200))
+        assertEquals(Decision.WAIT, tracker.onSample("a", 0, hasLabeledElement = true))
+        assertEquals(Decision.WAIT, tracker.onSample("b", 100, hasLabeledElement = true))
+        assertEquals(Decision.WAIT, tracker.onSample("c", 200, hasLabeledElement = true))
     }
 
     @Test
     fun `같은 화면이 두 번 연속이면 보낸다`() {
-        tracker.onSample("a", 0)
+        tracker.onSample("a", 0, hasLabeledElement = true)
 
-        assertEquals(Decision.SEND, tracker.onSample("a", 100))
+        assertEquals(Decision.SEND, tracker.onSample("a", 100, hasLabeledElement = true))
     }
 
     @Test
@@ -266,95 +266,168 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `label 없는 화면이 오래 이어지면 서버 대신 읽기 불가를 알린다`() {
+        assertEquals(Decision.WAIT, tracker.onSample("blank", 0, hasLabeledElement = false))
+        assertEquals(
+            Decision.WAIT,
+            tracker.onSample(
+                "blank",
+                ScreenStabilityTracker.UNREADABLE_AFTER_MS - 1,
+                hasLabeledElement = false,
+            ),
+        )
+        assertEquals(
+            Decision.UNREADABLE,
+            tracker.onSample(
+                "blank",
+                ScreenStabilityTracker.UNREADABLE_AFTER_MS,
+                hasLabeledElement = false,
+            ),
+        )
+        // 상태 판정이라 이후 샘플도 UNREADABLE이다. 표시 상태가 같은 문구 재그리기를 막는다.
+        assertEquals(
+            Decision.UNREADABLE,
+            tracker.onSample(
+                "blank",
+                ScreenStabilityTracker.UNREADABLE_AFTER_MS + 1_000,
+                hasLabeledElement = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `빈 화면 시그니처가 흔들려도 읽기 불가 타이머는 초기화하지 않는다`() {
+        assertEquals(Decision.WAIT, tracker.onSample("blank-a", 0, hasLabeledElement = false))
+        assertEquals(Decision.WAIT, tracker.onSample("blank-b", 3_500, hasLabeledElement = false))
+        assertEquals(
+            Decision.UNREADABLE,
+            tracker.onSample(
+                "blank-a",
+                ScreenStabilityTracker.UNREADABLE_AFTER_MS,
+                hasLabeledElement = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `읽기 불가 뒤 label이 생기면 타이머를 풀고 안정화를 다시 센다`() {
+        tracker.onSample("blank", 0, hasLabeledElement = false)
+        tracker.onSample(
+            "blank",
+            ScreenStabilityTracker.UNREADABLE_AFTER_MS,
+            hasLabeledElement = false,
+        )
+
+        assertEquals(Decision.WAIT, tracker.onSample("content", 8_000, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("content", 8_100, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `세션이 바뀌면 읽기 불가 타이머도 비운다`() {
+        tracker.onSample("blank", 0, hasLabeledElement = false)
+
+        tracker.reset()
+
+        assertEquals(
+            Decision.WAIT,
+            tracker.onSample(
+                "blank",
+                ScreenStabilityTracker.UNREADABLE_AFTER_MS,
+                hasLabeledElement = false,
+            ),
+        )
+    }
+
+    @Test
     fun `이미 보낸 화면은 다시 보내지 않는다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
 
-        assertEquals(Decision.IDLE, tracker.onSample("a", 200))
+        assertEquals(Decision.IDLE, tracker.onSample("a", 200, hasLabeledElement = true))
     }
 
     @Test
     fun `안내 뒤 화면이 그대로면 정체를 한 번만 알린다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFinished()
 
         val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
-        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1))
-        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt))
-        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt + 1_000))
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1, hasLabeledElement = true))
+        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt, hasLabeledElement = true))
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt + 1_000, hasLabeledElement = true))
     }
 
     /** "안내 후 화면 그대로 7초"는 사용자가 방금 조작했으면 그 조작부터 센다(#319). */
     @Test
     fun `눌림이 오면 정체 타이머가 그 시점부터 다시 돈다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFinished()
 
         tracker.markPressed(5_000)
 
         val stuckAt = 5_000 + ScreenStabilityTracker.STUCK_AFTER_MS
-        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1))
-        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt))
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt - 1, hasLabeledElement = true))
+        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt, hasLabeledElement = true))
     }
 
     /** 정체가 이미 보고된 뒤의 눌림도 다음 정체(와 눌림 확인 재질의)를 되살린다. */
     @Test
     fun `정체 보고 후에도 눌림이 오면 정체가 다시 뜬다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFinished()
         val firstStuck = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
-        assertEquals(Decision.STUCK, tracker.onSample("a", firstStuck))
+        assertEquals(Decision.STUCK, tracker.onSample("a", firstStuck, hasLabeledElement = true))
 
         tracker.markPressed(firstStuck + 1_000)
 
         val secondStuck = firstStuck + 1_000 + ScreenStabilityTracker.STUCK_AFTER_MS
-        assertEquals(Decision.IDLE, tracker.onSample("a", secondStuck - 1))
-        assertEquals(Decision.STUCK, tracker.onSample("a", secondStuck))
+        assertEquals(Decision.IDLE, tracker.onSample("a", secondStuck - 1, hasLabeledElement = true))
+        assertEquals(Decision.STUCK, tracker.onSample("a", secondStuck, hasLabeledElement = true))
     }
 
     @Test
     fun `화면이 바뀌면 정체 판정이 풀린다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFinished()
-        tracker.onSample("a", 100 + ScreenStabilityTracker.STUCK_AFTER_MS)
+        tracker.onSample("a", 100 + ScreenStabilityTracker.STUCK_AFTER_MS, hasLabeledElement = true)
 
-        assertEquals(Decision.WAIT, tracker.onSample("b", 20_000))
-        assertEquals(Decision.SEND, tracker.onSample("b", 20_100))
+        assertEquals(Decision.WAIT, tracker.onSample("b", 20_000, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("b", 20_100, hasLabeledElement = true))
     }
 
     @Test
     fun `요청이 실패하면 같은 화면을 다시 보낸다`() {
         // 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬다. 화면이 그대로면 그 이벤트가 오지 않는다.
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFailed()
         tracker.markFinished()
 
         val retryAt = 100 + ScreenStabilityTracker.RETRY_BASE_MS
-        assertEquals(Decision.SEND, tracker.onSample("a", retryAt))
+        assertEquals(Decision.SEND, tracker.onSample("a", retryAt, hasLabeledElement = true))
     }
 
     @Test
     fun `재시도는 백오프만큼 기다린다`() {
         // 서버가 죽어 있을 때 폴링 주기마다 때리면 무료 티어 15 RPM을 1분에 태운다.
         // 실기기에서 adb reverse가 끊긴 채로 이 루프를 실제로 만들어 봤다.
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
         tracker.markFailed()
         tracker.markFinished()
 
-        assertEquals(Decision.IDLE, tracker.onSample("a", 200))
+        assertEquals(Decision.IDLE, tracker.onSample("a", 200, hasLabeledElement = true))
         assertEquals(ScreenStabilityTracker.RETRY_BASE_MS, tracker.backoffMs())
     }
 
@@ -384,113 +457,113 @@ class ScreenStabilityTrackerTest {
     fun `진행 중인 요청이 있으면 새 화면을 보내지 않는다`() {
         // A가 도는 동안 B를 SEND로 내면, 호출자는 "보냈다"고 기록하는데 실제 요청은
         // in-flight 가드에 막혀 나가지 않는다 → B의 안내가 영영 오지 않는다(PR #61 리뷰 P1).
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
 
-        tracker.onSample("b", 200)
+        tracker.onSample("b", 200, hasLabeledElement = true)
 
-        assertEquals(Decision.IDLE, tracker.onSample("b", 300))
+        assertEquals(Decision.IDLE, tracker.onSample("b", 300, hasLabeledElement = true))
     }
 
     @Test
     fun `요청이 끝나면 그동안 바뀐 화면을 보낸다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
-        tracker.onSample("b", 200)
-        tracker.onSample("b", 300)
+        tracker.onSample("b", 200, hasLabeledElement = true)
+        tracker.onSample("b", 300, hasLabeledElement = true)
 
         tracker.markFinished()
 
-        assertEquals(Decision.SEND, tracker.onSample("b", 400))
+        assertEquals(Decision.SEND, tracker.onSample("b", 400, hasLabeledElement = true))
     }
 
     @Test
     fun `보내지 못한 화면은 전송으로 기록되지 않는다`() {
         // 호출자는 요청이 실제로 시작됐을 때만 markSent를 부른다. 그 계약이 지켜지면
         // 막혔던 화면은 다음 기회에 그대로 다시 나간다.
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
-        tracker.onSample("b", 200)
-        assertEquals(Decision.IDLE, tracker.onSample("b", 300))
+        tracker.onSample("b", 200, hasLabeledElement = true)
+        assertEquals(Decision.IDLE, tracker.onSample("b", 300, hasLabeledElement = true))
 
         tracker.markFinished()
 
-        assertEquals(Decision.SEND, tracker.onSample("b", 400))
+        assertEquals(Decision.SEND, tracker.onSample("b", 400, hasLabeledElement = true))
         tracker.markSent("b", 400)
-        assertEquals(Decision.IDLE, tracker.onSample("b", 500))
+        assertEquals(Decision.IDLE, tracker.onSample("b", 500, hasLabeledElement = true))
     }
 
     @Test
     fun `응답을 기다리는 중에는 정체로 보지 않는다`() {
         // 느린 응답과 멈춘 화면은 다르다. 기다리는 동안 "화면이 그대로예요"라고 말하면 헷갈린다.
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
 
         val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
-        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt))
+        assertEquals(Decision.IDLE, tracker.onSample("a", stuckAt, hasLabeledElement = true))
 
         tracker.markFinished()
 
-        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt))
+        assertEquals(Decision.STUCK, tracker.onSample("a", stuckAt, hasLabeledElement = true))
     }
 
     @Test
     fun `응답이 도착한 시점의 화면을 대조할 수 있다`() {
-        tracker.onSample("a", 0)
+        tracker.onSample("a", 0, hasLabeledElement = true)
         assertEquals("a", tracker.currentSignature())
 
-        tracker.onSample("b", 100)
+        tracker.onSample("b", 100, hasLabeledElement = true)
 
         assertEquals("b", tracker.currentSignature())
     }
 
     @Test
     fun `세션이 바뀌면 이전 화면 기억을 끌고 가지 않는다`() {
-        tracker.onSample("a", 0)
-        tracker.onSample("a", 100)
+        tracker.onSample("a", 0, hasLabeledElement = true)
+        tracker.onSample("a", 100, hasLabeledElement = true)
         tracker.markSent("a", 100)
 
         tracker.reset()
 
-        assertEquals(Decision.WAIT, tracker.onSample("a", 200))
-        assertEquals(Decision.SEND, tracker.onSample("a", 300))
+        assertEquals(Decision.WAIT, tracker.onSample("a", 200, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("a", 300, hasLabeledElement = true))
     }
 
     @Test
     fun `포커스와 IME가 안정된 새 상태는 한 번만 보낸다`() {
-        tracker.onSample("before", 0)
-        assertEquals(Decision.SEND, tracker.onSample("before", 100))
+        tracker.onSample("before", 0, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample("before", 100, hasLabeledElement = true))
         tracker.markSent("before", 100)
         tracker.markFinished()
 
-        assertEquals(Decision.WAIT, tracker.onSample("input-ready", 200))
-        assertEquals(Decision.SEND, tracker.onSample("input-ready", 300))
+        assertEquals(Decision.WAIT, tracker.onSample("input-ready", 200, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("input-ready", 300, hasLabeledElement = true))
         tracker.markSent("input-ready", 300)
         tracker.markFinished()
 
-        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 400))
-        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 500))
+        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 400, hasLabeledElement = true))
+        assertEquals(Decision.IDLE, tracker.onSample("input-ready", 500, hasLabeledElement = true))
     }
 
     @Test
     fun `포커스가 빠르게 왕복하면 안정된 마지막 상태만 보낸다`() {
-        tracker.onSample("before", 0)
-        assertEquals(Decision.SEND, tracker.onSample("before", 100))
+        tracker.onSample("before", 0, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample("before", 100, hasLabeledElement = true))
         tracker.markSent("before", 100)
         tracker.markFinished()
 
-        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 200))
-        assertEquals(Decision.WAIT, tracker.onSample("focus-b", 250))
-        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 300))
-        assertEquals(Decision.SEND, tracker.onSample("focus-a", 400))
+        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 200, hasLabeledElement = true))
+        assertEquals(Decision.WAIT, tracker.onSample("focus-b", 250, hasLabeledElement = true))
+        assertEquals(Decision.WAIT, tracker.onSample("focus-a", 300, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample("focus-a", 400, hasLabeledElement = true))
         tracker.markSent("focus-a", 400)
         tracker.markFinished()
 
-        assertEquals(Decision.IDLE, tracker.onSample("focus-a", 500))
+        assertEquals(Decision.IDLE, tracker.onSample("focus-a", 500, hasLabeledElement = true))
     }
 }
 

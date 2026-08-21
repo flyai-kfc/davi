@@ -692,6 +692,39 @@ class GuideSessionTest {
         )
     }
 
+    /** 단일 직전 서명 카운터는 A↔B마다 0이 되어 호출을 무한히 열었다(PR #352 리뷰). */
+    @Test
+    fun `화면이 번갈아 나와도 화면별 done 예산은 누적된다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, SIGNATURE),
+        )
+    }
+
+    @Test
+    fun `매번 다른 화면이어도 전체 done 예산에서 멈춘다`() {
+        GuideSession.start("카메라 열기")
+        val generation = currentGeneration()
+        repeat(GuideSession.MAX_UNVERIFIED_DONE_TOTAL - 1) { index ->
+            assertEquals(
+                GuideSession.DoneOutcome.RETRY,
+                GuideSession.onDone(generation, false, "signature-$index"),
+            )
+        }
+
+        assertEquals(
+            GuideSession.DoneOutcome.CONFIRM_UNSURE,
+            GuideSession.onDone(generation, false, "signature-last"),
+        )
+    }
+
     /** 연속이 아니라 누적으로 세면 긴 세션에서 정상 진행 중에도 상한 알림이 뜬다. */
     @Test
     fun `다른 안내가 표시되면 미검증 done 연속이 끊긴다`() {

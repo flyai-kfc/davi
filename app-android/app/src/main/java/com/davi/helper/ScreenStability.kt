@@ -80,6 +80,7 @@ internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNot
  * - [Decision.WAIT] 아직 흔들린다. 요청을 보내지 않는다(#32).
  * - [Decision.SEND] 안정됐고 직전에 보낸 화면과 다르다. 서버에 물어본다.
  * - [Decision.STUCK] 안내를 했는데 화면이 그대로다. **서버를 다시 부르지 않고** 사용자에게 알린다(#39).
+ * - [Decision.UNREADABLE] label 없는 상태가 오래 이어졌다. 서버 대신 로컬 안내를 표시한다(#350).
  * - [Decision.IDLE] 안정됐고 이미 처리한 화면이다. 아무것도 하지 않는다.
  *
  * 상태는 메인 스레드에서만 만진다. 응답이 다른 스레드로 오므로 [markFailed]는 반드시 메인으로 넘겨 부른다.
@@ -87,9 +88,10 @@ internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNot
 class ScreenStabilityTracker(
     private val holdSamples: Int = HOLD_SAMPLES,
     private val stuckAfterMs: Long = STUCK_AFTER_MS,
+    private val unreadableAfterMs: Long = UNREADABLE_AFTER_MS,
 ) {
 
-    enum class Decision { WAIT, SEND, STUCK, IDLE }
+    enum class Decision { WAIT, SEND, STUCK, UNREADABLE, IDLE }
 
     private var lastSample: String? = null
     private var heldSamples = 0
@@ -99,20 +101,28 @@ class ScreenStabilityTracker(
     private var failures = 0
     private var lastAttemptMs = 0L
     private var requestOutstanding = false
+    private var unreadableSinceMs: Long? = null
 
     fun onSample(
         signature: String,
         nowMs: Long,
-        hasLabeledElement: Boolean = true,
+        hasLabeledElement: Boolean,
     ): Decision {
         if (!hasLabeledElement) {
             // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
-            // currentSignature 대조가 그 응답을 버린다. 다만 몇 번 반복돼도 안정 화면으로
-            // 승격하지 않는다 — 접근성 트리가 아직 채워지는 중인 실측이 있다(#350).
+            // currentSignature 대조가 그 응답을 버린다. 서버에 보낼 안정 화면으로는 승격하지
+            // 않되, 영구 빈 WebView·카메라에서 읽는 중 표시가 무한히 돌지 않도록 연속 빈 화면
+            // 전체를 시간으로 묶는다. 시그니처가 A↔B로 흔들려도 타이머를 새로 주지 않는다.
             lastSample = signature
             heldSamples = 0
-            return Decision.WAIT
+            val since = unreadableSinceMs ?: nowMs.also { unreadableSinceMs = it }
+            return if (nowMs - since >= unreadableAfterMs) {
+                Decision.UNREADABLE
+            } else {
+                Decision.WAIT
+            }
         }
+        unreadableSinceMs = null
         if (signature != lastSample) {
             lastSample = signature
             heldSamples = 1
@@ -230,6 +240,7 @@ class ScreenStabilityTracker(
         failures = 0
         lastAttemptMs = 0L
         requestOutstanding = false
+        unreadableSinceMs = null
     }
 
     companion object {
@@ -243,6 +254,12 @@ class ScreenStabilityTracker(
          * **이 상수들은 "잘 동작한 값"이 아니라 첫 추정치 그대로**다. 실사용 로그로 다시 정할 것.
          */
         const val STUCK_AFTER_MS = 7_000L
+
+        /**
+         * label 없는 화면을 서버에 보내지 않고 기다릴 최대 시간. 정체와 같은 첫 추정치를 쓰되,
+         * 이 시간이 지나면 로컬 안내만 띄운다. 서버 호출은 여전히 0회다.
+         */
+        const val UNREADABLE_AFTER_MS = STUCK_AFTER_MS
 
         /** 첫 재시도까지 기다리는 시간. 이후 실패마다 두 배. */
         const val RETRY_BASE_MS = 2_000L

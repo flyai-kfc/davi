@@ -103,17 +103,17 @@ object GuideSession {
     private var pressRequeryArmed = false
 
     /**
-     * 같은 화면에서 **연속으로** 믿지 않고 넘긴 `done` 수. 화면이 바뀌거나 done이 아닌 안내가
-     * 실제로 표시되면 0으로 돌아간다 — 화면을 넘어 누적으로 세면 스플래시가 다음 실화면의
-     * 재시도 여유를 먼저 써 버린다(#350).
+     * 믿지 않고 넘긴 `done` 수를 서버 화면 구조 시그니처별로 센다(#350). 단일 직전 서명만
+     * 기억하면 A↔B 애니메이션이 매번 카운터를 0으로 만들어 호출 상한을 없앤다. 맵은 진행 없는
+     * 전체 상한까지만 보관하며, 실제 안내 표시·사용자 부정처럼 진행 근거가 생기면 통째로 비운다.
      *
      * 보통은 미검증 done이지만, 사용자가 "아직요"로 부정한 화면에서는 검증된 done도 여기서
      * 센다([onDone]) — 근거를 잃은 완료 신호라는 점이 같고, 세는 목적(재질의 총량 제한)도 같다.
      */
-    private var unverifiedDones = 0
+    private val unverifiedDonesBySignature = LinkedHashMap<String, Int>()
 
-    /** [unverifiedDones]가 속한 서버 화면 구조 시그니처. label 원문은 들어 있지 않다. */
-    private var unverifiedDoneSignature: String? = null
+    /** 서로 다른 화면을 계속 내는 경우까지 막는, 진행 없는 `done`의 세션 내 연속 합계. */
+    private var unverifiedDonesSinceProgress = 0
 
     /**
      * 사용자의 확인 응답을 기다리는 중인가(#139). 그동안 서비스는 화면을 계속 보되 서버에
@@ -173,11 +173,6 @@ object GuideSession {
     fun onDone(generation: Long, verified: Boolean, screenSignature: String): DoneOutcome? {
         if (!isCurrent(generation)) return null
 
-        if (screenSignature != unverifiedDoneSignature) {
-            unverifiedDoneSignature = screenSignature
-            unverifiedDones = 0
-        }
-
         // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
         val rejected = screenSignature == rejectedSignature
         if (!rejected) rejectedSignature = null
@@ -189,11 +184,34 @@ object GuideSession {
 
         // 부정된 화면의 done은 검증 여부와 무관하게 여기서 센다. 사용자가 아니라고 한 이상
         // 그 화면의 완료 신호는 근거가 없고, 세는 이유도 재질의 총량을 묶는 것으로 같다.
-        unverifiedDones++
-        if (unverifiedDones < MAX_UNVERIFIED_DONE) return DoneOutcome.RETRY
+        val perScreen = incrementUnverifiedDone(screenSignature)
+        if (
+            perScreen < MAX_UNVERIFIED_DONE &&
+            unverifiedDonesSinceProgress < MAX_UNVERIFIED_DONE_TOTAL
+        ) {
+            return DoneOutcome.RETRY
+        }
         if (rejected) return DoneOutcome.NOTICE_ONLY
         awaitConfirm(screenSignature)
         return DoneOutcome.CONFIRM_UNSURE
+    }
+
+    private fun incrementUnverifiedDone(screenSignature: String): Int {
+        if (
+            screenSignature !in unverifiedDonesBySignature &&
+            unverifiedDonesBySignature.size >= MAX_UNVERIFIED_DONE_TOTAL
+        ) {
+            unverifiedDonesBySignature.remove(unverifiedDonesBySignature.keys.first())
+        }
+        val next = (unverifiedDonesBySignature[screenSignature] ?: 0) + 1
+        unverifiedDonesBySignature[screenSignature] = next
+        unverifiedDonesSinceProgress++
+        return next
+    }
+
+    private fun resetUnverifiedDones() {
+        unverifiedDonesBySignature.clear()
+        unverifiedDonesSinceProgress = 0
     }
 
     private fun awaitConfirm(screenSignature: String) {
@@ -243,7 +261,7 @@ object GuideSession {
     /**
      * 종료 확인의 ×("계속 볼래요"). 대기만 내리고 **아무것도 기억하지 않는다.**
      *
-     * [confirmRejected]와 달리 [rejectedSignature]·[unverifiedDones]를 건드리지 않는다 —
+     * [confirmRejected]와 달리 [rejectedSignature]·미검증 done 예산을 건드리지 않는다 —
      * 종료를 되물은 것과 완료 판정 쿼터는 무관하다. 직전 안내를 되살리는 것은 표시 상태의
      * 몫이다([GuideDisplayState.dismissQuitConfirm]).
      */
@@ -278,8 +296,7 @@ object GuideSession {
         if (!consumeConfirm()) return
         rejectedSignature = pendingConfirmSignature
         pendingConfirmSignature = null
-        unverifiedDones = 0
-        unverifiedDoneSignature = rejectedSignature
+        resetUnverifiedDones()
     }
 
     /** 빈 목표로는 시작하지 않는다. 목표는 서버 프롬프트의 첫 줄이라 공백이면 안내가 성립하지 않는다. */
@@ -302,8 +319,7 @@ object GuideSession {
     fun recordStep(generation: Long, screenSignature: String, step: GuideStep) {
         if (!isCurrent(generation)) return
         // done이 아닌 안내가 실제로 나갔다 — 미검증 done의 "연속"이 여기서 끊긴다.
-        unverifiedDones = 0
-        unverifiedDoneSignature = null
+        resetUnverifiedDones()
         // 같은 근거로 부정 이력의 유효기간도 여기서 끝난다. ×아직요는 "지금 이 순간 아직 안
         // 됐다"는 답인데, 이력을 done으로만 지우면 완료 신호가 드문 실제 세션에서 세션이 끝날
         // 때까지 남는다 — 사용자가 여러 단계를 거쳐 그 화면에서 실제로 목표를 달성해도 성공
@@ -423,8 +439,7 @@ object GuideSession {
             steps.clear()
             lastStepSignature = null
             pressRequeryArmed = false
-            unverifiedDones = 0
-            unverifiedDoneSignature = null
+            resetUnverifiedDones()
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.
             awaitingConfirm = false
@@ -442,4 +457,10 @@ object GuideSession {
      * 크게 둘 수 없다. 다른 시간 상수처럼 첫 추정치다 — 실사용 로그로 다시 정한다.
      */
     const val MAX_UNVERIFIED_DONE = 3
+
+    /**
+     * 화면 구조가 계속 달라져도 진행 없는 재질의는 여기서 끝낸다. 스플래시와 실화면 두 구조에는
+     * 각각 기존 3회 예산을 줄 수 있게 하되, A↔B나 매번 새 서명의 무한 호출은 허용하지 않는다.
+     */
+    const val MAX_UNVERIFIED_DONE_TOTAL = MAX_UNVERIFIED_DONE * 2
 }
