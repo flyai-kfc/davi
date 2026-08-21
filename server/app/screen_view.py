@@ -19,7 +19,8 @@ def obscured_observation_unreliable(elements: list[UiElement]) -> bool:
 
     근거: 무언가를 가리는 쪽(모달·시트)은 **자기 자신이 항상 보인다** — 덮는 요소가 가려질
     수는 없다. 그래서 "요소 전부가 가려졌다"는 화면은 실제로 존재하지 않고, 그렇게 관측됐다면
-    앱의 기하 판정이 오작동한 것이다(PR #336 "남은 것"의 과잉 판정 시나리오).
+    앱의 기하 판정이 오작동한 것이다(PR #336 "남은 것"의 과잉 판정 시나리오 — 판정을 좁히는 것은
+    #355).
 
     이 판정을 프롬프트(요소 목록 폴백)만 보고 가드가 안 보면, 폴백으로 실린 요소를 모델이
     골랐을 때 가드가 전부 거부해 **백오프 → 같은 프롬프트 → 같은 거부**의 뺑뺑이가 된다.
@@ -74,3 +75,20 @@ def scrollable_is_only_obscured(screen_elements: list[UiElement]) -> bool:
     if any(has_scroll_metadata(element) for element in visible):
         return False
     return any(has_scroll_metadata(element) for element in screen_elements)
+
+
+def screen_has_cover(elements: list[UiElement]) -> bool:
+    """이 화면 위에 다른 요소를 덮고 있는 것이 있는가.
+
+    [visible_elements]가 **요소 단위**로 답하는 것을 화면 단위로 되묻는다. 대상이 요소가
+    아니라 **화면 자체**인 행동(런처 페이지 넘김·앱서랍 열기)은 요소 필터가 닿지 않아서다 —
+    페이지 위치는 화면 단위 상태이고(C5) 앱은 가림 판정과 무관하게 채운다
+    (`UiTreeSerializer.readPageDot`은 가려진 dot에서도 돈다).
+
+    `None`(미관측)은 덮개로 세지 않는다(C10의 세 상태 규약). 전부 가려졌다고 온 화면은
+    관측 자체를 불신하므로 여기서도 `False`다([obscured_observation_unreliable]).
+    """
+
+    if obscured_observation_unreliable(elements):
+        return False
+    return any(element.obscured is True for element in elements)

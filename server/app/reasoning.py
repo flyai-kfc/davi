@@ -31,6 +31,7 @@ from .schemas import (
 from .screen_view import (
     has_scroll_metadata,
     obscured_observation_unreliable,
+    screen_has_cover,
     visible_elements,
 )
 
@@ -121,7 +122,21 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
             return action
         return action.model_copy(update={"target_node_id": _widest(candidates).node_id})
 
-    # 3. 페이지로 넘기는 화면은 **대상 노드가 없는 것이 정상이다** — 대상이 요소가 아니라
+    # 3. **덮인 화면에서는 "화면 자체"를 조작하라고 하지 않는다.** 아래 두 단은 대상이 요소가
+    #    아니라 화면이라(페이지 넘김·앱서랍) 2단의 요소 필터가 닿지 않는다 — 페이지 위치는
+    #    화면 단위 상태이고(C5) 앱은 가림 판정과 무관하게 채운다. 모달이 덮은 화면에서
+    #    "옆으로 넘기세요"·"위로 쓸어올리세요"가 나가면 팝업이 제스처를 먹어 화면이 그대로고
+    #    → 정체 → **정체에서는 서버를 다시 부르지 않으므로**(#39) 회복 경로가 없다. 이 PR이
+    #    tap과 2단에서 닫은 실패와 같은 모양이라 같은 근거로 닫는다(PR #336 리뷰).
+    #    **조건은 런처가 아니다** — page dot은 "N 페이지 중 M 페이지" 글자로 잡으므로
+    #    (`UiTreeSerializer.parsePageDot`) 배너 캐러셀·온보딩처럼 페이지 안내가 있는 화면이면
+    #    어디서든 4단이 열린다. 오히려 팝업이 뜬 화면일수록 2단 후보가 가림으로 비어 여기까지
+    #    내려온다. 4단만 막고 5단을 두면 덮인 런처에서 앱서랍 안내가 대신 나가 같은 실패다.
+    #    막힌 화면은 6단(실패)으로 간다 — 앱이 백오프 후 다시 물어보고, 그때 모델은 가려지지
+    #    않은 요소(팝업 자신)만 보므로 "닫기"를 고를 수 있다.
+    covered = screen_has_cover(screen.elements)
+
+    # 4. 페이지로 넘기는 화면은 **대상 노드가 없는 것이 정상이다** — 대상이 요소가 아니라
     #    화면 자체다. 삼성 런처 홈·앱서랍은 페이지가 여러 장이어도 scrollable 노드가 0개다
     #    (HANDOFF §3-2). 아직 넘길 쪽이 남았으면 그대로 통과시킨다. 여기를 오류로 닫으면
     #    통과하던 정상 안내를 이 가드가 없애고(#251 리뷰), SPEC §3 시나리오 3의
@@ -129,11 +144,11 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
     #    모델이 이 화면에서 `page_dot` 같은 요소를 target으로 골라도 비운다 — page dot은
     #    정보원이지 탭 대상이 아니고(HANDOFF §3-3), 대상이 화면 자체라는 근거와도 어긋난다
     #    (#251 리뷰).
-    if _page_move_is_open(screen, action.direction):
+    if not covered and _page_move_is_open(screen, action.direction):
         return action.model_copy(update={"target_node_id": None})
 
-    # 4. 대상이 없다 — 이 scroll은 내보낼 수 없다. 안전한 대체 행동이 있는 화면은 그쪽으로 돌린다.
-    if _can_open_app_drawer(screen):
+    # 5. 대상이 없다 — 이 scroll은 내보낼 수 없다. 안전한 대체 행동이 있는 화면은 그쪽으로 돌린다.
+    if not covered and _can_open_app_drawer(screen):
         return GuideAction(
             expected_result=action.expected_result,
             # 행동만 바꾸는 교정이라 화면 요약은 모델이 쓴 것을 그대로 승계한다. 여기서 새로
@@ -144,7 +159,7 @@ def _resolve_scroll(action: GuideAction, screen: Screen) -> GuideAction:
             instruction="화면 가운데를 위로 쓸어올려 전체 앱 목록을 열어 주세요.",
         )
 
-    # 5. 그 밖에는 대체할 안전한 행동이 계약에 없다 — `done`은 성공 의미이고 "진행 불가"는
+    # 6. 그 밖에는 대체할 안전한 행동이 계약에 없다 — `done`은 성공 의미이고 "진행 불가"는
     #    보류 항목이다(server/CLAUDE.md). **틀린 안내를 내보내는 대신 실패로 닫는다.**
     #    앱은 이 화면을 백오프 후 다시 물어보므로(`retryThisScreen`), 정체와 달리 회복 경로가
     #    남는다.
@@ -245,12 +260,13 @@ def _moves_along(element: UiElement, direction: SwipeDirection | None) -> bool:
 
 
 def _no_scroll_target_reason(screen: Screen, direction: SwipeDirection | None) -> str:
-    """대상이 없는 이유를 세 상황으로 갈라 적는다.
+    """대상이 없는 이유를 상황별로 갈라 적는다.
 
-    한 문장으로 덮으면 실기기 로그에서 넷을 구분할 수 없다 — 스크롤 요소가 아예 없는 화면,
-    요소는 있는데 그 방향만 끝난 화면(가장 흔하다), 그리고 앱은 스크롤 요소가 있다고 했는데
-    요소 목록에는 안 실린 화면(`UiTreeSerializer.MAX_ELEMENTS` 절단이 유력하다), 그리고 세로
-    목록만 있는데 모델이 좌우를 고른 화면은 다음 수가 서로 다르다.
+    한 문장으로 덮으면 실기기 로그에서 서로 다른 화면이 한 칸에 섞인다 — 스크롤 요소가 아예
+    없는 화면, 요소는 있는데 그 방향만 끝난 화면(가장 흔하다), 앱은 스크롤 요소가 있다고 했는데
+    요소 목록에는 안 실린 화면(`UiTreeSerializer.MAX_ELEMENTS` 절단이 유력하다), 세로 목록만
+    있는데 모델이 좌우를 고른 화면, 그리고 **가림 때문에 막힌 화면 둘**(그 방향의 스크롤 요소가
+    가려진 경우 · 3단이 화면 단위 조작을 막은 경우)은 다음 수가 서로 다르다.
 
     **"이미 끝"은 그 방향의 축으로 움직이는 요소가 있을 때만 쓴다.** 축을 안 보면 세로 목록
     화면의 `scroll right`가 "right 방향은 이미 끝"으로 나가 네 번째 상황이 첫 칸에 섞인다.
@@ -259,13 +275,23 @@ def _no_scroll_target_reason(screen: Screen, direction: SwipeDirection | None) -
     # **"가려짐"을 "이미 끝"보다 먼저 본다.** 후보가 가려져서 빈 경우 아래 첫 분기가 참이 되어
     # (가려진 목록도 `can_scroll_forward=True`다) 끝이 아닌데 "이미 끝"으로 적힌다. 이 함수의
     # 존재 이유가 상황을 갈라 적는 것이라, 실기기 로그가 이 문구를 들고 오면 엉뚱한 데를 판다.
-    if any(
+    if direction is not None and any(
         _scrolls_toward(element, direction) and element.obscured is True
         for element in screen.elements
     ):
         return (
             f"scroll 대상을 해석할 수 없다: {direction} 방향의 스크롤 요소가 "
             "다른 요소에 가려져 있음"
+        )
+    # **가림이 화면 단위 조작을 막은 경우도 따로 적는다.** 3단이 4·5단을 막고 여기로 보내면
+    # 아래 분기들은 "스크롤 요소가 없다"고만 적는데(런처는 실제로 0개다), 없어서가 아니라
+    # 덮여서 막은 것이라 실기기 로그가 엉뚱한 데를 판다.
+    if screen_has_cover(screen.elements) and (
+        _page_move_is_open(screen, direction) or _can_open_app_drawer(screen)
+    ):
+        return (
+            "scroll 대상을 해석할 수 없다: 화면이 다른 요소에 가려져 "
+            "화면 단위 조작(페이지 넘김·앱서랍)을 내보내지 않음"
         )
     if any(_moves_along(element, direction) for element in screen.elements):
         return f"scroll 대상을 해석할 수 없다: 스크롤 요소는 있으나 {direction} 방향은 이미 끝"

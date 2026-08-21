@@ -401,3 +401,138 @@ def test_completion_evidence_still_passes_on_a_visible_label():
     request = NextStepRequest(goal="치킨을 주문한다", screen=screen)
 
     assert _verify_done(done, request) is True
+
+
+def _page_screen(
+    *,
+    package: str = "com.sec.android.app.launcher",
+    obscured: bool | None,
+    current_page: int | None = 1,
+    total_pages: int | None = 2,
+) -> Screen:
+    """페이지로 넘기는 화면. 팝업 하나가 그 위를 덮고 있다.
+
+    덮개(`n1`)는 자기 자신이 보이고, 뒤에 깔린 요소(`n2`)만 가려진다 — 실제 관측이 그 모양이라
+    "전부 가려짐"(관측 불신)과 구분된다.
+    """
+
+    return Screen(
+        package_name=package,
+        has_scrollable_element=False,
+        current_page=current_page,
+        total_pages=total_pages,
+        elements=[
+            UiElement(node_id="n1", label="지금 받기", role="View", clickable=True, obscured=False),
+            UiElement(
+                node_id="n2", label="카카오톡", role="View", clickable=True, obscured=obscured
+            ),
+        ],
+    )
+
+
+def _page_scroll(direction: SwipeDirection = SwipeDirection.RIGHT) -> GuideAction:
+    return GuideAction(
+        expected_result="다음 쪽에서 앱을 찾음",
+        screen_summary="홈 화면",
+        evidence="이 쪽에는 찾는 앱이 없음",
+        action_type=ActionType.SCROLL,
+        direction=direction,
+        instruction="화면을 옆으로 넘겨 주세요.",
+    )
+
+
+def test_a_covered_page_screen_does_not_get_a_page_move():
+    """덮인 화면에서 **화면 자체를 조작하라는 안내**를 막는다(PR #336 리뷰 4R).
+
+    페이지 위치는 화면 단위 상태라(C5) 요소 필터가 닿지 않는다 — 앱은 가려진 dot에서도
+    `readPageDot`을 돌린다. 팝업이 제스처를 먹으면 화면이 그대로고 → 정체 → #39로 회복
+    경로가 없다. 이 PR이 tap과 2단에서 닫은 실패와 같은 모양이다.
+    """
+
+    with pytest.raises(LlmError) as raised:
+        _guide(_page_scroll(), _page_screen(obscured=True))
+
+    assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_an_uncovered_page_screen_still_moves_a_page():
+    """덮이지 않았으면 그대로 통과한다 — 가드가 정상 안내를 없애지 않는다(#251 리뷰)."""
+
+    guided = _guide(_page_scroll(), _page_screen(obscured=False))
+
+    assert guided.action_type is ActionType.SCROLL
+    assert guided.target_node_id is None
+
+
+def test_a_covered_page_screen_is_not_a_launcher_only_rule():
+    """조건은 런처가 아니라 **페이지 안내가 있는 화면**이다.
+
+    page dot은 "N 페이지 중 M 페이지" 글자로 잡으므로(`UiTreeSerializer.parsePageDot`)
+    배너 캐러셀·온보딩처럼 페이지 안내가 붙은 앱 화면이면 어디서든 같은 길이 열린다.
+    """
+
+    covered_carousel = _page_screen(package="com.sampleapp", obscured=True)
+
+    with pytest.raises(LlmError) as raised:
+        _guide(_page_scroll(), covered_carousel)
+
+    assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_a_covered_launcher_does_not_fall_through_to_the_app_drawer():
+    """4단만 막으면 5단이 대신 나간다 — 앱서랍 열기도 덮인 화면 조작이라 같이 막는다."""
+
+    covered_launcher = _page_screen(obscured=True, current_page=None, total_pages=None)
+
+    with pytest.raises(LlmError) as raised:
+        _guide(_page_scroll(SwipeDirection.DOWN), covered_launcher)
+
+    assert raised.value.kind is ErrorKind.SERVER
+
+
+def test_an_uncovered_launcher_still_switches_to_the_app_drawer():
+    uncovered_launcher = _page_screen(obscured=False, current_page=None, total_pages=None)
+
+    guided = _guide(_page_scroll(SwipeDirection.DOWN), uncovered_launcher)
+
+    assert guided.action_type is ActionType.OPEN_APP_DRAWER
+
+
+def test_an_unobserved_screen_keeps_its_page_move():
+    """`None`은 낡은 앱의 미관측이라 덮개로 세지 않는다(C10의 세 상태 규약)."""
+
+    guided = _guide(_page_scroll(), _page_screen(obscured=None))
+
+    assert guided.action_type is ActionType.SCROLL
+    assert guided.target_node_id is None
+
+
+def test_a_fully_obscured_page_screen_keeps_its_page_move():
+    """전부 가려졌다고 온 화면은 관측 자체를 불신한다 — 여기서도 같은 판정을 쓴다."""
+
+    unreliable = Screen(
+        package_name="com.sec.android.app.launcher",
+        has_scrollable_element=False,
+        current_page=1,
+        total_pages=2,
+        elements=[
+            UiElement(node_id="n1", label="지금 받기", role="View", obscured=True),
+            UiElement(node_id="n2", label="카카오톡", role="View", obscured=True),
+        ],
+    )
+
+    guided = _guide(_page_scroll(), unreliable)
+
+    assert guided.action_type is ActionType.SCROLL
+    assert guided.target_node_id is None
+
+
+def test_failure_reason_says_the_screen_is_covered_not_that_it_has_no_scrollable():
+    """런처는 스크롤 요소가 실제로 0개라, 사유를 안 가르면 "없어서"로 적힌다.
+
+    없어서가 아니라 덮여서 막은 것이라 실기기 로그가 엉뚱한 데를 판다.
+    """
+
+    reason = _no_scroll_target_reason(_page_screen(obscured=True), SwipeDirection.RIGHT)
+
+    assert "가려져" in reason
