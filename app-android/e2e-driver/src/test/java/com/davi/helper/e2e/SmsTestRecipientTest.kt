@@ -107,10 +107,16 @@ class SmsTestRecipientTest {
         }
     }
 
-    /** 허용하는 형식은 `PrivacyMasker`의 전화번호 정규식이 실제로 잡는 것과 같아야 한다. */
+    /**
+     * 허용하는 형식은 `PrivacyMasker`의 전화번호 정규식이 실제로 잡는 것과 같아야 한다.
+     *
+     * **아래는 `PrivacyMasker.kt`의 사본이다.** `:e2e-driver`는 `:app`에 의존하지 않아 그 객체를
+     * 직접 부를 수 없다. 한쪽을 바꾸면 여기도 함께 바꾼다 — 경계를 `\b`에서 숫자 lookaround로
+     * 옮길 때 실제로 이 사본이 갈렸다(#312).
+     */
     @Test
     fun 마스킹되는_국내_휴대폰_형식만_받는다() {
-        val masker = Regex("\\b01[016789][-\\s]?\\d{3,4}[-\\s]?\\d{4}\\b")
+        val masker = Regex("(?<!\\d)01[016789][-\\s]?\\d{3,4}[-\\s]?\\d{4}(?!\\d)")
 
         listOf("010-1234-5678", "01012345678", "011 234 5678", "016-123-4567").forEach { raw ->
             val accepted = SmsTestRecipient.parse(raw)
