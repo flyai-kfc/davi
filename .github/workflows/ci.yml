@@ -127,6 +127,14 @@ jobs:
           # 그 밑에 한 줄만 덧붙이면 경계가 조용히 검사를 멈춘다(PR #281 리뷰에서 실측).
           # 각 검사를 스스로 exit 하는 게이트로 만들고, 어느 경계가 깨졌는지도 함께 찍는다.
           #
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #
           # **방향은 인자가 아니라 이름에 박는다.** apk를 인자로 받으면 호출을 반대로 바꿔도
           # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 이 스텝은 apk가 딱 둘이라 이 편이 짧다.
           assert_absent_in_release() {  # $1=패턴 $2=설명
@@ -143,7 +151,15 @@ jobs:
           }
           # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release 산출물은
           # app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 실제 이름을 여기 적어 준다.
-          apk_of() { echo "$(dirname "$1")/$(meta "$1" outputFile)"; }
+          # `echo "$(…)"` 는 치환이 죽어도 echo가 0을 돌려준다 — `meta`의 exit 1도 `$( )` 안이라
+          # 서브셸만 죽인다. 아래 `test -f`가 받긴 하지만 화면에는 트레이스백만 남아
+          # "메타데이터를 못 읽었다"가 "APK가 없다"로 읽힌다(PR #354 리뷰).
+          apk_of() {  # $1=output-metadata.json
+            local name
+            name="$(meta "$1" outputFile)" \
+              || { echo "산출물 메타데이터를 읽지 못했다: $1" >&2; exit 1; }
+            echo "$(dirname "$1")/$name"
+          }
 
           debug_meta=app/build/outputs/apk/debug/output-metadata.json
           release_meta=app/build/outputs/apk/release/output-metadata.json
@@ -217,6 +233,11 @@ jobs:
         run: |
           ./gradlew generateDebugNetworkSecurityConfig
           config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
+          # **여기에 검사를 더한다면 `! grep -q` 로 적지 말 것.** 부정된 명령은 errexit를 타지
+          # 않아 조용히 통과한다(#293). 아래 세 줄은 부정도 파이프도 없는 맨 grep이라 지금은
+          # errexit가 살아 있고, 파일이 없으면 grep이 2로 죽어 스텝이 빨개진다 — 그래서 PR #354
+          # 배치에서 게이트로 바꾸지 않았다(헬퍼를 네 번째로 복제할 값이 없다). 검사를 늘릴
+          # 때는 형제 스텝 「debug Azure HTTPS endpoint 허용」의 게이트 모양을 그대로 가져온다.
           grep -q '<base-config cleartextTrafficPermitted="false"' "$config"
           grep -q '<domain includeSubdomains="false">192.168.1.2</domain>' "$config"
           test "$(grep -c 'cleartextTrafficPermitted="true"' "$config")" -eq 1
@@ -233,22 +254,33 @@ jobs:
           # 산출물 검사에서 같은 결함을 고친 PR #281·#354와 같은 모양의 게이트로 바꾼다.
           # **파일이 없을 때도 닫는다.** grep은 파일이 없으면 2로 죽는데, 부정 검사에서는
           # 그게 "패턴 없음"으로 읽혀 또 하나의 빈 관문이 된다.
+          #
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
           test -f "$config"
-          assert_in_config() {  # $1=패턴 $2=설명
+          # **두 방향의 접두어를 나눈다.** 긍정 검사가 깨지는 것은 보안 사고가 아니라 **검사
+          # 문자열이 낡은 것**(AGP 출력 형태 변경)이다. 같은 접두어로 찍으면 받는 사람이 평문이
+          # 실제로 샌 줄 알고 산출물을 뒤진다(PR #354 리뷰).
+          assert_present_in_config() {  # $1=패턴 $2=설명
             if ! grep -q "$1" "$config"; then
-              echo "debug 네트워크 보안 경계 위반: $2 ($1)" >&2
+              echo "빈 관문: $2 ($1)" >&2
               exit 1
             fi
           }
-          assert_not_in_config() {  # $1=패턴 $2=설명
+          assert_absent_in_config() {  # $1=패턴 $2=설명
             if grep -q "$1" "$config"; then
               echo "debug 네트워크 보안 경계 위반: $2 ($1)" >&2
               exit 1
             fi
           }
-          assert_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단이 사라졌다'
-          assert_not_in_config 'cleartextTrafficPermitted="true"' '평문 트래픽 허용이 HTTPS 전용 설정에 새어 들어갔다'
-          assert_not_in_config '<domain-config' 'HTTPS endpoint인데 domain-config 예외가 생겼다'
+          assert_present_in_config '<base-config cleartextTrafficPermitted="false"' '기본 평문 트래픽 차단 검사 문자열이 낡았다'
+          assert_absent_in_config 'cleartextTrafficPermitted="true"' '평문 트래픽 허용이 HTTPS 전용 설정에 새어 들어갔다'
+          assert_absent_in_config '<domain-config' 'HTTPS endpoint인데 domain-config 예외가 생겼다'
 
       - name: debug 임의 HTTPS endpoint 거부
         env:
@@ -366,8 +398,14 @@ jobs:
           # **파일명을 박지 않는다.** 서명 키가 없는 환경(CI·키 없는 팀원 PC)의 release
           # 산출물은 app-release-unsigned.apk가 되어 이름이 달라진다. AGP가 output-metadata.json에
           # 실제 이름을 적어 주므로 거기서 유도한다.
-          apk_of() {
-            echo "$(dirname "$1")/$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1")"
+          # `echo "$(…)"` 는 치환이 죽어도 echo가 0을 돌려준다. 아래 `test -f`가 받긴 하지만
+          # 화면에는 트레이스백만 남아 "메타데이터를 못 읽었다"가 "APK가 없다"로 읽힌다
+          # (PR #354 리뷰). 이 배치의 나머지 자리와 같은 모양으로 그 자리에서 죽인다.
+          apk_of() {  # $1=output-metadata.json
+            local name
+            name="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$1")" \
+              || { echo "산출물 메타데이터를 읽지 못했다: $1" >&2; exit 1; }
+            echo "$(dirname "$1")/$name"
           }
           debug_apk="$(apk_of app/build/outputs/apk/debug/output-metadata.json)"
           release_apk="$(apk_of app/build/outputs/apk/release/output-metadata.json)"
@@ -391,9 +429,13 @@ jobs:
           # 지나갔다(#293). 같은 결함을 「debug/release 앱 식별자·이름 경계 확인」 스텝이
           # assert_absent로 고쳤다(PR #281 리뷰).
           #
-          # 두 스텝은 덤프 방식이 서로 달라(badging / dex strings) 헬퍼를 공유하지 않고 각자
-          # 둔다. 대신 게이트의 모양과 이 근거 주석을 맞춘다 — 한쪽만 고치면 다른 쪽이 같은
-          # 결함으로 되돌아간다.
+          # **같은 모양의 게이트를 쓰는 자리가 셋이다.** 입력을 뜨는 방법이 서로 달라
+          # (aapt2 dump badging / 생성된 XML / dex strings) 헬퍼를 공유하지 않고 각자 두는 대신,
+          # 게이트의 모양·이름·이 근거 주석을 셋에 맞춘다 — 하나만 고치면 나머지가 같은 결함으로
+          # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
+          #   ① 「debug/release 앱 식별자·이름 경계 확인」
+          #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
+          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
           #
           # **방향은 인자가 아니라 이름에 박는다.** 덤프를 인자로 받으면 호출을 반대로 바꿔도
           # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 산출물이 딱 둘이라 이 편이 짧다.
