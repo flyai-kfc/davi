@@ -42,6 +42,24 @@ internal object GuidedAppOps {
         return device.findObject(By.text(pattern)) ?: device.findObject(By.desc(pattern))
     }
 
+    /**
+     * fragment가 보이는 노드가 나타날 때까지 기다렸다가 돌려준다.
+     *
+     * 콜드 스타트 직후에는 패키지 창이 떠도 홈 화면이 아직 그려지지 않는다 — 한 번만 찾고
+     * 포기하면 스플래시를 "그 화면에 없다"로 읽는다(2026-08-21 배민 16.19.0 실측에서
+     * 정리가 cart_entry_missing으로 죽었다).
+     */
+    fun waitForVisibleLabelLike(
+        device: UiDevice,
+        fragment: String,
+        timeoutMs: Long,
+    ): UiObject2? {
+        val pattern = containsPattern(fragment)
+        val half = (timeoutMs / 2).coerceAtLeast(1L)
+        return device.wait(Until.findObject(By.text(pattern)), half)
+            ?: device.wait(Until.findObject(By.desc(pattern)), half)
+    }
+
     fun containsPattern(fragment: String): Pattern = Pattern.compile(
         ".*" + Pattern.quote(fragment) + ".*",
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL,
