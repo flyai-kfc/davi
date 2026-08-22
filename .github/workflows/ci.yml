@@ -520,12 +520,19 @@ jobs:
           # 한 목록을 두 방향에 그대로 쓰면 한쪽이 죽은 게이트가 된다:
           #   · absent 방향 — "davi.goal"이 b64 키까지 덮으므로 b64를 따로 볼 필요가 없다
           #   · present 방향 — "davi.goal"이 b64 키에 걸려 **원문 키가 통째로 사라져도 통과**한다
-          # 그래서 present는 완전일치(-x)로 본다. dex strings 출력이 줄 단위라 상수 하나가 한 줄이다.
+          # 그래서 원문 키의 present는 **출현 횟수로** 본다. 완전일치(`grep -xF`)를 먼저 썼다가
+          # CI에서 빨개졌다 — dex strings 출력은 상수가 한 줄로 떨어진다는 보장이 없다(로컬
+          # 흉내로는 통과했고 실제 `strings`에서 실패했다, PR #364). 모든 "davi.goal.b64"는
+          # "davi.goal"을 포함하므로, 원문 키가 살아 있으면 전자보다 후자가 반드시 더 많다.
           for canary in "davi.goal.b64" "davi.autostart"; do
             assert_present_in_debug "$canary" 'debug 목표 주입 진입점이 사라졌다'
           done
-          if ! grep -qxF "davi.goal" "$debug_dump"; then
-            echo "빈 관문: debug 목표 주입의 원문 키가 사라졌다 — 카나리아 [davi.goal]가 debug 산출물에 없다" >&2
+          # **`grep -c`가 아니라 `grep -o | wc -l`이다.** -c는 매칭된 **줄 수**를 세는데 둘이
+          # 같은 줄에 있으면 나란히 1이 되어 이 검사가 통째로 죽는다(실측).
+          raw_hits="$(grep -oF "davi.goal" "$debug_dump" | wc -l)"
+          b64_hits="$(grep -oF "davi.goal.b64" "$debug_dump" | wc -l)"
+          if [ "$raw_hits" -le "$b64_hits" ]; then
+            echo "빈 관문: debug 목표 주입의 원문 키가 사라졌다 — davi.goal($raw_hits) <= davi.goal.b64($b64_hits)" >&2
             exit 1
           fi
           for canary in "davi.goal" "davi.autostart"; do
