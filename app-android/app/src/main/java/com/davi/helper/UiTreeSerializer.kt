@@ -131,9 +131,17 @@ object UiTreeSerializer {
         // 그래서 여기서 서브트리를 끊지 않는다 — 이 노드만 건너뛰고 자식은 계속 훑는다.
         // 화면 밖 목록 항목은 **자기 자신이** false라 그대로 걸러지므로, 이 규칙이 원래 막으려던
         // 것은 그대로 막힌다.
-        // **아직 끊는 자리가 남아 있다** — 라벨 병합·상태 hoist는 여전히 안 보이는 자식에서
-        // 멈춘다([collectDescendantText]·[descendantCheckedState]). 고치면 화면 전반의 label이
-        // 함께 바뀌어 별도 측정이 필요하다(#358). 가림 판정([hasPaintedContent])은 이 PR에서 맞췄다.
+        // **아직 끊는 자리가 셋 남아 있다**(가림 판정 [hasPaintedContent]는 이 PR에서 맞췄다).
+        // 라벨 병합·상태 hoist([collectDescendantText]·[descendantCheckedState])는 고치면 화면
+        // 전반의 label이 함께 바뀌어 별도 측정이 필요하다.
+        // **스크롤 관측은 일부러 둔다.** 아래 `observeScrollable`이 이 return 뒤에 있어, 스크롤
+        // 컨테이너 자신이 `visibleToUser=false`면 `has_scrollable_element`도 스크롤 대상도 안 나간다.
+        // 여기서도 관측하면 **오프스크린 페이지가 `scrollable=true`를 올려 런처 페이징 가드레일이
+        // 조용히 꺼진다** — 그 위험이 구멍보다 크다는 것이 표본으로 나왔다(2026-08-22, 15개 화면):
+        // 절단 지점 155곳 중 스크롤 노드를 가진 곳은 6곳뿐이고 그 11개 중 10개가 **화면 밖**이다
+        // (오프스크린 ViewPager 페이지의 폭 0·화면 오른쪽 밖 컨테이너). 화면 안에 있던 하나는
+        // 배민 가게의 가로 필터 칩 줄인데, 같은 화면 본문 스크롤러가 `vis=true`라 화면 단위
+        // `has_scrollable_element`는 살아 있었다.
         if (!node.isVisibleToUser) {
             walkChildren(node, ctx, absorbed, depth, cover)
             return
@@ -256,9 +264,14 @@ object UiTreeSerializer {
         // 화면을 덮고 있고, 그 뒤로 완전히 들어간 옵션 행 `[0,1933,1080,2137]`이 한 픽셀도 안
         // 보이는데 `obscured`로 안 찍혔다.
         // 안 그리는 것을 가림으로 치는 반대쪽 사고는 열리지 않는다 — 자식까지 안 보이면 false다.
-        if (node.isVisibleToUser) {
-            if (node.isClickable) return true
-            if (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()) return true
+        if (
+            paintsOwnContent(
+                visibleToUser = node.isVisibleToUser,
+                clickable = node.isClickable,
+                hasOwnLabel = !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank(),
+            )
+        ) {
+            return true
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
@@ -366,6 +379,19 @@ object UiTreeSerializer {
             it.id == AccessibilityAction.ACTION_SCROLL_FORWARD.id ||
                 it.id == AccessibilityAction.ACTION_SCROLL_BACKWARD.id
         }
+
+    /**
+     * 이 노드 **자신이** 무언가를 그리는가. [hasPaintedContent]가 서브트리를 훑을 때 쓰는 잎 판정이다.
+     *
+     * 안 보이는 노드는 자기 신호를 세지 않는다 — 자식은 계속 보되(가시성은 트리 아래로 단조롭지
+     * 않다) **안 보이는 노드 자신의** clickable·label로 덮개를 인정하지는 않는다는 뜻이다.
+     * 이 규칙이 이 PR이 새로 세운 것이라 순수 함수로 뽑아 고정한다(#358).
+     */
+    internal fun paintsOwnContent(
+        visibleToUser: Boolean,
+        clickable: Boolean,
+        hasOwnLabel: Boolean,
+    ): Boolean = visibleToUser && (clickable || hasOwnLabel)
 
     /** 보이는 노드를 순회하며 한 번 본 `true`가 뒤의 일반 노드 때문에 사라지지 않게 한다. */
     internal fun observeScrollable(
