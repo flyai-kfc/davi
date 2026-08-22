@@ -2,7 +2,9 @@ package com.davi.helper
 
 import android.view.accessibility.AccessibilityWindowInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -31,6 +33,25 @@ class UiTreeSerializerTest {
         assertNull(UiTreeSerializer.parsePageDot("카카오톡"))
         assertNull(UiTreeSerializer.parsePageDot("페이지"))
         assertNull(UiTreeSerializer.parsePageDot(""))
+    }
+
+    @Test
+    fun `안 보이는 노드는 자기 신호로 덮개가 되지 않는다`() {
+        // #358이 세운 규칙. 자식은 계속 보되(가시성은 트리 아래로 단조롭지 않다) **자기** 신호는
+        // 안 센다 — 안 그리는 것을 가림으로 치면 보이는 요소가 안내에서 빠진다.
+        assertFalse(
+            UiTreeSerializer.paintsOwnContent(visibleToUser = false, clickable = true, hasOwnLabel = true),
+        )
+        assertTrue(
+            UiTreeSerializer.paintsOwnContent(visibleToUser = true, clickable = true, hasOwnLabel = false),
+        )
+        assertTrue(
+            UiTreeSerializer.paintsOwnContent(visibleToUser = true, clickable = false, hasOwnLabel = true),
+        )
+        // 보여도 그릴 것이 없으면 덮개가 아니다 — 빈 투명 오버레이를 걸러내는 자리다(#336).
+        assertFalse(
+            UiTreeSerializer.paintsOwnContent(visibleToUser = true, clickable = false, hasOwnLabel = false),
+        )
     }
 
     @Test
