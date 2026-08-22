@@ -16,6 +16,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **1차 마스킹** — 전화·계좌·주민·카드·이메일·MAC 주소 패턴을 서버로 보내기 전에 치환.
   **원본은 여기서 떠나지 않는다.** 숫자 패턴의 경계는 `\b`가 아니라 숫자 lookaround로 본다 —
   두 언어의 `\b` 의미가 달라 1차·2차가 갈렸다(#312).
+  **패턴 밖 고유명은 지우지 않는다**(`SPEC.md` §2, #360) — 여기서 "구조로 목록 항목을 가리자"는
+  규칙을 세우려 하면 앱 서랍이 같은 모양이라 앱 이름까지 지워진다. 트리를 다 보는 자리가
+  여기뿐이라 그 유혹이 생기는 곳도 여기다.
   정책은 `LabelMasking.kt`의 `LabelMasker`가 들고 `UiTreeSerializer`가 주입받는다. 유일한 예외는
   `debug` 전용 비교 실험(#203)이며, `local.properties`의 `DAVI_DISABLE_PRIVACY_MASKING`이나
   일회성 `-PdaviDisablePrivacyMasking`(속성 우선)으로 켠다. release는 상수 `false`에
