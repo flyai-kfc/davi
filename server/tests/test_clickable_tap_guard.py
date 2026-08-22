@@ -9,11 +9,9 @@
 셋 다 실패 모양이 가림 가드와 같다: 눌러도 아무 일이 없으니 화면이 그대로 → 정체 →
 **정체에서는 서버를 다시 부르지 않으므로**(#39) 회복 경로가 없다.
 
-`clickable=False`를 믿는 근거는 2026-08-22 프로브 실측이다 — clickable=False로 나간 요소
-205개 전수(배민·삼성런처·셰이드 120 + 디동 웹뷰 85)에서 "클릭을 받는데 이름이 없어 목록에서
-탈락한 조상"이 0건이었다. **웹뷰를 따로 잰 이유**는 거기서 role이 `WebView`·`TextView`·`View`
-정도로 뭉개져 `clickable`이 사실상 유일한 구별 축이기 때문이다(#311 코멘트). 자세한 근거는
-`reasoning._reject_unclickable_tap` docstring.
+`clickable=False`를 믿는 근거(2026-08-22 프로브 실측)와 경계는 여기 옮겨 적지 않는다 —
+`reasoning._reject_unclickable_tap` docstring 한 곳에 있다. 사본을 두면 근거가 갱신될 때
+한쪽만 낡는다(루트 CLAUDE.md).
 """
 
 from __future__ import annotations
@@ -164,6 +162,40 @@ def test_tap_on_editable_but_unclickable_input_passes():
         package_name="com.sampleapp",
         elements=[
             UiElement(node_id="n1", label="", role="View", clickable=False, editable=True),
+        ],
+    )
+    action = _guide(_action(ActionType.TAP, "n1"), screen)
+    assert action.target_node_id == "n1"
+
+
+def test_type_is_not_judged_by_the_tap_guard():
+    """`type`은 이 가드의 주제가 아니다 — 대상을 갖는 액션이라 경계를 고정해 둔다.
+
+    입력칸은 clickable=False로 올 수 있고(직렬화가 isClickable || isEditable로 방출한다),
+    tap 면제와 달리 여기는 애초에 판정 대상이 아니다.
+    """
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(
+                node_id="n1", label="검색어", role="EditText", clickable=False, editable=True
+            ),
+        ],
+    )
+    action = _guide(_action(ActionType.TYPE, "n1"), screen)
+    assert action.action_type is ActionType.TYPE
+
+
+def test_disabled_but_clickable_element_is_not_rejected():
+    """`enabled=False`는 이 가드가 보지 않는다(C20 — 텔레메트리 실측 뒤 별도 결정).
+
+    비활성 버튼도 clickable=True로 오므로 여기를 통과한다. 두 조건을 한 가드에 섞으면
+    오탐의 원인 축을 가를 수 없어서 일부러 남긴 경계다.
+    """
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(node_id="n1", label="다음", role="Button", clickable=True, enabled=False),
         ],
     )
     action = _guide(_action(ActionType.TAP, "n1"), screen)
