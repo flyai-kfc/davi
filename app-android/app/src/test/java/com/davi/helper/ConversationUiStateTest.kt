@@ -487,11 +487,16 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `카드는 확인 화면에서도 남는 공간만 갖는다`() {
-        // 확인쌍이 카드 아래 열 안에 있어(#196) 카드가 wrap_content면 긴 goal에서 버튼을
-        // 화면 밖으로 밀어낸다 — 확인 화면에서 버튼을 못 누르면 빠져나갈 길이 없다.
+    fun `카드가 남는 공간을 먹는 화면과 목표 확인만의 예외`() {
+        // 카드가 wrap_content면 긴 문구에서 아래 조작을 화면 밖으로 밀어낸다 — 그 화면에서
+        // 버튼을 못 누르면 빠져나갈 길이 없다.
+        //
+        // **최종 확인(GOAL)만 예외다**(2026-08-21). 거기서는 카드 최대 높이
+        // (`davi_question_card_max_height_confirm`)가 그 역할을 대신 지므로 카드가
+        // 내용대로 자라도 버튼 셋이 밀리지 않는다 — 상자가 문장만큼만 커지고 버튼이 따라
+        // 내려가는 것이 시안이다. 경고 쪽은 문구가 고정이라 종전대로 둔다.
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).cardQuestionFlexible)
         for (state in listOf(
-            ConversationUiState.Confirm("목표"),
             ConversationUiState.Confirm("목표", ConfirmKind.APP_AVAILABILITY_WARNING),
             ConversationUiState.Listening(),
             ConversationUiState.Clarifying(clarificationOutcome()),
@@ -502,5 +507,39 @@ class ConversationUiStateTest {
         // 카드가 혼자 남는 화면은 내용 높이로 선다.
         assertFalse(renderModelOf(ConversationUiState.Home()).cardQuestionFlexible)
         assertFalse(renderModelOf(ConversationUiState.Failed).cardQuestionFlexible)
+    }
+
+    @Test
+    fun `바로가기 행은 목표 확인에서 앱이 있을 때만 선다`() {
+        val app = ShortcutApp("com.kakao.talk", "카카오톡")
+
+        val shown = renderModelOf(ConversationUiState.Confirm("사진 보내기", shortcutApp = app))
+        assertTrue(shown.shortcutVisible)
+        assertEquals("카카오톡", shown.shortcutAppName)
+
+        // 앱이 안 좁혀졌으면 행을 세울 이름·아이콘이 없다.
+        assertFalse(renderModelOf(ConversationUiState.Confirm("사진 보내기")).shortcutVisible)
+
+        // **이름이 비면 「바로 가기 · 」가 뜬다.** 패키지명 매칭은 label 없이도 통과하므로
+        // 실제로 올 수 있는 값이다.
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Confirm("사진 보내기", shortcutApp = app.copy(label = "")),
+            ).shortcutVisible,
+        )
+    }
+
+    @Test
+    fun `앱 미확인 경고에는 바로가기 행이 없다`() {
+        // 사전 점검이 미확인이면 **열 수 있는지 모르는 앱**이다(#185). 여기서 행을 세우면
+        // 눌렀을 때 열릴지 안 열릴지 모르는 곳으로 어르신을 보낸다.
+        val model = renderModelOf(
+            ConversationUiState.Confirm(
+                "사진 보내기",
+                ConfirmKind.APP_AVAILABILITY_WARNING,
+                shortcutApp = ShortcutApp("com.kakao.talk", "카카오톡"),
+            ),
+        )
+        assertFalse(model.shortcutVisible)
     }
 }

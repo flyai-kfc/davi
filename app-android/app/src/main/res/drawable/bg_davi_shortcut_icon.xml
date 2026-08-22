@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  바로가기 행의 앱 아이콘 슬롯(#348). **비트맵은 기기에서 온다** — 앱마다 모양이 달라
+  (원형·스퀘어클·사각) 그대로 두면 줄이 안 맞는다. r12로 깎아 같은 실루엣으로 세운다.
+  깎는 것은 코드의 `clipToOutline`이 하고, 이 도형은 그 윤곽과 바탕을 준다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_button_on_primary" />
+    <corners android:radius="@dimen/davi_shortcut_icon_radius" />
+</shape>

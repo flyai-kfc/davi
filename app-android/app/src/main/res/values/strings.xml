@@ -166,7 +166,7 @@
     -->
     <string name="voice_home_title_desc">어려운 건 물어보세요</string>
     <string name="voice_home_subtitle">· 하나씩 알려드릴게요 ·</string>
-    <string name="voice_home_bubble">무엇을 도와드릴까요?</string>
+    <string name="voice_home_bubble">\'띠링\' 소리가 나면 말해주세요!</string>
     <string name="voice_home_caption">· 눌러서 말하기 ·</string>
     <string name="voice_home_mic_desc">말로 물어보기</string>
 
@@ -194,6 +194,33 @@
     <string name="conversation_guiding_bottom">계속 보시려면 뒤로가기를 눌러\n다비를 나가주세요</string>
     <string name="conversation_guiding_resume">기존 안내 이어서하기</string>
     <string name="conversation_guiding_stop">안내 종료</string>
+
+    <!--
+      MA-4 앱 바로가기 행(#348).
+
+      **`%1$s으로 바로 가기`가 아닌 이유는 조사다** — 앱 이름 받침에 따라 카카오톡**으로** /
+      메시지**로**로 갈려 **한 포맷으로는 절반이 틀린다.** `바로 가기 · %1$s`는 조사를 쓰지
+      않아 어느 이름에도 맞는다. 순서를 바꾸지 말 것.
+
+      **`%1$s에서 시작하기`를 시도했다가 되돌렸다**(2026-08-22 실기기). 조사 문제는 없고
+      버튼 (1)과 축도 맞았지만(둘 다 「어디서 시작할까」의 답), **배율 2.0에서 두 줄로
+      끊기면 그 이점이 사라진다** — 「지도에서 / 시작하기」로 갈려 한 덩어리로 안 읽힌다.
+      두 줄이 될 바에는 `바로 가기`가 앞에 서서 무엇을 하는 행인지 먼저 말하는 쪽이 낫다.
+    -->
+    <string name="conversation_shortcut_label">바로 가기 · %1$s</string>
+    <string name="conversation_shortcut_desc">%1$s 열기</string>
+    <!--
+      **캡션·구분선 문자열은 두지 않는다**(2026-08-22 리뷰). 「처음부터 안내해 드려요」는
+      버튼 (1)의 글자로 흡수됐고 「어떤 방법으로 시작할까요?」 구분선은 버튼이 셋으로
+      나란해지며 필요가 없어졌다(SCREENS.md MA-4 「캡션·구분선은 걷혔다 … 다시 넣지 않는다」).
+      리소스로만 남겨 두면 다음 사람이 「왜 안 붙였지」로 읽는다.
+    -->
+    <!--
+      바로가기를 눌렀는데 그 앱을 여기서 못 열 때(#348). **서버 오류가 아니다** — 직장·보안
+      폴더 프로필에만 있는 앱이거나, 사전 점검과 탭 사이에 지워진 경우다. 「하려는 일을
+      정리하지 못했어요」로 보내면 어르신이 자기 말이 잘못된 줄 안다.
+    -->
+    <string name="conversation_shortcut_unavailable">이 앱은 여기서 열 수 없어요</string>
     <!--
       메인 10 확인쌍의 **스크린리더 설명**(#197). 이 화면은 기존 확인쌍 컴포넌트를 재사용하는데
       **기본 설명이 정반대다** — 최종 확인 기준으로 x가 "처음부터 다시", o가 "이대로 안내 시작"인데
@@ -213,7 +240,21 @@
       된다. 아래 *_desc 둘은 오버레이 확인쌍(GD-3·4)이 계속 쓴다.
     -->
     <string name="conversation_confirm_reject">아니요</string>
-    <string name="conversation_confirm_accept">네, 맞아요</string>
+    <!--
+      MA-4 (1)의 라벨(#348). **캡슐쌍 시절의 「네, 맞아요」에서 바뀌었다** — 버튼이 셋이 되면서
+      「무엇을 승낙하는가」가 라벨 안에 들어와야 (2)의 바로가기와 갈린다.
+      (1)은 **홈 화면부터**, (2)는 **앱이 열린 다음 걸음부터** 안내한다.
+
+      **「네, 처음부터 시작하기」에서 다시 바꿨다**(2026-08-22, 시안 지적). 「처음부터」가
+      **무엇의 처음인지 말하지 않아** 「다시 말하라는 건가」로도 읽혔다. (1)의 첫 걸음이
+      실제로 홈 화면에서 앱 아이콘을 찾는 것이므로 그것을 그대로 적는다 — (2)와 나란히
+      놓으면 **「찾기」 대 「바로 가기」**로 무엇이 다른지가 글자에 다 있다.
+
+      **「네,」를 뺀다.** 가운데 (2)가 끼어 있어 이미 예/아니요가 아니라 3지선다다.
+      「네」가 붙으면 (1)만 정답처럼 보여, 「채워진 주 버튼을 쓰지 않는다」(우리가 권하는
+      자리가 아니다)와 어긋난다.
+    -->
+    <string name="conversation_confirm_accept">앱 찾기부터 시작하기</string>
     <string name="conversation_confirm_continue">계속할래요</string>
     <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
     <string name="conversation_confirm_reject_desc">처음부터 다시</string>

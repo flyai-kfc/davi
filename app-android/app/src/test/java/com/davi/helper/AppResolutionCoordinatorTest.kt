@@ -2,6 +2,7 @@ package com.davi.helper
 
 import java.io.IOException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -208,8 +209,36 @@ class AppResolutionCoordinatorTest {
         trace(),
     )
 
+    @Test
+    fun `바로가기로 꺼내는 앱은 LAUNCHABLE 하나이고 개인 프로필의 것이다`() {
+        fun match(status: AppCandidateAvailability, record: LaunchableAppRecord?) =
+            LaunchableAppMatch(AppCandidateResult("cand-1", status), record)
+
+        val personal = record("com.example", "예시")
+        val work = personal.copy(profileId = 11, isPersonalProfile = false)
+
+        // 좁혀진 하나를 그대로 꺼낸다 — 고르는 규칙이 새로 생기지 않는다.
+        assertEquals(
+            personal,
+            launchableAppOf(listOf(match(AppCandidateAvailability.LAUNCHABLE, personal))),
+        )
+
+        // 판정이 안 선 것에서는 앱을 꺼내지 않는다.
+        for (status in listOf(
+            AppCandidateAvailability.AMBIGUOUS,
+            AppCandidateAvailability.NOT_FOUND,
+            AppCandidateAvailability.UNKNOWN,
+        )) {
+            assertNull("$status 에서 앱이 나왔다", launchableAppOf(listOf(match(status, personal))))
+        }
+
+        // **직장·보안 폴더에만 있는 앱은 다비가 못 연다** — PackageManager로는 아이콘도
+        // 실행 인텐트도 안 나와 행이 빈 슬롯으로 서고 눌러도 안 열린다.
+        assertNull(launchableAppOf(listOf(match(AppCandidateAvailability.LAUNCHABLE, work))))
+    }
+
     private fun record(packageName: String, label: String) =
-        LaunchableAppRecord(packageName, "$packageName/.Main", label, 0)
+        LaunchableAppRecord(packageName, "$packageName/.Main", label, 0, isPersonalProfile = true)
 
     private fun trace() = ServerResponseTrace(null, null, null)
 

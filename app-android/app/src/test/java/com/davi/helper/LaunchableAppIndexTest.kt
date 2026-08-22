@@ -163,7 +163,13 @@ class LaunchableAppIndexTest {
         LaunchableAppSnapshot(records.toList(), complete = true, revision = 1)
 
     private fun record(packageName: String, label: String, component: String) =
-        LaunchableAppRecord(packageName, "$packageName/$component", label, profileId = 0)
+        LaunchableAppRecord(
+            packageName,
+            "$packageName/$component",
+            label,
+            profileId = 0,
+            isPersonalProfile = true,
+        )
 
     private class FakeSource(var query: LaunchableAppQuery) : LaunchableAppSource {
         private var callback: (() -> Unit)? = null

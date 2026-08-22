@@ -133,6 +133,19 @@
         <item name="android:textSize">@dimen/davi_type_guiding</item>
         <item name="android:textColor">@color/davi_text_secondary</item>
     </style>
+
+    <!--
+      MA-4 확인 버튼 셋의 라벨(#348). **셋이 같은 스타일이다** — 시안이 20 Pretendard/Bold
+      `color/text/primary`로 셋을 묶었다. 「아니요」만 색을 죽이지 않는다: 채움과 테두리가
+      이미 갈려 있어 글자까지 흐리면 **비활성으로 읽힌다.**
+
+      **Pretendard다**(부모 Body) — 버튼 라벨은 사용자가 누르는 대답이라 다비의 말이 아니다(C1).
+    -->
+    <style name="TextAppearance.Davi.ConfirmChoice" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_confirm_choice</item>
+        <item name="android:textColor">@color/davi_text_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
     <!--
       ON-2 권한 화면(#236). 카드 제목·본문과 버튼 라벨은 다비가 하는 말이라 Cafe24다(C1) —
       서체는 부모(Title.Davi)에서 온다. **안내 문구만 Pretendard**다. 시안이 그렇게 잡았다

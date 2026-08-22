@@ -6,6 +6,16 @@ enum class ConfirmKind {
 }
 
 /**
+ * MA-4 바로가기 행이 가리키는 앱(#348). **인덱스 계층의 `LaunchableAppRecord`를 그대로
+ * 들이지 않는다** — 그쪽은 internal이고, 렌더 모델은 기기 조회 결과가 아니라 화면이 아는
+ * 만큼만 들고 있어야 한다.
+ */
+data class ShortcutApp(
+    val packageName: String,
+    val label: String,
+)
+
+/**
  * 대화 화면(ConversationActivity)의 UI 상태와 렌더 모델.
  *
  * [VoiceDialogueSession.Stage]와 1:1이 아니다 — [Failed]는 잘못된 응답에서 오고,
@@ -56,6 +66,12 @@ sealed interface ConversationUiState {
     data class Confirm(
         val goal: String,
         val kind: ConfirmKind = ConfirmKind.GOAL,
+        /**
+         * 바로가기 행이 열 앱(#348). 사전 점검이 통과했을 때만 채워진다 —
+         * [ConfirmKind.APP_AVAILABILITY_WARNING]에서는 **열 수 있는지 모르는 상태**라
+         * null이고, 행도 뜨지 않는다.
+         */
+        val shortcutApp: ShortcutApp? = null,
     ) : ConversationUiState
 
     /**
@@ -128,6 +144,16 @@ data class ConversationRenderModel(
      * contentDescription으로만 줄 수 있었고 눈으로 읽는 사용자에게는 두 화면이 같아 보였다.
      */
     val confirmAcceptTextRes: Int = R.string.conversation_confirm_accept,
+    /**
+     * MA-4 앱 바로가기 행(#348). **「다비는 대신 버튼을 누르지 않는다」의 명시적 예외**로
+     * 팀 전원이 합의했다(2026-08-21) — 「앱을 굳이 열고 싶지 않다」는 니즈다.
+     * 누르는 것은 여전히 사용자이고, 다비는 앱을 열어 줄 뿐 그 안에서 아무것도 누르지 않는다.
+     *
+     * **사전 점검이 미확인이면 뜨지 않는다** — 열 수 있는지 모르는 앱으로 보내면 안 된다.
+     */
+    val shortcutVisible: Boolean = false,
+    /** 행 라벨에 넣을 앱 이름. 조사를 쓰지 않는 `바로 가기 · %1$s` 포맷의 인자다. */
+    val shortcutAppName: String = "",
     val closeVisible: Boolean = false,
     /**
      * 하단 파도(#132). **사용자가 말하는 동안에만** true — 다비가 말할 때는 다른 모양으로
@@ -261,9 +287,26 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             logoVisible = true,
             questionText = state.goal,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
-            cardQuestionFlexible = true,
+            // **카드가 남는 높이를 먹지 않는다**(2026-08-21). weight를 주면 문장이 짧아도
+            // 카드가 화면을 채우며 커져 상자가 늘 크다 — **상자는 문장만큼만 자라고 버튼이
+            // 그만큼 따라 내려가야** 한다.
+            //
+            // **버튼이 밀릴 걱정은 최대 높이가 받는다**(260dp, 실측 한계 278에서 18 남김).
+            // 그 전에는 wrap_content가 긴 goal에서 버튼을 화면 밖으로 밀어내서 weight로
+            // 막고 있었는데, 상한이 생기면서 그 이유가 사라졌다.
+            cardQuestionFlexible = false,
             confirmVisible = true,
             confirmAcceptTextRes = R.string.conversation_confirm_accept,
+            // **다비가 하는 말이라 분홍 글로우가 켜진다**(#176 「글로우가 화자를 가리킨다」).
+            // 최종 확인의 카드는 다비가 goal을 되읽어 주는 문장이다 — 시니어 카드가 숨어
+            // 화자 구분이 카드 하나로만 서므로 글로우가 없으면 누가 하는 말인지 안 갈린다.
+            cardGlowVisible = true,
+            // 앱을 못 찾았으면 사전 점검이 통과해도 행을 세울 이름·아이콘이 없다.
+            // **이름이 비어도 마찬가지다** — `LaunchableAppRecord.label`은 빈 문자열이 될 수
+            // 있고(패키지명 매칭은 label 없이도 LAUNCHABLE이 된다) 그대로 두면
+            // 「바로 가기 · 」가 뜬다. 어느 앱으로 가는지 모르는 행은 세우지 않는다.
+            shortcutVisible = state.shortcutApp?.label?.isNotBlank() == true,
+            shortcutAppName = state.shortcutApp?.label.orEmpty(),
         )
         ConfirmKind.APP_AVAILABILITY_WARNING -> ConversationRenderModel(
             logoVisible = true,

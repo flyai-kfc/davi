@@ -5,6 +5,7 @@ import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import java.text.Normalizer
@@ -16,6 +17,18 @@ internal data class LaunchableAppRecord(
     val componentName: String,
     val label: String,
     val profileId: Int,
+    /**
+     * 이 record가 **다비가 직접 열 수 있는 프로필**의 것인가(#348).
+     *
+     * index는 잠기지 않은 프로필을 모두 담으므로 직장·보안 폴더에만 있는 앱도
+     * `LAUNCHABLE`이 될 수 있다 — 개인 프로필에 같은 패키지가 있으면 `AMBIGUOUS`로
+     * 빠지니 **그 프로필에만 있을 때**가 남는다. 그때 `PackageManager`로는 아이콘도
+     * 실행 인텐트도 안 나온다(빈 슬롯 + 열리지 않는 행).
+     *
+     * **profileId만으로는 판별할 수 없다** — `UserHandle.hashCode()`라 되돌릴 수 없다.
+     * 그래서 UserHandle이 아직 손에 있는 조회 시점에 정한다.
+     */
+    val isPersonalProfile: Boolean,
 )
 
 internal sealed interface LaunchableAppQuery {
@@ -216,19 +229,44 @@ internal class AndroidLaunchableAppSource(context: Context) : LaunchableAppSourc
         componentName = componentName.flattenToString(),
         label = label?.toString().orEmpty(),
         profileId = profile.hashCode(),
+        isPersonalProfile = profile == Process.myUserHandle(),
     )
 }
 
+/**
+ * 후보 하나의 판정과, **그 판정이 [AppCandidateAvailability.LAUNCHABLE]일 때 좁혀진 앱**.
+ *
+ * `LAUNCHABLE`은 프로필+패키지가 **정확히 하나**로 좁혀졌을 때만 나온다(둘 이상이면
+ * `AMBIGUOUS`). 그래서 [record]는 새로 고른 것이 아니라 **이미 좁혀져 있던 것을 꺼낸
+ * 것**이다 — 고르는 규칙이 새로 생기지 않는다. 그 밖의 판정에서는 null이다.
+ */
+internal data class LaunchableAppMatch(
+    val result: AppCandidateResult,
+    val record: LaunchableAppRecord?,
+)
+
 internal object AppCandidateMatcher {
     fun match(plan: AppCandidatePlan, snapshot: LaunchableAppSnapshot): List<AppCandidateResult> =
-        plan.candidates.map { candidate ->
-            AppCandidateResult(candidate.candidateId, match(candidate, snapshot))
-        }
+        matchDetailed(plan, snapshot).map { it.result }
+
+    /**
+     * [match]와 같은 판정에 **좁혀진 앱을 함께** 돌려준다(#348 바로가기 행).
+     *
+     * `match`를 이것으로 감싸 **판정 경로를 하나로 둔다** — 둘로 갈리면 "행은 뜨는데
+     * 사전 점검은 미확인" 같은 어긋남이 조용히 생긴다.
+     */
+    fun matchDetailed(
+        plan: AppCandidatePlan,
+        snapshot: LaunchableAppSnapshot,
+    ): List<LaunchableAppMatch> = plan.candidates.map { candidate ->
+        val (availability, record) = match(candidate, snapshot)
+        LaunchableAppMatch(AppCandidateResult(candidate.candidateId, availability), record)
+    }
 
     private fun match(
         candidate: AppCandidate,
         snapshot: LaunchableAppSnapshot,
-    ): AppCandidateAvailability {
+    ): Pair<AppCandidateAvailability, LaunchableAppRecord?> {
         val packageMatches = snapshot.records.filter { it.packageName in candidate.packageNames }
         if (packageMatches.isNotEmpty()) return availabilityOf(packageMatches)
 
@@ -239,17 +277,19 @@ internal object AppCandidateMatcher {
         val labelMatches = snapshot.records.filter { normalizeLaunchableLabel(it.label) in aliases }
         if (labelMatches.isNotEmpty()) return availabilityOf(labelMatches)
         return if (snapshot.complete) {
-            AppCandidateAvailability.NOT_FOUND
+            AppCandidateAvailability.NOT_FOUND to null
         } else {
-            AppCandidateAvailability.UNKNOWN
+            AppCandidateAvailability.UNKNOWN to null
         }
     }
 
-    private fun availabilityOf(records: List<LaunchableAppRecord>): AppCandidateAvailability =
+    private fun availabilityOf(
+        records: List<LaunchableAppRecord>,
+    ): Pair<AppCandidateAvailability, LaunchableAppRecord?> =
         if (records.distinctBy { it.profileId to it.packageName }.size == 1) {
-            AppCandidateAvailability.LAUNCHABLE
+            AppCandidateAvailability.LAUNCHABLE to records.first()
         } else {
-            AppCandidateAvailability.AMBIGUOUS
+            AppCandidateAvailability.AMBIGUOUS to null
         }
 }
 

@@ -301,6 +301,7 @@
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_weight="176"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
@@ -336,13 +337,37 @@
             android:paddingBottom="@dimen/davi_card_padding_bottom_davi"
             android:background="@drawable/bg_davi_card">
 
+            <!--
+              **넘칠 때 스크롤한다는 것이 보여야 한다**(2026-08-22 실기기). 배율 2.0에서 긴
+              goal이 maxHeight에 닿으면 뒷부분이 잘린 것처럼 보인다 — 실제로는 스크롤되지만
+              **어르신이 「끌면 더 있다」를 알 길이 없다.** 잘린 화면은 「앱이 고장났다」로 읽힌다.
+
+              그래서 단서를 둘 준다. 아래쪽 글자를 흐리게 지우는 fading edge가 「여기서 끝이
+              아니다」를, 스크롤바가 얼마나 남았는지를 말한다. **fadeScrollbars를 끈다** —
+              기본값은 잠시 뒤 사라지는데, 그러면 처음 볼 때 이미 없다.
+
+              **넘치지 않으면 둘 다 안 나온다** — 짧은 문구에 군더더기가 붙지 않는다.
+            -->
+            <!--
+              **세로 정렬은 가운데가 아니라 위다**(2026-08-22 실기기). `center`는 넘치는 글자를
+              세로 가운데에 놓아 **위아래를 같이 자른다** — 배율 2.0에서 「서울에서 당진으로
+              이동하는 …」의 **첫 줄이 통째로 밀려 나갔다.** 문장 앞이 사라지는 것은 뒤가
+              잘리는 것보다 나쁘다: 어르신은 처음부터 읽지 스크롤을 되짚지 않는다.
+
+              **짧은 문구에서도 위가 맞다** — 카드가 wrap_content라 글자만큼만 자라고, 하한
+              176dp에 걸릴 때 글자가 배지 쪽에 붙는 것이 시안이다(2026-08-21 결정).
+              가로는 그대로 가운데다.
+            -->
             <TextView
                 android:id="@+id/card_question"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
+                android:gravity="center_horizontal|top"
                 android:lineSpacingMultiplier="1.3"
                 android:scrollbars="vertical"
+                android:fadeScrollbars="false"
+                android:requiresFadingEdge="vertical"
+                android:fadingEdgeLength="@dimen/davi_card_scroll_fade"
                 android:accessibilityLiveRegion="polite"
                 android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
                 android:fontFamily="@font/cafe24_ssurround"
@@ -501,12 +526,124 @@
             android:text="@string/conversation_guiding_bottom"
             android:textAppearance="@style/TextAppearance.Davi.GuidingBottom" />
 
-        <include
-            android:id="@+id/button_pair"
-            layout="@layout/view_davi_button_pair"
+        <!--
+          **최종 확인에서 남는 높이는 카드와 버튼 셋 사이가 먹는다**(2026-08-22).
+          카드는 배지에 앵커돼 위에서부터 자라고(`cardQuestionFlexible=false`), 버튼 셋은
+          **바닥에 붙어야** 한다 — (3)의 바닥선은 `docs/SCREENS.md` MA-4에서 **다른 화면의
+          마이크 바닥과 같은 선(프레임 572)**이라, 화면마다 그 선이 흔들리면 어르신이 매번
+          다른 자리를 눈으로 찾는다.
+
+          이 자리가 없으면 열이 위에서부터 쌓여 **남는 높이가 전부 (3) 아래에 남는다** —
+          실측으로 100dp 넘게 어긋났다. (2)가 숨을 때 (1)(3)이 96dp 위로 뛰는 것도 같은
+          뿌리였다. 여기가 슬랙을 먹으면 **(2)가 있든 없든 (3)의 바닥이 같은 선에 선다.**
+
+          davi_confirm_choice_margin_top(48)은 이제 **최소 간격**이다 — 슬랙이 0이어도
+          카드와 (1)이 붙지 않는다.
+        -->
+        <Space
+            android:id="@+id/space_confirm_flex"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone" />
+
+        <!--
+          MA-4 확인 버튼 셋(#348 · `docs/SCREENS.md` MA-4 「확인 버튼 셋」).
+          「아니요 / 네, 맞아요」 가로 캡슐쌍을 걷고 세로 셋으로 갔다. 그 컴포넌트
+          (`view_davi_button_pair.xml`)는 **쓰는 곳이 없어져 지웠다**(2026-08-22) — 메인 10과
+          GD-3/4는 별개인 `view_davi_confirm_pair`를 쓴다.
+
+          **가운데 (2)는 「다비는 대신 버튼을 누르지 않는다」의 명시적 예외다** — 팀 전원이
+          합의했다(2026-08-21). 누르는 것은 여전히 사용자이고, 다비는 **앱을 열어 줄 뿐**
+          그 안에서 아무것도 누르지 않는다. **예외의 범위는 「첫 실행 한 번」뿐이다** —
+          그 뒤로는 닫힌 루프가 평소대로 화면을 읽어 다음 한 걸음을 안내만 한다.
+          「어차피 앱도 열어 줬으니 한 걸음만 더」가 원칙이 무너지는 전형적인 경로다.
+
+          **채워진 주 버튼이 없다.** 셋 다 흰/회색이다 — 최종 확인은 우리가 권하는 자리가
+          아니라 사용자가 고르는 자리다. #A50014 채움을 다시 넣으면 그쪽을 누르라는 화면이 된다.
+        -->
+        <TextView
+            android:id="@+id/confirm_accept"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_confirm_choice_margin_top"
+            android:gravity="center"
+            android:background="@drawable/bg_davi_confirm_choice"
+            android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice"
+            android:visibility="gone" />
+
+        <!--
+          (2) 앱 바로가기. **사전 점검이 미확인이면 이것만 숨고 (1)(3)은 남는다** —
+          열 수 있는지 모르는 앱으로 보내면 안 된다(#185). 판단은 ConversationUiState의
+          shortcutVisible이 한다.
+        -->
+        <LinearLayout
+            android:id="@+id/shortcut_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_button_pair_margin_top" />
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_confirm_choice_gap"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
+            android:background="@drawable/bg_davi_confirm_choice"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/shortcut_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:background="@drawable/bg_davi_shortcut_icon"
+                android:scaleType="centerCrop"
+                android:importantForAccessibility="no" />
+
+            <!--
+              라벨은 **아이콘 우측에서 시작하는 좌측 정렬**이다(시안 실측) — 앱 이름 길이가
+              제각각이라 중앙 정렬이면 아이콘과의 간격이 앱마다 흔들린다.
+
+              **두 줄까지 흘린다**(2026-08-22 실기기). 한 줄 ellipsize로 두면 배율 2.0에서
+              「바로 가기 · 지도」가 **「바로 가기 · …」로 잘려 앱 이름이 통째로 사라진다** —
+              라벨에 남는 폭이 198dp인데 글자가 40dp까지 커지기 때문이다. **어디로 가는지가
+              사라지는 것이 이 행에서 제일 나쁜 잘림**이라, 잘리는 대신 행이 자란다.
+
+              카드와 같은 우선순위다 — **카드는 스크롤이 받아 정보가 안 사라지지만 라벨은
+              잘리면 그냥 없어진다.** 그래서 자리가 모자라면 카드가 양보한다.
+            -->
+            <TextView
+                android:id="@+id/shortcut_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="@dimen/davi_shortcut_inset"
+                android:layout_marginRight="@dimen/davi_shortcut_inset"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_chevron_width"
+                android:layout_height="@dimen/davi_shortcut_chevron_height"
+                android:src="@drawable/ic_davi_chevron_right"
+                android:scaleType="fitCenter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/confirm_reject"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_confirm_choice_gap"
+            android:layout_marginBottom="@dimen/davi_confirm_choices_margin_bottom"
+            android:gravity="center"
+            android:background="@drawable/bg_davi_confirm_choice_quiet"
+            android:text="@string/conversation_confirm_reject"
+            android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice"
+            android:visibility="gone" />
 
         <Space
             android:id="@+id/space_home_mid"

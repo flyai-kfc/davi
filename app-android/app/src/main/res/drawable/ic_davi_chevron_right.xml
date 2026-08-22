@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-4 (2) 오른쪽 셰브런(#348). Lucide `chevron-right`.
+
+  **뷰포트를 렌더 크기와 1:1로 맞춘다.** 시안 상자 8×20은 **객체 자기 크기**라 x1.2로
+  9.6×24dp가 되는데, 뷰포트를 8×20으로 두면 그리는 쪽이 1.2배로 늘리면서 **획까지 2.4dp로
+  굵어진다.** 선 두께는 환산 규칙에서 1:1이라 그러면 안 된다 — 뷰포트를 미리 x1.2로 키우고
+  획을 2로 두면 렌더 배율이 1이 되어 두께가 그대로 간다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="9.6dp"
+    android:height="24dp"
+    android:viewportWidth="9.6"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M1.2,1.2 L8.4,12 L1.2,22.8"
+        android:strokeColor="@color/davi_text_secondary"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
