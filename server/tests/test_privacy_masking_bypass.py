@@ -51,7 +51,7 @@ class _CapturingLlmClient(LlmClient):
 def _request() -> NextStepRequest:
     return NextStepRequest(
         goal="문의하기",
-        screen=Screen(elements=[UiElement(node_id="n1", label=_PII_LABEL)]),
+        screen=Screen(elements=[UiElement(node_id="n1", label=_PII_LABEL, clickable=True)]),
         steps=[
             GuideStep(
                 instruction=_PII_INSTRUCTION,

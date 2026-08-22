@@ -119,6 +119,25 @@ FOCUSED_INPUT_KEYBOARD_CLOSED = (
 #
 # **관측 사실과 대상 배제까지만 쓰고 "그러니 무엇을 눌러라"는 넣지 않는다.** 문구 규칙이 값을
 # 끌어당겨 원래 맞던 값을 틀리게 만든 전례가 있다(C17 · #109).
+
+# tap 대상의 선택 범위(C20 · #311). 위 C18 문장들과 같은 규칙을 따르지만 대상은 행동 상태가
+# 아니라 `clickable`이다. 금지형("False는 누르지 마라")이 아니라 **선택 범위형**으로
+# 쓴다 — 모든 요소 줄에 반복되던 clickable 표기를 True일 때만 싣는 표기와 한 쌍이다.
+# 못 누르는 요소를 목록에서 빼지 않는 이유: 화면의 상황 설명이 대부분 거기 실려 있고,
+# 완료 검증(_evidence_quotes_screen)이 그 label 인용을 요구한다. 빼면 둘 다 죽는다.
+CLICKABLE_TARGET_INSTRUCTION = (
+    "clickable=True로 표시된 요소와 editable=True인 입력칸만 눌렀을 때 반응합니다. "
+    "tap의 대상은 그중에서 고르세요. "
+    "둘 다 아닌 요소는 누르라고 안내하지 말고, 화면 상황을 파악하는 데만 쓰세요."
+)
+# 전부 못 누르는 화면(스플래시·로딩)의 관측 사실과 대상 배제까지만 쓰고, "그러니 무엇을
+# 하라"는 넣지 않는다 — 문구가 값을 끌어당긴 전례가 있다(C17 · #109). 이 화면에서 무엇을
+# 답할지는 계약에 "진행 불가"가 없어 아직 열려 있다(#370의 `wait` 액션 · C6 개정,
+# server/CLAUDE.md 보류 항목). 그때까지 이 문장은 tap을 닫을 뿐 대안을 주지 못한다.
+NO_CLICKABLE_ELEMENT_NOTICE = (
+    "지금 화면에는 눌렀을 때 반응하는 요소(clickable=True 표시 또는 입력칸)가 없습니다. "
+    "어떤 요소든 누르라고 안내하지 마세요."
+)
 DISABLED_ELEMENT_INSTRUCTION = (
     "enabled=False로 적힌 요소는 지금 누를 수 없는 상태입니다. 그 요소를 누르라고 안내하지 말고, "
     "누를 수 있게 되는 데 필요한 다른 단계를 고르세요."
@@ -195,7 +214,7 @@ def build_prompt(req: NextStepRequest) -> str:
 
     context = (
         f"{_page_context(req)}{_scroll_context(req)}{_end_instruction(req)}"
-        f"{_swipe_legend(req)}{_input_context(req)}{_state_context(req)}"
+        f"{_swipe_legend(req)}{_input_context(req)}{_clickable_context(req)}{_state_context(req)}"
     )
     return f"""당신은 스마트폰 사용을 돕는 안내 도우미입니다.
 사용자 대신 화면을 누르거나 조작하지 말고, 사용자가 다음에 할 행동 딱 한 가지만 안내하세요.
@@ -349,6 +368,23 @@ def _screen_line(req: NextStepRequest) -> str:
     package = req.screen.package_name or "알 수 없음"
     title = (req.screen.window_title or "").strip()
     return f"현재 화면: {title!r} ({package})" if title else f"현재 앱 패키지: {package}"
+
+
+def _clickable_context(req: NextStepRequest) -> str:
+    """tap 대상의 선택 범위 한 줄(C20 · #311). 요소 목록과 같은 것을 본다.
+
+    tap 후보는 clickable=True **또는 editable=True**다 — 직렬화가 isClickable || isEditable로
+    요소를 방출하므로 clickable=False인 입력칸이 있을 수 있고, 키보드가 닫힌 입력칸은
+    [FOCUSED_INPUT_KEYBOARD_CLOSED]가 tap을 명시적으로 안내한다. 가드의 면제와 같은 기준이다
+    (`reasoning._reject_unclickable_tap`).
+
+    `clickable`은 계약 초기부터 non-null bool이라(낡은 앱도 항상 보낸다) 미관측 분기가
+    없다 — C10의 세 상태 규약 대상이 아니다. 그래서 두 문장 중 하나는 항상 실린다.
+    """
+
+    if any(element.clickable or element.editable for element in _visible_elements(req)):
+        return f"{CLICKABLE_TARGET_INSTRUCTION}\n"
+    return f"{NO_CLICKABLE_ELEMENT_NOTICE}\n"
 
 
 def _state_context(req: NextStepRequest) -> str:
@@ -545,10 +581,14 @@ def _format_element(element: UiElement) -> str:
         f"id={element.node_id}",
         f"label={element.label!r}",
         f"role={element.role!r}",
-        f"clickable={element.clickable}",
-        f"editable={element.editable}",
-        f"focused={element.focused}",
     ]
+    # clickable은 True일 때만 싣는다(C20 · #311). 모든 줄에 반복되면 값 하나 다른 줄이
+    # 묻힌다 — 실측에서 모델이 50줄 중 한 줄의 False를 넘겨 그 요소를 tap 대상으로 골랐다.
+    # 표시가 곧 "tap 후보"라는 뜻은 [CLICKABLE_TARGET_INSTRUCTION]이 말해 준다.
+    if element.clickable:
+        details.append("clickable=True")
+    details.append(f"editable={element.editable}")
+    details.append(f"focused={element.focused}")
     # 상태는 **정보가 있을 때만** 싣는다. 요소가 최대 200개라 `enabled=True`·`selected=False`처럼
     # 기본값인 줄까지 붙이면 토큰이 요소 수만큼 불어난다. 미관측(None)에는 침묵한다(C10).
     if element.enabled is False:
