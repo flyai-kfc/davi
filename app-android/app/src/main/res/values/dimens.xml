@@ -372,7 +372,7 @@
     <dimen name="davi_shortcut_icon_size">48dp</dimen>
     <dimen name="davi_shortcut_icon_radius">12dp</dimen>
     <dimen name="davi_shortcut_inset">14dp</dimen>
-    <dimen name="davi_shortcut_chevron_width">10dp</dimen>
+    <dimen name="davi_shortcut_chevron_width">9.6dp</dimen>
     <dimen name="davi_shortcut_chevron_height">24dp</dimen>
 
     <!--

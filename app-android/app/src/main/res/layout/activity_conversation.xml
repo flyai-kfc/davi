@@ -548,7 +548,7 @@
                 android:layout_width="@dimen/davi_shortcut_icon_size"
                 android:layout_height="@dimen/davi_shortcut_icon_size"
                 android:background="@drawable/bg_davi_shortcut_icon"
-                android:scaleType="fitCenter"
+                android:scaleType="centerCrop"
                 android:importantForAccessibility="no" />
 
             <!--

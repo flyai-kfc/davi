@@ -1161,6 +1161,10 @@ class ConversationActivity : AppCompatActivity() {
         shownShortcutPackage = app.packageName
         // 앱마다 아이콘 모양이 달라(원형·스퀘어클·사각) 그대로 두면 줄이 안 맞는다.
         // 배경 도형의 윤곽으로 깎아 같은 실루엣으로 세운다.
+        //
+        // **`centerCrop`이어야 슬롯을 채운다.** 적응형 아이콘은 108dp 캔버스에 25%가 여백이고
+        // 그 여백까지 맞추는 `fitCenter`로 두면 아이콘이 슬롯 안에서 작게 앉는다 — 런처가
+        // 하는 것처럼 가운데를 잘라 채운 뒤 r12로 깎는다.
         binding.shortcutIcon.clipToOutline = true
         binding.shortcutIcon.setImageDrawable(
             runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull(),
