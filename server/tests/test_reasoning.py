@@ -108,7 +108,9 @@ def test_second_pass_does_not_mutate_the_request():
     original = "hong@example.com 으로 보내세요."
     req = NextStepRequest(
         goal="문의하기",
-        screen=Screen(elements=[UiElement(node_id="n1", label="문의 hong@example.com", clickable=True)]),
+        screen=Screen(
+            elements=[UiElement(node_id="n1", label="문의 hong@example.com", clickable=True)]
+        ),
         steps=[_step(original)],
     )
 

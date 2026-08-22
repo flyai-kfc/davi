@@ -10,7 +10,9 @@
 **정체에서는 서버를 다시 부르지 않으므로**(#39) 회복 경로가 없다.
 
 `clickable=False`를 믿는 근거는 2026-08-22 프로브 실측이다 — clickable=False로 나간 요소
-120개 전수에서 "클릭을 받는데 목록에서 탈락한 조상"이 0건. 자세한 근거는
+205개 전수(배민·삼성런처·셰이드 120 + 디동 웹뷰 85)에서 "클릭을 받는데 이름이 없어 목록에서
+탈락한 조상"이 0건이었다. **웹뷰를 따로 잰 이유**는 거기서 role이 `WebView`·`TextView`·`View`
+정도로 뭉개져 `clickable`이 사실상 유일한 구별 축이기 때문이다(#311 코멘트). 자세한 근거는
 `reasoning._reject_unclickable_tap` docstring.
 """
 
@@ -157,7 +159,10 @@ def test_done_is_not_judged_by_the_tap_guard():
 
 
 def test_tap_on_page_dot_is_rejected():
-    """page_dot은 직렬화가 clickable=false로 내보낸다 — 정보원이지 탭 대상이 아니다(HANDOFF §3-3)."""
+    """page_dot은 직렬화가 clickable=false로 내보낸다.
+
+    정보원이지 탭 대상이 아니라는 결정(HANDOFF §3-3)과 같은 방향이다.
+    """
     screen = Screen(
         package_name="com.sec.android.app.launcher",
         elements=[
@@ -200,7 +205,9 @@ def test_prompt_judges_clickability_from_the_visible_list():
     screen = Screen(
         package_name="com.sampleapp",
         elements=[
-            UiElement(node_id="n1", label="안내문", role="TextView", clickable=False, obscured=False),
+            UiElement(
+                node_id="n1", label="안내문", role="TextView", clickable=False, obscured=False
+            ),
             UiElement(node_id="n2", label="치킨", role="Button", clickable=True, obscured=True),
         ],
     )
