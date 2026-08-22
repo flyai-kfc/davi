@@ -336,40 +336,44 @@
       대칭이 되도록 잡은 값이라 **행이 있어야 성립한다** — 행 없이 58만 넣으면 버튼쌍만
       올라가고 아래가 빈다. **#196을 근거로 86으로 되돌리지 않는다.**
 
-      **#265의 「세로 거리 넷」에서 이 값은 빠진다** — 개정 규칙(1:1)이 아니라 시안이 정했다.
-      다만 58 = 48프레임 x1.2라 개정 규칙과는 어긋나므로, 이 화면은 프레임 좌표로 잡은
-      묶음이라 통째로 x1.2로 옮긴다는 것을 여기 적어 둔다(실기기 확인 대상).
+      **48이다 — 세로 거리는 1:1이다**(2026-08-19 개정 규칙). 프레임 48이 곧 48dp다.
+      한때 58(=48 x1.2)로 뒀는데 **세로 거리에 x1.2를 잘못 건 것**이었다(#265가 겨냥하는
+      그 함정이다).
+
+      **#265의 「세로 거리 넷」에서 이 값은 빠진다** — 개정 규칙이 아니라 시안이 정했고,
+      마침 둘이 같은 값이다. **#196을 근거로 86으로 되돌리지 않는다** — 전제였던
+      「화면 아래는 비운다」가 확인 버튼 셋으로 깨졌다.
     -->
-    <dimen name="davi_button_pair_margin_top">58dp</dimen>
+    <dimen name="davi_button_pair_margin_top">48dp</dimen>
 
     <!--
-      MA-4 앱 바로가기 블록(#348). 시안 세로 리듬을 그대로 옮긴 값이다 —
-      카드 108~308 → 48 → 버튼쌍 356~416 → 8 → 캡션 424~441 → 28 → 구분 469~486 →
-      26 → 행 512~572 → 하단 48. 프레임 값에 x1.2다(위 주석 참고).
+      MA-4 확인 버튼 셋(#348 · 값은 `docs/SCREENS.md` MA-4 「확인 버튼 셋」 절).
+      시안 세로 리듬 — 카드 120~296 → 48 → (1) 344~404 → 24 → (2) 428~488 → 24 →
+      (3) 512~572 → 하단 48.
 
-      행 높이 72dp는 D1(터치 타깃 56dp)을 넉넉히 넘는다.
+      **48·24는 세로 거리라 1:1로 그대로 dp다**(2026-08-19 개정 규칙). 버튼 높이 60은
+      **객체의 자기 크기**라 x1.2 = 72dp이고 D1(56dp)을 넘는다. 반지름 r12 · 테두리 w2 ·
+      글자 20은 1:1이다. **24는 D2 다섯 단 안이고 48은 밖이다** — 버튼 사이 24만 단 사이
+      간격이고 카드→버튼·하단의 48은 **구역 여백**이라 단을 따르지 않는다.
+      하단 48은 버튼 바닥을 **다른 화면의 마이크 바닥과 같은 선**에 두기 때문이다.
     -->
-    <dimen name="davi_confirm_caption_margin_top">10dp</dimen>
-    <dimen name="davi_confirm_divider_margin_top">34dp</dimen>
-    <dimen name="davi_shortcut_row_margin_top">31dp</dimen>
-    <dimen name="davi_shortcut_row_margin_bottom">58dp</dimen>
-    <dimen name="davi_shortcut_row_height">72dp</dimen>
-    <!-- 반지름·선·글자는 1:1이다(환산 규칙) — 시안 r16·r12·1px·12/14/20을 그대로 쓴다. -->
-    <dimen name="davi_shortcut_row_radius">16dp</dimen>
-    <dimen name="davi_shortcut_row_elevation">6dp</dimen>
+    <dimen name="davi_confirm_choice_gap">24dp</dimen>
+    <dimen name="davi_confirm_choices_margin_bottom">48dp</dimen>
+    <dimen name="davi_confirm_choice_height">72dp</dimen>
+    <dimen name="davi_confirm_choice_radius">12dp</dimen>
+    <dimen name="davi_confirm_choice_stroke">2dp</dimen>
+    <dimen name="davi_type_confirm_choice">20sp</dimen>
+    <!--
+      (2) 안쪽 기하. 아이콘 슬롯은 **객체 자기 크기**라 40 x1.2 = 48dp이고, 가로 거리는
+      x1.2다(시안 프레임 폭 300 → 기기 360dp). 시안 x36 → 36-24(버튼 좌변) = 버튼 기준 12,
+      x1.2로 **14dp**. 라벨은 아이콘 우측 12(x1.2로 14dp)에서 시작하는 **좌측 정렬**이다 —
+      앱 이름 길이가 제각각이라 중앙이면 아이콘과의 간격이 앱마다 흔들린다(시안 실측).
+    -->
     <dimen name="davi_shortcut_icon_size">48dp</dimen>
     <dimen name="davi_shortcut_icon_radius">12dp</dimen>
-    <!-- 가로 거리는 x1.2다 — 시안 프레임 폭 300을 기기 360dp로 옮긴 비율이 가로에서 정확하다. -->
-    <dimen name="davi_shortcut_side_padding">19dp</dimen>
+    <dimen name="davi_shortcut_inset">14dp</dimen>
     <dimen name="davi_shortcut_chevron_width">10dp</dimen>
     <dimen name="davi_shortcut_chevron_height">24dp</dimen>
-    <dimen name="davi_divider_label_gap">12dp</dimen>
-    <dimen name="davi_divider_thickness">1dp</dimen>
-    <dimen name="davi_divider_dash_on">1dp</dimen>
-    <dimen name="davi_divider_dash_off">4dp</dimen>
-    <dimen name="davi_type_confirm_caption">12sp</dimen>
-    <dimen name="davi_type_divider_label">14sp</dimen>
-    <dimen name="davi_type_shortcut_label">20sp</dimen>
 
     <!--
       메인 9 안내 중 화면과 메인 10 종료 확인 모달(#197). 기하는 배율 1.2로 환산하고

@@ -284,11 +284,13 @@ class ConversationActivity : AppCompatActivity() {
             cancelVoiceDialogue()
             setState(ConversationUiState.Home())
         }
-        binding.buttonPair.btnPairReject.setOnClickListener {
+        // MA-4 확인 버튼 셋(#348). (3)은 안내하지 않고 홈으로, (1)은 홈 화면부터 안내,
+        // (2)는 앱을 열고 그 앱 안 다음 걸음부터 안내한다.
+        binding.confirmReject.setOnClickListener {
             cancelVoiceDialogue()
             setState(ConversationUiState.Home())
         }
-        binding.buttonPair.btnPairAccept.setOnClickListener { onConfirmAccepted() }
+        binding.confirmAccept.setOnClickListener { onConfirmAccepted() }
         binding.shortcutRow.setOnClickListener { openShortcut() }
         // 메인 9 — **"이어서하기"는 상태를 바꾸지 않는다.** 앱에서 나가기만 하고 안내는
         // 그대로 돈다. 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이고, 이 버튼은
@@ -662,11 +664,12 @@ class ConversationActivity : AppCompatActivity() {
         } else if (!model.stopConfirmVisible) {
             stopConfirmAnnounced = false
         }
-        binding.buttonPair.root.isVisible(model.confirmVisible)
-        // 확인 화면이 둘이라 ○의 글자가 화면마다 다르다(#185/#194 + #196).
+        binding.confirmAccept.isVisible(model.confirmVisible)
+        binding.confirmReject.isVisible(model.confirmVisible)
+        // 확인 화면이 둘이라 (1)의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라
         // 스크린 리더에게만 구분을 줄 수 있었는데, 이제 글자가 있어 눈으로도 갈린다.
-        binding.buttonPair.btnPairAccept.setText(model.confirmAcceptTextRes)
+        binding.confirmAccept.setText(model.confirmAcceptTextRes)
         renderShortcutRow(model)
         binding.btnClose.isVisible(model.closeVisible)
 
@@ -1135,16 +1138,14 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     /**
-     * MA-4 앱 바로가기 블록(#348). 캡션·구분·행이 **함께 뜨고 함께 숨는다** — 셋이 하나의
-     * 제안이라 따로 놀면 "구분선 아래가 빈" 화면이 된다.
+     * MA-4 확인 버튼 (2) 앱 바로가기(#348). **(1)(3)과 달리 이것만 숨을 수 있다** —
+     * 사전 점검이 미확인이면 열 수 있는지 모르는 앱이라 보내지 않는다(#185).
      *
      * **아이콘은 그릴 때마다 조회하지 않는다** — 같은 앱이면 이미 붙은 것을 그대로 둔다.
      * render는 상태가 바뀔 때마다 여러 번 돌고, `PackageManager` 조회는 그때마다 할 일이
      * 아니다.
      */
     private fun renderShortcutRow(model: ConversationRenderModel) {
-        binding.confirmCaption.isVisible(model.shortcutVisible)
-        binding.shortcutDivider.isVisible(model.shortcutVisible)
         binding.shortcutRow.isVisible(model.shortcutVisible)
         if (!model.shortcutVisible) {
             shownShortcutPackage = null

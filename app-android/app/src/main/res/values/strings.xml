@@ -219,7 +219,12 @@
       된다. 아래 *_desc 둘은 오버레이 확인쌍(GD-3·4)이 계속 쓴다.
     -->
     <string name="conversation_confirm_reject">아니요</string>
-    <string name="conversation_confirm_accept">네, 맞아요</string>
+    <!--
+      MA-4 (1)의 라벨(#348). **캡슐쌍 시절의 「네, 맞아요」에서 바뀌었다** — 버튼이 셋이 되면서
+      「무엇을 승낙하는가」가 라벨 안에 들어와야 (2)의 바로가기와 갈린다.
+      (1)은 **홈 화면부터**, (2)는 **앱이 열린 다음 걸음부터** 안내한다.
+    -->
+    <string name="conversation_confirm_accept">네, 처음부터 시작하기</string>
     <string name="conversation_confirm_continue">계속할래요</string>
     <string name="conversation_confirm_accept_desc">이대로 안내 시작</string>
     <string name="conversation_confirm_reject_desc">처음부터 다시</string>

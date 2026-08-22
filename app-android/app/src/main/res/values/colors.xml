@@ -23,8 +23,22 @@
     -->
     <color name="davi_text_secondary">#383838</color>
 
-    <!-- MA-4 구분 점선(#348). 시안 `#A56E85` 55% — 알파 0x8C가 55%다. 장식이라 A2 대상이 아니다. -->
-    <color name="davi_divider_dash">#8CA56E85</color>
+    <!--
+      MA-4 확인 버튼 (3)「아니요」의 테두리(#348 · 시안 `color/border/quiet`).
+      **`davi_text_secondary`와 같은 프리미티브**(grey/700)라 값을 복제하지 않고 그것을 가리킨다 —
+      B1 2층 구조에서 새 프리미티브가 아니라 시맨틱 별칭이다.
+
+      **「비활성」이나 「회색」으로 이름 붙이지 않는다** — 실제로 누를 수 있는 자리다.
+      「눌러도 되지만 우리가 권하진 않는 것」의 테두리다.
+    -->
+    <color name="davi_border_quiet">@color/davi_text_secondary</color>
+
+    <!--
+      MA-4 확인 버튼 (1)(2)의 흰 채움(#348 · 시안 `color/surface/raised`).
+      배경 메시 위로 떠오르는 표면이라 `davi_bg`(화면 바탕)·`davi_overlay_box`(다른 앱 위)와
+      쓰임이 다르다 — 이름을 갈라 두면 어느 흰색인지 고민할 일이 없다.
+    -->
+    <color name="davi_surface_raised">#FFFFFF</color>
     <color name="davi_bg">#FFFFFF</color>
     <color name="davi_surface">#F4F4F6</color>
     <color name="davi_border">#D9D9D9</color>
