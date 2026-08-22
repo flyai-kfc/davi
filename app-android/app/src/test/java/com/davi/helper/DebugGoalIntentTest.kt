@@ -18,6 +18,75 @@ class DebugGoalIntentTest {
     private fun b64(text: String): String =
         Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
 
+    private fun req(autoStart: Boolean = false) =
+        DebugGoalRequest("알람 맞춰줘", autoStart, DebugGoalSource.B64)
+
+    // --- decide: 화면이 무엇을 할지. MainActivity 안에 두면 한 갈래도 검증되지 않는다 ---
+
+    @Test
+    fun `목표가 아예 안 실린 경우와 못 읽은 경우를 가른다`() {
+        // autostart만 던졌거나 키를 오타낸 경우가 "못 읽었다"로 찍히면 볼 곳이 달라진다.
+        assertEquals(
+            DebugGoalOutcome.NO_GOAL,
+            DebugGoalIntent.decide(null, goalExtraPresent = false, sessionActive = false, voiceBusy = false, canStartGuide = true),
+        )
+    }
+
+    @Test
+    fun `못 읽은 목표는 입력칸도 안 채운다`() {
+        val o = DebugGoalIntent.decide(null, goalExtraPresent = true, sessionActive = false, voiceBusy = false, canStartGuide = true)
+        assertEquals(DebugGoalOutcome.UNDECODABLE, o)
+        assertEquals(false, o.fillsField)
+        assertEquals(false, o.starts)
+    }
+
+    @Test
+    fun `세션 중에는 입력칸을 건드리지 않는다`() {
+        // 비활성 입력칸의 글자만 바뀌면 화면이 "지금 무엇을 안내 중인지"를 거짓말한다.
+        val o = DebugGoalIntent.decide(req(autoStart = true), goalExtraPresent = true, sessionActive = true, voiceBusy = false, canStartGuide = true)
+        assertEquals(DebugGoalOutcome.SESSION_ACTIVE, o)
+        assertEquals(false, o.fillsField)
+    }
+
+    @Test
+    fun `음성 대화 중에도 건드리지 않는다`() {
+        val o = DebugGoalIntent.decide(req(), goalExtraPresent = true, sessionActive = false, voiceBusy = true, canStartGuide = true)
+        assertEquals(DebugGoalOutcome.VOICE_BUSY, o)
+        assertEquals(false, o.fillsField)
+    }
+
+    @Test
+    fun `autostart가 없으면 채우기만 한다`() {
+        val o = DebugGoalIntent.decide(req(autoStart = false), goalExtraPresent = true, sessionActive = false, voiceBusy = false, canStartGuide = true)
+        assertEquals(DebugGoalOutcome.AUTOSTART_OFF, o)
+        assertEquals(true, o.fillsField)
+        assertEquals(false, o.starts)
+    }
+
+    @Test
+    fun `접근성이 준비 안 됐으면 채우되 시작하지 않는다`() {
+        val o = DebugGoalIntent.decide(req(autoStart = true), goalExtraPresent = true, sessionActive = false, voiceBusy = false, canStartGuide = false)
+        assertEquals(DebugGoalOutcome.ACCESSIBILITY_NOT_READY, o)
+        assertEquals(true, o.fillsField)
+        assertEquals(false, o.starts)
+    }
+
+    @Test
+    fun `준비됐고 autostart면 시작한다`() {
+        val o = DebugGoalIntent.decide(req(autoStart = true), goalExtraPresent = true, sessionActive = false, voiceBusy = false, canStartGuide = true)
+        assertEquals(DebugGoalOutcome.START, o)
+        assertEquals(true, o.starts)
+        assertEquals("ok", o.reason)
+    }
+
+    @Test
+    fun `세션 중이면 접근성 준비 여부보다 먼저 걸린다`() {
+        // 순서가 뒤집히면 "세션 중인데 접근성 미준비"가 accessibility_not_ready로 찍혀
+        // 로그를 읽는 쪽이 엉뚱한 곳을 본다.
+        val o = DebugGoalIntent.decide(req(autoStart = true), goalExtraPresent = true, sessionActive = true, voiceBusy = true, canStartGuide = false)
+        assertEquals(DebugGoalOutcome.SESSION_ACTIVE, o)
+    }
+
     @Test
     fun `base64 한글을 그대로 돌려준다`() {
         val parsed = DebugGoalIntent.parse(b64("알람 맞춰줘"), null, autoStart = false)

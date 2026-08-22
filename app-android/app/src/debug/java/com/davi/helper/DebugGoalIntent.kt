@@ -6,6 +6,21 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
+/**
+ * 인텐트 하나에 대한 판정. [fillsField]는 입력칸을 채우는가다 — 채우지 않는 갈래는 화면이
+ * 거짓말하지 않게 하려는 것이고, 이유는 [reason]으로 logcat에 남는다.
+ */
+enum class DebugGoalOutcome(val reason: String, val fillsField: Boolean, val starts: Boolean) {
+    /** 이 진입점을 겨냥했는데(예: autostart만) 목표 자체가 없다. 키 오타가 여기로 온다. */
+    NO_GOAL("no_goal", false, false),
+    UNDECODABLE("undecodable", false, false),
+    SESSION_ACTIVE("session_active", false, false),
+    VOICE_BUSY("voice_busy", false, false),
+    AUTOSTART_OFF("autostart_off", true, false),
+    ACCESSIBILITY_NOT_READY("accessibility_not_ready", true, false),
+    START("ok", true, true),
+}
+
 /** 목표가 어느 extra로 들어왔는가. 잘린 목표를 사후에 알아보려면 이게 로그에 남아야 한다. */
 enum class DebugGoalSource { B64, RAW }
 
@@ -54,8 +69,16 @@ object DebugGoalIntent {
     const val EXTRA_GOAL_RAW = "davi.goal"
     const val EXTRA_AUTOSTART = "davi.autostart"
 
-    /** 목표 extra가 하나라도 실려 있는가. 실려 있는데 못 읽은 경우를 조용히 넘기지 않으려고 쓴다. */
-    fun hasGoalExtra(intent: Intent?): Boolean =
+    /**
+     * 이 진입점을 겨냥한 extra가 하나라도 실려 있는가. **`autostart`도 센다** — 목표 없이 플래그만
+     * 던진 경우가 무음으로 끝나면 "인텐트가 안 갔나 / 앱이 안 읽었나"를 구분할 수 없다.
+     * 일반 실행(`am start`만)에는 걸리지 않아 로그가 시끄러워지지도 않는다.
+     */
+    fun hasGoalExtra(intent: Intent?): Boolean = intent != null &&
+        (hasGoalValue(intent) || intent.hasExtra(EXTRA_AUTOSTART))
+
+    /** 목표 **값**이 실렸는가. `autostart`만 온 경우를 "못 읽었다"로 적지 않으려고 따로 본다. */
+    fun hasGoalValue(intent: Intent?): Boolean =
         intent != null && (intent.hasExtra(EXTRA_GOAL_B64) || intent.hasExtra(EXTRA_GOAL_RAW))
 
     fun fromIntent(intent: Intent?): DebugGoalRequest? = parse(
@@ -65,16 +88,43 @@ object DebugGoalIntent {
     )
 
     /**
-     * **읽은 extra는 소비한다.** 런치 인텐트는 액티비티가 재생성돼도 그대로 남아서, 회전 한 번이나
-     * 프로세스 복원이 `onCreate`를 다시 태우면 같은 목표로 **안내가 스스로 다시 시작된다**.
-     * 개발자가 던지지 않은 회차가 끼면 로그를 읽는 쪽이 먼저 흔들린다.
-     * `onNewIntent`는 `setIntent`로 새 인텐트를 걸어 두므로 재진입 경로에서도 소비가 유지된다.
+     * **읽은 extra는 소비한다.** 다만 이것만으로는 **구성 변경(회전)까지만** 막힌다 —
+     * 프로세스가 살아 있어 우리가 고친 그 Intent 객체가 그대로 재사용되기 때문이다.
+     *
+     * **프로세스가 죽었다 복원되는 경우는 못 막는다.** 시스템이 들고 있는 `ActivityRecord.intent`는
+     * `final`이라 우리 변형이 닿지 않고, 재시작 때 클라이언트로 오는 것은 그 **원본의 새 사본**이다
+     * (AOSP `ActivityTaskSupervisor`가 `new Intent(r.intent)`로 만든다). 되살아나는 값이 마지막에
+     * 던진 목표가 아니라 **최초 런치 인텐트의 목표**라는 점도 같은 이유다.
+     * 그쪽은 `MainActivity`가 `savedInstanceState`로 막는다 — 근거는 그 호출부에 있다.
      */
     fun consume(intent: Intent?) {
         intent ?: return
         intent.removeExtra(EXTRA_GOAL_B64)
         intent.removeExtra(EXTRA_GOAL_RAW)
         intent.removeExtra(EXTRA_AUTOSTART)
+    }
+
+    /**
+     * 인텐트 하나를 받고 화면이 무엇을 할지. **분기를 여기 두는 이유는 JVM 테스트로 덮기
+     * 위해서다** — `MainActivity` 안에 있으면 안드로이드 타입에 묶여 한 갈래도 검증되지 않는다.
+     */
+    fun decide(
+        request: DebugGoalRequest?,
+        goalExtraPresent: Boolean,
+        sessionActive: Boolean,
+        voiceBusy: Boolean,
+        canStartGuide: Boolean,
+    ): DebugGoalOutcome = when {
+        // "안 실렸다"와 "실렸는데 못 읽었다"를 가른다 — 로그를 읽는 쪽이 볼 곳이 다르다.
+        request == null && !goalExtraPresent -> DebugGoalOutcome.NO_GOAL
+        request == null -> DebugGoalOutcome.UNDECODABLE
+        // 세션·대화 중에는 입력칸도 건드리지 않는다. 비활성 입력칸의 글자만 바뀌면 화면이
+        // "지금 무엇을 안내 중인지"를 거짓말한다.
+        sessionActive -> DebugGoalOutcome.SESSION_ACTIVE
+        voiceBusy -> DebugGoalOutcome.VOICE_BUSY
+        !request.autoStart -> DebugGoalOutcome.AUTOSTART_OFF
+        !canStartGuide -> DebugGoalOutcome.ACCESSIBILITY_NOT_READY
+        else -> DebugGoalOutcome.START
     }
 
     /**

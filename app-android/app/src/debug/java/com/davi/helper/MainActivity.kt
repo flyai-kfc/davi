@@ -133,7 +133,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnStart.setOnClickListener { startGuide() }
         binding.btnStop.setOnClickListener { GuideSession.stop() }
 
-        applyDebugGoalIntent(intent)
+        // **재생성이면 인텐트를 다시 읽지 않는다.** 런치 인텐트는 액티비티가 재생성돼도 남는데,
+        // 프로세스가 죽었다 복원되는 경우엔 removeExtra로 소비해 둔 것이 소용없다 — 시스템이 든
+        // ActivityRecord.intent가 final이라 우리 변형이 닿지 않고, 재시작 때 오는 것은 그 원본의
+        // 새 사본이다(AOSP). 그대로 두면 개발자가 던지지 않은 회차가 시작되고, 되살아나는 값도
+        // 마지막에 던진 목표가 아니라 최초 런치 인텐트의 목표다.
+        // savedInstanceState가 있으면 = 재생성이므로 건너뛴다. 회전·프로세스 복원을 함께 덮는다.
+        // (남는 구멍 하나: 시스템이 저장 상태를 버린 뒤 최근앱에서 되살리면 다시 읽힌다.
+        //  debug 도구라 여기까지 막지 않는다 — 그때는 로그의 debug_goal_intent가 근거가 된다.)
+        if (savedInstanceState == null) applyDebugGoalIntent(intent)
     }
 
     /**
@@ -157,42 +165,31 @@ class MainActivity : AppCompatActivity() {
     private fun applyDebugGoalIntent(intent: Intent?) {
         if (!DebugGoalIntent.hasGoalExtra(intent)) return
         val request = DebugGoalIntent.fromIntent(intent)
-        // 읽었으면 그 자리에서 소비한다 — 남겨 두면 회전·프로세스 복원이 회차를 하나 더 만든다.
+        val goalExtraPresent = DebugGoalIntent.hasGoalValue(intent)
+        // 읽었으면 그 자리에서 소비한다 — 구성 변경(회전)으로 같은 객체가 재사용되는 경로를 막는다.
         DebugGoalIntent.consume(intent)
 
-        if (request == null) {
-            logGoalIntent(null, started = false, reason = "undecodable")
-            return
-        }
-        // **세션 중에는 입력칸도 건드리지 않는다.** 비활성 입력칸의 글자만 바뀌면 화면이
-        // "지금 무엇을 안내 중인지"를 거짓말한다.
-        if (GuideSession.isActive) {
-            logGoalIntent(request, started = false, reason = "session_active")
-            return
-        }
-        binding.goalInput.setText(request.goal)
-        if (!request.autoStart) {
-            logGoalIntent(request, started = false, reason = "autostart_off")
-            return
-        }
-        if (!canStartGuide()) {
-            logGoalIntent(request, started = false, reason = "accessibility_not_ready")
-            refreshUi()
-            return
-        }
-        logGoalIntent(request, started = true, reason = "ok")
-        startGuide()
+        val outcome = DebugGoalIntent.decide(
+            request = request,
+            goalExtraPresent = goalExtraPresent,
+            sessionActive = GuideSession.isActive,
+            voiceBusy = voiceSession.stage != VoiceDialogueSession.Stage.IDLE,
+            canStartGuide = canStartGuide(),
+        )
+        logGoalIntent(request, outcome)
+        if (outcome.fillsField && request != null) binding.goalInput.setText(request.goal)
+        if (outcome.starts) startGuide()
     }
 
-    private fun logGoalIntent(request: DebugGoalRequest?, started: Boolean, reason: String) {
+    private fun logGoalIntent(request: DebugGoalRequest?, outcome: DebugGoalOutcome) {
         Log.i(
             GuideAccessibilityService.TAG,
             GuideTelemetry.event(
                 "debug_goal_intent",
                 "source" to request?.source?.name?.lowercase(),
                 "autostart" to request?.autoStart,
-                "started" to started,
-                "reason" to reason,
+                "started" to outcome.starts,
+                "reason" to outcome.reason,
             ),
         )
     }
