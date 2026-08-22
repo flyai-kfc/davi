@@ -58,6 +58,11 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
     _reject_obscured_target(action, req.screen)
 
+    # 1. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
+    if action.action_type is ActionType.TAP:
+        _reject_unclickable_tap(action, req.screen)
+        return action
+
     # scroll만 교정 대상이다. 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
     if action.action_type is not ActionType.SCROLL:
         return action
@@ -94,6 +99,43 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
     raise LlmError(
         ErrorKind.SERVER,
         "안내 대상이 다른 요소에 완전히 가려져 있어 사용자가 보거나 누를 수 없음",
+    )
+
+
+def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
+    """모델이 **눌러도 반응하지 않는 요소**를 tap 대상으로 골랐으면 실패로 닫는다(C20 · #311).
+
+    실패 모양은 가림 가드와 같다: 눌러도 아무 일이 없는 자리를 가리키면 화면이 그대로고 →
+    정체 판정 → 회복 경로가 없다(#39). 실패로 닫으면 앱이 백오프 후 같은 화면을 다시 물어
+    모델이 다시 고를 기회가 생긴다. 실측 세 건이 이 모양이었다 — 셰이드의 Wi-Fi 상태
+    아이콘(ImageView), 웹뷰의 안내 문구(같은 화면에 정답 버튼이 있었는데 두 번 연속 문구를
+    골랐다), 스플래시의 유일한 요소.
+
+    프롬프트도 같은 사실을 말한다(`prompt.CLICKABLE_TARGET_INSTRUCTION`) — 그래도 여기서 한 번
+    더 막는 이유는 응답 필드 순서 때문이다. 모델은 대상(`target_node_id`)보다 근거(`evidence`)를
+    먼저 쓰는데(C1), 근거에 label 하나를 인용하는 순간 그 요소에 닻이 내려가 몇 필드 뒤의
+    선택 규칙 문장이 이기지 못한다. 완료 검증을 위한 순서가 대상 선택에 내는 부수효과라,
+    순서(근간)를 두고 마지막에 코드로 받는다.
+
+    `clickable`은 계약 초기부터 non-null bool이라(낡은 앱도 항상 보낸다) 미관측 분기가 없다 —
+    C10의 세 상태 규약 대상이 아니다. `False`를 믿는 근거는 2026-08-22 프로브 실측이다:
+    clickable=False로 나간 요소 120개 전수에서 "클릭을 받는데 목록에서 탈락한 조상"이 0건 —
+    즉 이 값이 거짓이 되는 직렬화 경로(병합 탈락)는 관측되지 않았다. C18의 "clickable은
+    설정값이지 상태가 아니다"와 충돌하지 않는다 — 그 서술은 True를 믿지 말라는 방향이고
+    (비활성 버튼도 True로 온다), 이 가드는 False의 역방향만 쓴다.
+
+    **다른 대상을 대신 고르지 않는다** — 가드는 교정이지 재선택이 아니다(가림 가드와 같은 경계).
+    대상이 목록에 없는 tap(환각 id)은 여기서 판정하지 않는다 — 이 가드의 주제는 계약에 있는
+    사실 하나이고, 없는 대상은 앱의 `highlight miss`가 따로 드러낸다.
+    page_dot도 이 가드에 걸린다(직렬화가 clickable=false로 내보낸다) — 정보원이지 탭 대상이
+    아니라는 결정(HANDOFF §3-3)과 같은 방향이다.
+    """
+    target = _element_by_id(screen, action.target_node_id)
+    if target is None or target.clickable:
+        return
+    raise LlmError(
+        ErrorKind.SERVER,
+        "안내 대상이 눌러도 반응하지 않는 요소(clickable=False)라 tap을 내보낼 수 없음",
     )
 
 

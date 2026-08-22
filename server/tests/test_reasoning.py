@@ -76,7 +76,7 @@ def test_second_pass_masks_every_text_field_of_the_steps():
     spy = _CapturingLlmClient()
     req = NextStepRequest(
         goal="문의하기",
-        screen=Screen(elements=[UiElement(node_id="n1", label="버튼")]),
+        screen=Screen(elements=[UiElement(node_id="n1", label="버튼", clickable=True)]),
         steps=[
             _step("hong@example.com 으로 보내세요."),
             _step(
@@ -108,7 +108,7 @@ def test_second_pass_does_not_mutate_the_request():
     original = "hong@example.com 으로 보내세요."
     req = NextStepRequest(
         goal="문의하기",
-        screen=Screen(elements=[UiElement(node_id="n1", label="문의 hong@example.com")]),
+        screen=Screen(elements=[UiElement(node_id="n1", label="문의 hong@example.com", clickable=True)]),
         steps=[_step(original)],
     )
 
