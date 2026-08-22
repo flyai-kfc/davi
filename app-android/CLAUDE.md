@@ -13,7 +13,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   원문과 IME 키 트리는 직렬화하지 않고 hint만 안전한 label 후보로 쓴다(#112). 단 보임·활성·조작
   action·가까운 조정 가능 조상을 확인한 `NumberPicker`의 짧은 숫자 label은 현재 선택값으로 보존하고,
   그 숫자는 화면 시그니처에도 포함해 picker 스크롤을 새 상태로 감지한다.
-- **1차 마스킹** — 전화·계좌·주민·카드·이메일 패턴을 서버로 보내기 전에 치환. **원본은 여기서 떠나지 않는다.**
+- **1차 마스킹** — 전화·계좌·주민·카드·이메일·MAC 주소 패턴을 서버로 보내기 전에 치환.
+  **원본은 여기서 떠나지 않는다.** 숫자 패턴의 경계는 `\b`가 아니라 숫자 lookaround로 본다 —
+  두 언어의 `\b` 의미가 달라 1차·2차가 갈렸다(#312).
   정책은 `LabelMasking.kt`의 `LabelMasker`가 들고 `UiTreeSerializer`가 주입받는다. 유일한 예외는
   `debug` 전용 비교 실험(#203)이며, `local.properties`의 `DAVI_DISABLE_PRIVACY_MASKING`이나
   일회성 `-PdaviDisablePrivacyMasking`(속성 우선)으로 켠다. release는 상수 `false`에
