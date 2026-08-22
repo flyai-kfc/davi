@@ -48,11 +48,12 @@ class AuthStore(private val prefs: SharedPreferences) {
         }
     }
 
-    /** 서버가 세션 challenge를 돌려준 경우에만 호출한다. 토큰 원문은 읽거나 로그로 남기지 않는다. */
-    fun clearSession() {
+    /** 서버가 세션 challenge를 돌려준 경우 토큰과 이전 스킵 결정을 함께 지운다. */
+    fun clearAuthenticationDecision() {
         prefs.edit {
             remove(KEY_SESSION_TOKEN)
             remove(KEY_SESSION_EXPIRES_AT)
+            remove(KEY_LOGIN_SKIPPED)
         }
     }
 

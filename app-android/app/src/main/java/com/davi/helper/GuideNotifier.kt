@@ -46,7 +46,7 @@ internal object GuideNotifier {
         )
     }
 
-    /** 세션이 만료된 동안 백그라운드에 있던 사용자를 로그인 화면으로 돌려보낸다. */
+    /** 세션이 없거나 무효인 동안 백그라운드에 있던 사용자를 로그인 화면으로 돌려보낸다. */
     fun notifyLoginRequired(context: Context) {
         notify(
             context,
@@ -54,6 +54,16 @@ internal object GuideNotifier {
             Intent(context, LoginActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 .putExtra(LoginActivity.EXTRA_SESSION_AUTHENTICATION_REQUIRED, true),
+        )
+    }
+
+    /** 하루 한도에 도달해 안내를 끝냈음을 알리고 탭하면 앱의 대화 화면으로 돌아간다. */
+    fun notifyDailyLimit(context: Context) {
+        notify(
+            context,
+            R.string.guide_error_daily_limit,
+            Intent(context, ConversationActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
     }
 

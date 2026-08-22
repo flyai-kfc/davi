@@ -6,6 +6,7 @@
 """
 
 import app.main as main_module
+import pytest
 from app.config import settings
 from app.kakao_auth import AuthError, issue_session_token
 from app.llm import StubLlmClient
@@ -73,6 +74,19 @@ def test_development_access_denial_is_not_a_session_challenge(set_runtime_profil
 
     assert r.status_code == 401
     assert "WWW-Authenticate" not in r.headers
+
+
+def test_development_keeps_local_api_documentation():
+    assert client.get("/docs").status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_beta_does_not_expose_api_documentation(path, set_runtime_profile):
+    _beta_profile(set_runtime_profile)
+
+    response = client.get(path)
+
+    assert response.status_code == 404
 
 
 def test_beta_next_step_without_authorization_header_is_rejected(set_runtime_profile):

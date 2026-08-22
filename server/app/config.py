@@ -103,11 +103,13 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
     # beta·production에서 세션 인증된 추론 endpoint(/v1/next-step 등)를 지키는 제한(#214).
-    # dev_rate_limit은 development에서만 돌고, 이 두 프로필엔 지금까지 어떤 제한도 없었다 —
-    # 카카오 회원번호(source)별 폭주와 전체 LLM 쿼터를 위 auth 리미터와 같은 방식으로 나눈다.
-    davi_external_rate_limit_requests: int = 15
+    # 사용자별 15회는 목표 정리·앱 판정 2회 뒤 최근 안내 이력 상한 10스텝을 한 분 안에
+    # 진행해도 여유 3회를 남긴다. 전체 60회는 그 최댓값을 쓰는 사용자 4명을 동시에 받는다.
+    # 이 값은 공급자 RPM을 대신하지 않는 앱의 남용 경계다 — 공급자 쿼터는 배포 환경에서
+    # 별도로 맞추고, 실제 beta 동시 사용자가 늘면 관측 뒤 환경변수로 조정한다.
+    davi_external_rate_limit_requests: int = 60
     davi_external_rate_limit_window_seconds: int = 60
-    davi_external_rate_limit_per_source_requests: int = 6
+    davi_external_rate_limit_per_source_requests: int = 15
     davi_external_rate_limit_per_source_window_seconds: int = 60
     # 짧은 창과 별개로 하루 단위 상한도 둔다(창은 24시간 고정 — main.py). 짧은 창은 폭주를,
     # 이 상한은 하루 동안의 누적 사용량을 막는다. 공급자 무료 티어 RPD(약 1,000)보다 낮게 둔다.

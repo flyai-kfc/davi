@@ -1,5 +1,7 @@
 import pytest
 from app.dev_access import (
+    MultiWindowRateLimiter,
+    RateLimitWindow,
     SlidingWindowRateLimiter,
     SourceAndGlobalRateLimiter,
     token_matches,
@@ -181,3 +183,36 @@ def test_source_and_global_reset_clears_all_state():
 
     assert limiter.check("a", **_LIMITS).allowed
     assert limiter.tracked_key_count() == 1
+
+
+def test_multi_window_rejection_does_not_consume_another_window():
+    """하루 한도 거부 요청이 짧은 전역 슬롯을 먼저 먹어 다른 사용자를 막으면 안 된다."""
+
+    clock = FakeClock()
+    limiter = MultiWindowRateLimiter(clock)
+    windows = (
+        RateLimitWindow(
+            name="daily",
+            source_limit=1,
+            source_window_seconds=86_400,
+            global_limit=100,
+            global_window_seconds=86_400,
+        ),
+        RateLimitWindow(
+            name="burst",
+            source_limit=100,
+            source_window_seconds=60,
+            global_limit=1,
+            global_window_seconds=60,
+        ),
+    )
+
+    assert limiter.check("daily-exhausted", windows).allowed
+    clock.now = 61
+
+    denied = limiter.check("daily-exhausted", windows)
+    assert not denied.allowed
+    assert denied.limited_window == "daily"
+
+    # 거부를 모든 창에 기록하지 않았으므로 새 사용자가 짧은 전역 슬롯을 쓸 수 있다.
+    assert limiter.check("another-user", windows).allowed

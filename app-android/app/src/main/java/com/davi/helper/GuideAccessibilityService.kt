@@ -815,10 +815,13 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = result.error.kind.name,
                             serverRequestId = result.trace.requestId,
                         )
-                        if (result.sessionAuthenticationRequired) {
-                            requireFreshLogin(session.generation)
-                        } else {
-                            retryThisScreen(signature, session.generation, result)
+                        when (GuideApiFailurePolicy.actionFor(result)) {
+                            GuideApiFailureAction.REQUIRE_LOGIN ->
+                                requireFreshLogin(session.generation)
+                            GuideApiFailureAction.STOP_DAILY_LIMIT ->
+                                stopForDailyLimit(session.generation)
+                            GuideApiFailureAction.RETRY ->
+                                retryThisScreen(signature, session.generation, result)
                         }
                     }
 
@@ -883,10 +886,20 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun requireFreshLogin(generation: Long) {
         mainHandler.post {
             if (!GuideSession.isCurrent(generation)) return@post
-            authStore?.clearSession()
+            authStore?.clearAuthenticationDecision()
             GuideSession.stop()
             GuideNotifier.notifyLoginRequired(this)
             Log.i(TAG, "session authentication required, guide stopped")
+        }
+    }
+
+    /** 최대 24시간 재시도할 수 없는 하루 한도는 백오프하지 않고 세션을 끝내 즉시 마이크를 푼다. */
+    private fun stopForDailyLimit(generation: Long) {
+        mainHandler.post {
+            if (!GuideSession.isCurrent(generation)) return@post
+            GuideSession.stop()
+            GuideNotifier.notifyDailyLimit(this)
+            Log.i(TAG, "daily request limit reached, guide stopped")
         }
     }
 

@@ -22,6 +22,8 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   무상태로 판정한다. 기기에서만 발견한 앱 정보는 받지 않는다(#102·#128).
 - **에러 분류** — QUOTA/NETWORK/AUTH/SERVER/PARSE/BAD_REQUEST. 앱이 사용자에게 다르게 안내한다.
   외부 공개 프로필의 QUOTA는 `rate_limit_scope=burst|daily`로 짧은 창과 24시간 창을 구분한다.
+  두 창은 한 lock에서 원자적으로 소비하고, 인메모리 daily 상태는 재시작·배포 때 초기화된다.
+  외부 공개 프로필은 FastAPI 기본 문서·OpenAPI endpoint도 404로 닫는다.
 - **카카오 로그인 검증·세션 발급**(`kakao_auth.py`, #165) — 앱이 받아 온 카카오 access token을
   검증(발급처 `app_id` 대조)하고 카카오 회원번호를 담은 **무상태 세션 JWT**를 발급한다.
   사용자 DB 없음. 인증 전 공개 endpoint라 dev 게이트와 별개로 **모든 프로필에서 도는**

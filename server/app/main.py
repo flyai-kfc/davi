@@ -16,7 +16,9 @@ from fastapi.responses import JSONResponse
 from .app_resolution import resolve_app_request
 from .config import settings
 from .dev_access import (
+    MultiWindowRateLimiter,
     RateLimitDecision,
+    RateLimitWindow,
     SlidingWindowRateLimiter,
     SourceAndGlobalRateLimiter,
     token_matches,
@@ -55,7 +57,16 @@ from .schemas import (
     SlotFillState,
 )
 
-app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
+# 외부 공개 프로필에서 FastAPI의 기본 문서·스키마 endpoint를 등록하지 않는다. 테스트는 모듈
+# import 뒤 프로필을 바꾸므로 아래 middleware에서도 같은 경계를 한 번 더 적용한다.
+_DEVELOPMENT_DOCS_ENABLED = settings.davi_env == "development"
+app = FastAPI(
+    title="davi reasoning orchestrator",
+    version="0.1.0",
+    docs_url="/docs" if _DEVELOPMENT_DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DEVELOPMENT_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DEVELOPMENT_DOCS_ENABLED else None,
+)
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
 # 2차 마스킹 우회는 시작 시점에 한 번 크게 알린다(#203). 설정을 켜 놓은 것을 잊은 채
@@ -73,6 +84,7 @@ _SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
 _AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
+_DOCUMENTATION_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )
@@ -93,11 +105,9 @@ dev_rate_limiter = SlidingWindowRateLimiter()
 # 지키며, 거부된 요청은 출처 키를 남기지 않아 분산 출처 폭주에도 키 수가 전역 상한으로 묶인다.
 auth_rate_limiter = SourceAndGlobalRateLimiter()
 # beta·production 추론 endpoint 전용 리미터(#214). 출처는 카카오 회원번호(세션 토큰의 sub)다.
-# 짧은 창(폭주)과 하루 창(누적)을 별개 인스턴스로 둔다 — 같은 인스턴스에 두 판정을 섞으면
-# 어느 창이 막았는지 구분이 안 되고, 하루 창의 오래된 타임스탬프가 짧은 창의 정리 주기와
-# 어긋난다.
-external_rate_limiter = SourceAndGlobalRateLimiter()
-external_daily_rate_limiter = SourceAndGlobalRateLimiter()
+# 짧은 창과 하루 창을 한 lock에서 먼저 모두 판정한 뒤 함께 기록한다. 둘을 순차 호출하면
+# 하루 창이 거부한 요청도 짧은 창의 슬롯을 먼저 소모해 다른 사용자를 막는다.
+external_rate_limiter = MultiWindowRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -276,25 +286,43 @@ def _external_access_error(request: Request) -> JSONResponse | None:
     source = str(kakao_user_id)
     decision = external_rate_limiter.check(
         source,
-        source_limit=settings.davi_external_rate_limit_per_source_requests,
-        source_window_seconds=settings.davi_external_rate_limit_per_source_window_seconds,
-        global_limit=settings.davi_external_rate_limit_requests,
-        global_window_seconds=settings.davi_external_rate_limit_window_seconds,
+        (
+            # 둘 다 소진된 경우 최대 24시간 남은 하루 한도를 먼저 알려야, 60초 뒤 같은
+            # 요청을 다시 보냈다가 다시 막히는 왕복을 만들지 않는다.
+            RateLimitWindow(
+                name=RateLimitScope.DAILY.value,
+                source_limit=settings.davi_external_daily_limit_per_source_requests,
+                source_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+                global_limit=settings.davi_external_daily_limit_requests,
+                global_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+            ),
+            RateLimitWindow(
+                name=RateLimitScope.BURST.value,
+                source_limit=settings.davi_external_rate_limit_per_source_requests,
+                source_window_seconds=settings.davi_external_rate_limit_per_source_window_seconds,
+                global_limit=settings.davi_external_rate_limit_requests,
+                global_window_seconds=settings.davi_external_rate_limit_window_seconds,
+            ),
+        ),
     )
     if not decision.allowed:
-        return _external_rate_limit_response(request, decision, scope=RateLimitScope.BURST)
-
-    daily_decision = external_daily_rate_limiter.check(
-        source,
-        source_limit=settings.davi_external_daily_limit_per_source_requests,
-        source_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
-        global_limit=settings.davi_external_daily_limit_requests,
-        global_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
-    )
-    if not daily_decision.allowed:
-        return _external_rate_limit_response(request, daily_decision, scope=RateLimitScope.DAILY)
+        if decision.limited_window is None:  # pragma: no cover - 다중 창 계약의 방어선
+            raise RuntimeError("external rate limiter가 제한 창을 반환하지 않았습니다")
+        return _external_rate_limit_response(
+            request,
+            decision,
+            scope=RateLimitScope(decision.limited_window),
+        )
 
     return None
+
+
+def _documentation_access_error(request: Request) -> JSONResponse | None:
+    """beta·production에서 프레임워크 기본 API 문서와 스키마를 공개하지 않는다."""
+
+    if settings.davi_env == "development" or request.url.path not in _DOCUMENTATION_PATHS:
+        return None
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Not Found"})
 
 
 def _external_auth_error(request: Request) -> JSONResponse:
@@ -413,8 +441,8 @@ async def observe_request(request: Request, call_next):
             request.state.error_kind = ErrorKind.BAD_REQUEST.value
             response = _invalid_trace_headers_response(request.state.request_id)
         else:
-            response = None
-            if route in _TRACED_API_PATHS:
+            response = _documentation_access_error(request)
+            if response is None and route in _TRACED_API_PATHS:
                 response = _development_access_error(request)
                 if response is None:
                     response = _external_access_error(request)

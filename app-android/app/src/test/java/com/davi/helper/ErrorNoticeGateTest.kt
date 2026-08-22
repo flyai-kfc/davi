@@ -80,21 +80,6 @@ class ErrorNoticeGateTest {
         assertTrue(gate.record(NextStepResult.ParseFailure(IllegalStateException("계약 불일치"))))
     }
 
-    @Test
-    fun `일일 한도는 첫 실패부터 즉시 알린다`() {
-        val dailyLimit = NextStepResult.ApiFailure(
-            statusCode = 429,
-            error = ApiError(
-                kind = ApiErrorKind.QUOTA,
-                message = "request limit exceeded",
-                rateLimitScope = RateLimitScope.DAILY,
-            ),
-            trace = trace,
-        )
-
-        assertTrue(gate.record(dailyLimit))
-    }
-
     /** 원인이 섞여도 "연속 실패"는 이어진다 — 사용자에겐 전부 "안내를 못 받았다"로 같다. */
     @Test
     fun `원인이 달라도 연속으로 센다`() {

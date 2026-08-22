@@ -115,6 +115,13 @@ def test_valid_production_profile():
     assert configured.gemini_api_key.get_secret_value() == "server-side-key"
 
 
+def test_external_burst_defaults_fit_four_maximum_single_user_budgets():
+    configured = _settings()
+
+    assert configured.davi_external_rate_limit_per_source_requests == 15
+    assert configured.davi_external_rate_limit_requests == 60
+
+
 def test_runtime_profile_fixture_rejects_impossible_production_stub(set_runtime_profile):
     with pytest.raises(ValidationError, match="DAVI_USE_STUB_LLM=false"):
         set_runtime_profile(
