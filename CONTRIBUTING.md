@@ -55,7 +55,10 @@ git config core.hooksPath .githooks
 - PR 하나는 **스택 하나**를 원칙으로 한다. 앱·서버 동시 변경이 불가피하면 PR 본문에 계약 변경을 명시한다.
 - **승인 1명**이 필요하다. 단 **리뷰어는 직접 지정해야 한다** — 무료 private 플랜에서는 CODEOWNERS
   자동 지정이 동작하지 않는다(아래 "저장소 설정" 참고).
-- CI(`CI 통과` 체크)가 초록이어야 머지한다. **시스템이 막아주지 않으니 눈으로 확인한다.**
+- CI가 초록이어야 머지한다. **시스템이 막아주지 않으니 눈으로 확인한다.**
+  `skipped`는 **「변경 감지 + 저장소 전역 검사」가 초록일 때만** 정상이다(경로 필터로 안 도는 잡).
+  그 잡이 빨간불이면 아래 잡들은 **안 돈 것이지 통과한 게 아니다.** 집계 잡을 지운 뒤로
+  이 구분은 사람이 한다.
 - 팀은 5명이지만 스택별로 담당이 나뉘어 있어 실제 리뷰어는 한둘로 좁혀진다.
   리뷰가 밀리면 그대로 정지하므로 **24시간 안에** 본다.
 - 템플릿의 체크리스트를 실제로 확인하고 채운다. 안 돌린 검사는 안 돌렸다고 쓴다.
@@ -160,9 +163,16 @@ GitHub Team 이상으로 올리면 `Settings → Rules → Rulesets → New bran
 - `Require a pull request before merging` — Required approvals **1**,
   `Dismiss stale approvals when new commits are pushed`, `Require review from Code Owners`
 - `Require status checks to pass` + `Require branches to be up to date`
-  → 체크는 **`CI 통과` 하나만** 추가한다.
+  → **먼저 집계 잡을 되살려야 한다.**
   `Android` / `Backend`는 경로 필터 때문에 변경 없는 쪽이 `skipped`가 되는데,
-  **skipped는 필수 체크를 통과시키지 못해 머지가 영구히 막힌다.** `ci` 잡이 이를 집계하려고 있는 것이다.
+  **skipped는 필수 체크를 통과시키지 못해 머지가 영구히 막힌다.** 그래서 모든 실행에서 도는
+  집계 잡 하나(`ci` / 표시 이름 `CI 통과`)만 필수 체크로 거는 방식을 쓴다.
+  그 잡은 **러너 비용 때문에 지워 둔 상태다.** 브랜치 보호를 걸 수 없는 플랜에서는
+  아무것도 지키지 않으면서, GitHub이 잡마다 실행 시간을 1분 단위로 올려 청구하는 탓에
+  3초짜리 잡이 실행마다 1분씩(주 400분 넘게) 나갔다. 플랜을 올리면 **`ci` 잡 정의만**
+  되살리고(#362의 마지막 hunk), 그 다음에 아래 설정을 건드린다.
+  **그 커밋을 통째로 revert하지 말 것** — 잡 병합·전역 검사 이동·`timeout-minutes` 같은
+  비용 절감분이 함께 날아간다.
 - `Block force pushes`, `Restrict deletions`
 
 CLI로도 된다(플랜이 올라간 뒤에만 성공한다):
