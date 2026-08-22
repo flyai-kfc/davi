@@ -69,8 +69,11 @@ class PrivacyMaskerTest {
     @Test
     fun leavesNonPiiLabelsUntouched() {
         listOf(
-            "지훈의 버즈",
-            "거실 TV",
+            // 숫자가 섞인 형태를 넣는다 — 숫자 없는 이름은 형태 기반 패턴이 늘어도 스치지
+            // 않아 가드가 되지 못한다(PR #369 리뷰).
+            "지훈의 Galaxy Buds2",
+            "Buds2 Pro 3C86",
+            "거실 TV 65",
             "내 갤럭시 버즈",
             "2만 3000원",
             "재생목록 1-2-3",

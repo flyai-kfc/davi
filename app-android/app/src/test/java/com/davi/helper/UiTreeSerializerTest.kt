@@ -192,6 +192,21 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `창 제목의 고유명은 일부러 지우지 않는다`() {
+        // **여기가 유혹의 자리다.** 트리를 다 보는 것은 UiTreeSerializer뿐이라, "구조로 목록
+        // 항목을 가리자"는 규칙이 들어온다면 이 경로다(app-android/CLAUDE.md). 그런데 그러면
+        // 앱 서랍의 앱 이름까지 지워져 안내가 죽는다 — 저장소 루트 `SPEC.md` §2 「패턴 밖
+        // 고유명」이 지우지 않기로 정했다(#360). 이 줄이 빨개지면 그 결정을 뒤집는 것이므로
+        // 패턴이나 규칙을 늘리기 전에 SPEC부터 고친다.
+        //
+        // 값에 숫자를 섞어 둔 이유는, 숫자가 없는 이름은 형태 기반 패턴이 늘어도 애초에
+        // 스치지 않아 가드가 되지 못하기 때문이다(PR #369 리뷰).
+        for (title in listOf("지훈의 Galaxy Buds2", "Buds2 Pro 3C86", "거실 TV 65", "회의록 2026 초안")) {
+            assertEquals(title, UiTreeSerializer.windowTitleOf(title, PrivacyMaskingLabelMasker))
+        }
+    }
+
+    @Test
     fun `창 제목도 label과 같은 정규화를 거친다`() {
         assertEquals(
             "설정 배터리",
