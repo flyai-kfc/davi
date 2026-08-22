@@ -122,9 +122,10 @@ def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
     clickable=False로 나간 요소 205개 전수(배민·삼성런처·셰이드 120 + 디동 웹뷰 85)에서
     "클릭을 받는데 이름이 없어 목록에서 탈락한 조상"이 0건 — 즉 이 값이 거짓이 되는 직렬화
     경로(병합 탈락)는 관측되지 않았다. 웹뷰를 따로 잰 것은 거기서 role이 뭉개져 clickable이
-    사실상 유일한 구별 축이기 때문이다. C18의 "clickable은
-    설정값이지 상태가 아니다"와 충돌하지 않는다 — 그 서술은 True를 믿지 말라는 방향이고
-    (비활성 버튼도 True로 온다), 이 가드는 False의 역방향만 쓴다.
+    사실상 유일한 구별 축이기 때문이다. C18의 "clickable은 설정값이지 상태가 아니다"와
+    충돌하지 않는다 — 그 서술은 True를 믿지 말라는 방향이고(비활성 버튼도 True로 온다),
+    이 가드는 False의 역방향만 쓴다. 그래서 `enabled`는 보지 않는다 — 비활성 버튼은
+    clickable=True로 오므로 여기를 그대로 통과하고, 그 판정은 별도 결정 트랙이다(C20).
 
     **입력칸(`editable=True`)은 면제한다.** 직렬화는 `isClickable || isEditable`로 요소를
     방출하므로 clickable=False인 입력칸이 계약상 존재할 수 있고, 프롬프트의
@@ -136,8 +137,12 @@ def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
     **다른 대상을 대신 고르지 않는다** — 가드는 교정이지 재선택이 아니다(가림 가드와 같은 경계).
     대상이 목록에 없는 tap(환각 id)은 여기서 판정하지 않는다 — 이 가드의 주제는 계약에 있는
     사실 하나이고, 없는 대상은 앱의 `highlight miss`가 따로 드러낸다.
-    page_dot도 이 가드에 걸린다(직렬화가 clickable=false로 내보낸다) — 정보원이지 탭 대상이
-    아니라는 결정(HANDOFF §3-3)과 같은 방향이다.
+    page_dot도 이 가드에 걸린다 — 노드 자체는 clickable=true지만 `UiTreeSerializer`가
+    `clickable = false`로 고정해 내보내므로, "정보원이지 탭 대상이 아니다"라는 결정
+    (HANDOFF §3-3)이 그대로 이 가드에 실린다.
+
+    **전부 clickable=False인 화면(스플래시·로딩)은 이 가드가 닫기만 하고 대안을 주지 못한다.**
+    백오프 재질의가 같은 거부를 반복할 수 있고, 근본 처치는 계약에 "기다리기"를 넣는 #370이다.
     """
     target = _element_by_id(screen, action.target_node_id)
     if target is None or target.clickable or target.editable:
