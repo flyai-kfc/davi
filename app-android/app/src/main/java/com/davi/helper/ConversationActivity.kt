@@ -1191,13 +1191,15 @@ class ConversationActivity : AppCompatActivity() {
         // 그 여백까지 맞추는 `fitCenter`로 두면 아이콘이 슬롯 안에서 작게 앉는다 — 런처가
         // 하는 것처럼 가운데를 잘라 채운 뒤 r12로 깎는다.
         val icon = runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+        // **실패해도 이전 아이콘을 남기지 않는다.** 앱 A(성공) 다음에 앱 B(실패)가 오면
+        // **A의 아이콘에 B의 라벨**이 붙어 「지도 아이콘에 카카오톡 이름」이 된다 —
+        // 빈 슬롯보다 나쁘다. 어느 앱으로 가는지를 아이콘이 거짓으로 말한다.
+        binding.shortcutIcon.clipToOutline = true
+        binding.shortcutIcon.setImageDrawable(icon)
         // **성공했을 때만 기억한다.** 조회 전에 기억하면 실패했을 때 빈 슬롯이 그대로
         // 굳는다 — 같은 앱인 동안 다시 조회하지 않기 때문이다. render는 상태가 바뀔 때마다
         // 도므로, 기억하지 않으면 다음 render가 알아서 다시 해 본다.
-        if (icon == null) return
-        shownShortcutPackage = app.packageName
-        binding.shortcutIcon.clipToOutline = true
-        binding.shortcutIcon.setImageDrawable(icon)
+        if (icon != null) shownShortcutPackage = app.packageName
     }
 
     /**
@@ -1211,7 +1213,13 @@ class ConversationActivity : AppCompatActivity() {
         // **빈 goal로는 세션을 켜지 않는다.** `GuideJourneyStarter.start`가 지고 있던 가드다 —
         // 그쪽을 안 거치기로 하면서 같이 와야 했다. 목표 없이 켜면 닫힌 루프가 무엇을
         // 향하는지 모르는 채로 화면만 읽는다.
-        if (goal.isEmpty()) return
+        //
+        // 도달할 일이 사실상 없지만 **조용히 죽지는 않는다** — 그냥 return하면 어르신에게는
+        // 「눌러도 아무 일도 안 하는 버튼」이고, 로그가 없으면 그 제보를 재현할 수 없다.
+        if (goal.isEmpty()) {
+            GuideTelemetry.voiceState("shortcut_blocked_empty_goal")
+            return
+        }
         val intent = packageManager.getLaunchIntentForPackage(app.packageName)
         if (intent == null) {
             // 사전 점검과 탭 사이에 지워졌거나, 다비가 못 여는 프로필의 앱이다.
@@ -1219,7 +1227,6 @@ class ConversationActivity : AppCompatActivity() {
             setState(ConversationUiState.Home(statusRes = R.string.conversation_shortcut_unavailable))
             return
         }
-        GuideTelemetry.voiceState("shortcut_opened")
         cancelVoiceDialogue()
         // **여는 것으로 끝나지 않는다.** (1)과 같은 안내를 그대로 켠다 — 둘의 차이는
         // 「안내를 받느냐 마느냐」가 아니라 **어디서부터 받느냐**다. (1)은 홈 화면부터
@@ -1235,16 +1242,19 @@ class ConversationActivity : AppCompatActivity() {
         // 나가는** 것까지 한다 — (1)은 홈 화면부터 안내하니 맞지만, 여기서는 그 홈 인텐트가
         // 방금 연 앱을 덮어 **앱 밖에서 안내가 시작된다**(2026-08-21 실기기).
         //
-        // 그래서 **세션만 켜고 앱을 띄운다.** 닫힌 루프가 이미 앱 안인 화면을 읽어 다음
+        // 그래서 **앱을 띄우고 세션을 켠다.** 닫힌 루프가 이미 앱 안인 화면을 읽어 다음
         // 한 걸음을 낸다 — 「카카오톡을 눌러주세요」를 코드로 건너뛸 필요가 없다.
         //
-        // **앱이 열린 뒤에 세션을 켠다.** 순서를 뒤집으면 startActivity가 던졌을 때
-        // 세션만 켜진 채 남아 **닫힌 루프가 다비 화면과 홈을 읽고 다음 걸음을 낸다** —
-        // 앱은 안 열렸는데 안내가 시작되는 최악의 조합이다.
+        // **순서가 이 방향이어야 한다.** 뒤집으면 startActivity가 던졌을 때 세션만 켜진 채
+        // 남아 **닫힌 루프가 다비 화면과 홈을 읽고 다음 걸음을 낸다** — 앱은 안 열렸는데
+        // 안내가 시작되는 최악의 조합이다.
         if (runCatching { startActivity(intent) }.isFailure) {
             setState(ConversationUiState.Home(statusRes = R.string.conversation_shortcut_unavailable))
             return
         }
+        // **실행이 성공한 뒤에 남긴다** — 시도 앞에 두면 실패도 「열렸다」로 집계돼
+        // 지표가 거짓말을 한다.
+        GuideTelemetry.voiceState("shortcut_opened")
         GuideSession.start(goal)
         setState(ConversationUiState.Home())
     }
