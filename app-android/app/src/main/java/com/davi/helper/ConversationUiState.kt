@@ -12,7 +12,6 @@ enum class ConfirmKind {
  */
 data class ShortcutApp(
     val packageName: String,
-    val componentName: String,
     val label: String,
 )
 
@@ -303,7 +302,10 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             // 화자 구분이 카드 하나로만 서므로 글로우가 없으면 누가 하는 말인지 안 갈린다.
             cardGlowVisible = true,
             // 앱을 못 찾았으면 사전 점검이 통과해도 행을 세울 이름·아이콘이 없다.
-            shortcutVisible = state.shortcutApp != null,
+            // **이름이 비어도 마찬가지다** — `LaunchableAppRecord.label`은 빈 문자열이 될 수
+            // 있고(패키지명 매칭은 label 없이도 LAUNCHABLE이 된다) 그대로 두면
+            // 「바로 가기 · 」가 뜬다. 어느 앱으로 가는지 모르는 행은 세우지 않는다.
+            shortcutVisible = state.shortcutApp?.label?.isNotBlank() == true,
             shortcutAppName = state.shortcutApp?.label.orEmpty(),
         )
         ConfirmKind.APP_AVAILABILITY_WARNING -> ConversationRenderModel(

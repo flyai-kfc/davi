@@ -5,6 +5,7 @@ import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import java.text.Normalizer
@@ -16,6 +17,18 @@ internal data class LaunchableAppRecord(
     val componentName: String,
     val label: String,
     val profileId: Int,
+    /**
+     * 이 record가 **다비가 직접 열 수 있는 프로필**의 것인가(#348).
+     *
+     * index는 잠기지 않은 프로필을 모두 담으므로 직장·보안 폴더에만 있는 앱도
+     * `LAUNCHABLE`이 될 수 있다 — 개인 프로필에 같은 패키지가 있으면 `AMBIGUOUS`로
+     * 빠지니 **그 프로필에만 있을 때**가 남는다. 그때 `PackageManager`로는 아이콘도
+     * 실행 인텐트도 안 나온다(빈 슬롯 + 열리지 않는 행).
+     *
+     * **profileId만으로는 판별할 수 없다** — `UserHandle.hashCode()`라 되돌릴 수 없다.
+     * 그래서 UserHandle이 아직 손에 있는 조회 시점에 정한다.
+     */
+    val isPersonalProfile: Boolean,
 )
 
 internal sealed interface LaunchableAppQuery {
@@ -216,6 +229,7 @@ internal class AndroidLaunchableAppSource(context: Context) : LaunchableAppSourc
         componentName = componentName.flattenToString(),
         label = label?.toString().orEmpty(),
         profileId = profile.hashCode(),
+        isPersonalProfile = profile == Process.myUserHandle(),
     )
 }
 

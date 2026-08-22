@@ -28,9 +28,17 @@ internal fun appAvailabilityPreflightOf(
  * **새로 고르는 것이 아니다.** `LAUNCHABLE`은 프로필+패키지가 정확히 하나로 좁혀졌을 때만
  * 나오므로(둘 이상이면 `AMBIGUOUS`) 통과한 후보의 앱은 이미 특정돼 있다. 후보가 여럿
  * 통과하면 **서버가 준 순서의 첫째**를 쓴다 — 후보 목록은 confidence 순이다.
+ *
+ * **개인 프로필 것만 꺼낸다**(2026-08-22 리뷰). 직장·보안 폴더에만 있는 앱은 사용자에게는
+ * 실행 가능하지만 **다비의 `PackageManager`로는 아이콘도 실행 인텐트도 안 나온다** — 행이
+ * 빈 슬롯으로 서고 눌러도 안 열린다. 사전 점검(`availability`)은 그대로 통과시킨다:
+ * 그 앱이 기기에 있는 것은 사실이고, 못 하는 것은 **우리가 대신 여는 것**뿐이다.
+ * 「열 수 있는지 모르는 앱으로 보내지 않는다」(#185)와 같은 성격의 경계다.
  */
 internal fun launchableAppOf(matches: List<LaunchableAppMatch>): LaunchableAppRecord? =
-    matches.firstOrNull { it.result.status == AppCandidateAvailability.LAUNCHABLE }?.record
+    matches.firstOrNull { it.result.status == AppCandidateAvailability.LAUNCHABLE }
+        ?.record
+        ?.takeIf { it.isPersonalProfile }
 
 /** 서버 후보와 기기 index로 실행 가능성만 사전 점검하고, 앱이나 goal은 확정하지 않는다. */
 internal class AppResolutionCoordinator(
@@ -85,6 +93,12 @@ internal class AppResolutionCoordinator(
     }
 }
 
-/** 인덱스 계층의 record를 화면이 쓰는 최소 형태로 옮긴다(#348). */
+/**
+ * 인덱스 계층의 record를 화면이 쓰는 최소 형태로 옮긴다(#348).
+ *
+ * **componentName은 넘기지 않는다** — 실행은 `getLaunchIntentForPackage`가 하고 아이콘도
+ * 패키지로 뽑는다. 개인 프로필로 한정했으므로 cross-profile 실행(`LauncherApps`)에 쓸 일도
+ * 없다. 안 쓰는 필드를 들고 있으면 「이걸로 뭔가 하려던 것」으로 읽힌다.
+ */
 internal fun LaunchableAppRecord.toShortcutApp(): ShortcutApp =
-    ShortcutApp(packageName = packageName, componentName = componentName, label = label)
+    ShortcutApp(packageName = packageName, label = label)

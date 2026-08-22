@@ -331,6 +331,17 @@ class ConversationActivity : AppCompatActivity() {
         // 질문 카드는 maxHeight로 묶여 있어 긴 문구(특히 최종 확인의 goal)는 카드 안에서
         // 스크롤해 읽는다. 상태가 바뀌면 render()가 맨 위로 되돌린다.
         binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
+        // **포커스를 도로 뺏는다.** `setMovementMethod`가 TextView를 focusable로 만드는데,
+        // 포커스를 잡는 순간 TextView가 **글자 끝으로 스크롤한다** — 배율 2.0에서 goal의
+        // **첫 줄이 통째로 밀려 나갔다**(2026-08-22 실기기: 접근성 서비스를 켠 뒤부터 재현).
+        // 문장 앞이 사라지는 것은 뒤가 잘리는 것보다 나쁘다.
+        //
+        // **드래그 스크롤은 그대로 된다** — TextView.onTouchEvent가 movementMethod에
+        // 넘기는 데 포커스가 필요 없다. 이 카드는 입력란이 아니라 읽는 글이라 포커스를
+        // 받을 이유가 없고, 스크린리더는 accessibilityLiveRegion으로 따로 읽는다.
+        // **XML로는 못 막는다** — setMovementMethod가 나중에 덮으므로 여기서 꺼야 한다.
+        binding.cardQuestion.isFocusable = false
+        binding.cardQuestion.isFocusableInTouchMode = false
 
 
         render(uiState)
@@ -447,6 +458,13 @@ class ConversationActivity : AppCompatActivity() {
         // 마이크 사이가 시안(48)과 무관하게 벌어진다. 홈은 마이크가 바닥에 못 박혀 있어
         // 아래 여백(davi_home_control_reserve)이 그 자리를 대신한다.
         binding.spaceHomeMid.isVisible(model.guidingVisible)
+        // **확인 화면은 카드와 버튼 셋 사이가 남는 높이를 먹는다**(2026-08-22 리뷰).
+        // 카드가 내용대로 자라도(cardQuestionFlexible=false) (3)의 바닥선은 그대로여야
+        // 한다 — 시안에서 그 선은 **다른 화면의 마이크 바닥과 같은 선**이다. 이 자리가
+        // 없으면 남는 높이가 전부 (3) 아래에 남아 버튼 셋이 100dp 넘게 떠오르고,
+        // (2)가 숨을 때마다 (1)(3)이 96dp씩 뛴다.
+        // **경고 화면도 함께 받는다** — confirmVisible이 켜지는 화면은 둘 다 마이크가 없다.
+        binding.spaceConfirmFlex.isVisible(model.confirmVisible)
         binding.homeHead.isVisible(model.homeVisible)
         binding.homeSubtitle.isVisible(model.homeVisible)
         binding.homeCane.isVisible(model.homeVisible)
@@ -506,11 +524,16 @@ class ConversationActivity : AppCompatActivity() {
         //
         // 끄면 wrap_content + minHeight가 살아 카드가 내용 높이(하한 176dp)로 선다.
         // 시안 메인 7·8의 카드 높이 200은 그 화면들을 다시 짤 때 함께 본다.
-        // **최종 확인에서도 weight를 준다**(#200 리뷰). 버튼쌍이 열 안으로 들어오면서
-        // 잘림 규칙을 함께 받게 됐는데, 카드가 wrap_content면 긴 goal에서 카드가 먼저
-        // 커져 버튼을 화면 밖으로 밀어낸다 — 확인 화면에서 ×/○를 못 누르면 빠져나갈
-        // 길이 없다. weight를 주면 카드가 **남는 공간만** 갖고, 모자라면 카드가 줄어
-        // 버튼이 보장된다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
+        // **목표 확인(ConfirmKind.GOAL)에서는 weight를 뺀다**(2026-08-21, #200 리뷰를
+        // 뒤집는다). 한때 여기에도 weight를 줬다 — 카드가 wrap_content면 긴 goal에서
+        // 카드가 먼저 커져 버튼을 화면 밖으로 밀어내고, **확인 화면에서 버튼을 못 누르면
+        // 빠져나갈 길이 없기** 때문이었다.
+        //
+        // 그 걱정은 이제 **maxHeight가 진다**(davi_question_card_max_height_confirm).
+        // weight를 주면 남는 높이를 카드가 다 먹어 **한 줄짜리 goal에도 상자가 화면만큼
+        // 커지고** 버튼이 바닥까지 밀린다 — 상자는 문장만큼만 자라고 버튼이 그만큼 따라
+        // 내려가야 한다. 넘치는 문구는 card_question의 내부 스크롤이 받는다.
+        // (경고 쪽은 종전대로 weight를 받는다 — 문구가 고정이라 자랄 일이 없다.)
         binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
             // 구체화에서는 아래 선택 ScrollView가 남은 높이를 받는다. 질문 카드까지 weight로
             // 줄이면 2.0x 배율에서 176dp 하한이 깨져 질문 한 줄도 남지 않는다(#326 리뷰).
@@ -560,6 +583,9 @@ class ConversationActivity : AppCompatActivity() {
         if (questionKey != lastQuestionKey) {
             lastQuestionKey = questionKey
             binding.cardQuestion.scrollTo(0, 0)
+            // **레이아웃이 잡힌 뒤 한 번 더.** 위 호출은 새 글자의 줄 배치가 아직 없어
+            // 스크롤 범위가 0으로 보이는 순간에 걸릴 수 있고, 그러면 아무 일도 하지 않는다.
+            binding.cardQuestion.post { binding.cardQuestion.scrollTo(0, 0) }
         }
         // **래퍼까지 끈다.** 안쪽 컨테이너만 끄면 빈 래퍼가 weight로 자리를 먹어 홈 제목이
         // 위로 밀리고 그 자리가 빈 화면으로 남는다(2026-08-17 실기기). 다비 카드도 같은 이유로
@@ -1158,17 +1184,20 @@ class ConversationActivity : AppCompatActivity() {
 
         val app = (uiState as? ConversationUiState.Confirm)?.shortcutApp ?: return
         if (shownShortcutPackage == app.packageName) return
-        shownShortcutPackage = app.packageName
         // 앱마다 아이콘 모양이 달라(원형·스퀘어클·사각) 그대로 두면 줄이 안 맞는다.
         // 배경 도형의 윤곽으로 깎아 같은 실루엣으로 세운다.
         //
         // **`centerCrop`이어야 슬롯을 채운다.** 적응형 아이콘은 108dp 캔버스에 25%가 여백이고
         // 그 여백까지 맞추는 `fitCenter`로 두면 아이콘이 슬롯 안에서 작게 앉는다 — 런처가
         // 하는 것처럼 가운데를 잘라 채운 뒤 r12로 깎는다.
+        val icon = runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+        // **성공했을 때만 기억한다.** 조회 전에 기억하면 실패했을 때 빈 슬롯이 그대로
+        // 굳는다 — 같은 앱인 동안 다시 조회하지 않기 때문이다. render는 상태가 바뀔 때마다
+        // 도므로, 기억하지 않으면 다음 render가 알아서 다시 해 본다.
+        if (icon == null) return
+        shownShortcutPackage = app.packageName
         binding.shortcutIcon.clipToOutline = true
-        binding.shortcutIcon.setImageDrawable(
-            runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull(),
-        )
+        binding.shortcutIcon.setImageDrawable(icon)
     }
 
     /**
@@ -1178,10 +1207,16 @@ class ConversationActivity : AppCompatActivity() {
     private fun openShortcut() {
         val state = uiState as? ConversationUiState.Confirm ?: return
         val app = state.shortcutApp ?: return
+        val goal = state.goal.trim()
+        // **빈 goal로는 세션을 켜지 않는다.** `GuideJourneyStarter.start`가 지고 있던 가드다 —
+        // 그쪽을 안 거치기로 하면서 같이 와야 했다. 목표 없이 켜면 닫힌 루프가 무엇을
+        // 향하는지 모르는 채로 화면만 읽는다.
+        if (goal.isEmpty()) return
         val intent = packageManager.getLaunchIntentForPackage(app.packageName)
         if (intent == null) {
-            // 사전 점검과 탭 사이에 지워졌을 수 있다. 조용히 넘기지 않고 화면을 되돌린다.
-            setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
+            // 사전 점검과 탭 사이에 지워졌거나, 다비가 못 여는 프로필의 앱이다.
+            // 조용히 넘기지 않고 화면을 되돌린다 — **서버 오류가 아니라고 말한다.**
+            setState(ConversationUiState.Home(statusRes = R.string.conversation_shortcut_unavailable))
             return
         }
         GuideTelemetry.voiceState("shortcut_opened")
@@ -1202,9 +1237,16 @@ class ConversationActivity : AppCompatActivity() {
         //
         // 그래서 **세션만 켜고 앱을 띄운다.** 닫힌 루프가 이미 앱 안인 화면을 읽어 다음
         // 한 걸음을 낸다 — 「카카오톡을 눌러주세요」를 코드로 건너뛸 필요가 없다.
-        GuideSession.start(state.goal.trim())
+        //
+        // **앱이 열린 뒤에 세션을 켠다.** 순서를 뒤집으면 startActivity가 던졌을 때
+        // 세션만 켜진 채 남아 **닫힌 루프가 다비 화면과 홈을 읽고 다음 걸음을 낸다** —
+        // 앱은 안 열렸는데 안내가 시작되는 최악의 조합이다.
+        if (runCatching { startActivity(intent) }.isFailure) {
+            setState(ConversationUiState.Home(statusRes = R.string.conversation_shortcut_unavailable))
+            return
+        }
+        GuideSession.start(goal)
         setState(ConversationUiState.Home())
-        runCatching { startActivity(intent) }
     }
 
     private fun speechHelper(): SpeechRecognizerHelper =
