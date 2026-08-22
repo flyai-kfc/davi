@@ -1,12 +1,20 @@
 package com.davi.helper
 
 import android.content.Intent
+import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
+/** 목표가 어느 extra로 들어왔는가. 잘린 목표를 사후에 알아보려면 이게 로그에 남아야 한다. */
+enum class DebugGoalSource { B64, RAW }
+
 /** 인텐트로 들어온 목표. [autoStart]면 화면이 입력칸을 채운 뒤 안내 시작까지 간다. */
-data class DebugGoalRequest(val goal: String, val autoStart: Boolean)
+data class DebugGoalRequest(
+    val goal: String,
+    val autoStart: Boolean,
+    val source: DebugGoalSource,
+)
 
 /**
  * 개발용 백업 화면에 **목표를 인텐트로 넣는 debug 전용 경로**(#323).
@@ -29,7 +37,12 @@ data class DebugGoalRequest(val goal: String, val autoStart: Boolean)
  *
  * **base64를 권하는 이유는 전송 바이트를 전부 ASCII로 만들기 위해서다.** 한글이 `am`을 통과하는지
  * 여부가 논점에서 사라지고, 공백이 든 값에 따옴표를 두 번 씌워야 하는 adb 인자 규칙도 비껴간다.
- * 원문 extra(`davi.goal`)도 받지만 그건 **인코딩이 통과한다는 데 기대는 경로**다.
+ *
+ * **원문 extra(`davi.goal`)도 받지만 그 경로는 공백에서 잘린다.** 실측(2026-08-21, SM-S921N):
+ * `--es davi.goal '검색 열어줘'`는 adb가 인자를 쪼개 `Intent { … pkg=열어줘 … }`가 되고
+ * 값이 「검색」만 남는다. 따옴표를 두 번 씌우면(`"'검색 열어줘'"`) 정상이다. **한글 자체는
+ * `am`을 통과한다 — 깨지는 것은 인코딩이 아니라 공백이다.** 잘린 목표는 유효한 문자열이라
+ * 여기서 걸러낼 방법이 없고, 화면과 로그의 `source=raw`로만 사후에 알아볼 수 있다.
  *
  * 파싱은 [parse]가 하고 인텐트는 [fromIntent]가 벗긴다 — 안드로이드 타입에 닿지 않는 자리를
  * 남겨야 JVM 테스트로 덮을 수 있다. 디코드는 `java.util.Base64`를 쓴다(minSdk 26이라 쓸 수 있고,
@@ -41,6 +54,10 @@ object DebugGoalIntent {
     const val EXTRA_GOAL_RAW = "davi.goal"
     const val EXTRA_AUTOSTART = "davi.autostart"
 
+    /** 목표 extra가 하나라도 실려 있는가. 실려 있는데 못 읽은 경우를 조용히 넘기지 않으려고 쓴다. */
+    fun hasGoalExtra(intent: Intent?): Boolean =
+        intent != null && (intent.hasExtra(EXTRA_GOAL_B64) || intent.hasExtra(EXTRA_GOAL_RAW))
+
     fun fromIntent(intent: Intent?): DebugGoalRequest? = parse(
         goalB64 = intent?.getStringExtra(EXTRA_GOAL_B64),
         goalRaw = intent?.getStringExtra(EXTRA_GOAL_RAW),
@@ -48,12 +65,26 @@ object DebugGoalIntent {
     )
 
     /**
-     * 목표가 없거나 읽을 수 없으면 `null`이다 — 화면은 아무것도 하지 않는다.
+     * **읽은 extra는 소비한다.** 런치 인텐트는 액티비티가 재생성돼도 그대로 남아서, 회전 한 번이나
+     * 프로세스 복원이 `onCreate`를 다시 태우면 같은 목표로 **안내가 스스로 다시 시작된다**.
+     * 개발자가 던지지 않은 회차가 끼면 로그를 읽는 쪽이 먼저 흔들린다.
+     * `onNewIntent`는 `setIntent`로 새 인텐트를 걸어 두므로 재진입 경로에서도 소비가 유지된다.
+     */
+    fun consume(intent: Intent?) {
+        intent ?: return
+        intent.removeExtra(EXTRA_GOAL_B64)
+        intent.removeExtra(EXTRA_GOAL_RAW)
+        intent.removeExtra(EXTRA_AUTOSTART)
+    }
+
+    /**
+     * 목표가 없거나 읽을 수 없으면 `null`이다.
      * 둘 다 오면 base64가 이긴다(그쪽이 권장 경로다).
      */
     fun parse(goalB64: String?, goalRaw: String?, autoStart: Boolean): DebugGoalRequest? {
-        val goal = decodeBase64(goalB64) ?: goalRaw?.trim()?.takeIf { it.isNotEmpty() }
-        return goal?.let { DebugGoalRequest(it, autoStart) }
+        decodeBase64(goalB64)?.let { return DebugGoalRequest(it, autoStart, DebugGoalSource.B64) }
+        val raw = goalRaw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return DebugGoalRequest(raw, autoStart, DebugGoalSource.RAW)
     }
 
     /**
@@ -70,7 +101,7 @@ object DebugGoalIntent {
             StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(java.nio.ByteBuffer.wrap(bytes))
+                .decode(ByteBuffer.wrap(bytes))
                 .toString()
         }.getOrNull() ?: return null
         return decoded.trim().takeIf { it.isNotEmpty() }

@@ -63,6 +63,14 @@ class DebugGoalIntentTest {
     }
 
     @Test
+    fun `어느 extra로 들어왔는지 남긴다`() {
+        // 원문 경로는 공백에서 잘릴 수 있다(adb 인자 규칙). 잘린 목표도 유효한 문자열이라
+        // 걸러낼 수 없고, 이 source가 사후에 알아볼 유일한 단서다.
+        assertEquals(DebugGoalSource.B64, DebugGoalIntent.parse(b64("알람"), null, autoStart = false)?.source)
+        assertEquals(DebugGoalSource.RAW, DebugGoalIntent.parse(null, "알람", autoStart = false)?.source)
+    }
+
+    @Test
     fun `둘 다 오면 base64가 이긴다`() {
         // 권장 경로가 base64다. 원문은 인코딩이 통과한다는 데 기대는 경로라 뒤로 둔다.
         val parsed = DebugGoalIntent.parse(b64("알람 맞춰줘"), "설정 열어줘", autoStart = false)
@@ -72,6 +80,8 @@ class DebugGoalIntentTest {
     @Test
     fun `base64가 깨졌으면 원문으로 떨어진다`() {
         // 디코드 실패를 "목표 없음"으로 끝내면 원문을 함께 준 사람이 이유 없이 막힌다.
-        assertEquals("설정 열어줘", DebugGoalIntent.parse("!!!", "설정 열어줘", autoStart = false)?.goal)
+        val parsed = DebugGoalIntent.parse("!!!", "설정 열어줘", autoStart = false)
+        assertEquals("설정 열어줘", parsed?.goal)
+        assertEquals(DebugGoalSource.RAW, parsed?.source)
     }
 }

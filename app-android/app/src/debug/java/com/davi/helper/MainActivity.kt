@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.SpeechRecognizer
+import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -148,19 +149,52 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 인텐트로 온 목표를 입력칸에 넣고, `autostart`면 **버튼과 같은 경로**로 안내를 시작한다(#323).
-     * 분기를 새로 만들지 않는 이유는 접근성 준비 판정([canStartGuide])을 우회하지 않기 위해서다 —
-     * 준비가 안 됐으면 시작하지 않고 화면이 이유를 보여 준다.
+     * 분기를 새로 만들지 않는 이유는 접근성 준비 판정([canStartGuide])을 우회하지 않기 위해서다.
+     *
+     * **채널이 adb 하나라 안 된 이유를 화면으로 알릴 수 없다.** 그래서 판정만 logcat에 남긴다 —
+     * 목표 원문은 넘기지 않는다(#81). 이게 없으면 "던졌는데 아무 일도 안 일어났다"에서 끝난다.
      */
     private fun applyDebugGoalIntent(intent: Intent?) {
-        val request = DebugGoalIntent.fromIntent(intent) ?: return
+        if (!DebugGoalIntent.hasGoalExtra(intent)) return
+        val request = DebugGoalIntent.fromIntent(intent)
+        // 읽었으면 그 자리에서 소비한다 — 남겨 두면 회전·프로세스 복원이 회차를 하나 더 만든다.
+        DebugGoalIntent.consume(intent)
+
+        if (request == null) {
+            logGoalIntent(null, started = false, reason = "undecodable")
+            return
+        }
+        // **세션 중에는 입력칸도 건드리지 않는다.** 비활성 입력칸의 글자만 바뀌면 화면이
+        // "지금 무엇을 안내 중인지"를 거짓말한다.
+        if (GuideSession.isActive) {
+            logGoalIntent(request, started = false, reason = "session_active")
+            return
+        }
         binding.goalInput.setText(request.goal)
-        if (!request.autoStart) return
-        if (GuideSession.isActive) return
+        if (!request.autoStart) {
+            logGoalIntent(request, started = false, reason = "autostart_off")
+            return
+        }
         if (!canStartGuide()) {
+            logGoalIntent(request, started = false, reason = "accessibility_not_ready")
             refreshUi()
             return
         }
+        logGoalIntent(request, started = true, reason = "ok")
         startGuide()
+    }
+
+    private fun logGoalIntent(request: DebugGoalRequest?, started: Boolean, reason: String) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            GuideTelemetry.event(
+                "debug_goal_intent",
+                "source" to request?.source?.name?.lowercase(),
+                "autostart" to request?.autoStart,
+                "started" to started,
+                "reason" to reason,
+            ),
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
