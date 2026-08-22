@@ -288,9 +288,20 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
             logoVisible = true,
             questionText = state.goal,
             questionMaxHeightRes = R.dimen.davi_question_card_max_height_confirm,
-            cardQuestionFlexible = true,
+            // **카드가 남는 높이를 먹지 않는다**(2026-08-21). weight를 주면 문장이 짧아도
+            // 카드가 화면을 채우며 커져 상자가 늘 크다 — **상자는 문장만큼만 자라고 버튼이
+            // 그만큼 따라 내려가야** 한다.
+            //
+            // **버튼이 밀릴 걱정은 최대 높이가 받는다**(260dp, 실측 한계 278에서 18 남김).
+            // 그 전에는 wrap_content가 긴 goal에서 버튼을 화면 밖으로 밀어내서 weight로
+            // 막고 있었는데, 상한이 생기면서 그 이유가 사라졌다.
+            cardQuestionFlexible = false,
             confirmVisible = true,
             confirmAcceptTextRes = R.string.conversation_confirm_accept,
+            // **다비가 하는 말이라 분홍 글로우가 켜진다**(#176 「글로우가 화자를 가리킨다」).
+            // 최종 확인의 카드는 다비가 goal을 되읽어 주는 문장이다 — 시니어 카드가 숨어
+            // 화자 구분이 카드 하나로만 서므로 글로우가 없으면 누가 하는 말인지 안 갈린다.
+            cardGlowVisible = true,
             // 앱을 못 찾았으면 사전 점검이 통과해도 행을 세울 이름·아이콘이 없다.
             shortcutVisible = state.shortcutApp != null,
             shortcutAppName = state.shortcutApp?.label.orEmpty(),

@@ -488,10 +488,15 @@ class ConversationUiStateTest {
 
     @Test
     fun `카드는 확인 화면에서도 남는 공간만 갖는다`() {
-        // 확인쌍이 카드 아래 열 안에 있어(#196) 카드가 wrap_content면 긴 goal에서 버튼을
-        // 화면 밖으로 밀어낸다 — 확인 화면에서 버튼을 못 누르면 빠져나갈 길이 없다.
+        // 카드가 wrap_content면 긴 문구에서 아래 조작을 화면 밖으로 밀어낸다 — 그 화면에서
+        // 버튼을 못 누르면 빠져나갈 길이 없다.
+        //
+        // **최종 확인(GOAL)만 예외다**(2026-08-21). 거기서는 카드 최대 높이
+        // (`davi_question_card_max_height_confirm`)가 그 역할을 대신 지므로 카드가
+        // 내용대로 자라도 버튼 셋이 밀리지 않는다 — 상자가 문장만큼만 커지고 버튼이 따라
+        // 내려가는 것이 시안이다. 경고 쪽은 문구가 고정이라 종전대로 둔다.
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).cardQuestionFlexible)
         for (state in listOf(
-            ConversationUiState.Confirm("목표"),
             ConversationUiState.Confirm("목표", ConfirmKind.APP_AVAILABILITY_WARNING),
             ConversationUiState.Listening(),
             ConversationUiState.Clarifying(clarificationOutcome()),

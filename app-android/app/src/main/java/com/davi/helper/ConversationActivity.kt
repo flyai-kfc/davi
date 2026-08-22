@@ -1176,14 +1176,34 @@ class ConversationActivity : AppCompatActivity() {
      * 않는다. 「대신 조작하지 않는다」가 깨지는 자리가 아니다.
      */
     private fun openShortcut() {
-        val app = (uiState as? ConversationUiState.Confirm)?.shortcutApp ?: return
-        GuideTelemetry.voiceState("shortcut_opened")
+        val state = uiState as? ConversationUiState.Confirm ?: return
+        val app = state.shortcutApp ?: return
         val intent = packageManager.getLaunchIntentForPackage(app.packageName)
         if (intent == null) {
             // 사전 점검과 탭 사이에 지워졌을 수 있다. 조용히 넘기지 않고 화면을 되돌린다.
             setState(ConversationUiState.Home(statusRes = R.string.voice_server_error))
             return
         }
+        GuideTelemetry.voiceState("shortcut_opened")
+        cancelVoiceDialogue()
+        // **여는 것으로 끝나지 않는다.** (1)과 같은 안내를 그대로 켠다 — 둘의 차이는
+        // 「안내를 받느냐 마느냐」가 아니라 **어디서부터 받느냐**다. (1)은 홈 화면부터
+        // (앱 아이콘 찾기 포함), (2)는 앱이 열린 다음 걸음부터다. 닫힌 루프가 이미 앱 안인
+        // 화면을 읽으므로 「카카오톡을 눌러주세요」 단계를 코드로 건너뛸 필요가 없다 —
+        // 화면을 보고 정하는 구조라 알아서 그다음이 나온다.
+        //
+        // **예외의 범위는 「첫 실행 한 번」뿐이다.** 앱을 여는 것까지가 우리가 대신 하는
+        // 전부이고, 그 뒤로는 평소대로 안내만 한다. 앱 안에서 버튼을 눌러 주는 일은
+        // 이 경로로 들어와도 없다. **이 경계를 넓히지 않는다** — 「어차피 앱도 열어 줬으니
+        // 한 걸음만 더」가 원칙이 무너지는 전형적인 경로다.
+        // **`GuideJourneyStarter`를 쓰지 않는다.** 그쪽은 세션을 켠 뒤 **Android 홈으로
+        // 나가는** 것까지 한다 — (1)은 홈 화면부터 안내하니 맞지만, 여기서는 그 홈 인텐트가
+        // 방금 연 앱을 덮어 **앱 밖에서 안내가 시작된다**(2026-08-21 실기기).
+        //
+        // 그래서 **세션만 켜고 앱을 띄운다.** 닫힌 루프가 이미 앱 안인 화면을 읽어 다음
+        // 한 걸음을 낸다 — 「카카오톡을 눌러주세요」를 코드로 건너뛸 필요가 없다.
+        GuideSession.start(state.goal.trim())
+        setState(ConversationUiState.Home())
         runCatching { startActivity(intent) }
     }
 

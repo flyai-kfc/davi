@@ -301,6 +301,7 @@
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_weight="176"
             android:layout_marginTop="@dimen/davi_badge_overlap_negative"
             android:clipChildren="false">
