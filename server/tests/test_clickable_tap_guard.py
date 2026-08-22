@@ -153,6 +153,23 @@ def test_scroll_targeting_unclickable_container_is_not_rejected():
     assert action.target_node_id == "n3"
 
 
+def test_tap_on_editable_but_unclickable_input_passes():
+    """clickable=False라도 입력칸이면 tap을 막지 않는다.
+
+    직렬화는 isClickable || isEditable로 요소를 방출하므로 clickable=False인 입력칸이
+    계약상 존재할 수 있고, 키보드가 닫힌 입력칸은 프롬프트가 tap을 명시적으로 안내한다
+    (FOCUSED_INPUT_KEYBOARD_CLOSED). 막으면 프롬프트 지시를 가드가 반려하는 모순이 된다.
+    """
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(node_id="n1", label="", role="View", clickable=False, editable=True),
+        ],
+    )
+    action = _guide(_action(ActionType.TAP, "n1"), screen)
+    assert action.target_node_id == "n1"
+
+
 def test_done_is_not_judged_by_the_tap_guard():
     action = _guide(_action(ActionType.DONE, None), _splash_screen())
     assert action.action_type is ActionType.DONE
@@ -198,6 +215,19 @@ def test_prompt_states_the_fact_when_nothing_is_clickable():
     prompt = _prompt(_splash_screen())
     assert NO_CLICKABLE_ELEMENT_NOTICE in prompt
     assert CLICKABLE_TARGET_INSTRUCTION not in prompt
+
+
+def test_prompt_counts_editable_input_as_a_tap_candidate():
+    """입력칸만 있는 화면은 "누를 것이 없다"가 아니다 — 선택 범위 문장이 실린다."""
+    screen = Screen(
+        package_name="com.sampleapp",
+        elements=[
+            UiElement(node_id="n1", label="", role="View", clickable=False, editable=True),
+        ],
+    )
+    prompt = _prompt(screen)
+    assert CLICKABLE_TARGET_INSTRUCTION in prompt
+    assert NO_CLICKABLE_ELEMENT_NOTICE not in prompt
 
 
 def test_prompt_judges_clickability_from_the_visible_list():

@@ -126,6 +126,13 @@ def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
     설정값이지 상태가 아니다"와 충돌하지 않는다 — 그 서술은 True를 믿지 말라는 방향이고
     (비활성 버튼도 True로 온다), 이 가드는 False의 역방향만 쓴다.
 
+    **입력칸(`editable=True`)은 면제한다.** 직렬화는 `isClickable || isEditable`로 요소를
+    방출하므로 clickable=False인 입력칸이 계약상 존재할 수 있고, 프롬프트의
+    [FOCUSED_INPUT_KEYBOARD_CLOSED]는 키보드가 닫힌 입력칸을 **tap하라고 명시적으로 안내**한다
+    — 면제하지 않으면 프롬프트가 시킨 안내를 가드가 반려하는 모순이 된다. 실측(디동 웹뷰)의
+    EditText는 전부 clickable=true였지만, isClickable을 세우지 않는 provider를 배제할 근거가
+    없다.
+
     **다른 대상을 대신 고르지 않는다** — 가드는 교정이지 재선택이 아니다(가림 가드와 같은 경계).
     대상이 목록에 없는 tap(환각 id)은 여기서 판정하지 않는다 — 이 가드의 주제는 계약에 있는
     사실 하나이고, 없는 대상은 앱의 `highlight miss`가 따로 드러낸다.
@@ -133,7 +140,7 @@ def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
     아니라는 결정(HANDOFF §3-3)과 같은 방향이다.
     """
     target = _element_by_id(screen, action.target_node_id)
-    if target is None or target.clickable:
+    if target is None or target.clickable or target.editable:
         return
     raise LlmError(
         ErrorKind.SERVER,

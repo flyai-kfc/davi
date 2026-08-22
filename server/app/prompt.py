@@ -124,14 +124,16 @@ FOCUSED_INPUT_KEYBOARD_CLOSED = (
 # 못 누르는 요소를 목록에서 빼지 않는 이유: 화면의 상황 설명이 대부분 거기 실려 있고,
 # 완료 검증(_evidence_quotes_screen)이 그 label 인용을 요구한다. 빼면 둘 다 죽는다.
 CLICKABLE_TARGET_INSTRUCTION = (
-    "clickable=True로 표시된 요소만 눌렀을 때 반응합니다. tap의 대상은 그중에서 고르세요. "
-    "표시가 없는 요소는 누르라고 안내하지 말고, 화면 상황을 파악하는 데만 쓰세요."
+    "clickable=True로 표시된 요소와 editable=True인 입력칸만 눌렀을 때 반응합니다. "
+    "tap의 대상은 그중에서 고르세요. "
+    "둘 다 아닌 요소는 누르라고 안내하지 말고, 화면 상황을 파악하는 데만 쓰세요."
 )
 # 전부 못 누르는 화면(스플래시·로딩)의 관측 사실. "그러니 무엇을 하라"는 넣지 않는다 —
 # 문구가 값을 끌어당긴 전례가 있다(C17 · #109). 이 화면에서 무엇을 답할지는 계약에
 # "진행 불가"가 없어 아직 열려 있다(server/CLAUDE.md 보류 항목).
 NO_CLICKABLE_ELEMENT_NOTICE = (
-    "지금 화면에는 clickable=True로 표시된 요소가 없습니다. 어떤 요소든 누르라고 안내하지 마세요."
+    "지금 화면에는 눌렀을 때 반응하는 요소(clickable=True 표시 또는 입력칸)가 없습니다. "
+    "어떤 요소든 누르라고 안내하지 마세요."
 )
 DISABLED_ELEMENT_INSTRUCTION = (
     "enabled=False로 적힌 요소는 지금 누를 수 없는 상태입니다. 그 요소를 누르라고 안내하지 말고, "
@@ -368,11 +370,16 @@ def _screen_line(req: NextStepRequest) -> str:
 def _clickable_context(req: NextStepRequest) -> str:
     """tap 대상의 선택 범위 한 줄(C20 · #311). 요소 목록과 같은 것을 본다.
 
+    tap 후보는 clickable=True **또는 editable=True**다 — 직렬화가 isClickable || isEditable로
+    요소를 방출하므로 clickable=False인 입력칸이 있을 수 있고, 키보드가 닫힌 입력칸은
+    [FOCUSED_INPUT_KEYBOARD_CLOSED]가 tap을 명시적으로 안내한다. 가드의 면제와 같은 기준이다
+    (`reasoning._reject_unclickable_tap`).
+
     `clickable`은 계약 초기부터 non-null bool이라(낡은 앱도 항상 보낸다) 미관측 분기가
     없다 — C10의 세 상태 규약 대상이 아니다. 그래서 두 문장 중 하나는 항상 실린다.
     """
 
-    if any(element.clickable for element in _visible_elements(req)):
+    if any(element.clickable or element.editable for element in _visible_elements(req)):
         return f"{CLICKABLE_TARGET_INSTRUCTION}\n"
     return f"{NO_CLICKABLE_ELEMENT_NOTICE}\n"
 
