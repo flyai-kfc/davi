@@ -112,6 +112,11 @@ class ConversationActivity : AppCompatActivity() {
     @Volatile
     private var destroyed = false
 
+    private val authStore: AuthStore by lazy { AuthStore(this) }
+    private val sessionLoginRecovery: SessionLoginRecovery by lazy {
+        SessionLoginRecovery(this, authStore, ::cancelVoiceDialogue)
+    }
+
     // 안내 세션 시작·종료를 홈 렌더(안내 중지 버튼·mic 잠금)에 반영한다.
     // 안내 세션은 **밖에서** 끝난다(사용자가 대상 앱에서 완료 · 권한 소실 · 다른 종료 경로).
     // 그때 종료 확인이 떠 있으면 **끝낼 안내가 없는데 묻고 있는** 상태가 되므로 홈으로 내린다.
@@ -130,6 +135,7 @@ class ConversationActivity : AppCompatActivity() {
         SlotFillApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
 
@@ -137,6 +143,7 @@ class ConversationActivity : AppCompatActivity() {
         AppResolutionApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
 
@@ -832,6 +839,8 @@ class ConversationActivity : AppCompatActivity() {
             null -> handleSlotFillResult(pending, logicalRequest, slotResult)
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
+            AppResolutionCoordinator.Outcome.SessionAuthenticationRequired ->
+                sessionLoginRecovery.start()
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -892,6 +901,13 @@ class ConversationActivity : AppCompatActivity() {
             is SlotFillResult.NetworkFailure,
             is SlotFillResult.ParseFailure,
             -> {
+                if (
+                    result is SlotFillResult.ApiFailure &&
+                    result.sessionAuthenticationRequired
+                ) {
+                    sessionLoginRecovery.start()
+                    return
+                }
                 if (voiceSession.fail(pending)) {
                     voiceRequestTracker.reset()
                     appResolutionRequestTracker.reset()
@@ -1045,8 +1061,9 @@ class ConversationActivity : AppCompatActivity() {
      * 도달하지 않는다(실제 표시는 개발판 글자 입력 화면).
      */
     private fun errorMessageFor(result: SlotFillResult): Int = when (result) {
-        is SlotFillResult.ApiFailure -> when (bucketOf(result.error.kind)) {
+        is SlotFillResult.ApiFailure -> when (bucketOf(result.error)) {
             ApiErrorBucket.BUSY -> R.string.voice_server_busy
+            ApiErrorBucket.DAILY_LIMIT -> R.string.voice_daily_limit
             ApiErrorBucket.NETWORK -> R.string.voice_network_error
             ApiErrorBucket.SERVER -> R.string.voice_server_error
         }

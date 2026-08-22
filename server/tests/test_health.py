@@ -4,10 +4,13 @@ import re
 
 import app.main as main_module
 from app.config import settings
+from app.kakao_auth import issue_session_token
 from app.llm import StubLlmClient
 from app.main import app
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+
+_AUTH_SECRET = "s" * 32
 
 # 토큰 없는 development 기본값은 loopback 전용이다. TestClient의 기본 ``testclient`` host는
 # 실제 IP가 아니므로, 평소 테스트는 운영의 로컬 개발 요청과 같은 loopback으로 명시한다.
@@ -262,6 +265,9 @@ def test_production_next_step_logs_only_safe_metadata(
         gemini_api_key="server-side-key",
     )
     monkeypatch.setattr(main_module, "get_llm_client", StubLlmClient)
+    monkeypatch.setattr(settings, "davi_auth_jwt_secret", SecretStr(_AUTH_SECRET))
+    monkeypatch.setattr(settings, "davi_kakao_app_id", 777)
+    session_token = issue_session_token(1234).session_token
 
     secret_goal = "민감한 목표 원문"
     secret_label = "개인정보 hong@example.com"
@@ -299,7 +305,7 @@ def test_production_next_step_logs_only_safe_metadata(
             json=payload,
             headers={
                 "X-Davi-Dev-Token": secret_token,
-                "Authorization": f"Bearer {secret_token}",
+                "Authorization": f"Bearer {session_token}",
             },
         )
 

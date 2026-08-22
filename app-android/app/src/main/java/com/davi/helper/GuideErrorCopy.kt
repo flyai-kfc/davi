@@ -14,7 +14,7 @@ object GuideErrorCopy {
     /** [result]가 실패면 띄울 문구, 성공이면 null. */
     fun messageRes(result: NextStepResult): Int? = when (result) {
         is NextStepResult.Success -> null
-        is NextStepResult.ApiFailure -> messageRes(bucketOf(result.error.kind))
+        is NextStepResult.ApiFailure -> messageRes(bucketOf(result.error))
         // 서버가 200 밖의 코드를 줬거나(HttpFailure) 준 body가 계약과 다르다(ParseFailure).
         // 둘 다 사용자가 할 수 있는 일이 없어 SERVER로 간다.
         is NextStepResult.HttpFailure -> messageRes(ApiErrorBucket.SERVER)
@@ -25,6 +25,7 @@ object GuideErrorCopy {
     fun messageRes(bucket: ApiErrorBucket): Int = when (bucket) {
         ApiErrorBucket.NETWORK -> R.string.guide_error_network
         ApiErrorBucket.BUSY -> R.string.guide_error_busy
+        ApiErrorBucket.DAILY_LIMIT -> R.string.guide_error_daily_limit
         ApiErrorBucket.SERVER -> R.string.guide_error_server
     }
 }

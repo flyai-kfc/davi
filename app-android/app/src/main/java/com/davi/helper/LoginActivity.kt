@@ -22,8 +22,10 @@ import java.util.concurrent.Executors
 /**
  * ON-1 로그인 (docs/SCREENS.md). 릴리스 진입점.
  *
- * 로그인은 필수 관문이 아니다 — 어떤 실패도 앱 사용을 막지 않고 "로그인 없이 시작"이
- * 항상 열려 있다. 이미 결정(유효 세션 또는 스킵)이 있으면 화면 없이 바로 온보딩으로 간다.
+ * 로그인은 앱을 둘러보기 위한 필수 관문이 아니다 — 어떤 실패에도 "로그인 없이 시작"이
+ * 열려 있다. 다만 외부 공개 서버의 안내 기능은 세션 인증이 필요하고, 그 challenge로 이
+ * 화면에 돌아온 경우 상태 문구가 스킵 뒤에는 안내를 쓸 수 없다는 경계를 명시한다.
+ * 이미 결정(유효 세션 또는 스킵)이 있으면 화면 없이 바로 온보딩으로 간다.
  * 카카오 SDK 흐름은 카카오톡 앱 우선, 실패 시 계정(웹) 로그인 폴백이며 **사용자 취소는
  * 폴백하지 않는다**(취소했는데 웹뷰가 또 뜨는 것을 막는다 — 카카오 공식 가이드 패턴).
  *
@@ -45,7 +47,11 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         authStore = AuthStore(this)
-        if (authStore.hasDecision(nowEpochSeconds())) {
+        val sessionAuthenticationRequired = intent.getBooleanExtra(
+            EXTRA_SESSION_AUTHENTICATION_REQUIRED,
+            false,
+        )
+        if (!sessionAuthenticationRequired && authStore.hasDecision(nowEpochSeconds())) {
             proceedToOnboarding()
             return
         }
@@ -71,6 +77,11 @@ class LoginActivity : AppCompatActivity() {
         // 앱을 막지 않는다는 원칙의 빌드판. 키가 없어 SDK가 init되지 않은 경우뿐 아니라, 키는
         // 있는데 세션을 교환할 서버 주소가 아직 placeholder인 경우까지 LOGIN_ENABLED가 덮는다.
         binding.btnKakaoLogin.isVisible = BuildConfig.LOGIN_ENABLED
+
+        if (sessionAuthenticationRequired) {
+            binding.loginStatus.setText(R.string.login_session_authentication_required)
+            binding.loginStatus.isVisible = true
+        }
 
         binding.btnKakaoLogin.setOnClickListener { startKakaoLogin() }
         binding.btnLoginSkip.setOnClickListener {
@@ -194,7 +205,9 @@ class LoginActivity : AppCompatActivity() {
 
     private fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1000
 
-    private companion object {
-        const val TAG = "GuideSvc"
+    companion object {
+        const val EXTRA_SESSION_AUTHENTICATION_REQUIRED =
+            "com.davi.helper.extra.SESSION_AUTHENTICATION_REQUIRED"
+        private const val TAG = "GuideSvc"
     }
 }

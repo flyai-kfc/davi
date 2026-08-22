@@ -117,6 +117,7 @@ origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽
 저장하지 않는다. `session_id`는 모델 입력에도 넣지 않는다. 키 없는 개발·CI에서는
 `StubIntentResolver`가 현재 발화를 그대로 ready goal로 돌려 계약만 검증하며 의미 품질을 주장하지 않는다.
 두 trace header와 development auth/rate limit, `ApiError`는 `/v1/next-step`과 같은 경계를 쓴다.
+beta·production의 자체 제한은 `rate_limit_scope=burst|daily`를 함께 내려 앱이 대기 성격을 구분한다.
 
 ### 목표 앱 후보와 기기 대조
 
@@ -187,23 +188,37 @@ profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`
 ## 실행 프로필
 
 `DAVI_ENV`는 서버의 실행 경계를 정한다. 값이 없으면 로컬·테스트 호환을 위해
-`development`다. 제품 배포는 반드시 `production`을 명시하고, #94 Azure 공유 서버는 제품 배포가
-아니므로 개발 토큰과 rate limit을 쓰는 `development`를 유지한다.
+`development`다. `beta`·`production`은 카카오 로그인 세션 토큰으로 실사용자를 받는 외부
+공개 프로필이며(#214), #94 Azure 공유 개발 서버는 실사용자 endpoint가 아니므로 개발 토큰과
+rate limit을 쓰는 `development`를 유지한다.
 
-| 설정 | development | production |
+| 설정 | development | beta / production |
 |---|---|---|
 | `DAVI_USE_STUB_LLM=true` | 허용(기본값, 키 없이 실행) | 기동 실패 |
 | `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
 | `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
-| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 `0.0.0.0` | loopback만 허용 |
+| `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 접근 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
+| `/v1/next-step` 등 추론 endpoint | dev·test 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
+| `/docs`·`/redoc`·`/openapi.json` | 로컬 개발 문서 노출 | 404(등록·노출 안 함) |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
 검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`도 둘 다 필수다.
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
-토큰 없는 LAN 요청이 통과하지 않는다.
-키와 개발 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+토큰 없는 LAN 요청이 통과하지 않는다. beta·production은 바인딩 자체를 막지 않는 대신,
+세션 토큰이 없거나 무효한 요청과 카카오 회원번호별·전역 요청 제한(짧은 창 + 하루 상한)을
+`main.py` `_external_access_error`가 막는다 — 로그인(`/v1/auth/kakao`)만 이 검사 밖이며
+별도 리미터가 프로필과 무관하게 로그인 폭주를 막는다.
+짧은 창 기본값은 사용자별 15회·전체 60회/60초다. 사용자별 값은 목표 정리·앱 판정 2회와
+최근 안내 이력 상한 10스텝을 한 분 안에 진행할 수 있는 기준이고, 전체 값은 그런 사용자 4명을
+동시에 받는 기준이다. 하루 창은 사용자별 200회·전체 900회/24시간이다. 두 창은 한 lock에서
+모두 허용된 요청만 함께 기록하므로 하루 한도에서 거부된 요청이 짧은 창을 소모하지 않는다.
+둘 다 인프로세스 상태라 worker·replica는 각각 하나여야 하고, **재시작·재배포 때 하루 창도
+초기화된다.** 영속적인 production 일일 상한이 필요하면 공유 저장소 기반 제한기로 교체해야 하며,
+그 전까지 공급자 자체 일일 쿼터가 최종 비용 경계다.
+키와 접근 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
 
 ### LLM 공급자 교체
 
@@ -282,7 +297,7 @@ development:
 {"status":"ok","environment":"development","provider":"gemini","model":"gemini-3.5-flash-lite","stub_llm":true,"privacy_masking_disabled":false,"kakao_auth_configured":false}
 ```
 
-production:
+beta / production:
 
 ```json
 {"status":"ok"}

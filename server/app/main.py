@@ -16,7 +16,9 @@ from fastapi.responses import JSONResponse
 from .app_resolution import resolve_app_request
 from .config import settings
 from .dev_access import (
+    MultiWindowRateLimiter,
     RateLimitDecision,
+    RateLimitWindow,
     SlidingWindowRateLimiter,
     SourceAndGlobalRateLimiter,
     token_matches,
@@ -28,6 +30,7 @@ from .kakao_auth import (
     KakaoLoginRequest,
     SessionTokenResponse,
     login_with_kakao,
+    verify_session_token,
 )
 from .llm import get_llm_client
 from .observability import (
@@ -49,11 +52,21 @@ from .schemas import (
     ErrorKind,
     NextStepRequest,
     NextStepResponse,
+    RateLimitScope,
     SlotFillRequest,
     SlotFillState,
 )
 
-app = FastAPI(title="davi reasoning orchestrator", version="0.1.0")
+# 외부 공개 프로필에서 FastAPI의 기본 문서·스키마 endpoint를 등록하지 않는다. 테스트는 모듈
+# import 뒤 프로필을 바꾸므로 아래 middleware에서도 같은 경계를 한 번 더 적용한다.
+_DEVELOPMENT_DOCS_ENABLED = settings.davi_env == "development"
+app = FastAPI(
+    title="davi reasoning orchestrator",
+    version="0.1.0",
+    docs_url="/docs" if _DEVELOPMENT_DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DEVELOPMENT_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DEVELOPMENT_DOCS_ENABLED else None,
+)
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
 # 2차 마스킹 우회는 시작 시점에 한 번 크게 알린다(#203). 설정을 켜 놓은 것을 잊은 채
@@ -71,11 +84,18 @@ _SLOT_FILL_PATH = "/v1/intent/slot-fill"
 _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
 _AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
+_DOCUMENTATION_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )
 _DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
+_SESSION_AUTH_HEADER = "Authorization"
+_SESSION_AUTH_PREFIX = "Bearer "
 _ATTEMPT_PATTERN = re.compile(r"[1-9][0-9]*")
+_EXTERNAL_DAILY_WINDOW_SECONDS = 24 * 60 * 60
+# 세션 인증이 필요한 추론 endpoint만이다. 로그인(_AUTH_KAKAO_PATH)은 토큰이 없는 상태로
+# 호출되므로 대상이 아니다 — 자체 auth_rate_limiter가 프로필과 무관하게 따로 막는다.
+_SESSION_PROTECTED_PATHS = frozenset({_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH})
 dev_rate_limiter = SlidingWindowRateLimiter()
 # 로그인 전용 리미터(#167 리뷰 P1). dev 리미터는 development에서만 돌지만, 로그인은 인증 전
 # 공개 endpoint가 카카오 API를 소모하므로 프로필과 무관하게 제한한다. 별도 창을 쓰는
@@ -84,6 +104,10 @@ dev_rate_limiter = SlidingWindowRateLimiter()
 # 출처별 제한이 한 출처의 폭주로부터 정상 사용자를, 전역 상한이 카카오 API 소모 총량을
 # 지키며, 거부된 요청은 출처 키를 남기지 않아 분산 출처 폭주에도 키 수가 전역 상한으로 묶인다.
 auth_rate_limiter = SourceAndGlobalRateLimiter()
+# beta·production 추론 endpoint 전용 리미터(#214). 출처는 카카오 회원번호(세션 토큰의 sub)다.
+# 짧은 창과 하루 창을 한 lock에서 먼저 모두 판정한 뒤 함께 기록한다. 둘을 순차 호출하면
+# 하루 창이 거부한 요청도 짧은 창의 슬롯을 먼저 소모해 다른 사용자를 막는다.
+external_rate_limiter = MultiWindowRateLimiter()
 
 
 def _request_route(path: str) -> str:
@@ -222,6 +246,123 @@ def _development_auth_error(request: Request) -> JSONResponse:
     )
 
 
+def _external_access_error(request: Request) -> JSONResponse | None:
+    """development가 아닌 프로필(beta·production)에서 세션 인증과 요청 제한을 검사한다(#214).
+
+    ``_development_access_error``는 development에서만 동작하므로, 그 밖의 프로필에서는
+    지금까지 어떤 요청 경계도 없었다. 카카오 로그인이 발급한 세션 JWT를 여기서 처음
+    검증한다 — 로그인 자체(``_AUTH_KAKAO_PATH``)는 토큰이 없는 상태로 호출되므로
+    ``_SESSION_PROTECTED_PATHS``에 없고, 자체 ``auth_rate_limiter``가 프로필과 무관하게
+    로그인 폭주만 따로 막는다.
+    """
+
+    if settings.davi_env == "development":
+        return None
+    if request.url.path not in _SESSION_PROTECTED_PATHS:
+        return None
+
+    authorization = request.headers.get(_SESSION_AUTH_HEADER, "")
+    if not authorization.startswith(_SESSION_AUTH_PREFIX):
+        return _external_auth_error(request)
+    token = authorization[len(_SESSION_AUTH_PREFIX) :].strip()
+    if not token:
+        return _external_auth_error(request)
+    try:
+        kakao_user_id = verify_session_token(token)
+    except AuthError as error:
+        if error.kind is ErrorKind.AUTH:
+            return _external_auth_error(request)
+        # 설정·인프라 실패를 토큰 만료로 위장하면 앱이 정상 세션까지 지우고 로그인을 반복한다.
+        # 기동 검증이 보통 이 경로를 막더라도, 이 경계 자체가 오류 종류를 보존해야 한다.
+        request.state.error_kind = error.kind.value
+        body = ApiError(
+            kind=error.kind,
+            message=error.message,
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(status_code=error.http_status, content=body.model_dump())
+
+    # 출처는 카카오 회원번호다 — device_id·IP가 아니라 인증된 사용자 단위로 제한한다.
+    source = str(kakao_user_id)
+    decision = external_rate_limiter.check(
+        source,
+        (
+            # 둘 다 소진된 경우 최대 24시간 남은 하루 한도를 먼저 알려야, 60초 뒤 같은
+            # 요청을 다시 보냈다가 다시 막히는 왕복을 만들지 않는다.
+            RateLimitWindow(
+                name=RateLimitScope.DAILY.value,
+                source_limit=settings.davi_external_daily_limit_per_source_requests,
+                source_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+                global_limit=settings.davi_external_daily_limit_requests,
+                global_window_seconds=_EXTERNAL_DAILY_WINDOW_SECONDS,
+            ),
+            RateLimitWindow(
+                name=RateLimitScope.BURST.value,
+                source_limit=settings.davi_external_rate_limit_per_source_requests,
+                source_window_seconds=settings.davi_external_rate_limit_per_source_window_seconds,
+                global_limit=settings.davi_external_rate_limit_requests,
+                global_window_seconds=settings.davi_external_rate_limit_window_seconds,
+            ),
+        ),
+    )
+    if not decision.allowed:
+        if decision.limited_window is None:  # pragma: no cover - 다중 창 계약의 방어선
+            raise RuntimeError("external rate limiter가 제한 창을 반환하지 않았습니다")
+        return _external_rate_limit_response(
+            request,
+            decision,
+            scope=RateLimitScope(decision.limited_window),
+        )
+
+    return None
+
+
+def _documentation_access_error(request: Request) -> JSONResponse | None:
+    """beta·production에서 프레임워크 기본 API 문서와 스키마를 공개하지 않는다."""
+
+    if settings.davi_env == "development" or request.url.path not in _DOCUMENTATION_PATHS:
+        return None
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Not Found"})
+
+
+def _external_auth_error(request: Request) -> JSONResponse:
+    request.state.error_kind = "EXTERNAL_AUTH"
+    error = ApiError(
+        kind=ErrorKind.AUTH,
+        message="session token required",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=error.model_dump(),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _external_rate_limit_response(
+    request: Request,
+    decision: RateLimitDecision,
+    *,
+    scope: RateLimitScope,
+) -> JSONResponse:
+    retry_after = decision.retry_after_seconds or 1
+    scope_label = "SOURCE" if decision.limited_scope == "source" else "GLOBAL"
+    request.state.error_kind = f"EXTERNAL_{scope.value.upper()}_LIMIT_{scope_label}"
+    request.state.retry_after_seconds = retry_after
+    error = ApiError(
+        kind=ErrorKind.QUOTA,
+        message="request limit exceeded",
+        retry_after_seconds=retry_after,
+        rate_limit_scope=scope,
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=error.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 def _store_raw_if_dogfood(
     req: NextStepRequest,
     status_code: int,
@@ -300,7 +441,11 @@ async def observe_request(request: Request, call_next):
             request.state.error_kind = ErrorKind.BAD_REQUEST.value
             response = _invalid_trace_headers_response(request.state.request_id)
         else:
-            response = _development_access_error(request) if route in _TRACED_API_PATHS else None
+            response = _documentation_access_error(request)
+            if response is None and route in _TRACED_API_PATHS:
+                response = _development_access_error(request)
+                if response is None:
+                    response = _external_access_error(request)
             if response is None:
                 response = await call_next(request)
         _attach_trace_headers(response, context)
@@ -351,7 +496,7 @@ async def observe_request(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
-    if settings.davi_env == "production":
+    if settings.davi_env != "development":
         return {"status": "ok"}
     return {
         "status": "ok",

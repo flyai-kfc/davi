@@ -77,6 +77,23 @@ class AppResolutionApiClientTest {
     }
 
     @Test
+    fun `attaches session token and recognizes a bearer challenge`() {
+        server.enqueue(
+            MockResponse().setResponseCode(401)
+                .setHeader("WWW-Authenticate", "Bearer")
+                .setBody("""{"kind":"AUTH","message":"session token required"}"""),
+        )
+
+        val result = AppResolutionApiClient(
+            server.url("/").toString(),
+            sessionToken = { "session-token" },
+        ).resolve(AppResolutionRequest("목표"), trace()) as AppResolutionResult.ApiFailure
+
+        assertEquals("Bearer session-token", server.takeRequest().getHeader("Authorization"))
+        assertTrue(result.sessionAuthenticationRequired)
+    }
+
+    @Test
     fun `returns network failure`() {
         val http = OkHttpClient.Builder().callTimeout(1, TimeUnit.SECONDS).build()
         val result = AppResolutionApiClient("http://127.0.0.1:1", http)

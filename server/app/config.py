@@ -26,7 +26,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     # 실행 프로필. 미설정 로컬/테스트는 development로 유지한다.
-    davi_env: Literal["development", "production"] = "development"
+    # beta는 카카오 로그인으로 실사용자를 받는 외부 공개 endpoint다(#214) — production과
+    # 마찬가지로 stub/개발 토큰을 금지하고 세션 인증을 요구하지만(main.py), 별도 Azure
+    # Container App·시크릿으로 운영해 앞으로 올 정식 production과 구분한다.
+    davi_env: Literal["development", "beta", "production"] = "development"
 
     # LLM 공급자. 셋 다 같은 구조화 JSON 계약을 쓰고, 교체는 이 값 하나다(`llm_provider.py`).
     # 기본은 gemini — 기존 배포·eval·.env가 그대로 돌아야 한다.
@@ -99,6 +102,20 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_per_source_requests: int = 10
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
+    # beta·production에서 세션 인증된 추론 endpoint(/v1/next-step 등)를 지키는 제한(#214).
+    # 사용자별 15회는 목표 정리·앱 판정 2회 뒤 최근 안내 이력 상한 10스텝을 한 분 안에
+    # 진행해도 여유 3회를 남긴다. 전체 60회는 그 최댓값을 쓰는 사용자 4명을 동시에 받는다.
+    # 이 값은 공급자 RPM을 대신하지 않는 앱의 남용 경계다 — 공급자 쿼터는 배포 환경에서
+    # 별도로 맞추고, 실제 beta 동시 사용자가 늘면 관측 뒤 환경변수로 조정한다.
+    davi_external_rate_limit_requests: int = 60
+    davi_external_rate_limit_window_seconds: int = 60
+    davi_external_rate_limit_per_source_requests: int = 15
+    davi_external_rate_limit_per_source_window_seconds: int = 60
+    # 짧은 창과 별개로 하루 단위 상한도 둔다(창은 24시간 고정 — main.py). 짧은 창은 폭주를,
+    # 이 상한은 하루 동안의 누적 사용량을 막는다. 공급자 무료 티어 RPD(약 1,000)보다 낮게 둔다.
+    davi_external_daily_limit_requests: int = 900
+    davi_external_daily_limit_per_source_requests: int = 200
+
     @property
     def access_tokens(self) -> dict[str, str]:
         """이 서버가 받아들이는 개발용 토큰. 값이 있는 것만 담는다.
@@ -157,8 +174,8 @@ class Settings(BaseSettings):
         test_access_token = self.davi_test_access_token.get_secret_value().strip()
         bind_host = self.davi_bind_host.strip().lower()
 
-        if self.davi_env == "production" and self.davi_use_stub_llm:
-            raise ValueError("production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
+        if self.davi_env != "development" and self.davi_use_stub_llm:
+            raise ValueError("beta·production에서는 DAVI_USE_STUB_LLM=false여야 합니다")
         if not self.davi_use_stub_llm and not api_key:
             key_setting = API_KEY_SETTINGS[self.davi_llm_provider]
             raise ValueError(
@@ -169,10 +186,10 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_GEMINI_THINKING_BUDGET은 0 이상이어야 합니다")
         if self.davi_max_output_tokens < 0:
             raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
-        if self.davi_env == "production" and dev_access_token:
-            raise ValueError("production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
-        if self.davi_env == "production" and test_access_token:
-            raise ValueError("production에서는 DAVI_TEST_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env != "development" and dev_access_token:
+            raise ValueError("beta·production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env != "development" and test_access_token:
+            raise ValueError("beta·production에서는 DAVI_TEST_ACCESS_TOKEN을 설정할 수 없습니다")
         if dev_access_token and len(dev_access_token) < 32:
             raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
         if test_access_token and len(test_access_token) < 32:
@@ -181,8 +198,8 @@ class Settings(BaseSettings):
         # 둘로 나눈 것이므로 같은 값을 쓰는 설정은 기동 때 막는다.
         if dev_access_token and dev_access_token == test_access_token:
             raise ValueError("DAVI_TEST_ACCESS_TOKEN은 DAVI_DEV_ACCESS_TOKEN과 달라야 합니다")
-        if self.davi_env == "production" and bind_host not in {"127.0.0.1", "localhost", "::1"}:
-            raise ValueError("production은 loopback 주소에만 바인딩할 수 있습니다")
+        # beta·production의 외부 바인딩은 세션 인증이 지킨다(#214). development의 LAN
+        # 바인딩만 아래에서 개발·테스트 접근 토큰 중 하나를 요구한다.
         # 토큰 게이트를 여는 것은 둘 중 **아무 토큰이나 하나**다. 테스트 기간에 개발 토큰을
         # 잠시 비우고 테스트 토큰만 두는 운용도 막지 않는다.
         if (
@@ -224,6 +241,10 @@ class Settings(BaseSettings):
             raise ValueError("DAVI_AUTH_JWT_SECRET은 32자 이상이어야 합니다")
         if self.davi_kakao_app_id < 0:
             raise ValueError("DAVI_KAKAO_APP_ID는 음수일 수 없습니다")
+        if self.davi_env != "development" and not self.kakao_auth_configured:
+            raise ValueError(
+                "beta·production에는 DAVI_KAKAO_APP_ID와 DAVI_AUTH_JWT_SECRET이 필요합니다"
+            )
         if self.davi_auth_session_ttl_seconds <= 0:
             raise ValueError("DAVI_AUTH_SESSION_TTL_SECONDS는 양수여야 합니다")
         if self.davi_auth_rate_limit_requests <= 0:
@@ -244,6 +265,27 @@ class Settings(BaseSettings):
                 "DAVI_AUTH_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
                 "DAVI_AUTH_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
             )
+        if self.davi_external_rate_limit_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_external_rate_limit_window_seconds <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_WINDOW_SECONDS는 양수여야 합니다")
+        if self.davi_external_rate_limit_per_source_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
+        if self.davi_external_rate_limit_per_source_window_seconds <= 0:
+            raise ValueError("DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 양수여야 합니다")
+        # 같은 불변식(#167 4차 리뷰 P2)을 외부 추론 리미터에도 적용한다 — 근거는 위 auth 창과 같다.
+        if (
+            self.davi_external_rate_limit_per_source_window_seconds
+            > self.davi_external_rate_limit_window_seconds
+        ):
+            raise ValueError(
+                "DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS는 "
+                "DAVI_EXTERNAL_RATE_LIMIT_WINDOW_SECONDS 이하여야 합니다"
+            )
+        if self.davi_external_daily_limit_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_DAILY_LIMIT_REQUESTS는 양수여야 합니다")
+        if self.davi_external_daily_limit_per_source_requests <= 0:
+            raise ValueError("DAVI_EXTERNAL_DAILY_LIMIT_PER_SOURCE_REQUESTS는 양수여야 합니다")
         return self
 
     @property

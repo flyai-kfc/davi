@@ -39,16 +39,23 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var destroyed = false
 
+    private val authStore: AuthStore by lazy { AuthStore(this) }
+    private val sessionLoginRecovery: SessionLoginRecovery by lazy {
+        SessionLoginRecovery(this, authStore, ::cancelVoiceDialogue)
+    }
+
     private val slotFillApiClient: SlotFillApiClient by lazy {
         SlotFillApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
     private val appResolutionApiClient: AppResolutionApiClient by lazy {
         AppResolutionApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore.sessionToken(System.currentTimeMillis() / 1000) },
         )
     }
     private val launchableAppIndex: LaunchableAppIndex by lazy {
@@ -252,6 +259,8 @@ class MainActivity : AppCompatActivity() {
             null -> handleSlotFillResult(pending, logicalRequest, slotResult)
             AppResolutionCoordinator.Outcome.Dropped ->
                 GuideTelemetry.voiceResponseDropped(logicalRequest, "app_resolution_changed")
+            AppResolutionCoordinator.Outcome.SessionAuthenticationRequired ->
+                sessionLoginRecovery.start()
             is AppResolutionCoordinator.Outcome.Completed -> {
                 if (!voiceSession.isPending(pending)) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -306,6 +315,13 @@ class MainActivity : AppCompatActivity() {
             is SlotFillResult.NetworkFailure,
             is SlotFillResult.ParseFailure,
             -> {
+                if (
+                    result is SlotFillResult.ApiFailure &&
+                    result.sessionAuthenticationRequired
+                ) {
+                    sessionLoginRecovery.start()
+                    return
+                }
                 if (voiceSession.fail(pending)) {
                     setVoiceStatus(errorMessageFor(result))
                     voiceRequestTracker.reset()
@@ -451,14 +467,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun errorMessageFor(result: SlotFillResult): Int = when (result) {
-        is SlotFillResult.ApiFailure -> when (result.error.kind) {
-            ApiErrorKind.QUOTA -> R.string.voice_server_busy
-            ApiErrorKind.NETWORK -> R.string.voice_network_error
-            ApiErrorKind.AUTH,
-            ApiErrorKind.SERVER,
-            ApiErrorKind.PARSE,
-            ApiErrorKind.BAD_REQUEST,
-            -> R.string.voice_server_error
+        is SlotFillResult.ApiFailure -> when (bucketOf(result.error)) {
+            ApiErrorBucket.BUSY -> R.string.voice_server_busy
+            ApiErrorBucket.DAILY_LIMIT -> R.string.voice_daily_limit
+            ApiErrorBucket.NETWORK -> R.string.voice_network_error
+            ApiErrorBucket.SERVER -> R.string.voice_server_error
         }
         is SlotFillResult.NetworkFailure -> R.string.voice_network_error
         is SlotFillResult.HttpFailure,

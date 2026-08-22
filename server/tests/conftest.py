@@ -6,7 +6,11 @@ from app.app_resolution import get_app_candidate_resolver
 from app.config import Settings, settings
 from app.intent_resolution import get_intent_resolver
 from app.llm import get_llm_client
-from app.main import auth_rate_limiter, dev_rate_limiter
+from app.main import (
+    auth_rate_limiter,
+    dev_rate_limiter,
+    external_rate_limiter,
+)
 
 
 def _validated_runtime_profile(**overrides: Any) -> Settings:
@@ -22,6 +26,13 @@ def _validated_runtime_profile(**overrides: Any) -> Settings:
         "davi_dogfood_device_ids": "",
         "davi_use_stub_llm": True,
     }
+    # 외부 프로필을 쓰는 API 테스트는 세션 경계가 실제로 성립하는 정상 프로필에서 시작한다.
+    # 설정 누락 자체는 test_config.py가 명시적으로 빈 값을 넘겨 검증한다.
+    if overrides.get("davi_env") in {"beta", "production"}:
+        values.update(
+            davi_kakao_app_id=777,
+            davi_auth_jwt_secret="s" * 32,
+        )
     values.update(overrides)
     return Settings(_env_file=None, **values)
 
@@ -43,12 +54,14 @@ def isolate_runtime_state(monkeypatch):
     get_app_candidate_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
+    external_rate_limiter.reset()
     yield
     get_llm_client.cache_clear()
     get_intent_resolver.cache_clear()
     get_app_candidate_resolver.cache_clear()
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
+    external_rate_limiter.reset()
 
 
 @pytest.fixture

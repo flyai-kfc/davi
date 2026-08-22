@@ -34,6 +34,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private var overlay: OverlayController? = null
     private var guideApiClient: GuideApiClient? = null
+    private var authStore: AuthStore? = null
     private var e2ePublisher: GuideE2ePublisher? = null
 
     /**
@@ -236,9 +237,11 @@ class GuideAccessibilityService : AccessibilityService() {
             },
         )
         e2ePublisher = GuideE2ePublisher(this)
+        authStore = AuthStore(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
             devAccessToken = BuildConfig.DEV_ACCESS_TOKEN,
+            sessionToken = { authStore?.sessionToken(System.currentTimeMillis() / 1000) },
         )
         // 옵트인 빌드만 해시를 계산한다 — 서버 화이트리스트는 저장만 거를 뿐 전송은 여기서만
         // 막을 수 있다(#77 리뷰). 앱의 1차 마스킹이 꺼진 요청은 서버가 구분할 수 없으므로
@@ -812,7 +815,14 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = result.error.kind.name,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen(signature, session.generation, result)
+                        when (GuideApiFailurePolicy.actionFor(result)) {
+                            GuideApiFailureAction.REQUIRE_LOGIN ->
+                                requireFreshLogin(session.generation)
+                            GuideApiFailureAction.STOP_DAILY_LIMIT ->
+                                stopForDailyLimit(session.generation)
+                            GuideApiFailureAction.RETRY ->
+                                retryThisScreen(signature, session.generation, result)
+                        }
                     }
 
                     is NextStepResult.HttpFailure -> {
@@ -872,6 +882,27 @@ class GuideAccessibilityService : AccessibilityService() {
         return true
     }
 
+    /** 백그라운드 서비스는 Activity를 직접 띄우지 않고, 안내를 닫은 뒤 알림 탭으로 복구한다. */
+    private fun requireFreshLogin(generation: Long) {
+        mainHandler.post {
+            if (!GuideSession.isCurrent(generation)) return@post
+            authStore?.clearAuthenticationDecision()
+            GuideSession.stop()
+            GuideNotifier.notifyLoginRequired(this)
+            Log.i(TAG, "session authentication required, guide stopped")
+        }
+    }
+
+    /** 최대 24시간 재시도할 수 없는 하루 한도는 백오프하지 않고 세션을 끝내 즉시 마이크를 푼다. */
+    private fun stopForDailyLimit(generation: Long) {
+        mainHandler.post {
+            if (!GuideSession.isCurrent(generation)) return@post
+            GuideSession.stop()
+            GuideNotifier.notifyDailyLimit(this)
+            Log.i(TAG, "daily request limit reached, guide stopped")
+        }
+    }
+
     /**
      * 요청이 실패한 화면은 "안 보낸 것"으로 되돌려 다음 샘플이 다시 시도하게 한다.
      * 이벤트 기반일 때는 다음 이벤트가 재시도를 해줬지만, 이제 화면이 그대로면 이벤트도 오지 않는다.
@@ -893,7 +924,13 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun retryThisScreen(signature: String, generation: Long, result: NextStepResult) {
         mainHandler.post {
-            stability.markFailed()
+            // QUOTA는 서버가 Gemini의 Retry-After를 그대로 넘긴 실제 재개 시각이다. 이걸 무시하고
+            // 지수 백오프(최대 30초)만 쓰면, 아직 안 풀린 rate limit 창에 다시 걸려 같은 429가
+            // 반복된다(2026-08-18 실기기 재현). 다른 실패(네트워크 등)는 이 값이 없어 기존 그대로다.
+            val retryAfterMs = (result as? NextStepResult.ApiFailure)
+                ?.error?.retryAfterSeconds
+                ?.let { it * 1_000L }
+            stability.markFailed(retryAfterMs)
             val notify = errorNotice.record(result)
             Log.i(
                 TAG,
@@ -1143,6 +1180,7 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay?.destroy()
         overlay = null
         guideApiClient = null
+        authStore = null
         e2ePublisher = null
         apiExecutor.shutdownNow()
         return super.onUnbind(intent)

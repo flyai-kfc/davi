@@ -20,6 +20,7 @@ sealed interface NextStepResult {
         val statusCode: Int,
         val error: ApiError,
         val trace: ServerResponseTrace,
+        val sessionAuthenticationRequired: Boolean = false,
     ) : NextStepResult
 
     data class HttpFailure(
@@ -38,6 +39,11 @@ class GuideApiClient(
     serverUrl: String,
     private val httpClient: OkHttpClient = defaultHttpClient(),
     devAccessToken: String? = null,
+    // 로그인 세션 토큰은 빌드 시점 상수가 아니라 런타임에 바뀐다(로그인·만료) — 매 호출마다
+    // 다시 읽는다. 로그인하지 않았거나 스킵했으면 null이라 헤더 자체를 안 붙인다(#166 "스킵은
+    // 앱 사용을 막지 않는다"). development의 기존 dev 토큰 경로와 무관하게 항상 시도한다 —
+    // 서버는 beta·production에서만 이 헤더를 요구한다(server `_external_access_error`).
+    private val sessionToken: () -> String? = { null },
     private val json: Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -64,6 +70,7 @@ class GuideApiClient(
             )
             .header(RequestTracingContract.ATTEMPT_HEADER, logicalRequest.attempt.toString())
         devAccessToken?.let { requestBuilder.header(DEV_TOKEN_HEADER, it) }
+        SessionAuthentication.attach(requestBuilder, sessionToken)
         val httpRequest = requestBuilder.build()
 
         return try {
@@ -93,6 +100,7 @@ class GuideApiClient(
                             response.code,
                             json.decodeFromString(body),
                             responseTrace,
+                            SessionAuthentication.isRequired(response),
                         )
                     } catch (_: Exception) {
                         NextStepResult.HttpFailure(response.code, responseTrace)

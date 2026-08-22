@@ -106,11 +106,20 @@ def test_valid_production_profile():
         davi_env="production",
         davi_use_stub_llm=False,
         gemini_api_key="server-side-key",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
     )
 
     assert configured.davi_env == "production"
     assert configured.davi_use_stub_llm is False
     assert configured.gemini_api_key.get_secret_value() == "server-side-key"
+
+
+def test_external_burst_defaults_fit_four_maximum_single_user_budgets():
+    configured = _settings()
+
+    assert configured.davi_external_rate_limit_per_source_requests == 15
+    assert configured.davi_external_rate_limit_requests == 60
 
 
 def test_runtime_profile_fixture_rejects_impossible_production_stub(set_runtime_profile):
@@ -141,14 +150,106 @@ def test_short_development_access_token_is_rejected():
         _settings(davi_dev_access_token="too-short")
 
 
-def test_production_rejects_lan_bind():
-    with pytest.raises(ValidationError, match="loopback"):
+def test_production_accepts_external_bind():
+    """세션 인증(main.py `_external_access_error`)이 생긴 뒤로는 바인딩 자체를 막지 않는다(#214)."""
+
+    configured = _settings(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_bind_host="0.0.0.0",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
+    )
+
+    assert configured.davi_bind_host == "0.0.0.0"
+
+
+def test_unknown_runtime_profile_beta_typo_is_rejected():
+    with pytest.raises(ValidationError):
+        _settings(davi_env="Beta")
+
+
+def test_beta_rejects_stub_llm():
+    with pytest.raises(ValidationError, match="DAVI_USE_STUB_LLM=false"):
         _settings(
-            davi_env="production",
+            davi_env="beta",
+            davi_use_stub_llm=True,
+            gemini_api_key="server-side-key",
+        )
+
+
+def test_beta_rejects_development_access_token():
+    with pytest.raises(ValidationError, match="DAVI_DEV_ACCESS_TOKEN"):
+        _settings(
+            davi_env="beta",
             davi_use_stub_llm=False,
             gemini_api_key="server-side-key",
-            davi_bind_host="0.0.0.0",
+            davi_dev_access_token="development-only-token",
         )
+
+
+def test_valid_beta_profile_accepts_external_bind():
+    configured = _settings(
+        davi_env="beta",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_bind_host="0.0.0.0",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
+    )
+
+    assert configured.davi_env == "beta"
+    assert configured.davi_bind_host == "0.0.0.0"
+
+
+@pytest.mark.parametrize("profile", ["beta", "production"])
+def test_external_profiles_require_complete_session_auth(profile):
+    with pytest.raises(ValidationError, match="DAVI_KAKAO_APP_ID.*DAVI_AUTH_JWT_SECRET"):
+        _settings(
+            davi_env=profile,
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_kakao_app_id=0,
+            davi_auth_jwt_secret="",
+        )
+
+    with pytest.raises(ValidationError, match="DAVI_KAKAO_APP_ID.*DAVI_AUTH_JWT_SECRET"):
+        _settings(
+            davi_env=profile,
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_kakao_app_id=777,
+            davi_auth_jwt_secret="",
+        )
+
+
+def test_external_rate_limit_settings_must_be_positive():
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_RATE_LIMIT_REQUESTS"):
+        _settings(davi_external_rate_limit_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_RATE_LIMIT_WINDOW_SECONDS"):
+        _settings(davi_external_rate_limit_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_REQUESTS"):
+        _settings(davi_external_rate_limit_per_source_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_RATE_LIMIT_PER_SOURCE_WINDOW_SECONDS"):
+        _settings(davi_external_rate_limit_per_source_window_seconds=0)
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_DAILY_LIMIT_REQUESTS"):
+        _settings(davi_external_daily_limit_requests=0)
+    with pytest.raises(ValidationError, match="DAVI_EXTERNAL_DAILY_LIMIT_PER_SOURCE_REQUESTS"):
+        _settings(davi_external_daily_limit_per_source_requests=0)
+
+
+def test_external_rate_limit_source_window_must_not_exceed_global_window():
+    with pytest.raises(ValidationError, match="이하여야 합니다"):
+        _settings(
+            davi_external_rate_limit_window_seconds=60,
+            davi_external_rate_limit_per_source_window_seconds=3600,
+        )
+
+    _settings(
+        davi_external_rate_limit_window_seconds=60,
+        davi_external_rate_limit_per_source_window_seconds=60,
+    )
 
 
 def test_rate_limit_settings_must_be_positive():

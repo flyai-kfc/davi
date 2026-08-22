@@ -16,6 +16,8 @@
     <string name="login_error_network">인터넷 연결을 확인해 주세요.</string>
     <string name="login_error_auth">카카오 로그인에 실패했어요. 다시 시도해 주세요.</string>
     <string name="login_error_server">지금은 로그인할 수 없어요.\n로그인 없이 시작할 수 있어요.</string>
+    <string name="login_session_authentication_required">안내 기능을 사용하려면 로그인해 주세요.\n로그인 없이 앱을 둘러볼 수 있지만 안내 기능은 사용할 수 없어요.</string>
+    <string name="guide_session_authentication_required">안내 기능을 사용하려면 로그인이 필요해 안내를 멈췄어요. 다비 앱에서 로그인해 주세요.</string>
 
     <!--
       온보딩 (두 모드: 가족 대신 설정 / 시니어 본인).
@@ -58,6 +60,7 @@
     <string name="voice_permission_open_settings">휴대폰 설정에서 \'다비\'를 찾아 마이크를 켜 주세요.</string>
     <string name="voice_network_error">인터넷 연결이 원활하지 않아요.\n연결을 확인하고 다시 해 주세요.</string>
     <string name="voice_server_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 해 주세요.</string>
+    <string name="voice_daily_limit">하루 이용 한도에 도달했어요.\n시간이 지난 뒤 다시 이용해 주세요.</string>
     <string name="voice_server_error">하려는 일을 정리하지 못했어요.\n잠시 뒤 다시 해 주세요.</string>
     <string name="guide_stuck">화면이 그대로예요. 한 번 더 해 주세요.</string>
     <string name="guide_screen_unreadable">이 화면은 내용을 읽을 수 없어요.\n다른 화면으로 이동하거나 ×를 눌러 안내를 그만 봐 주세요.</string>
@@ -102,6 +105,7 @@
     -->
     <string name="guide_error_network">인터넷 연결이 원활하지 않아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
     <string name="guide_error_busy">지금은 이용하는 분이 많아요.\n잠시 뒤 다시 안내해 드릴게요.</string>
+    <string name="guide_error_daily_limit">하루 이용 한도에 도달해 안내를 멈췄어요.\n시간이 지난 뒤 다시 이용해 주세요.</string>
     <string name="guide_error_server">안내에 잠시 문제가 생겼어요.\n곧 다시 안내해 드릴게요.</string>
     <!--
       안내창을 못 쓰는 순간의 문구다(#29).
