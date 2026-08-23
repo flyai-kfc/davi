@@ -251,6 +251,41 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `편집 불가 요소의 이름은 text 다음 desc 다음 supplemental 순으로 고른다`() {
+        // 앞의 값이 있으면 뒤는 보지 않는다.
+        assertEquals("앞", UiTreeSerializer.staticLabel("앞", "뒤", "더뒤"))
+        assertEquals("뒤", UiTreeSerializer.staticLabel(" ", "뒤", "더뒤"))
+        // 웹뷰 라디오가 여기로 온다 — text·desc가 비고 supplemental만 있다(#381).
+        assertEquals("여성", UiTreeSerializer.staticLabel("", null, "여성"))
+        assertEquals("은평구", UiTreeSerializer.staticLabel(null, "  ", " 은평구 "))
+        assertNull(UiTreeSerializer.staticLabel(null, "  ", ""))
+    }
+
+    @Test
+    fun `입력칸 라벨은 이름과 placeholder를 구버전과 같은 한 덩어리로 만든다`() {
+        // API 36: 이름이 supplemental로 갈라져 온다 → 되붙인다.
+        assertEquals(
+            "방문자명 방문자명을 입력하세요",
+            UiTreeSerializer.editableLabel("방문자명을 입력하세요", "방문자명"),
+        )
+        // API 35 이하: hint에 이미 합쳐져 오고 supplemental은 null이다 → 그대로.
+        assertEquals(
+            "방문자명 방문자명을 입력하세요",
+            UiTreeSerializer.editableLabel("방문자명 방문자명을 입력하세요", null),
+        )
+        // 구버전 hint가 이름으로 시작하면 두 번 싣지 않는다.
+        assertEquals(
+            "연락처 연락처를 입력하세요",
+            UiTreeSerializer.editableLabel("연락처 연락처를 입력하세요", "연락처"),
+        )
+        // placeholder만 있는 칸은 이름이 supplemental에만 있다.
+        assertEquals("라벨 없는 칸", UiTreeSerializer.editableLabel("", "라벨 없는 칸"))
+        // 둘이 같으면 한 번만.
+        assertEquals("연령", UiTreeSerializer.editableLabel("연령", "연령"))
+        assertNull(UiTreeSerializer.editableLabel(null, null))
+    }
+
+    @Test
     fun `직접 조작 가능한 NumberPicker의 짧은 숫자 값은 보존한다`() {
         assertEquals("6, 시간", adjustableNumericLabel("6, 시간"))
         assertEquals("00, 분", adjustableNumericLabel(" 00,   분 "))
