@@ -524,6 +524,8 @@ jobs:
           # CI에서 빨개졌다 — dex strings 출력은 상수가 한 줄로 떨어진다는 보장이 없다(로컬
           # 흉내로는 통과했고 실제 `strings`에서 실패했다, PR #364). 모든 "davi.goal.b64"는
           # "davi.goal"을 포함하므로, 원문 키가 살아 있으면 전자보다 후자가 반드시 더 많다.
+          # **한계**: 원문 키를 다른 이름으로 개명하면(davi.goal.raw 따위) 이 검사는 통과한다.
+          # 키가 사라지는 것만 잡는다 — 개명은 이 파일을 함께 고치는 사람이 본다.
           for canary in "davi.goal.b64" "davi.autostart"; do
             assert_present_in_debug "$canary" 'debug 목표 주입 진입점이 사라졌다'
           done

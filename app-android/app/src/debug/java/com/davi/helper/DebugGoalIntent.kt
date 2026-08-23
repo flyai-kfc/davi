@@ -11,11 +11,14 @@ import java.util.Base64
  * 거짓말하지 않게 하려는 것이고, 이유는 [reason]으로 logcat에 남는다.
  */
 enum class DebugGoalOutcome(val reason: String, val fillsField: Boolean, val starts: Boolean) {
-    /** 이 진입점을 겨냥했는데(예: autostart만) 목표 자체가 없다. 키 오타가 여기로 온다. */
+    /**
+     * 이 진입점을 겨냥했는데 목표 값이 없다 — `autostart`만 던졌거나, **`autostart`와 함께**
+     * 목표 키를 오타낸 경우다. 목표 키만 오타내면 이 진입점을 겨냥한 줄도 모르므로 로그가
+     * 아예 안 남는다(그 구분은 못 한다).
+     */
     NO_GOAL("no_goal", false, false),
     UNDECODABLE("undecodable", false, false),
     SESSION_ACTIVE("session_active", false, false),
-    VOICE_BUSY("voice_busy", false, false),
     AUTOSTART_OFF("autostart_off", true, false),
     ACCESSIBILITY_NOT_READY("accessibility_not_ready", true, false),
     START("ok", true, true),
@@ -41,7 +44,8 @@ data class DebugGoalRequest(
  * 자판 높이·모드·숫자열·자판 종류·회전에 통째로 종속이다.
  *
  * **딥링크가 아니라 인텐트 extra인 이유**: 이 화면은 이미 `exported=true`라 명시적 component로
- * 열면서 extra를 붙이면 **매니페스트를 건드릴 필요가 없다**. 커스텀 scheme을 등록하면 아무 앱이나
+ * 열면서 extra를 붙이면 **`intent-filter`·커스텀 scheme을 새로 등록할 필요가 없다**
+ * (재진입용 `launchMode`는 별개로 넣었다). 커스텀 scheme을 등록하면 아무 앱이나
  * 매칭할 수 있는 URI가 생기는데, 얻는 것 없이 노출면만 넓어진다. 릴리스 배제도 이쪽이 자동이다 —
  * 이 클래스가 debug 소스셋에만 있어 릴리스 산출물에 아예 들어가지 않는다.
  *
@@ -88,40 +92,25 @@ object DebugGoalIntent {
     )
 
     /**
-     * **읽은 extra는 소비한다.** 다만 이것만으로는 **구성 변경(회전)까지만** 막힌다 —
-     * 프로세스가 살아 있어 우리가 고친 그 Intent 객체가 그대로 재사용되기 때문이다.
-     *
-     * **프로세스가 죽었다 복원되는 경우는 못 막는다.** 시스템이 들고 있는 `ActivityRecord.intent`는
-     * `final`이라 우리 변형이 닿지 않고, 재시작 때 클라이언트로 오는 것은 그 **원본의 새 사본**이다
-     * (AOSP `ActivityTaskSupervisor`가 `new Intent(r.intent)`로 만든다). 되살아나는 값이 마지막에
-     * 던진 목표가 아니라 **최초 런치 인텐트의 목표**라는 점도 같은 이유다.
-     * 그쪽은 `MainActivity`가 `savedInstanceState`로 막는다 — 근거는 그 호출부에 있다.
-     */
-    fun consume(intent: Intent?) {
-        intent ?: return
-        intent.removeExtra(EXTRA_GOAL_B64)
-        intent.removeExtra(EXTRA_GOAL_RAW)
-        intent.removeExtra(EXTRA_AUTOSTART)
-    }
-
-    /**
      * 인텐트 하나를 받고 화면이 무엇을 할지. **분기를 여기 두는 이유는 JVM 테스트로 덮기
      * 위해서다** — `MainActivity` 안에 있으면 안드로이드 타입에 묶여 한 갈래도 검증되지 않는다.
      */
     fun decide(
         request: DebugGoalRequest?,
-        goalExtraPresent: Boolean,
+        goalValuePresent: Boolean,
         sessionActive: Boolean,
-        voiceBusy: Boolean,
         canStartGuide: Boolean,
     ): DebugGoalOutcome = when {
         // "안 실렸다"와 "실렸는데 못 읽었다"를 가른다 — 로그를 읽는 쪽이 볼 곳이 다르다.
-        request == null && !goalExtraPresent -> DebugGoalOutcome.NO_GOAL
+        request == null && !goalValuePresent -> DebugGoalOutcome.NO_GOAL
         request == null -> DebugGoalOutcome.UNDECODABLE
-        // 세션·대화 중에는 입력칸도 건드리지 않는다. 비활성 입력칸의 글자만 바뀌면 화면이
+        // 세션 중에는 입력칸도 건드리지 않는다. 비활성 입력칸의 글자만 바뀌면 화면이
         // "지금 무엇을 안내 중인지"를 거짓말한다.
+        //
+        // **음성 대화 중은 여기서 보지 않는다.** `onNewIntent`는 항상 `onPause` 뒤에 오고
+        // 그 콜백이 대화를 취소하므로(`MainActivity.onPause`) 이 지점에서 대화는 이미 끝나 있다.
+        // 갈래를 두면 "여기가 막아 준다"로 읽히는데 실제 보장은 다른 곳에서 나온다.
         sessionActive -> DebugGoalOutcome.SESSION_ACTIVE
-        voiceBusy -> DebugGoalOutcome.VOICE_BUSY
         !request.autoStart -> DebugGoalOutcome.AUTOSTART_OFF
         !canStartGuide -> DebugGoalOutcome.ACCESSIBILITY_NOT_READY
         else -> DebugGoalOutcome.START
