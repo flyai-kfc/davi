@@ -106,10 +106,18 @@ data class ConversationRenderModel(
     val guidingVisible: Boolean = false,
     val clarificationVisible: Boolean = false,
     /**
-     * 질문 진행도 칩(#374). **선택 화면과 「직접 말하기」 청취를 함께 덮는다** —
-     * 답하는 동안에도 「지금 몇 번째인가」가 보여야 하고, 무엇보다 **칩이 있고 없고에 따라
-     * 카드가 뛰면 안 된다.** 배지 위 여백이 이 값을 함께 보므로 둘이 갈리면 화면이 흔들린다
-     * (2026-08-23 실기기: 칩만 남고 여백이 돌아가 카드가 91dp 내려앉았다).
+     * 질문 진행도 칩(#374).
+     *
+     * **「칩이 실제로 화면에 서는가」다** — 「구체화 화면인가」가 아니다. 배지 위 여백이
+     * 이 값을 함께 보기 때문에, 뜻이 갈리면 **칩이 없는데 칩 있는 여백을 써서 카드가
+     * 위로 솟는다**(2026-08-23 실기기: 질문이 하나인 실제 응답에서 카드가 51dp까지 올라가
+     * 종료 ✕에 통째로 덮였다). 그래서 **질문 수 판단까지 여기서 끝낸다.**
+     *
+     * 선택 화면과 「직접 말하기」 청취를 함께 덮는다 — 답하는 동안에도 「지금 몇 번째인가」가
+     * 보여야 하고, 칩이 있다 없다 하면 카드가 뛴다(같은 날 91dp 내려앉았다).
+     *
+     * **질문이 하나면 서지 않는다**(#376의 [미결] 해소). 「질문 1/1」은 진행도로서 아무 말도
+     * 하지 않는다 — 「몇 개 중 몇 번째」가 뜻을 가지려면 뒤에 올 것이 있어야 한다.
      */
     val stepChipVisible: Boolean = false,
     val safeEndVisible: Boolean = false,
@@ -272,7 +280,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         signalsDimmed = !state.micReady,
         utteranceSpeaking = true,
         // 구체화에서 넘어온 청취면 진행도를 이어서 보인다 — 답하는 중에도 어디쯤인지 보인다.
-        stepChipVisible = state.clarification != null,
+        stepChipVisible = (state.clarification?.questionCount ?: 0) > 1,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
@@ -302,7 +310,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         // 시니어 카드 쪽 `utteranceSpeaking`은 **여전히 「지금 말하는 중」**을 뜻한다 —
         // 그쪽은 화자가 이미 라벨로 갈려 있어 글로우가 다른 일을 할 수 있다.
         cardGlowVisible = true,
-        stepChipVisible = true,
+        stepChipVisible = state.outcome.questionCount > 1,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(

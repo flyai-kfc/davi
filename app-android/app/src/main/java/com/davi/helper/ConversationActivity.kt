@@ -700,7 +700,7 @@ class ConversationActivity : AppCompatActivity() {
             is ConversationUiState.Listening -> state.clarification
             else -> null
         }
-        binding.questionProgress.isVisible(model.stepChipVisible && (stepOutcome?.questionCount ?: 0) > 1)
+        binding.questionProgress.isVisible(model.stepChipVisible)
         if (stepOutcome != null) {
             binding.questionProgress.text = getString(
                 R.string.clarification_progress,
