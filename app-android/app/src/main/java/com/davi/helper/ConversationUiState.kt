@@ -105,6 +105,13 @@ data class ConversationRenderModel(
     /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
     val guidingVisible: Boolean = false,
     val clarificationVisible: Boolean = false,
+    /**
+     * 질문 진행도 칩(#374). **선택 화면과 「직접 말하기」 청취를 함께 덮는다** —
+     * 답하는 동안에도 「지금 몇 번째인가」가 보여야 하고, 무엇보다 **칩이 있고 없고에 따라
+     * 카드가 뛰면 안 된다.** 배지 위 여백이 이 값을 함께 보므로 둘이 갈리면 화면이 흔들린다
+     * (2026-08-23 실기기: 칩만 남고 여백이 돌아가 카드가 91dp 내려앉았다).
+     */
+    val stepChipVisible: Boolean = false,
     val safeEndVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
     val stopConfirmVisible: Boolean = false,
@@ -249,9 +256,12 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
-        // 닫힌 선택 질문은 문답 흐름을 유지하지만, 빈 보기 자유 응답은 음성이 유일한 입력이다.
-        // 그 경우 ASR 실패가 반복돼도 사용자가 명시적으로 대화를 끝낼 수 있게 ×를 유지한다.
-        closeVisible = state.clarification == null || state.clarification.question.options.isEmpty(),
+        // **나가는 길은 화면마다 있고 없고가 갈리지 않는다**(2026-08-23 · #374).
+        // 종전에는 닫힌 선택 질문에서 넘어온 청취에만 ×를 걷었는데(문답 흐름을 유지한다는
+        // 이유), 그러면 **「직접 말하기」를 누르는 순간 ×가 사라진다** — 어르신 눈에는
+        // 나가는 길이 없어진 것이고, 인식이 반복 실패하면 갇힌다. 바로 앞 선택 화면이
+        // ×를 보이므로 여기서 없애면 화면이 뒤로 갈수록 출구가 줄어든다.
+        closeVisible = true,
         // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
         // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
         // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
@@ -261,6 +271,8 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceLabelVisible = state.micReady,
         signalsDimmed = !state.micReady,
         utteranceSpeaking = true,
+        // 구체화에서 넘어온 청취면 진행도를 이어서 보인다 — 답하는 중에도 어디쯤인지 보인다.
+        stepChipVisible = state.clarification != null,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
@@ -290,6 +302,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         // 시니어 카드 쪽 `utteranceSpeaking`은 **여전히 「지금 말하는 중」**을 뜻한다 —
         // 그쪽은 화자가 이미 라벨로 갈려 있어 글로우가 다른 일을 할 수 있다.
         cardGlowVisible = true,
+        stepChipVisible = true,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(

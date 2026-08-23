@@ -692,19 +692,23 @@ class ConversationActivity : AppCompatActivity() {
         binding.clarificationChoices.root.isVisible(model.clarificationVisible)
         // 칩은 카드 **위**에 앉는다(#374 시안 y46) — 진행도는 「지금 어디쯤인가」라
         // 묻기 전에 보여야 한다. **✕는 전역 btn_close를 그대로 쓴다**(모든 화면에서 같은 자리).
-        if (state is ConversationUiState.Clarifying) {
-            // **질문이 하나면 칩을 숨긴다**(2026-08-23 시안 결정 · #376의 [미결] 해소).
-            // 「질문 1/1」은 진행도로서 아무 말도 하지 않는다 — 「몇 개 중 몇 번째」가
-            // 뜻을 가지려면 뒤에 올 것이 있어야 한다. 알려 줄 게 없는데 화면에 요소만 는다.
-            //
-            // **줄 자체는 남긴다** — 종료 ✕가 같은 줄에 있고, 칩이 사라졌다고 ✕까지
-            // 올라가면 화면마다 ✕ 자리가 달라진다.
-            binding.questionProgress.isVisible(state.outcome.questionCount > 1)
+        //
+        // **보이는 조건을 상태로 판단하지 않는다** — 「직접 말하기」로 넘어간 청취에서도
+        // 칩이 남아야 하고, 그때 배지 위 여백도 같은 값을 써야 카드가 안 뛴다.
+        val stepOutcome = when (state) {
+            is ConversationUiState.Clarifying -> state.outcome
+            is ConversationUiState.Listening -> state.clarification
+            else -> null
+        }
+        binding.questionProgress.isVisible(model.stepChipVisible && (stepOutcome?.questionCount ?: 0) > 1)
+        if (stepOutcome != null) {
             binding.questionProgress.text = getString(
                 R.string.clarification_progress,
-                state.outcome.questionIndex + 1,
-                state.outcome.questionCount,
+                stepOutcome.questionIndex + 1,
+                stepOutcome.questionCount,
             )
+        }
+        if (state is ConversationUiState.Clarifying) {
             renderClarificationOptions(state)
         }
         binding.btnMic.isVisible(model.micVisible)
@@ -739,7 +743,9 @@ class ConversationActivity : AppCompatActivity() {
                     // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
                     // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
                     // 밀어 카드가 102dp 내려간다.
-                    model.clarificationVisible -> R.dimen.davi_badge_margin_top_clarification
+                    // **clarificationVisible이 아니라 stepChipVisible을 본다** — 칩이 자리를
+                    // 차지하는 동안에는 청취 화면에서도 같은 값이어야 카드가 안 뛴다.
+                    model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     else -> R.dimen.davi_badge_margin_top
                 },

@@ -283,8 +283,11 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `보기 있는 구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
-        assertFalse(
+    fun `최종 요청에는 취소 버튼이 없다`() {
+        // **청취에는 보기 유무와 무관하게 ×를 둔다**(2026-08-23 · #374). 종전에는 닫힌 선택
+        // 질문에서 넘어온 청취에만 걷었는데, 그러면 「직접 말하기」를 누르는 순간 ×가 사라져
+        // **어르신 눈에는 나가는 길이 없어진다** — 인식이 반복 실패하면 갇힌다.
+        assertTrue(
             renderModelOf(
                 ConversationUiState.Listening(
                     question = "누구에게?",
@@ -292,6 +295,7 @@ class ConversationUiStateTest {
                 ),
             ).closeVisible,
         )
+        // 최종 요청은 다르다 — 서버로 이미 보낸 뒤라 취소할 것이 없다.
         val finalizing = renderModelOf(ConversationUiState.Requesting("", finalizing = true))
         assertFalse(finalizing.closeVisible)
         assertFalse("빈 시니어 카드를 남기지 않는다", finalizing.utteranceVisible)
