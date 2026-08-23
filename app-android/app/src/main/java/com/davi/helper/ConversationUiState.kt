@@ -277,9 +277,11 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionText = state.outcome.question.prompt,
         cardQuestionFlexible = true,
         clarificationVisible = true,
-        // 선택 영역에는 보조 답변을 늘리지 않는다. 자유 응답 질문에서만 기존 대화 닫기를
-        // 노출해 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 한다.
-        closeVisible = state.outcome.question.options.isEmpty(),
+        // **보기가 있어도 ✕를 보인다**(2026-08-23 시안 재작업 · #374). 종전에는 자유 응답
+        // 질문에서만 열어 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 했는데,
+        // 시안이 이 화면에도 종료를 그렸다 — **나가는 길은 화면마다 있고 없고가 갈리면 안 된다.**
+        // 보기를 고르다 마음이 바뀐 사람에게도 출구가 필요하다.
+        closeVisible = true,
         // **읽는 동안만이 아니라 늘 켠다**(#374, 2026-08-23 시안). 한때 `state.speaking`이라
         // TTS가 끝나면 글로우가 꺼졌는데, 그러면 **고르는 내내 화자 표시가 없다** —
         // 이 카드는 다비가 던진 질문이고 그 사실은 읽기가 끝나도 변하지 않는다

@@ -239,7 +239,10 @@ class ConversationUiStateTest {
         assertEquals(ConversationUiState.Clarifying(outcome), state)
         val model = renderModelOf(state)
         assertTrue(model.clarificationVisible)
-        assertFalse("문답 중 취소 버튼은 없다", model.closeVisible)
+        // **보기가 있어도 나가는 길을 둔다**(2026-08-23 시안 재작업 · #374). 종전 근거는
+        // 「보기 있는 질문에서는 문답 중 취소를 두지 않는다」였는데, 시안이 이 화면에도
+        // 종료를 그렸다 — 나가는 길이 화면마다 있고 없고가 갈리면 어르신이 매번 찾는다.
+        assertTrue("보기가 있어도 나가는 길은 있다", model.closeVisible)
     }
 
     @Test

@@ -101,51 +101,26 @@
           열 아래 여백이 그 자리를 대신한다. 지금 이 뷰와 짝을 이루는 것은 안내(메인 9)뿐이다.
         -->
         <!--
-          MA-3 상단 줄(#374 · 시안 y46) — 질문 칩과 종료 ✕가 좌우로 나뉜다.
+          MA-3 질문 칩(#374 · 시안 24,46). **카드 아래가 아니라 여기 있다** — 진행도는
+          「지금 어디쯤인가」라 **묻기 전에** 보여야 한다. 답을 고른 뒤 아래에서 읽으면 늦다.
 
-          **칩이 카드 아래가 아니라 여기 있다.** 진행도는 「지금 어디쯤인가」라 **묻기 전에**
-          보여야 한다 — 답을 고른 뒤 아래에서 읽으면 이미 늦다.
+          **종료 ✕는 여기 없다.** 시안은 칩과 ✕를 한 줄로 그렸지만, ✕는 **모든 화면에서
+          자리와 크기가 같아야 한다**(2026-08-23) — 화면마다 다르면 어르신이 나가는 길을
+          매번 새로 찾는다. 그래서 이 화면도 **전역 btn_close를 그대로 쓴다**(우상단 56dp).
+          한때 이 줄 안에 전용 ✕(원 38dp)를 뒀다가 걷었다 — 자리도 크기도 전역과 달랐다.
 
-          **이 화면의 ✕는 전역 btn_close와 다른 것이다.** 전역 ✕는 화면 우상단에 떠 있고
-          이쪽은 열 안에서 칩과 같은 줄에 앉는다 — 시안이 둘을 한 줄로 그렸다.
-          겹치지 않도록 이 줄이 보이는 동안 전역 ✕는 숨는다.
+          **칩의 세로 위치는 그 전역 ✕에 맞춘다** — 아래 토큰 주석에 계산이 있다.
         -->
-        <LinearLayout
-            android:id="@+id/step_row"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+        <TextView
+            android:id="@+id/question_progress"
+            android:layout_width="@dimen/davi_step_chip_width"
+            android:layout_height="@dimen/davi_step_chip_height"
+            android:layout_gravity="start"
             android:layout_marginTop="@dimen/davi_step_row_margin_top"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/question_progress"
-                android:layout_width="@dimen/davi_step_chip_width"
-                android:layout_height="@dimen/davi_step_chip_height"
-                android:gravity="center"
-                android:background="@drawable/bg_davi_step_chip"
-                android:textAppearance="@style/TextAppearance.Davi.StepChip" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!--
-              **보이는 크기와 터치 크기를 가른다** — 시안 32x32(=38dp)는 D1(56dp)에 못 미친다.
-              배경 원은 padding으로 38dp가 되게 두고 버튼 자체는 56dp라 여백이 터치를 받는다.
-            -->
-            <ImageButton
-                android:id="@+id/btn_stop_clarification"
-                android:layout_width="@dimen/davi_size_touch_target"
-                android:layout_height="@dimen/davi_size_touch_target"
-                android:padding="@dimen/davi_stop_button_inset"
-                android:background="@android:color/transparent"
-                android:src="@drawable/ic_davi_stop_circle"
-                android:scaleType="fitCenter"
-                android:contentDescription="@string/conversation_close_desc" />
-        </LinearLayout>
+            android:gravity="center"
+            android:background="@drawable/bg_davi_step_chip"
+            android:textAppearance="@style/TextAppearance.Davi.StepChip"
+            android:visibility="gone" />
 
         <Space
             android:id="@+id/space_flex_top"

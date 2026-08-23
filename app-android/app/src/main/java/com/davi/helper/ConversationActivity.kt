@@ -342,9 +342,20 @@ class ConversationActivity : AppCompatActivity() {
         binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
             beginClarificationSpeech()
         }
-        // 이 화면의 종료 ✕는 전역 btn_close와 **같은 동작**이다 — 시안이 자리만 옮겨 그렸다.
-        // 동작이 갈리면 「같은 표시인데 화면마다 다른 일」이 된다.
-        binding.btnStopClarification.setOnClickListener { binding.btnClose.performClick() }
+        // **「직접 말하기」의 글로우**(#374 시안 `#F70824@22 y8 b18`).
+        //
+        // **채움을 밝게 하거나 투명하게 하지 않는다** — 밝은 빨강 위에는 흰 글자가 안 읽히고
+        // (color/highlight #F2001C는 4.38:1), 투명은 배경 베일이 비쳐 2.7~3.2:1까지 내려간다.
+        // **밝기는 글자가 없는 자리에서 낸다** — 버튼 둘레로 번지는 이 빛이 그 자리다.
+        //
+        // elevation 그림자의 **색을 바꿔** 만든다. layer-list로는 blur가 없어 단단한 띠가
+        // 되고(bg_davi_card 주석), 별도 View를 깔면 버튼과 터치 영역이 갈린다.
+        // **API 28부터다** — 그 아래에서는 공통 검정 그림자만 남고 버튼은 그대로 성립한다.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val glow = getColor(R.color.davi_choice_primary_glow)
+            binding.clarificationChoices.btnDirectSpeak.outlineSpotShadowColor = glow
+            binding.clarificationChoices.btnDirectSpeak.outlineAmbientShadowColor = glow
+        }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
         // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
         // o가 "이대로 안내 시작"인데 여기서는 x가 안내를 계속하고 o가 끝낸다. 화면 문구가
@@ -679,9 +690,8 @@ class ConversationActivity : AppCompatActivity() {
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
         binding.cardUtterance.text = model.utteranceText
         binding.clarificationChoices.root.isVisible(model.clarificationVisible)
-        // 칩과 종료 ✕는 카드 **위**에 앉는다(#374 시안 y46) — 진행도는 「지금 어디쯤인가」라
-        // 묻기 전에 보여야 한다. 이 줄이 보이는 동안 전역 ✕는 숨는다(같은 자리에 겹친다).
-        binding.stepRow.isVisible(model.clarificationVisible)
+        // 칩은 카드 **위**에 앉는다(#374 시안 y46) — 진행도는 「지금 어디쯤인가」라
+        // 묻기 전에 보여야 한다. **✕는 전역 btn_close를 그대로 쓴다**(모든 화면에서 같은 자리).
         if (state is ConversationUiState.Clarifying) {
             // **질문이 하나면 칩을 숨긴다**(2026-08-23 시안 결정 · #376의 [미결] 해소).
             // 「질문 1/1」은 진행도로서 아무 말도 하지 않는다 — 「몇 개 중 몇 번째」가
@@ -785,9 +795,7 @@ class ConversationActivity : AppCompatActivity() {
         // 스크린 리더에게만 구분을 줄 수 있었는데, 이제 글자가 있어 눈으로도 갈린다.
         binding.confirmAccept.setText(model.confirmAcceptTextRes)
         renderShortcutRow(model)
-        // **구체화에서는 전역 ✕를 숨긴다** — 그 자리(우상단)에 이 화면 전용 종료 ✕가
-        // 칩과 한 줄로 앉기 때문이다(#374 시안 y46). 둘을 함께 두면 겹친다.
-        binding.btnClose.isVisible(model.closeVisible && !model.clarificationVisible)
+        binding.btnClose.isVisible(model.closeVisible)
 
         // 음성 모션(#132). 숨길 때 음량을 되돌려 둔다 — 안 그러면 다음에 다시 보일 때
         // 직전 발화의 크기로 튀어나온다. 프레임 루프는 뷰가 가시성 변화에서 알아서 멈춘다.

@@ -190,7 +190,7 @@
             android:layout_height="@dimen/davi_confirm_choice_height"
             android:layout_marginTop="@dimen/davi_choice_group_gap"
             android:background="@drawable/bg_davi_choice_primary"
-            android:elevation="@dimen/davi_choice_elevation"
+            android:elevation="@dimen/davi_choice_primary_elevation"
             android:clickable="true"
             android:focusable="true">
 
