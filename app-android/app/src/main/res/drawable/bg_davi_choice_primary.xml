@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-3 「직접 말하기」(#374). 보기와 **색만 다르고 크기·반지름·아이콘·그림자가 같다** —
+  갈리면 「같은 종류의 버튼인데 하나가 다른 역할」로 안 읽힌다.
+
+  **채움은 davi_choice_primary_fill(#A50014의 50%)이다** — 대비와 기기 의존성을 포함한
+  근거 전부가 colors.xml의 그 토큰 주석에 있다. 시안의 `color/red/700` #B50016을 쓰지 않는
+  이유도 거기 있다. **여기에 값을 다시 적지 않는다** — 두 군데 적으면 한쪽만 낡는다.
+-->
+<!--
+  **눌림 반응을 준다**(2026-08-23 리뷰). 도형만 두면 누르는 동안 화면이 아무 말도 안 하는데,
+  이 버튼은 **누른 뒤 TTS 정지·로컬 답 처리가 도는 동안 화면이 안 바뀐다** — 어르신은
+  안 눌린 줄 알고 두 번 누른다. 바로 위 「눌렀는데 반응이 없으면 고장으로 읽는다」와 같은 말이다.
+  MA-4의 bg_davi_confirm_choice도 ripple이라 **넷의 규격이 값이 아니라 구조로 남는다.**
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed_on_dark">
+    <item>
+    <shape
+        android:shape="rectangle">
+        <solid android:color="@color/davi_choice_primary_fill" />
+        <corners android:radius="@dimen/davi_choice_radius" />
+    </shape>
+    </item>
+</ripple>

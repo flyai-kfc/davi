@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MA-3 질문 칩 `v2/chip/step`(#374). 흰 캡슐 + button/primary w1.5 INSIDE. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_surface_raised" />
+    <stroke
+        android:width="@dimen/davi_step_chip_stroke"
+        android:color="@color/davi_button_primary" />
+    <corners android:radius="@dimen/davi_step_chip_radius" />
+</shape>

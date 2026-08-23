@@ -258,17 +258,28 @@
         <item name="android:textColor">@color/davi_button_primary</item>
         <item name="android:paddingBottom">0dp</item>
     </style>
-    <style name="Widget.Davi.Clarification" parent="Widget.Davi.Stacked">
-        <item name="android:minHeight">@dimen/davi_clarification_button_height</item>
-    </style>
-    <style name="Widget.Davi.Clarification.Option" parent="Widget.Davi.Clarification">
-        <item name="android:background">@drawable/bg_davi_stacked_secondary</item>
-        <item name="android:textColor">@color/davi_button_primary</item>
-        <item name="android:paddingBottom">0dp</item>
-    </style>
-    <style name="Widget.Davi.Clarification.Primary" parent="Widget.Davi.Clarification">
-        <item name="android:background">@drawable/bg_davi_stacked_primary</item>
+    <!--
+      MA-3 보기 선택의 라벨(#374). **Cafe24가 아니라 Pretendard인 것은 의도다**(C1) —
+      버튼 라벨은 다비가 하는 말이 아니라 **사용자가 누르는 대답**이다.
+      MA-4 확인 버튼과 같은 값이라 그 TextAppearance를 그대로 쓴다(20sp/Bold/Pretendard).
+    -->
+    <style name="TextAppearance.Davi.ChoiceLabel" parent="TextAppearance.Davi.ConfirmChoice" />
+    <!--
+      「직접 말하기」만 흰 라벨이다. **대비는 A1(7:1)을 넘지 않는다** — 채움이 50% 투명이기
+      때문이고, 잰 값과 결정 근거는 colors.xml의 davi_choice_primary_fill에 있다.
+      **여기 수치를 적지 않는다** — 두 군데 적으면 한쪽만 낡는다.
+    -->
+    <style name="TextAppearance.Davi.ChoiceLabel.OnPrimary">
         <item name="android:textColor">@color/davi_button_on_primary</item>
+    </style>
+    <!--
+      질문 칩 `v2/chip/step`(#374). 13 Pretendard/ExtraBold `button/primary`.
+      **ExtraBold는 서체 패밀리에 없으면 bold로 떨어진다** — 크기가 작아 굵기가 곧 가독성이다.
+    -->
+    <style name="TextAppearance.Davi.StepChip" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_step_chip</item>
+        <item name="android:textColor">@color/davi_button_primary</item>
+        <item name="android:textStyle">bold</item>
     </style>
     <style name="Widget.Davi.ButtonPair" parent="Widget.Material3.Button">
         <item name="android:minHeight">@dimen/davi_button_pair_height</item>

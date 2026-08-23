@@ -1,52 +1,243 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- #316: 서버가 한 번에 준 최대 세 보기와 항상 열려 있는 직접 말하기. 최대 네 버튼이다. -->
+<!--
+  MA-3 보기 선택(#374 · `docs/SCREENS.md` MA-3 「보기 선택」 · 시안 재작업 2026-08-22).
+
+  **버튼 넷은 색만 다르고 나머지가 같다.** 크기·반지름·아이콘 슬롯·그림자를 전부 맞춰야
+  「같은 종류의 버튼인데 하나가 다른 역할」로 읽힌다. **「직접 말하기」를 크게 만들지 않는다** —
+  #316이 보기 선택을 인지 부담이 낮은 권장 동선으로 둔 자리라, 제일 눈에 띄는 것이 자유
+  발화면 유도가 반대로 간다. 반대로 **눈에 안 띄게도 하지 않는다** — 목록에서 자기 앱을
+  못 찾은 사람이 쓰는 유일한 출구라 못 찾으면 갇힌다.
+
+  **질문 칩과 종료 ✕는 여기 없다** — 카드 위(시안 y46)에 앉으므로 activity_conversation의
+  열 맨 위에 있다.
+
+  넘칠 때(2.0x 배율·긴 질문)만 이 ScrollView가 스크롤한다 — 질문 카드의 176dp 하한과
+  한 줄을 먼저 보존한다는 결정(#326)의 구현이다.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
+    android:clipToPadding="false"
     android:scrollbars="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="@dimen/davi_spacing_sm">
+        android:clipToPadding="false"
+        android:clipChildren="false"
+        android:paddingBottom="@dimen/davi_choice_group_gap">
 
-        <TextView
-            android:id="@+id/question_progress"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="@dimen/davi_clarification_button_gap"
-            android:gravity="center"
-            android:textAppearance="@style/TextAppearance.Davi.Body"
-            android:textColor="@color/davi_text_secondary" />
-
-        <Button
+        <FrameLayout
             android:id="@+id/btn_option_1"
-            style="@style/Widget.Davi.Clarification.Option"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:background="@drawable/bg_davi_choice_option"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true">
 
-        <Button
+            <!--
+              앱 아이콘. **기기에서 꺼낸다**(`PackageManager`) — 시안의 카카오톡·문자·인스타그램
+              색은 자리 표시용 임시다. 정사각·원형·스퀘어클이 섞여 있어 슬롯 윤곽(r12)으로
+              마스크해야 셋이 균일하다. **이름이 설치된 앱과 안 맞으면 숨는다** —
+              「시간 정하기」처럼 앱이 아닌 답에는 아이콘이 없다.
+            -->
+            <ImageView
+                android:id="@+id/option_1_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="@dimen/davi_shortcut_inset"
+                android:background="@drawable/bg_davi_choice_icon_slot"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
+
+            <!--
+              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
+              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
+              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
+
+              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
+              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
+              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
+
+              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
+              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
+            -->
+            <TextView
+                android:id="@+id/option_1_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:paddingStart="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/btn_option_2"
-            style="@style/Widget.Davi.Clarification.Option"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_clarification_button_gap" />
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_choice_gap"
+            android:background="@drawable/bg_davi_choice_option"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true">
 
-        <Button
+            <!--
+              앱 아이콘. **기기에서 꺼낸다**(`PackageManager`) — 시안의 카카오톡·문자·인스타그램
+              색은 자리 표시용 임시다. 정사각·원형·스퀘어클이 섞여 있어 슬롯 윤곽(r12)으로
+              마스크해야 셋이 균일하다. **이름이 설치된 앱과 안 맞으면 숨는다** —
+              「시간 정하기」처럼 앱이 아닌 답에는 아이콘이 없다.
+            -->
+            <ImageView
+                android:id="@+id/option_2_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="@dimen/davi_shortcut_inset"
+                android:background="@drawable/bg_davi_choice_icon_slot"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
+
+            <!--
+              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
+              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
+              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
+
+              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
+              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
+              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
+
+              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
+              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
+            -->
+            <TextView
+                android:id="@+id/option_2_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:paddingStart="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/btn_option_3"
-            style="@style/Widget.Davi.Clarification.Option"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_clarification_button_gap" />
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_choice_gap"
+            android:background="@drawable/bg_davi_choice_option"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true">
 
-        <Button
+            <!--
+              앱 아이콘. **기기에서 꺼낸다**(`PackageManager`) — 시안의 카카오톡·문자·인스타그램
+              색은 자리 표시용 임시다. 정사각·원형·스퀘어클이 섞여 있어 슬롯 윤곽(r12)으로
+              마스크해야 셋이 균일하다. **이름이 설치된 앱과 안 맞으면 숨는다** —
+              「시간 정하기」처럼 앱이 아닌 답에는 아이콘이 없다.
+            -->
+            <ImageView
+                android:id="@+id/option_3_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="@dimen/davi_shortcut_inset"
+                android:background="@drawable/bg_davi_choice_icon_slot"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
+
+            <!--
+              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
+              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
+              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
+
+              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
+              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
+              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
+
+              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
+              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
+            -->
+            <TextView
+                android:id="@+id/option_3_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:paddingStart="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/btn_direct_speak"
-            style="@style/Widget.Davi.Clarification.Primary"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/davi_clarification_button_gap"
-            android:text="@string/clarification_direct_speak" />
+            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_choice_group_gap"
+            android:background="@drawable/bg_davi_choice_primary"
+            android:elevation="@dimen/davi_choice_primary_elevation"
+            android:clickable="true"
+            android:focusable="true">
+
+            <!--
+              **아이콘은 슬롯 도형 위에 얹는다** — 보기의 앱 아이콘과 같은 48dp r12 자리라
+              넷의 줄이 맞는다. 흰 카드에 빨강 마이크라 채움 위에서도 읽힌다.
+
+              **앱이 이미 가진 마이크(ic_davi_mic)를 쓴다.** 홈 버튼의 그 글리프이고 시안이
+              전용으로 그린 것이라, **앱 안에서 마이크가 한 모양**이 된다. 이 크기용으로
+              따로 그렸다가 되돌렸다 — 눈대중으로 옮긴 비율이 시안과 달랐다(2026-08-23).
+            -->
+            <ImageView
+                android:id="@+id/direct_speak_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="@dimen/davi_shortcut_inset"
+                android:background="@drawable/bg_davi_choice_icon_slot"
+                android:padding="@dimen/davi_choice_mic_inset"
+                android:src="@drawable/ic_davi_mic"
+                android:scaleType="fitCenter"
+                android:importantForAccessibility="no" />
+
+            <!--
+              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
+              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
+              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
+
+              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
+              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
+              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
+
+              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
+              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
+            -->
+            <TextView
+                android:id="@+id/direct_speak_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:paddingStart="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:text="@string/clarification_direct_speak"
+                android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel.OnPrimary" />
+        </FrameLayout>
     </LinearLayout>
 </ScrollView>

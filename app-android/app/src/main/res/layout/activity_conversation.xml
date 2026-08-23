@@ -100,6 +100,38 @@
           **홈에서는 아래 짝(space_home_mid)이 없다**(#231) — 마이크가 바닥에 못 박혀 있고
           열 아래 여백이 그 자리를 대신한다. 지금 이 뷰와 짝을 이루는 것은 안내(메인 9)뿐이다.
         -->
+        <!--
+          MA-3 질문 칩(#374 · 시안 24,46). **카드 아래가 아니라 여기 있다** — 진행도는
+          「지금 어디쯤인가」라 **묻기 전에** 보여야 한다. 답을 고른 뒤 아래에서 읽으면 늦다.
+
+          **종료 ✕는 여기 없다.** 시안은 칩과 ✕를 한 줄로 그렸지만, ✕는 **모든 화면에서
+          자리와 크기가 같아야 한다**(2026-08-23) — 화면마다 다르면 어르신이 나가는 길을
+          매번 새로 찾는다. 그래서 이 화면도 **전역 btn_close를 그대로 쓴다**(우상단 56dp).
+          한때 이 줄 안에 전용 ✕(원 38dp)를 뒀다가 걷었다 — 자리도 크기도 전역과 달랐다.
+
+          **칩의 세로 위치는 그 전역 ✕에 맞춘다** — 아래 토큰 주석에 계산이 있다.
+        -->
+        <!--
+          **폭은 wrap_content, 높이만 고정이다.** 시안 92x32(=110x38dp)를 둘 다 고정으로
+          두면 2.0 위 배율(삼성은 더 있다)에서 「질문 1/2」가 잘린다 — 진행도는 짧은 글자라
+          최소 폭만 지키면 되고, **높이는 전역 ✕와 중심을 맞추는 입력**이라 고정이어야 한다
+          (davi_step_row_margin_top 주석의 계산).
+        -->
+        <TextView
+            android:id="@+id/question_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/davi_step_chip_height"
+            android:minWidth="@dimen/davi_step_chip_width"
+            android:paddingLeft="@dimen/davi_spacing_md"
+            android:paddingRight="@dimen/davi_spacing_md"
+            android:maxLines="1"
+            android:layout_gravity="start"
+            android:layout_marginTop="@dimen/davi_step_row_margin_top"
+            android:gravity="center"
+            android:background="@drawable/bg_davi_step_chip"
+            android:textAppearance="@style/TextAppearance.Davi.StepChip"
+            android:visibility="gone" />
+
         <Space
             android:id="@+id/space_flex_top"
             android:layout_width="match_parent"
@@ -525,27 +557,6 @@
             android:lineSpacingMultiplier="1.3"
             android:text="@string/conversation_guiding_bottom"
             android:textAppearance="@style/TextAppearance.Davi.GuidingBottom" />
-
-        <!--
-          **최종 확인에서 남는 높이는 카드와 버튼 셋 사이가 먹는다**(2026-08-22).
-          카드는 배지에 앵커돼 위에서부터 자라고(`cardQuestionFlexible=false`), 버튼 셋은
-          **바닥에 붙어야** 한다 — (3)의 바닥선은 `docs/SCREENS.md` MA-4에서 **다른 화면의
-          마이크 바닥과 같은 선(프레임 572)**이라, 화면마다 그 선이 흔들리면 어르신이 매번
-          다른 자리를 눈으로 찾는다.
-
-          이 자리가 없으면 열이 위에서부터 쌓여 **남는 높이가 전부 (3) 아래에 남는다** —
-          실측으로 100dp 넘게 어긋났다. (2)가 숨을 때 (1)(3)이 96dp 위로 뛰는 것도 같은
-          뿌리였다. 여기가 슬랙을 먹으면 **(2)가 있든 없든 (3)의 바닥이 같은 선에 선다.**
-
-          davi_confirm_choice_margin_top(48)은 이제 **최소 간격**이다 — 슬랙이 0이어도
-          카드와 (1)이 붙지 않는다.
-        -->
-        <Space
-            android:id="@+id/space_confirm_flex"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:visibility="gone" />
 
         <!--
           MA-4 확인 버튼 셋(#348 · `docs/SCREENS.md` MA-4 「확인 버튼 셋」).

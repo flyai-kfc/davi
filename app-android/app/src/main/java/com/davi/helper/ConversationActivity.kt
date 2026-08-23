@@ -37,6 +37,34 @@ internal const val EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY =
 internal const val EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER =
     "com.davi.helper.extra.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER"
 
+/**
+ * MA-3 구체화 화면을 **서버 없이** 띄우는 debug 전용 진입점(#374 · #323과 같은 성격).
+ *
+ * 이 화면의 모양은 **보기 셋을 전제로** 만들어져 있는데(뒤판·아이콘 슬롯이 전부 보기용),
+ * 보기는 서버가 `options`로 준다. 서버가 빈 배열을 주면 자유 응답으로 떨어져
+ * **디자인을 눈으로 확인할 방법이 없다.** 실기기 확인을 서버 상태에 걸어 두지 않기 위한 것이다.
+ *
+ * **화면 상태만 만든다.** 실제 대화 세션은 시작하지 않으므로 보기를 눌러도 서버로 답이
+ * 가지 않는다 — 모양을 보기 위한 자리이지 흐름을 흉내 내는 자리가 아니다.
+ *
+ * **`|`를 중첩 따옴표로 감싼다** — 로컬 셸이 바깥 따옴표를 벗기고 adb가 인자를 다시 이어
+ * 붙이므로, 그대로 두면 **기기 셸이 `|`를 파이프로 읽는다**(「문자 메시지」가 갈라진다).
+ *
+ *     adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *       --es com.davi.helper.extra.DEBUG_CLARIFICATION "'카카오톡|문자 메시지|인스타그램'" \
+ *       --es com.davi.helper.extra.DEBUG_CLARIFICATION_PROMPT "'어느 앱으로 사진을 보낼까요?'"
+ *
+ * 보기를 0개로 두려면 빈 문자열을 준다(`--es ... ""`) — 자유 응답 화면이 뜬다.
+ */
+internal const val EXTRA_DEBUG_CLARIFICATION =
+    "com.davi.helper.extra.DEBUG_CLARIFICATION"
+internal const val EXTRA_DEBUG_CLARIFICATION_PROMPT =
+    "com.davi.helper.extra.DEBUG_CLARIFICATION_PROMPT"
+
+/** 질문 개수. 1이면 칩이 숨는 경우를 볼 수 있다(`--ei ... 1`). 기본 2. */
+internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
+    "com.davi.helper.extra.DEBUG_CLARIFICATION_COUNT"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -103,6 +131,10 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 바로가기 행에 아이콘을 이미 붙인 패키지. 같은 앱이면 다시 조회하지 않는다(#348). */
     private var shownShortcutPackage: String? = null
+
+    /** 보기 라벨 -> 아이콘. [cacheClarificationIcons]가 상태 전이마다 한 번 채운다. */
+    private var clarificationIcons: Map<String, android.graphics.drawable.Drawable?> = emptyMap()
+    private var clarificationIconKey: List<String>? = null
     private val micReadyHandler = Handler(Looper.getMainLooper())
     private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
 
@@ -319,6 +351,46 @@ class ConversationActivity : AppCompatActivity() {
         binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
             beginClarificationSpeech()
         }
+        // **버튼 넷의 그림자 색**(#374 시안 `#000000@12 y7 b16`). elevation은 색을 못 정하므로
+        // 여기서 준다 — 안 주면 시스템 기본 검정이 깔려 시안 값이 죽은 토큰이 된다.
+        //
+        // **스크린리더에는 「버튼」으로 읽힌다.** Button이 아니라 FrameLayout이라(뒤판·아이콘·
+        // 라벨을 한 배경에 담아야 터치가 하나가 된다) 기본으로는 그냥 「그룹」으로 읽힌다.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val shadow = getColor(R.color.davi_choice_shadow)
+            for (button in optionButtons) {
+                button.outlineSpotShadowColor = shadow
+                button.outlineAmbientShadowColor = shadow
+            }
+        }
+        for (button in optionButtons + binding.clarificationChoices.btnDirectSpeak) {
+            button.accessibilityDelegate = object : android.view.View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(
+                    host: android.view.View,
+                    info: android.view.accessibility.AccessibilityNodeInfo,
+                ) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = android.widget.Button::class.java.name
+                }
+            }
+        }
+        // **「직접 말하기」의 글로우**(#374 시안 `#F70824@22 y8 b18`).
+        //
+        // **공통 그림자와 함께 줄 수 없다** — 시안은 「글로우 + 공통 그림자」인데 View는
+        // 그림자 색을 하나만 갖는다. 이 버튼에서는 글로우가 이긴다.
+        //
+        // **채움을 밝게 하거나 투명하게 하지 않는다** — 밝은 빨강 위에는 흰 글자가 안 읽히고
+        // (color/highlight #F2001C는 4.38:1), 투명은 배경 베일이 비쳐 2.7~3.2:1까지 내려간다.
+        // **밝기는 글자가 없는 자리에서 낸다** — 버튼 둘레로 번지는 이 빛이 그 자리다.
+        //
+        // elevation 그림자의 **색을 바꿔** 만든다. layer-list로는 blur가 없어 단단한 띠가
+        // 되고(bg_davi_card 주석), 별도 View를 깔면 버튼과 터치 영역이 갈린다.
+        // **API 28부터다** — 그 아래에서는 공통 검정 그림자만 남고 버튼은 그대로 성립한다.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val glow = getColor(R.color.davi_choice_primary_glow)
+            binding.clarificationChoices.btnDirectSpeak.outlineSpotShadowColor = glow
+            binding.clarificationChoices.btnDirectSpeak.outlineAmbientShadowColor = glow
+        }
         // 메인 10 — ×는 확인을 접고 메인 9로, ○는 안내를 끝내고 홈으로.
         // **기본 설명이 정반대다.** 이 컴포넌트는 최종 확인 기준으로 x가 "처음부터 다시",
         // o가 "이대로 안내 시작"인데 여기서는 x가 안내를 계속하고 o가 끝낸다. 화면 문구가
@@ -350,8 +422,22 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestion.isFocusable = false
         binding.cardQuestion.isFocusableInTouchMode = false
 
+        // MA-3 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374). release에서는 무시된다.
+        debugClarificationState()?.let { setState(it) }
+
 
         render(uiState)
+    }
+
+    /**
+     * 이미 떠 있는 화면에 debug 주입이 다시 오면 받는다(#374).
+     * **재실행 없이 값을 바꿔 볼 수 있어야** 디자인 확인이 빠르다 — 매번 앱을 죽였다 켜면
+     * 보기 하나 바꾸는 데 몇 십 초가 든다. release에서는 [debugClarificationState]가 null이다.
+     */
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        intent = newIntent
+        debugClarificationState()?.let { setState(it) }
     }
 
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
@@ -429,7 +515,37 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
+    /**
+     * [EXTRA_DEBUG_CLARIFICATION]이 오면 그것으로 만든 구체화 상태. 아니면 null.
+     * **`BuildConfig.DEBUG`가 아니면 항상 null이다** — release에 진입점을 남기지 않는다.
+     */
+    private fun debugClarificationState(): ConversationUiState.Clarifying? {
+        if (!BuildConfig.DEBUG) return null
+        val raw = intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) ?: return null
+        val options = raw.split('|').map(String::trim).filter(String::isNotEmpty).take(3)
+        val prompt = intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION_PROMPT)
+            ?: "어느 앱으로 사진을 보낼까요?"
+        GuideTelemetry.voiceState("debug_clarification_injected")
+        return ConversationUiState.Clarifying(
+            VoiceDialogueSession.Outcome.Clarify(
+                generation = 0L,
+                question = ClarificationQuestion(
+                    id = "debug",
+                    prompt = prompt,
+                    options = options,
+                    allowFreeform = true,
+                ),
+                questionIndex = 0,
+                questionCount = intent.getIntExtra(EXTRA_DEBUG_CLARIFICATION_COUNT, 2),
+            ),
+            // 읽어 주지 않는다 — 모양만 보는 자리다.
+            speaking = false,
+        )
+    }
+
     private fun setState(state: ConversationUiState) {
+        // **아이콘은 render가 아니라 상태 전이에서 찾는다** — render는 부분 인식마다 돈다.
+        if (state is ConversationUiState.Clarifying) cacheClarificationIcons(state)
         // **상태 전이를 남긴다**(#197 리뷰). 안내 중·종료 확인은 사용자가 눈으로만 확인할 수
         // 있어 회귀가 나도 로그로 못 짚었다. **이름과 세션 유무뿐이다** — 발화·질문·goal은
         // 여기에 오지 않는다(기존 금지 그대로).
@@ -465,13 +581,6 @@ class ConversationActivity : AppCompatActivity() {
         // 마이크 사이가 시안(48)과 무관하게 벌어진다. 홈은 마이크가 바닥에 못 박혀 있어
         // 아래 여백(davi_home_control_reserve)이 그 자리를 대신한다.
         binding.spaceHomeMid.isVisible(model.guidingVisible)
-        // **확인 화면은 카드와 버튼 셋 사이가 남는 높이를 먹는다**(2026-08-22 리뷰).
-        // 카드가 내용대로 자라도(cardQuestionFlexible=false) (3)의 바닥선은 그대로여야
-        // 한다 — 시안에서 그 선은 **다른 화면의 마이크 바닥과 같은 선**이다. 이 자리가
-        // 없으면 남는 높이가 전부 (3) 아래에 남아 버튼 셋이 100dp 넘게 떠오르고,
-        // (2)가 숨을 때마다 (1)(3)이 96dp씩 뛴다.
-        // **경고 화면도 함께 받는다** — confirmVisible이 켜지는 화면은 둘 다 마이크가 없다.
-        binding.spaceConfirmFlex.isVisible(model.confirmVisible)
         binding.homeHead.isVisible(model.homeVisible)
         binding.homeSubtitle.isVisible(model.homeVisible)
         binding.homeCane.isVisible(model.homeVisible)
@@ -603,22 +712,26 @@ class ConversationActivity : AppCompatActivity() {
         binding.utteranceLabel.isVisible(model.utteranceLabelVisible)
         binding.cardUtterance.text = model.utteranceText
         binding.clarificationChoices.root.isVisible(model.clarificationVisible)
-        if (state is ConversationUiState.Clarifying) {
-            binding.clarificationChoices.questionProgress.text = getString(
+        // 칩은 카드 **위**에 앉는다(#374 시안 y46) — 진행도는 「지금 어디쯤인가」라
+        // 묻기 전에 보여야 한다. **✕는 전역 btn_close를 그대로 쓴다**(모든 화면에서 같은 자리).
+        //
+        // **보이는 조건을 상태로 판단하지 않는다** — 「직접 말하기」로 넘어간 청취에서도
+        // 칩이 남아야 하고, 그때 배지 위 여백도 같은 값을 써야 카드가 안 뛴다.
+        val stepOutcome = when (state) {
+            is ConversationUiState.Clarifying -> state.outcome
+            is ConversationUiState.Listening -> state.clarification
+            else -> null
+        }
+        binding.questionProgress.isVisible(model.stepChipVisible)
+        if (stepOutcome != null) {
+            binding.questionProgress.text = getString(
                 R.string.clarification_progress,
-                state.outcome.questionIndex + 1,
-                state.outcome.questionCount,
+                stepOutcome.questionIndex + 1,
+                stepOutcome.questionCount,
             )
-            val optionButtons = listOf(
-                binding.clarificationChoices.btnOption1,
-                binding.clarificationChoices.btnOption2,
-                binding.clarificationChoices.btnOption3,
-            )
-            optionButtons.forEachIndexed { index, button ->
-                val option = state.outcome.question.options.getOrNull(index)
-                button.isVisible(option != null)
-                if (option != null) button.text = option
-            }
+        }
+        if (state is ConversationUiState.Clarifying) {
+            renderClarificationOptions(state)
         }
         binding.btnMic.isVisible(model.micVisible)
         binding.btnMic.isEnabled = model.micEnabled
@@ -648,16 +761,39 @@ class ConversationActivity : AppCompatActivity() {
         // 선택 영역 전체가 실기기 화면 아래로 밀린다(#316 리뷰).
         binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
             topMargin = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.clarificationVisible) {
-                    R.dimen.davi_badge_margin_top_guiding
-                }
-                else R.dimen.davi_badge_margin_top,
+                when {
+                    // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
+                    // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
+                    // 밀어 카드가 102dp 내려간다.
+                    // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
+                    // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
+                    model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
+                    // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
+                    // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
+                    // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
+                    // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
+                    //
+                    // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
+                    // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
+                    // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
+                    model.inClarificationFlow ->
+                        R.dimen.davi_badge_margin_top_clarification_nochip
+                    model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
+                    else -> R.dimen.davi_badge_margin_top
+                },
             )
         }
         // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
+        // **stepChipVisible을 함께 본다** — clarificationVisible만 보면 「직접 말하기」로
+        // 넘어가는 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라
+        // 눈에 잘 안 띈다). 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
+        //
+        // **inClarificationFlow를 본다** — 칩이 없는 1문항도, 「직접 말하기」로 넘어간 청취도
+        // 같은 값이어야 한다. clarificationVisible은 청취에서 꺼지고 stepChipVisible은
+        // 1문항에서 꺼져, 어느 하나만 보면 그 조합에서 글자가 4dp 밀린다(2026-08-23 리뷰).
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.clarificationVisible) {
+                if (model.guidingVisible || model.inClarificationFlow) {
                     R.dimen.davi_card_padding_top_guiding
                 }
                 else R.dimen.davi_card_padding_top_davi,
@@ -1178,6 +1314,67 @@ class ConversationActivity : AppCompatActivity() {
             intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER, false)
         ) return
         speechHelper().start()
+    }
+
+    /**
+     * MA-3 보기 버튼 셋(#374). 라벨·아이콘·여백을 함께 정한다.
+     *
+     * **아이콘은 이름이 설치된 앱과 정확히 맞을 때만 붙는다**([launchableAppForLabel]).
+     * 서버는 보기를 문자열로만 주므로 어느 앱인지 알려주지 않는다 — 비슷한 것을 붙이면
+     * 어르신이 **다른 앱으로 가는 줄 알고** 누른다. 「시간 정하기」처럼 앱이 아닌 답은
+     * 자연히 슬롯이 숨는다.
+     *
+     * **아이콘이 숨어도 라벨은 안 움직인다** — 라벨이 본체 가운데에 서기 때문이다(시안
+     * 「가로 중앙」). 좌우 여백만 아이콘 유무에 따라 갈린다.
+     */
+    private fun renderClarificationOptions(state: ConversationUiState.Clarifying) {
+        val buttons = listOf(
+            binding.clarificationChoices.btnOption1 to
+                (binding.clarificationChoices.option1Icon to binding.clarificationChoices.option1Label),
+            binding.clarificationChoices.btnOption2 to
+                (binding.clarificationChoices.option2Icon to binding.clarificationChoices.option2Label),
+            binding.clarificationChoices.btnOption3 to
+                (binding.clarificationChoices.option3Icon to binding.clarificationChoices.option3Label),
+        )
+        buttons.forEachIndexed { index, (button, views) ->
+            val (icon, label) = views
+            val option = state.outcome.question.options.getOrNull(index)
+            button.isVisible(option != null)
+            if (option == null) return@forEachIndexed
+            label.text = option
+            button.contentDescription = option
+
+            val drawable = clarificationIcons[option]
+            icon.isVisible(drawable != null)
+            // 기기 아이콘은 정사각·원형·스퀘어클이 섞여 있어 슬롯 윤곽으로 깎아야 균일하다
+            // (MA-4 바로가기 행과 같은 처리). centerCrop이어야 적응형 아이콘의 25% 여백이
+            // 슬롯 안에서 작게 앉지 않는다.
+            icon.clipToOutline = true
+            icon.setImageDrawable(drawable)
+        }
+    }
+
+    /**
+     * 보기 아이콘을 **상태에 들어올 때 한 번만** 찾는다(#374).
+     *
+     * `render()`는 부분 인식마다 여러 번 도는데, 거기서 찾으면 두 가지를 매번 한다:
+     * `LaunchableAppIndex.current()`(dirty면 다중 프로필 전수 조회 — **KDoc이 voiceExecutor
+     * 전용이라고 적어 둔 호출**)와 `getApplicationIcon`을 보기 수만큼. 둘 다 메인 스레드다.
+     *
+     * MA-4 바로가기 행이 `shownShortcutPackage`로 이미 같은 것을 피하고 있다(#348) —
+     * **같은 화면 안에서 정책이 갈리지 않게** 여기도 한 번만 한다.
+     *
+     * 진입 시점이라 index가 dirty일 수 있지만, 그때 전수 조회는 **상태 전이당 한 번**이다.
+     */
+    private fun cacheClarificationIcons(state: ConversationUiState.Clarifying) {
+        val options = state.outcome.question.options
+        if (clarificationIconKey == options) return
+        clarificationIconKey = options
+        val snapshot = launchableAppIndex.current()
+        clarificationIcons = options.associateWith { option ->
+            val app = launchableAppForLabel(option, snapshot) ?: return@associateWith null
+            runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+        }
     }
 
     /**

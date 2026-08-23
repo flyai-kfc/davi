@@ -239,7 +239,10 @@ class ConversationUiStateTest {
         assertEquals(ConversationUiState.Clarifying(outcome), state)
         val model = renderModelOf(state)
         assertTrue(model.clarificationVisible)
-        assertFalse("문답 중 취소 버튼은 없다", model.closeVisible)
+        // **보기가 있어도 나가는 길을 둔다**(2026-08-23 시안 재작업 · #374). 종전 근거는
+        // 「보기 있는 질문에서는 문답 중 취소를 두지 않는다」였는데, 시안이 이 화면에도
+        // 종료를 그렸다 — 나가는 길이 화면마다 있고 없고가 갈리면 어르신이 매번 찾는다.
+        assertTrue("보기가 있어도 나가는 길은 있다", model.closeVisible)
     }
 
     @Test
@@ -280,8 +283,11 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `보기 있는 구체화 직접 발화와 최종 요청에는 취소 버튼이 없다`() {
-        assertFalse(
+    fun `최종 요청에는 취소 버튼이 없다`() {
+        // **청취에는 보기 유무와 무관하게 ×를 둔다**(2026-08-23 · #374). 종전에는 닫힌 선택
+        // 질문에서 넘어온 청취에만 걷었는데, 그러면 「직접 말하기」를 누르는 순간 ×가 사라져
+        // **어르신 눈에는 나가는 길이 없어진다** — 인식이 반복 실패하면 갇힌다.
+        assertTrue(
             renderModelOf(
                 ConversationUiState.Listening(
                     question = "누구에게?",
@@ -289,6 +295,7 @@ class ConversationUiStateTest {
                 ),
             ).closeVisible,
         )
+        // 최종 요청은 다르다 — 서버로 이미 보낸 뒤라 취소할 것이 없다.
         val finalizing = renderModelOf(ConversationUiState.Requesting("", finalizing = true))
         assertFalse(finalizing.closeVisible)
         assertFalse("빈 시니어 카드를 남기지 않는다", finalizing.utteranceVisible)
@@ -527,6 +534,61 @@ class ConversationUiStateTest {
                 ConversationUiState.Confirm("사진 보내기", shortcutApp = app.copy(label = "")),
             ).shortcutVisible,
         )
+    }
+
+    @Test
+    fun `질문 칩은 질문이 둘 이상일 때만 서고 직접 말하기 청취까지 남는다`() {
+        // **이 값은 배지 위 여백도 함께 본다**(#374). 뜻이 「구체화 화면인가」로 새면
+        // 칩이 없는데 칩 있는 여백을 써서 **카드가 51dp까지 솟아 종료 ✕에 덮인다**
+        // (2026-08-23 실기기). 그래서 질문 수 판단까지 렌더 모델에서 끝낸다.
+        val two = clarificationOutcome(questionCount = 2)
+        val one = clarificationOutcome(questionCount = 1)
+
+        assertTrue(renderModelOf(ConversationUiState.Clarifying(two)).stepChipVisible)
+        // 「질문 1/1」은 진행도로서 아무 말도 하지 않는다.
+        assertFalse(renderModelOf(ConversationUiState.Clarifying(one)).stepChipVisible)
+
+        // **「직접 말하기」로 넘어가도 남는다** — 답하는 중에도 어디쯤인지 보여야 하고,
+        // 칩이 있다 없다 하면 카드가 뛴다.
+        assertTrue(
+            renderModelOf(
+                ConversationUiState.Listening(question = "누구에게?", clarification = two),
+            ).stepChipVisible,
+        )
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Listening(question = "누구에게?", clarification = one),
+            ).stepChipVisible,
+        )
+        // 구체화와 무관한 화면에는 없다.
+        assertFalse(renderModelOf(ConversationUiState.Listening()).stepChipVisible)
+        assertFalse(renderModelOf(ConversationUiState.Home()).stepChipVisible)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).stepChipVisible)
+    }
+
+    @Test
+    fun `구체화 흐름 신호는 질문 수와 무관하게 선택과 청취를 함께 덮는다`() {
+        // **카드 위치를 잡는 값 둘이 이것을 본다**(#374). 흐름 안에서 카드가 뛰지 않으려면
+        // 두 화면이 같은 신호를 써야 한다 — clarificationVisible은 청취에서 꺼지고
+        // stepChipVisible은 1문항에서 꺼져, 어느 하나만 보면 **질문이 하나일 때
+        // 「직접 말하기」를 누르는 순간 카드가 28dp 내려앉는다**(2026-08-23 리뷰).
+        for (count in 1..2) {
+            val outcome = clarificationOutcome(questionCount = count)
+            assertTrue(
+                "질문 ${count}개 선택 화면",
+                renderModelOf(ConversationUiState.Clarifying(outcome)).inClarificationFlow,
+            )
+            assertTrue(
+                "질문 ${count}개 직접 말하기 청취",
+                renderModelOf(
+                    ConversationUiState.Listening(question = "누구에게?", clarification = outcome),
+                ).inClarificationFlow,
+            )
+        }
+        // 홈에서 바로 들어온 청취는 구체화 흐름이 아니다.
+        assertFalse(renderModelOf(ConversationUiState.Listening()).inClarificationFlow)
+        assertFalse(renderModelOf(ConversationUiState.Home()).inClarificationFlow)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).inClarificationFlow)
     }
 
     @Test

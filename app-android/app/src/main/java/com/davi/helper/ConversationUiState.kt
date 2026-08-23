@@ -105,6 +105,35 @@ data class ConversationRenderModel(
     /** 메인 9 카드 안 지시문("새로 물어보시려면...") — 마이크가 잠긴 이유를 설명한다(#197). */
     val guidingVisible: Boolean = false,
     val clarificationVisible: Boolean = false,
+    /**
+     * 질문 진행도 칩(#374).
+     *
+     * **「칩이 실제로 화면에 서는가」다** — 「구체화 화면인가」가 아니다. 배지 위 여백이
+     * 이 값을 함께 보기 때문에, 뜻이 갈리면 **칩이 없는데 칩 있는 여백을 써서 카드가
+     * 위로 솟는다**(2026-08-23 실기기: 질문이 하나인 실제 응답에서 카드가 51dp까지 올라가
+     * 종료 ✕에 통째로 덮였다). 그래서 **질문 수 판단까지 여기서 끝낸다.**
+     *
+     * 선택 화면과 「직접 말하기」 청취를 함께 덮는다 — 답하는 동안에도 「지금 몇 번째인가」가
+     * 보여야 하고, 칩이 있다 없다 하면 카드가 뛴다(같은 날 91dp 내려앉았다).
+     *
+     * **질문이 하나면 서지 않는다**(#376의 [미결] 해소). 「질문 1/1」은 진행도로서 아무 말도
+     * 하지 않는다 — 「몇 개 중 몇 번째」가 뜻을 가지려면 뒤에 올 것이 있어야 한다.
+     */
+    val stepChipVisible: Boolean = false,
+    /**
+     * **구체화 흐름 안인가**(#374) — 선택 화면과 「직접 말하기」 청취를 함께 덮는다.
+     *
+     * [clarificationVisible]과 다르다. 그쪽은 **선택 영역이 화면에 있는가**라 「직접 말하기」로
+     * 넘어가면 꺼진다. 이 값은 **그 흐름 안에 있는가**라 청취에서도 켜져 있다.
+     *
+     * **카드 위치를 잡는 값 둘(배지 위 여백·카드 위 패딩)이 이것을 본다.** 흐름 안에서 카드가
+     * 뛰지 않으려면 두 화면이 같은 신호를 써야 한다 — 한때 `clarificationVisible`을 봐서
+     * **질문이 하나일 때 「직접 말하기」를 누르면 카드가 28dp 내려앉았다**(2026-08-23 리뷰).
+     * 질문이 둘 이상이면 [stepChipVisible]이 두 화면을 묶어 줘서 그 자리만 남았던 것이다.
+     *
+     * 홈에서 바로 들어온 청취는 `clarification == null`이라 켜지지 않는다.
+     */
+    val inClarificationFlow: Boolean = false,
     val safeEndVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
     val stopConfirmVisible: Boolean = false,
@@ -249,9 +278,12 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         cardQuestionFlexible = true,
         utteranceText = state.partial,
         micVisible = true,
-        // 닫힌 선택 질문은 문답 흐름을 유지하지만, 빈 보기 자유 응답은 음성이 유일한 입력이다.
-        // 그 경우 ASR 실패가 반복돼도 사용자가 명시적으로 대화를 끝낼 수 있게 ×를 유지한다.
-        closeVisible = state.clarification == null || state.clarification.question.options.isEmpty(),
+        // **나가는 길은 화면마다 있고 없고가 갈리지 않는다**(2026-08-23 · #374).
+        // 종전에는 닫힌 선택 질문에서 넘어온 청취에만 ×를 걷었는데(문답 흐름을 유지한다는
+        // 이유), 그러면 **「직접 말하기」를 누르는 순간 ×가 사라진다** — 어르신 눈에는
+        // 나가는 길이 없어진 것이고, 인식이 반복 실패하면 갇힌다. 바로 앞 선택 화면이
+        // ×를 보이므로 여기서 없애면 화면이 뒤로 갈수록 출구가 줄어든다.
+        closeVisible = true,
         // **신호 셋은 micReady에 함께 선다**(#273) — 미리 띄우면 그 말을 믿고 말한 첫 음절이
         // 잘린다. 준비 중을 알리는 것은 아래 [signalsDimmed]가 켜는 **전체 스크림**이고,
         // 그쪽은 "아직 아니다"를 말하므로 이 계약을 깨지 않는다(#277).
@@ -261,6 +293,9 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceLabelVisible = state.micReady,
         signalsDimmed = !state.micReady,
         utteranceSpeaking = true,
+        // 구체화에서 넘어온 청취면 진행도를 이어서 보인다 — 답하는 중에도 어디쯤인지 보인다.
+        stepChipVisible = (state.clarification?.questionCount ?: 0) > 1,
+        inClarificationFlow = state.clarification != null,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
@@ -277,10 +312,21 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         questionText = state.outcome.question.prompt,
         cardQuestionFlexible = true,
         clarificationVisible = true,
-        // 선택 영역에는 보조 답변을 늘리지 않는다. 자유 응답 질문에서만 기존 대화 닫기를
-        // 노출해 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 한다.
-        closeVisible = state.outcome.question.options.isEmpty(),
-        cardGlowVisible = state.speaking,
+        // **보기가 있어도 ✕를 보인다**(2026-08-23 시안 재작업 · #374). 종전에는 자유 응답
+        // 질문에서만 열어 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 했는데,
+        // 시안이 이 화면에도 종료를 그렸다 — **나가는 길은 화면마다 있고 없고가 갈리면 안 된다.**
+        // 보기를 고르다 마음이 바뀐 사람에게도 출구가 필요하다.
+        closeVisible = true,
+        // **읽는 동안만이 아니라 늘 켠다**(#374, 2026-08-23 시안). 한때 `state.speaking`이라
+        // TTS가 끝나면 글로우가 꺼졌는데, 그러면 **고르는 내내 화자 표시가 없다** —
+        // 이 카드는 다비가 던진 질문이고 그 사실은 읽기가 끝나도 변하지 않는다
+        // (#176 「글로우가 화자를 가리킨다」 · MA-4의 최종 확인 카드와 같은 처리).
+        //
+        // 시니어 카드 쪽 `utteranceSpeaking`은 **여전히 「지금 말하는 중」**을 뜻한다 —
+        // 그쪽은 화자가 이미 라벨로 갈려 있어 글로우가 다른 일을 할 수 있다.
+        cardGlowVisible = true,
+        stepChipVisible = state.outcome.questionCount > 1,
+        inClarificationFlow = true,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(
