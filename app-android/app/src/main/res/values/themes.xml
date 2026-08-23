@@ -197,7 +197,7 @@
       `bg_davi_button_primary`가 어디서도 안 쓰였다 — 직전까지 Kakao·Secondary가 상속해서
       살아 있었는데, 이 화면이 두 스타일을 ON-2 쪽으로 옮기면서 참조가 끊겼다.
       남겨 두면 다음 사람이 "기본 버튼 스타일"인 줄 알고 새 화면에서 상속한다.
-      (`bg_davi_button_primary` drawable 정리는 #263이 받는다.)
+      (`bg_davi_button_primary` drawable은 #263(PR #387)이 지웠다.)
 
       ON-1 버튼 둘은 **ON-2 권한 버튼을 상속한다.** 시안이 셋 다 `v2/button` 240x60이고,
       그림자 offset·라벨 여백·C1 두-네임스페이스 처리가 같다 — 값을 복제하면 마스터가 바뀔 때
