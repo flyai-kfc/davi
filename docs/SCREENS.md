@@ -502,21 +502,13 @@ w2, ③ `color/border/quiet`(= #383838)로 **셋 다 A2를 넉넉히 통과**한
 어르신은 삐져나온 12까지를 버튼 끝으로 보므로, 뒤판과 본체를 **한 View의 `layer-list` 배경**으로
 만들어 터치 영역을 하나로 둔다. 별도 View로 깔지 않는다.
 
-**신규 시맨틱 둘 — 새 프리미티브는 없다**(2026-08-21, B1 2층 구조).
+**토큰은 색이 확정된 뒤에 딴다.** 2026-08-21 안이 쓰던 `color/surface/raised`(→ `color/white`)와
+`color/border/quiet`(→ `color/grey/700`)은 **08-22 시안이 흰/회색 채움을 걷으면서 이 화면에서
+쓰이지 않는다.** 둘 다 시맨틱 별칭이라 만드는 비용은 작지만, **쓰는 자리가 없는 토큰을 미리
+만들지 않는다** — `colors.xml`에 값만 늘고 다음 사람이 「어디 쓰는 색인가」를 찾게 된다.
 
-| 시맨틱 | 프리미티브 | Android |
-|---|---|---|
-| `color/border/quiet` | `color/grey/700` #383838 — **`color/text/secondary`와 같은 프리미티브** | **`davi_border_quiet` 신규 필요** |
-| `color/surface/raised` | `color/white` #FFFFFF | **`davi_surface_raised` 신규 필요** |
-
-**`colors.xml`에 값을 복제하지 않는다** — 둘 다 기존 프리미티브의 별칭이다.
-**둘 다 `colors.xml`에 없다** — main 기준으로 #383838을 쓰는 것은 `davi_text_secondary` 하나뿐이고,
-흰색은 `davi_bg`·`davi_overlay_box`·`davi_button_on_primary`로 갈려 있어 무엇을 쓸지 못 고른다.
-`color/surface/raised`는 「핑크 배경 위로 떠 있는 흰 표면」이라는 뜻으로 그 자리를 메운다 — 셋 다 뜻이 다르다.
-
-`color/border/quiet`은 「눌러도 되지만 우리가 권하진 않는 것」의 테두리다.
-**「비활성」이나 「회색」으로 이름 붙이지 않는다** — 실제로 비활성이 아닌 자리에 쓰였을 때
-이름이 거짓이 된다.
+핑퐁 1(MA-3)은 `color/white`·`color/highlight`·`color/pink/400`·`color/red/700`만 쓰므로
+**신규 토큰이 없다.** 이 화면도 색이 정해질 때 **기존 토큰으로 덮이는지 먼저 본다.**
 
 **아이콘과 이름은 기기에서 꺼낸다** — `PackageManager.getApplicationIcon(pkg)` ·
 `getApplicationLabel(info)`. 앱마다 에셋을 심지 않아 어떤 앱이 나와도 되고, 브랜드 리소스를
