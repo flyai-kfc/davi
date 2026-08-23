@@ -10,6 +10,7 @@ from app.prompt import (
     PAGE_ONLY_ONE,
     PERFORMED_STEP_INSTRUCTION,
     PRESSED_UNCHANGED_INSTRUCTION,
+    RETURNED_SCREEN_INSTRUCTION,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
@@ -18,6 +19,7 @@ from app.prompt import (
     STEP_HISTORY_HEADER,
     STEP_PRESSED,
     STEP_PRESSED_ELSEWHERE,
+    STEP_SCREEN_RETURNED,
     STEP_UNCHANGED,
     SWIPE_DIRECTION_LEGEND,
     UNCHANGED_STEP_INSTRUCTION,
@@ -34,6 +36,7 @@ from app.schemas import (
     SwipeDirection,
     UiElement,
 )
+from app.signature import screen_signature
 
 _SIGNATURE = "0" * 64
 
@@ -772,3 +775,78 @@ def test_step_history_escapes_a_value_that_carries_both_quote_marks():
     prompt = build_prompt(_with_steps(_step(target_label='"확인"과 김철수\'s 폰')))
 
     assert "(대상 '\"확인\"과 김철수\\'s 폰')" in prompt
+
+
+def _back_on(**overrides) -> NextStepRequest:
+    """지금 화면이 그 스텝이 떠났던 화면과 같은 구조인 요청.
+
+    스텝의 `structure_signature`는 그 안내를 낸 응답의 echo이므로, 현재 화면의 서명과 같으면
+    "그때 그 화면으로 돌아와 있다"는 뜻이다.
+    """
+
+    screen = Screen(package_name="com.example.app")
+    fields = {"structure_signature": screen_signature(screen)}
+    return NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[_step(**(fields | overrides))],
+    )
+
+
+def test_step_history_marks_the_step_whose_screen_we_are_back_on():
+    prompt = build_prompt(_back_on())
+
+    assert f"{STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
+
+
+def test_step_history_is_silent_when_the_screen_never_came_back():
+    """서명이 다르면 아무 말도 하지 않는다 — 대부분의 스텝이 이 경우다."""
+
+    prompt = build_prompt(_with_steps(_step()))
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_needs_evidence_that_we_ever_left():
+    """`screen_changed`가 True가 아니면 떠난 적이 없어 "돌아옴"이 성립하지 않는다.
+
+    그 화면에서 계속 다시 묻는 중(False)이거나 아직 모르는 것(None)을 회귀로 적으면,
+    진행이 없었던 것과 돌고 온 것이 한 문장으로 뭉개진다.
+    """
+
+    unchanged = build_prompt(_back_on(screen_changed=False))
+    unknown = build_prompt(_back_on(screen_changed=None))
+
+    assert STEP_SCREEN_RETURNED not in unchanged
+    assert STEP_SCREEN_RETURNED not in unknown
+
+
+def test_returned_screen_explanation_does_not_declare_a_loop():
+    """구조 서명은 label을 안 봐서 같은 목록의 다른 항목도 "구조가 같음"이 된다.
+
+    그래서 문장은 관측만 말하고 판단을 모델에게 남긴다 — `screen_changed=False`를 단정하지
+    않는 것과 같은 결이다.
+    """
+
+    prompt = build_prompt(_back_on())
+
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+    assert "내용이 다른 화면일 수도" in RETURNED_SCREEN_INSTRUCTION
+    assert "다른 길을 고르세요" in RETURNED_SCREEN_INSTRUCTION
+
+
+def test_returned_screen_marker_sits_after_the_moment_observations():
+    """꼬리 순서는 그 시점의 관측(누름 → 변화) 다음에 지금 화면과의 대조다."""
+
+    prompt = build_prompt(_back_on(performed=True))
+
+    assert f"{STEP_PRESSED} · {STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
+
+
+def test_returned_screen_ignores_steps_that_never_became_a_line():
+    """빈 안내문 스텝은 줄을 안 만드므로 그 관측을 설명하지도 않는다."""
+
+    prompt = build_prompt(_back_on(instruction="   "))
+
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
