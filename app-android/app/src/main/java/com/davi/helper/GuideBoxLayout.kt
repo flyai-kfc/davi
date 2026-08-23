@@ -220,7 +220,7 @@ object GuideBoxLayout {
             tops += target.top - avoidGap - height
             tops += target.bottom + avoidGap
         }
-        // 화면 아랫변·윗변. **위아래가 다른 값이다**(위 20 / 아래 55) — 시안이 창 하단만
+        // 화면 아랫변·윗변. **위아래가 다른 값이다**(위 20 / 아래 46) — 시안이 창 하단만
         // 정했고 위쪽 근거가 없다.
         tops += canvas.bottom - marginBottom - height
         tops += canvas.top + marginTop
