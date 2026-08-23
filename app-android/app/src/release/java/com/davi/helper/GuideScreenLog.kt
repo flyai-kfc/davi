@@ -30,6 +30,7 @@ object GuideScreenLog {
         signature: ScreenSig,
         serializeMs: Long,
         gateOpen: Boolean,
+        anchorMoved: Boolean,
     ) = Unit
 
     /**

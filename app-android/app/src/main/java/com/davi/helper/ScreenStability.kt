@@ -227,7 +227,11 @@ class ScreenStabilityTracker(
             !contentOnly -> false
             else -> guidedTargetChanged || interactedRecently(nowMs)
         }
-        if (novel) sendWasContentOnly = contentOnly
+        // **조건부로 적지 않는다.** `if (novel)`로 두면 STUCK 샘플(정의상 novel=false)이
+        // 갱신을 건너뛰어 직전 SEND의 값이 남고, 눌림 확인 재질의가 그 옛 값을 실어
+        // `performed=true` + `screen_changed=true`라는 모순된 이력을 만든다 — 재질의의
+        // 존재 이유("눌렀는데 그대로")가 페이로드에서 지워진다.
+        sendWasContentOnly = novel && contentOnly
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -323,7 +327,8 @@ class ScreenStabilityTracker(
     }
 
     /**
-     * 직전 [Decision.SEND]가 **구조는 그대로이고 내용만 바뀐** 화면에서 났는가(#380).
+     * 직전 판정이 **구조는 그대로이고 내용만 바뀐** 화면의 SEND였는가(#380).
+     * 매 샘플 확정한다 — SEND가 아닌 판정에서는 `false`다.
      * 스텝 이력의 `screen_changed`가 이 값을 쓴다 — 구조 축만 보면 균일 목록 스크롤이
      * "화면 안 바뀜"으로 적혀, 서버가 안내가 안 먹혔다고 읽는다.
      */

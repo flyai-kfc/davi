@@ -976,6 +976,32 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `정체 시점에는 내용만 바뀐 전송이라고 적지 않는다`() {
+        // 눌림 확인 재질의가 이 값을 실어 `screen_changed`를 적는다. 직전 SEND의 값이 남으면
+        // `performed=true` + `screen_changed=true`라는 모순된 이력이 나가, 재질의의 존재
+        // 이유("눌렀는데 그대로")가 페이로드에서 지워진다(#380 재리뷰).
+        val page1 = ScreenSig("list", "1페이지")
+        tracker.onSample(page1, 0, hasLabeledElement = true)
+        tracker.onSample(page1, 700, hasLabeledElement = true)
+        tracker.markSent(page1, 700)
+        tracker.markFinished()
+
+        tracker.markInteraction(1_000)
+        val page2 = ScreenSig("list", "2페이지")
+        tracker.onSample(page2, 1_100, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample(page2, 1_800, hasLabeledElement = true))
+        assertTrue(tracker.lastSendWasContentOnly())
+        tracker.markSent(page2, 1_800)
+        tracker.markFinished()
+
+        // 안내한 대상을 눌렀는데 화면이 그대로다.
+        tracker.markPressed(2_000)
+        val stuckAt = 2_000 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.STUCK, tracker.onSample(page2, stuckAt, hasLabeledElement = true))
+        assertFalse(tracker.lastSendWasContentOnly())
+    }
+
+    @Test
     fun `잠그기 직전의 조작은 잠금 해제 뒤 게이트를 열지 않는다`() {
         // 관측 불가 구간을 사이에 둔 조작은 "방금 한 조작"이 아니다. 남겨 두면 해제 뒤
         // 배너가 한 번 도는 것만으로 재질의가 나간다.

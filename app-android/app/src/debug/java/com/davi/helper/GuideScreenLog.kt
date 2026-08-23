@@ -89,6 +89,10 @@ object GuideScreenLog {
      * 스크롤 이벤트를 내는 오탐을 수용했으므로(`ScreenStabilityTracker.markInteraction`),
      * **그 빈도를 실기기에서 재는 유일한 창이 이 자리다.** `open`이 사용자가 손댄 구간에만
      * 뜨는지 보면 된다.
+     *
+     * `anchor=`는 다른 쪽 문이다 — 내용만의 변화가 새 상황이 되는 길은 인과 게이트와 타깃
+     * 앵커 **둘**이라, 게이트만 찍으면 스스로 갱신되는 목록(새 메시지가 계속 오는 대화 목록)이
+     * 앵커만으로 재질의를 계속 내는 것이 로그에서 안 보인다.
      */
     fun sample(
         decision: String,
@@ -96,13 +100,15 @@ object GuideScreenLog {
         signature: ScreenSig,
         serializeMs: Long,
         gateOpen: Boolean,
+        anchorMoved: Boolean,
     ) {
         Log.d(
             GuideAccessibilityService.TAG,
             "poll=$decision n=$elementCount ms=$serializeMs " +
                 "s=${Integer.toHexString(signature.structure.hashCode())} " +
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
-                "gate=${if (gateOpen) "open" else "-"}",
+                "gate=${if (gateOpen) "open" else "-"} " +
+                "anchor=${if (anchorMoved) "moved" else "-"}",
         )
     }
 

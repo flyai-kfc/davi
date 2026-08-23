@@ -68,6 +68,9 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guidedTargetNodeId: String? = null
     private var guidedTargetStableLabel: String? = null
 
+    /** 앵커 어긋남 로그를 전이에서만 찍기 위한 표시. 판정에는 쓰지 않는다(#380). */
+    private var targetSlotMovedLogged = false
+
     /**
      * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
      * 클릭·스크롤만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
@@ -593,6 +596,7 @@ class GuideAccessibilityService : AccessibilityService() {
             signature,
             serializeMs,
             stability.interactionGateOpen(now),
+            targetSlotChanged,
         )
         lastDecision = decision
         updateReading()
@@ -628,8 +632,16 @@ class GuideAccessibilityService : AccessibilityService() {
             // 오는데, 옛 bounds를 되돌리면 강조가 **다른 줄**을 가리키고 눌림까지 재무장돼
             // (`restoreTarget`) 그 자리를 누른 사용자가 `performed=true`로 오귀속된다.
             // 새 안내가 올 때까지 문구만 남기는 편이 낫다 — `hideTarget`의 계약과 같다.
-            Log.i(TAG, "target slot moved, keep hidden")
+            //
+            // **전이에서만 찍는다.** 이 분기는 숨긴 것이 있든 없든 걸려서, 그대로 두면
+            // 앵커가 어긋난 동안 폴링 주기마다 같은 줄이 나간다(응답이 안 오는 확인 대기
+            // 구간에서는 사용자가 답할 때까지). 계측이 로그를 못 읽게 만들면 안 된다.
+            if (!targetSlotMovedLogged) {
+                targetSlotMovedLogged = true
+                Log.i(TAG, "target slot moved, keep hidden")
+            }
         } else {
+            targetSlotMovedLogged = false
             display.restoreTarget(signature.structure)?.let {
                 Log.i(TAG, "restore target")
                 draw(it)
