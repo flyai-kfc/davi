@@ -102,6 +102,23 @@ def test_leaves_dates_untouched(label):
     assert mask_text(label) == label
 
 
+@pytest.mark.parametrize(
+    "label",
+    [
+        "123456\u00a001\u00a0123456",  # NBSP로 구분한 계좌
+        "\uff11\uff12\uff13\uff14\uff15\uff16-01-123456",  # 전각 숫자
+        "010\u00a01234\u00a05678",  # NBSP로 구분한 휴대폰
+    ],
+)
+def test_masks_unicode_digit_and_space_variants(label):
+    """`\\d`·`\\s`가 유니코드로 해석되는지 고정한다(#361).
+
+    앱은 같은 문자열을 `(?U)`로 컴파일해 여기에 맞춘다. **앱이 놓치면 원본이 그대로 기기를
+    떠나므로**(`SPEC.md` §2) 두 쪽이 갈리면 안 된다. 여기서 `re.ASCII`를 켜면 이 줄이 빨개진다.
+    """
+    assert mask_text(label) != label
+
+
 @pytest.mark.parametrize("label", ["1234-05-06", "12-05-06"])
 def test_date_shaped_short_number_is_a_known_tradeoff(label):
     """**날짜 모양이면 계좌처럼 생겨도 가려지지 않는다** — 4-2-2(8자리)와 2-2-2(6자리) 둘 다.

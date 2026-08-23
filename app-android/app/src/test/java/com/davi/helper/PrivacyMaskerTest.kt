@@ -88,6 +88,24 @@ class PrivacyMaskerTest {
         assertEquals("12-05-06", PrivacyMasker.maskText("12-05-06"))
     }
 
+    /**
+     * `\d`·`\s`가 유니코드로 해석되는지 고정한다(#361).
+     *
+     * 자바는 기본이 ASCII라 전각 숫자·NBSP를 놓쳤고, 파이썬 `re`는 유니코드가 기본이라 서버만
+     * 잡았다. **앱이 놓치면 원본이 그대로 기기를 떠난다**(`SPEC.md` §2). `PrivacyMasker`가
+     * 본문 앞에 `(?U)`를 붙여 넓은 쪽으로 맞췄고, 이 줄들이 그 결정을 고정한다.
+     */
+    @Test
+    fun masksUnicodeDigitAndSpaceVariants() {
+        val nbsp = "\u00a0"
+        assertEquals("•••", PrivacyMasker.maskText("123456${nbsp}01${nbsp}123456"))
+        assertEquals(
+            "•••",
+            PrivacyMasker.maskText("\uff11\uff12\uff13\uff14\uff15\uff16-01-123456"),
+        )
+        assertEquals("•••", PrivacyMasker.maskText("010${nbsp}1234${nbsp}5678"))
+    }
+
     /** 블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②). */
     @Test
     fun masksMacAddresses() {
