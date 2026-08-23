@@ -84,13 +84,25 @@ object GuideScreenLog {
      * 시그니처는 라벨을 담으므로 **원문 대신 해시만** 남긴다. 같은지 다른지만 알면 된다.
      * 구조/내용 두 축을 따로 찍는다(#380) — 광고 화면은 `s=`가 고정된 채 `c=`만 도는 것으로,
      * 실제 전환은 `s=`가 바뀌는 것으로 로그에서 바로 갈린다.
+     *
+     * `gate=`는 인과 게이트가 그 순간 열려 있었는가다. 자동으로 도는 캐러셀이 조작 없이
+     * 스크롤 이벤트를 내는 오탐을 수용했으므로(`ScreenStabilityTracker.markInteraction`),
+     * **그 빈도를 실기기에서 재는 유일한 창이 이 자리다.** `open`이 사용자가 손댄 구간에만
+     * 뜨는지 보면 된다.
      */
-    fun sample(decision: String, elementCount: Int, signature: ScreenSig, serializeMs: Long) {
+    fun sample(
+        decision: String,
+        elementCount: Int,
+        signature: ScreenSig,
+        serializeMs: Long,
+        gateOpen: Boolean,
+    ) {
         Log.d(
             GuideAccessibilityService.TAG,
             "poll=$decision n=$elementCount ms=$serializeMs " +
                 "s=${Integer.toHexString(signature.structure.hashCode())} " +
-                "c=${Integer.toHexString(signature.content.hashCode())}",
+                "c=${Integer.toHexString(signature.content.hashCode())} " +
+                "gate=${if (gateOpen) "open" else "-"}",
         )
     }
 

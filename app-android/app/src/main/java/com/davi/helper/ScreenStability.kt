@@ -257,10 +257,22 @@ class ScreenStabilityTracker(
      * 안내 대상 앱에서 클릭·스크롤 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
      * 인정하는 유일한 근거다. 이벤트 미탐은 안전한 퇴화다 — 재질의가 한 박자 늦을 뿐이고
      * 정체 알림(7초)이 받친다. `performed`의 null 강등과 같은 결(`../CLAUDE.md` 정체 감지).
+     *
+     * **오탐은 수용한다** — 자동으로 도는 캐러셀(ViewPager)은 사용자가 손대지 않아도
+     * `TYPE_VIEW_SCROLLED`를 낸다. 이벤트만으로 사용자 스크롤과 구분할 방법이 없고, 그
+     * 화면의 동작은 게이트가 없던 때와 같아질 뿐이라(in-flight 가드·백오프·왕복 지연이
+     * 상한을 잡는다) 더 나빠지지 않는다. 빈도는 [interactionGateOpen]이 `poll=` 줄에 찍는
+     * `gate=`로 실기기에서 재고, 값을 좁히는 것은 그 실측 뒤다.
      */
     fun markInteraction(nowMs: Long) {
         lastInteractionMs = nowMs
     }
+
+    /**
+     * 인과 게이트가 지금 열려 있는가. **계측 전용이다** — 판정은 [onSample] 안에서 하고,
+     * 이 값은 로그가 위 오탐을 세기 위한 창이다(#380). 판정에 쓰지 말 것.
+     */
+    fun interactionGateOpen(nowMs: Long): Boolean = interactedRecently(nowMs)
 
     private fun interactedRecently(nowMs: Long): Boolean {
         val at = lastInteractionMs ?: return false
@@ -313,11 +325,23 @@ class ScreenStabilityTracker(
      * [requery]면 그 화면을 **보낸 적 없는 것으로** 되돌린다. 꺼진 동안 도착한 응답을 버렸을 때
      * 쓴다 — 버리기만 하면 [sentSignature]가 남아 같은 화면에 새 요청이 영영 안 나간다.
      * **실패가 아니므로 백오프는 건드리지 않는다**([markFailed]와 다른 점이다).
+     *
+     * 같은 규칙이 #380이 들여온 두 시계에도 걸린다 — 승격 타이머와 조작 관측이다(본문 주석).
      */
     fun markResumed(nowMs: Long, requery: Boolean) {
         sentAtMs = nowMs
         stuckReported = false
         if (unreadableSinceMs != null) unreadableSinceMs = nowMs
+        // 승격 타이머도 관측 불가 구간을 세면 안 된다(#380). 꺼져 있던 시간은 "구조가 안정했던
+        // 시간"이 아니다. 그대로 두면 잠금 해제 첫 샘플에서 [contentSettled]가 곧바로 참이 되고,
+        // [requery]가 [sentSignature]를 비우는 경우와 겹치면 홀드 없이 그 자리에서 SEND가 나간다
+        // — 덜 그려진 화면을 보내지 않는다는 #32가 되살아난다. **null로 두어 다음 샘플부터**
+        // 다시 세게 한다: 재개 시점과 첫 샘플 사이도 관측 밖이라 지금으로 찍으면 그만큼을 센다.
+        structureStableSinceMs = null
+        // 조작 관측도 마찬가지다. 잠그기 직전의 탭이 해제 뒤 [INTERACTION_WINDOW_MS]까지 게이트를
+        // 열어 두면 그동안 배너가 한 번 도는 것만으로 재질의가 나간다. 관측 불가 구간을 사이에
+        // 둔 조작은 "방금 한 조작"이 아니다.
+        lastInteractionMs = null
         if (requery) sentSignature = null
     }
 

@@ -585,7 +585,13 @@ class GuideAccessibilityService : AccessibilityService() {
         // 밖에 남는 것: `ActiveWindowResolver.resolve()`의 창·root IPC, 직렬화 앞의 `windows.map`,
         // 직렬화 뒤의 `ScreenSignature.of`. 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 때 이 값은 **하한**이다.
         // 폴링마다 찍혀야 p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
-        GuideScreenLog.sample(decision.name, result.screen.elements.size, signature, serializeMs)
+        GuideScreenLog.sample(
+            decision.name,
+            result.screen.elements.size,
+            signature,
+            serializeMs,
+            stability.interactionGateOpen(now),
+        )
         lastDecision = decision
         updateReading()
 

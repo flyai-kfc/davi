@@ -837,6 +837,47 @@ class ScreenStabilityTrackerTest {
 
         assertFalse(tracker.interactionAfter(0))
     }
+
+    @Test
+    fun `화면 관측을 재개하면 승격 타이머도 다시 찍는다`() {
+        // 꺼져 있던 구간은 "구조가 안정했던 시간"이 아니다. 그대로 세면 잠금 해제 첫 샘플이
+        // 곧바로 승격하고, requery가 sentSignature까지 비워 둔 터라 홀드 없이 SEND가 나간다 —
+        // 배너가 도는 화면에서는 그 한 장이 로테이션 한복판이다(#32).
+        val banner1 = ScreenSig("home", "배너1")
+        tracker.onSample(banner1, 0, hasLabeledElement = true)
+        tracker.onSample(banner1, 700, hasLabeledElement = true)
+        tracker.markSent(banner1, 700)
+        tracker.markFinished()
+        // 구조가 승격 조건을 넘길 만큼 오래 안정됐다.
+        tracker.onSample(banner1, 5_000, hasLabeledElement = true)
+
+        // 화면이 꺼진 사이 배너가 돌았고, 꺼진 동안 도착한 응답은 버렸다.
+        tracker.markResumed(20_000, requery = true)
+
+        val banner2 = ScreenSig("home", "배너2")
+        assertEquals(Decision.WAIT, tracker.onSample(banner2, 20_400, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample(banner2, 21_100, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `잠그기 직전의 조작은 잠금 해제 뒤 게이트를 열지 않는다`() {
+        // 관측 불가 구간을 사이에 둔 조작은 "방금 한 조작"이 아니다. 남겨 두면 해제 뒤
+        // 배너가 한 번 도는 것만으로 재질의가 나간다.
+        val banner1 = ScreenSig("home", "배너1")
+        tracker.onSample(banner1, 0, hasLabeledElement = true)
+        tracker.onSample(banner1, 700, hasLabeledElement = true)
+        tracker.markSent(banner1, 700)
+        tracker.markFinished()
+        tracker.markInteraction(1_000)
+
+        tracker.markResumed(2_000, requery = false)
+
+        assertFalse(tracker.interactionAfter(0))
+        assertFalse(tracker.interactionGateOpen(2_400))
+        val banner2 = ScreenSig("home", "배너2")
+        assertEquals(Decision.WAIT, tracker.onSample(banner2, 2_400, hasLabeledElement = true))
+        assertEquals(Decision.IDLE, tracker.onSample(banner2, 3_100, hasLabeledElement = true))
+    }
 }
 
 private typealias Decision = ScreenStabilityTracker.Decision
