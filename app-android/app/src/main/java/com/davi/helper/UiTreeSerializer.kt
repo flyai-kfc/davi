@@ -489,8 +489,16 @@ object UiTreeSerializer {
      * 한 톨도 바꾸지 않는다(2026-08-22 Android 14 에뮬레이터 대조, #291).
      */
     private fun supplementalDescriptionOf(node: AccessibilityNodeInfo): CharSequence? =
-        if (Build.VERSION.SDK_INT >= 36) node.supplementalDescription else null
+        supplementalDescriptionFor(Build.VERSION.SDK_INT, node.supplementalDescription)
 
+    /**
+     * 위 게이트를 Android 타입 없이 고정하기 위한 순수 함수.
+     *
+     * **게이트 자체에 테스트가 없으면 `>= 35`로 잘못 써도 초록이다**(PR #384 리뷰). 이 파일의
+     * `resolveAxis`·`hoistedCheckedState`와 같은 컨벤션으로 뽑아 둔다.
+     */
+    internal fun supplementalDescriptionFor(sdkInt: Int, value: CharSequence?): CharSequence? =
+        if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value else null
 
     /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
     private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
@@ -582,7 +590,12 @@ object UiTreeSerializer {
         val label = name?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         if (label == null) return hint
         if (hint == null || hint == label) return label
-        // 구버전이 준 hint는 **이름 + 공백 + placeholder** 한 덩어리다. 두 번 싣지 않는다.
+        // 이름이 hint 앞에 이미 붙어 있으면 두 번 싣지 않는다.
+        //
+        // **구버전이 여기 오지는 않는다**(PR #384 리뷰) — 구버전은 [name]이 항상 `null`이라
+        // 위에서 이미 반환된다. 이 줄이 실제로 막는 것은 **API 36인데 앱이 이름을 hint에도 같이
+        // 실은 경우**다(구 WebView + 신 플랫폼 조합).
+        //
         // 공백까지 봐야 한다 — `startsWith(label)`만으로는 `'방문자명'`이 `'방문자명을 입력하세요'`에
         // 걸려 이름이 조용히 안 붙는다(한국어 조사가 붙는 형태라 흔하다).
         if (hint.startsWith("$label ")) return hint
@@ -603,12 +616,8 @@ object UiTreeSerializer {
         text: CharSequence?,
         contentDescription: CharSequence?,
         supplementalDescription: CharSequence?,
-    ): String? {
-        sequenceOf(text, contentDescription, supplementalDescription).forEach { candidate ->
-            candidate?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        }
-        return null
-    }
+    ): String? = sequenceOf(text, contentDescription, supplementalDescription)
+        .firstNotNullOfOrNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
 
     /** Android 객체 없이 NumberPicker 값 공개 조건과 개인정보 경계를 테스트하기 위한 순수 함수. */
     internal fun adjustableNumericLabel(

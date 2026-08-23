@@ -251,6 +251,17 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `supplementalDescription은 API 36부터만 읽는다`() {
+        // 게이트가 열리는 경계를 고정한다 — 결합 규칙 테스트만으로는 `>= 35` 오타를 못 잡는다.
+        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(36, "여성"))
+        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(37, "여성"))
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(35, "여성"))
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(26, "여성"))
+        // 게이트가 열려도 값이 없으면 없는 것이다.
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(36, null))
+    }
+
+    @Test
     fun `편집 불가 요소의 이름은 text 다음 desc 다음 supplemental 순으로 고른다`() {
         // 앞의 값이 있으면 뒤는 보지 않는다.
         assertEquals("앞", UiTreeSerializer.staticLabel("앞", "뒤", "더뒤"))
