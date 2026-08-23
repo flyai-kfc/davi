@@ -76,6 +76,10 @@ internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
  *
  *     adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
  *       --ez com.davi.helper.extra.DEBUG_FAILED true
+ *
+ * **띄운 화면은 오래 안 간다** — 메인 8은 [FAILED_RETURN_DELAY_MS] 뒤 홈으로 자동
+ * 복귀하므로(실제 동작이다) 캡처는 그 안에 끝내야 한다. 홈이 보인다고 주입이 안 먹은 것이
+ * 아니다 — 텔레메트리 `debug_failed_injected`로 갈린다.
  */
 internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
 
@@ -529,7 +533,6 @@ class ConversationActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
     /**
      * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
      * release에 진입점을 남기지 않는다.
@@ -574,6 +577,7 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
+    /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
     private fun setState(state: ConversationUiState) {
         // **아이콘은 render가 아니라 상태 전이에서 찾는다** — render는 부분 인식마다 돈다.
         if (state is ConversationUiState.Clarifying) cacheClarificationIcons(state)

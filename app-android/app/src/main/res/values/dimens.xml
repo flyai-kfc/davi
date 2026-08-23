@@ -134,9 +134,11 @@
     -->
     <dimen name="davi_overlay_window_margin_bottom">46dp</dimen>
     <!--
-      **인셋을 못 읽는 API 26~29에서만** 안내창 아랫변을 더 자르는 값
+      **인셋을 못 읽으면** 안내창 아랫변을 더 자르는 값
       (`HighlightOverlayView.legacyBottomReserve`, 2026-08-23 #265 리뷰).
 
+      **조건은 API가 아니라 `safeBounds()`가 null인 것이다** — API 26~29가 그 대부분이지만
+      `WindowManager`를 못 얻는 갈래는 API 30+에도 있다.
       그 구간은 시스템 바 인셋을 못 읽어 **위 여백이 내비바를 피하는 유일한 수단**이다.
       55 → 46으로 내리면서 3버튼 내비바(48 안팎) 대비 여유가 **+7dp에서 -2dp로 뒤집혔다.**
       겹치는 폭은 **2dp 띠**라 #169의 88px 실측과 같은 그림은 아니지만, 그 띠에서는 안내창이
@@ -335,7 +337,14 @@
     <!-- 주 버튼 그림자를 아래로 내리는 거리. 시안 y3을 배율 1.2로 환산해 4dp.
          **3이다 — 그림자 오프셋은 1:1이다**(2026-08-23 판정, #265 ·
          `DESIGN-CONVENTIONS.md` 환산 규칙). 한때 4(=3 x1.2)로 뒀는데, 같은 시안 y3을
-         davi_card_shadow_offset_y가 1:1로 3dp로 쓰고 있어 한 파일에 두 답이 있었다. -->
+         davi_card_shadow_offset_y가 1:1로 3dp로 쓰고 있어 한 파일에 두 답이 있었다.
+
+         **메인 7 전용이 아니다**(2026-08-23, #265 리뷰) — 메인 9의 「안내 종료」
+         (bg_davi_stacked_primary)와 두 스타일의 paddingBottom(themes.xml)이 같이 탄다.
+         그쪽은 **근거가 다른 시안**이라 값이 같아서 함께 서 있을 뿐이다:
+         메인 9는 colors.xml의 davi_stacked_button_shadow가 적어 둔 `#000000 @30% y3 b4`이고,
+         1:1 판정에서도 3이 나온다(실측 3.00dp). **메인 7 시안이 y3에서 바뀌는 날 이 값만
+         고치면 근거가 다른 메인 9가 말없이 따라 움직인다** — 그때 토큰을 나눈다. -->
     <dimen name="davi_button_pair_shadow_offset_y">3dp</dimen>
     <!--
       버튼쌍과 위 카드 사이. 시안 메인 7의 다비 카드 하단 308 -> 버튼쌍 380 = 72,

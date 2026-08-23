@@ -1134,8 +1134,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * 화면 좌표에서 시스템 바를 뺀 범위. 읽을 수 없으면 null이고 그때는 아무것도 빼지 않는다
-     * (지금 동작 그대로 — 검증 기기 밖에서 근거 없이 자리를 흔들지 않는다).
+     * 화면 좌표에서 시스템 바를 뺀 범위. **읽을 수 없으면 null이고, 그때는
+     * [legacyBottomReserve]가 아랫변만 받는다**(2026-08-23, #265) — 네 변을 다 못 빼므로
+     * 내비바를 피하는 몫이 하단 여백 하나에 걸린다. 여기에 보정을 한 번 더 넣지 않는다.
      *
      * **네 변을 다 자른다.** 세로만 자르던 첫 구현은 가로 화면에서 그대로 뚫렸다 — 안내 대상
      * 앱은 우리 액티비티와 달리 세로 고정이 아니다(`AndroidManifest`의 `screenOrientation`은
@@ -1143,26 +1144,6 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 바가 **오른쪽 변으로 가고** 안내창이 그 위를 덮어, 같은 좌표의 홈 버튼이 오버레이가
      * 있을 때만 죽었다(없을 때 `LauncherActivity`, 있을 때 브라우저 그대로).
      */
-    /**
-     * **인셋을 못 읽는 API 26~29에서만 아랫변을 더 자른다**(2026-08-23, #265 리뷰).
-     *
-     * 그 구간은 [safeBounds]가 null이라 시스템 바를 빼지 않으므로 **하단 여백이 내비바를
-     * 피하는 유일한 수단**이다. #265가 그 여백을 개정 규칙대로 55 → 46dp로 내리면서
-     * 3버튼 내비바(48 안팎) 대비 **여유가 +7dp에서 -2dp로 뒤집혔다.**
-     *
-     * **겹치는 폭은 2dp 띠다** — 위 KDoc의 #169 실측(내비바 162px 중 상단 88px이 죽었다)과
-     * 같은 그림이 아니다. 다만 안내창 사각형이 곧 조작 오버레이의 터치 영역이라 **그 2dp에서는
-     * 같은 일이 일어나고**, 무엇보다 위 KDoc이 내세운 안전 논거(「55dp가 48 안팎보다 커서
-     * 겹치지는 않는다」)가 뒤집힌 채 남는 것이 문제다.
-     *
-     * **값은 「옛 여백만큼 확보한다」에서 나온다** — 46에 이 값을 더하면 55다. 46은 시안
-     * 근거(GD-1·2·3이 공유하는 하단선)라 그대로 두고, **인셋을 못 읽는 구간에서만** 옛 동작으로
-     * 되돌린다. API 30+는 인셋을 실제로 빼므로 이 값을 안 탄다.
-     *
-     * **검증 기기(SM-S921N)는 API 30+라 실기기로는 안 잡히는 자리다.**
-     */
-    private fun legacyBottomReserve(): Float =
-        resources.getDimension(R.dimen.davi_overlay_legacy_bottom_reserve)
 
     private fun safeBounds(): GuideBoxLayout.Bounds? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
@@ -1178,6 +1159,28 @@ class HighlightOverlayView(context: Context) : View(context) {
             bottom = (metrics.bounds.bottom - insets.bottom).toFloat(),
         )
     }
+
+    /**
+     * **인셋을 못 읽으면 아랫변을 더 자른다**(2026-08-23, #265 리뷰).
+     *
+     * 조건은 API가 아니라 **[safeBounds]가 null인 것**이다 — API 26~29가 그 대부분이지만
+     * `WindowManager`를 못 얻는 갈래는 API 30+에도 있다. 그 구간은 시스템 바를 빼지 않으므로
+     * **하단 여백이 내비바를 피하는 유일한 수단**이다. #265가 그 여백을 개정 규칙대로
+     * 55 → 46dp로 내리면서 3버튼 내비바(48 안팎) 대비 **여유가 +7dp에서 -2dp로 뒤집혔다.**
+     *
+     * **겹치는 폭은 2dp 띠다** — [boxBounds] KDoc의 #169 실측(내비바 162px 중 상단 88px이
+     * 죽었다)과 같은 그림이 아니다. 다만 안내창 사각형이 곧 조작 오버레이의 터치 영역이라
+     * **그 2dp에서는 같은 일이 일어나고**, 무엇보다 그 KDoc이 내세운 안전 논거(「55dp가 48
+     * 안팎보다 커서 겹치지는 않는다」)가 뒤집힌 채 남는 것이 문제다.
+     *
+     * **값은 「옛 여백만큼 확보한다」에서 나온다** — 46에 이 값을 더하면 55다. 46은 시안
+     * 근거(GD-1·2·3이 공유하는 하단선)라 그대로 두고, **인셋을 못 읽는 구간에서만** 옛 동작으로
+     * 되돌린다. 인셋을 실제로 빼는 경로는 이 값을 안 탄다.
+     *
+     * **검증 기기(SM-S921N)는 API 30+라 실기기로는 안 잡히는 자리다.**
+     */
+    private fun legacyBottomReserve(): Float =
+        resources.getDimension(R.dimen.davi_overlay_legacy_bottom_reserve)
 
     private fun RectF.toLayoutBounds() = GuideBoxLayout.Bounds(left, top, right, bottom)
 
