@@ -13,11 +13,13 @@ import org.junit.Test
  */
 class SampleScheduleTest {
 
-    /** 서비스의 `SETTLE_MS`. private이라 값만 옮겨 적는다. */
-    private val settleMs = 350L
+    /**
+     * 서비스의 상수를 **참조한다**(값을 옮겨 적지 않는다). 옮겨 적으면 서비스 쪽 값이 바뀌어도
+     * 아래 `pollMs < MAX_DEFER_MS` 관문이 조용히 통과해, 폴링 주기가 상한에 잘리는 것을 못 잡는다.
+     */
+    private val settleMs = GuideAccessibilityService.SETTLE_MS
 
-    /** 서비스의 `POLL_MS`. 위와 같다. */
-    private val pollMs = 700L
+    private val pollMs = GuideAccessibilityService.POLL_MS
 
     /** 실측된 폭주 간격 — 배민 홈의 이벤트 평균 36ms(3041건/110초). */
     private val stormGapMs = 36L

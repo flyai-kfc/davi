@@ -278,6 +278,53 @@ class InputStateEventTest {
     }
 }
 
+/** 타깃 앵커(#380) — 안내가 가리키는 슬롯이 구조 보존 재정렬로 밀렸는지 본다. */
+class GuidedSlotAnchorTest {
+
+    private fun screen(vararg elements: UiElement) = Screen(
+        packageName = "com.example.app",
+        elements = elements.toList(),
+    )
+
+    @Test
+    fun `슬롯의 label이 바뀌면 밀린 것이다`() {
+        // 새 메시지가 대화방 순서를 밀면 같은 node id가 다른 줄을 뜻하게 된다.
+        val after = screen(UiElement(nodeId = "n3", label = "김철수", role = "View"))
+
+        assertTrue(after.guidedSlotLabelChanged("n3", "이영희"))
+    }
+
+    @Test
+    fun `같은 슬롯이면 밀린 것이 아니다`() {
+        val after = screen(UiElement(nodeId = "n3", label = "이영희", role = "View"))
+
+        assertFalse(after.guidedSlotLabelChanged("n3", "이영희"))
+    }
+
+    @Test
+    fun `숫자만 다른 label은 밀린 것이 아니다`() {
+        // 시그니처와 같은 정규화를 쓰지 않으면 대상에 붙은 시계·개수가 앵커를 매 초 흔든다.
+        val after = screen(UiElement(nodeId = "n3", label = "안 읽음 12", role = "View"))
+
+        assertFalse(after.guidedSlotLabelChanged("n3", "안 읽음 #"))
+    }
+
+    @Test
+    fun `슬롯이 사라졌으면 구조 축에 맡긴다`() {
+        val after = screen(UiElement(nodeId = "n1", label = "이영희", role = "View"))
+
+        assertFalse(after.guidedSlotLabelChanged("n3", "이영희"))
+    }
+
+    @Test
+    fun `안내 대상이 없으면 앵커도 없다`() {
+        val after = screen(UiElement(nodeId = "n3", label = "이영희", role = "View"))
+
+        assertFalse(after.guidedSlotLabelChanged(null, "이영희"))
+        assertFalse(after.guidedSlotLabelChanged("n3", null))
+    }
+}
+
 class ScreenStabilityTrackerTest {
 
     private val tracker = ScreenStabilityTracker()
@@ -857,6 +904,75 @@ class ScreenStabilityTrackerTest {
         val banner2 = ScreenSig("home", "배너2")
         assertEquals(Decision.WAIT, tracker.onSample(banner2, 20_400, hasLabeledElement = true))
         assertEquals(Decision.SEND, tracker.onSample(banner2, 21_100, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `승격 억제가 풀리는 시점에 인과 창이 아직 열려 있다`() {
+        // 승격 억제와 재질의 조건이 같은 창을 반대로 요구하면 상호배타가 된다 — 창이 열린
+        // 동안은 승격이 막혀 WAIT이고, 닫히는 순간 재질의 조건도 함께 꺼져 사용자가 스크롤한
+        // 화면이 7초 뒤 "화면이 안 바뀌었어요"로 끝난다(#380 리뷰). 억제를 시계 되감기로
+        // 표현해 두 구간이 겹치게 한다.
+        val base = ScreenSig("news", "속보1")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+
+        // 사용자가 스크롤했고, 그 뒤로 샘플마다 내용이 달라 홀드가 영영 못 찬다.
+        val scrolledAt = 5_000L
+        tracker.markInteraction(scrolledAt)
+        var t = scrolledAt + 350
+        var n = 2
+        while (t < scrolledAt + ScreenStabilityTracker.CONTENT_SETTLE_MS) {
+            assertEquals(
+                Decision.WAIT,
+                tracker.onSample(ScreenSig("news", "속보$n"), t, hasLabeledElement = true),
+            )
+            t += 350
+            n++
+        }
+
+        // 억제가 풀렸고 인과 창은 아직 열려 있다.
+        val promotedAt = scrolledAt + ScreenStabilityTracker.CONTENT_SETTLE_MS
+        assertEquals(
+            Decision.SEND,
+            tracker.onSample(ScreenSig("news", "속보$n"), promotedAt, hasLabeledElement = true),
+        )
+    }
+
+    @Test
+    fun `인과 창이 승격 억제보다 길다`() {
+        // 위 테스트가 성립하는 전제다. 뒤집히면 승격이 열리는 시점에 인과가 이미 닫혀 있어
+        // 조작 기반 재질의가 구조적으로 도달 불가가 된다.
+        assertTrue(
+            ScreenStabilityTracker.CONTENT_SETTLE_MS <
+                ScreenStabilityTracker.INTERACTION_WINDOW_MS,
+        )
+    }
+
+    @Test
+    fun `내용만 바뀐 전송인지 스텝 이력에 알려 준다`() {
+        // 균일 목록 스크롤은 구조가 같아, 구조 축만 보면 screen_changed가 false로 적힌다.
+        val page1 = ScreenSig("list", "1페이지")
+        tracker.onSample(page1, 0, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample(page1, 700, hasLabeledElement = true))
+        assertFalse(tracker.lastSendWasContentOnly())
+        tracker.markSent(page1, 700)
+        tracker.markFinished()
+
+        tracker.markInteraction(1_000)
+        val page2 = ScreenSig("list", "2페이지")
+        tracker.onSample(page2, 1_100, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample(page2, 1_800, hasLabeledElement = true))
+        assertTrue(tracker.lastSendWasContentOnly())
+
+        // 구조가 바뀐 전송은 다시 false다.
+        tracker.markSent(page2, 1_800)
+        tracker.markFinished()
+        val other = ScreenSig("detail", "상세")
+        tracker.onSample(other, 2_500, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample(other, 3_200, hasLabeledElement = true))
+        assertFalse(tracker.lastSendWasContentOnly())
     }
 
     @Test

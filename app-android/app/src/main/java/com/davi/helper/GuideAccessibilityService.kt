@@ -574,11 +574,13 @@ class GuideAccessibilityService : AccessibilityService() {
         val now = SystemClock.uptimeMillis()
         val hasLabeledElement = result.screen.hasLabeledElement()
         currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
+        // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
+        val targetSlotChanged = guidedTargetSlotChanged(result.screen)
         val decision = stability.onSample(
             signature,
             now,
             hasLabeledElement,
-            guidedTargetChanged = guidedTargetSlotChanged(result.screen),
+            guidedTargetChanged = targetSlotChanged,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
         // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
@@ -621,6 +623,12 @@ class GuideAccessibilityService : AccessibilityService() {
                 Log.i(TAG, "hide target")
                 draw(it)
             }
+        } else if (targetSlotChanged) {
+            // 구조가 같은 채 목록만 밀린 화면이다(#380). 소속 판정이 구조 축이라 여기까지
+            // 오는데, 옛 bounds를 되돌리면 강조가 **다른 줄**을 가리키고 눌림까지 재무장돼
+            // (`restoreTarget`) 그 자리를 누른 사용자가 `performed=true`로 오귀속된다.
+            // 새 안내가 올 때까지 문구만 남기는 편이 낫다 — `hideTarget`의 계약과 같다.
+            Log.i(TAG, "target slot moved, keep hidden")
         } else {
             display.restoreTarget(signature.structure)?.let {
                 Log.i(TAG, "restore target")
@@ -728,10 +736,15 @@ class GuideAccessibilityService : AccessibilityService() {
         now: Long,
         generation: Long,
     ): Boolean {
-        // 스텝의 screen_changed도 구조 축으로 판정한다(#380). 내용까지 대조하면 눌림 확인
-        // 재질의가 "화면 그대로"를 전제하는 화면에서 배너 한 번에 changed=true가 적혀,
-        // 서버가 "눌렀고 화면이 바뀌었다"는 모순된 이력을 읽는다.
-        GuideSession.observeScreen(generation, signature.structure)
+        // 스텝의 screen_changed는 구조 축 + **인과 있는 내용 변화**다(#380). 내용을 통째로
+        // 대조하면 눌림 확인 재질의가 "화면 그대로"를 전제하는 화면에서 배너 한 번에
+        // changed=true가 적혀 서버가 모순된 이력을 읽고, 반대로 구조만 보면 균일 목록
+        // 스크롤이 "안 바뀜"으로 적힌다. 재질의를 연 것과 **같은 판정**을 옮겨 적는다.
+        GuideSession.observeScreen(
+            generation,
+            signature.structure,
+            contentChangedCausally = stability.lastSendWasContentOnly(),
+        )
         val sending = GuideSession.active() ?: return false
         if (!requestNextStep(screen, signature, now, sending)) return false
         stability.markSent(signature, now)
@@ -755,12 +768,8 @@ class GuideAccessibilityService : AccessibilityService() {
      * 목록 재정렬(새 메시지가 대화방 순서를 미는 경우)을 조작 이벤트 없이 잡는 트리거다.
      * 슬롯이 사라진 경우는 false다 — 그건 구조 변화라 구조 축이 이미 재질의를 연다.
      */
-    private fun guidedTargetSlotChanged(screen: Screen): Boolean {
-        val nodeId = guidedTargetNodeId ?: return false
-        val expected = guidedTargetStableLabel ?: return false
-        val element = screen.elements.firstOrNull { it.nodeId == nodeId } ?: return false
-        return ScreenSignature.stableLabelOf(element) != expected
-    }
+    private fun guidedTargetSlotChanged(screen: Screen): Boolean =
+        screen.guidedSlotLabelChanged(guidedTargetNodeId, guidedTargetStableLabel)
 
     /**
      * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1·GD-2r). 판정은 [ReadingBorder]에 있고 여기서는
@@ -1118,7 +1127,7 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
         if (
-            current != null && current != requestSignature &&
+            current != null && current.content != requestSignature.content &&
             stability.interactionAfter(requestSentAtMs)
         ) {
             GuideTelemetry.responseDropped(logicalRequest, "content_changed_after_interaction")
@@ -1178,6 +1187,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
                 null -> GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             }
+            // 이 화면의 조작 안내는 끝났다. 앵커를 남기면 다음 안내가 나기 전까지 낡은
+            // 슬롯을 가리켜, 강조 복원을 엉뚱하게 막는다(#380).
+            guidedTargetNodeId = null
+            guidedTargetStableLabel = null
             return
         }
 
@@ -1322,13 +1335,13 @@ class GuideAccessibilityService : AccessibilityService() {
          *
          * **조용해지지 않는 화면이 있다** — 그때는 [SampleSchedule.MAX_DEFER_MS]가 이긴다(#380).
          */
-        private const val SETTLE_MS = 350L
+        internal const val SETTLE_MS = 350L
 
         /**
          * 안정된 뒤의 감시 주기. **폴링이 곧 호출량은 아니다** — 화면이 그대로면 서버를 부르지 않고
          * 트리만 다시 뜬다(#39). HANDOFF의 첫 추정치와 같은 값이며 근거를 갖고 다시 정할 것.
          */
-        private const val POLL_MS = 700L
+        internal const val POLL_MS = 700L
 
 
         /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */

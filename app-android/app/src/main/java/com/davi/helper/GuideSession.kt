@@ -353,12 +353,20 @@ object GuideSession {
      * 사용자가 결국 진행하면 true다.
      */
     @Synchronized
-    fun observeScreen(generation: Long, screenSignature: String) {
+    fun observeScreen(
+        generation: Long,
+        screenSignature: String,
+        contentChangedCausally: Boolean = false,
+    ) {
         if (!isCurrent(generation)) return
         val stepSignature = lastStepSignature ?: return
         val last = steps.lastOrNull() ?: return
         if (last.screenChanged == true) return
-        val changed = screenSignature != stepSignature
+        // [screenSignature]는 구조 축이다(#380). 구조가 그대로여도 **사용자 조작이 만든**
+        // 내용 변화는 화면이 바뀐 것이다 — 균일 목록을 정확히 N칸 스크롤하면 요소 수·순서·
+        // role이 그대로고 label만 밀리는데, 그걸 `false`로 적으면 서버는 스크롤 안내가 안
+        // 먹혔다고 읽는다. 자기발생 변화(광고 로테이션)는 인과가 없어 여기 들어오지 않는다.
+        val changed = screenSignature != stepSignature || contentChangedCausally
         // 화면이 바뀌었으면 눌림 확인 재질의의 근거("눌렀는데 그대로")가 깨졌다. 여기서
         // 버려야 응답이 스텝을 못 남긴 경로(폐기·미검증 done)에서도 토큰이 다음 화면으로
         // 새지 않는다.

@@ -111,6 +111,23 @@ object ScreenSignature {
 internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNotBlank() }
 
 /**
+ * 안내가 가리키는 슬롯의 label이 응답 시점과 달라졌는가(타깃 앵커, #380).
+ *
+ * node id는 직렬화 순서에서 나온 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다. 쓰는 자리도
+ * 정확히 그 경우뿐이다 — 구조가 다르면 구조 축이 이미 재질의를 열고 강조도 새로 그려진다.
+ *
+ * 대조는 [ScreenSignature]와 **같은 정규화**로 한다. 원문 label로 비교하면 대상에 붙은
+ * 시계·개수가 앵커를 매 초 흔들어 게이트가 무의미해진다.
+ *
+ * 슬롯이 사라진 경우는 `false`다 — 그건 구조 변화라 구조 축이 맡는다.
+ */
+internal fun Screen.guidedSlotLabelChanged(nodeId: String?, expectedStableLabel: String?): Boolean {
+    if (nodeId == null || expectedStableLabel == null) return false
+    val element = elements.firstOrNull { it.nodeId == nodeId } ?: return false
+    return ScreenSignature.stableLabelOf(element) != expectedStableLabel
+}
+
+/**
  * 샘플 하나가 들어올 때 무엇을 할지 정한다.
  *
  * - [Decision.WAIT] 아직 흔들린다. 요청을 보내지 않는다(#32).
@@ -148,6 +165,7 @@ class ScreenStabilityTracker(
     private var minRetryAfterMs = 0L
     private var unreadableSinceMs: Long? = null
     private var lastInteractionMs: Long? = null
+    private var sendWasContentOnly = false
 
     fun onSample(
         signature: ScreenSig,
@@ -176,9 +194,16 @@ class ScreenStabilityTracker(
             structureStableSinceMs = nowMs
         }
         // 구조는 안정인데 내용만 계속 흔들리는 화면(광고·marquee)은 홀드가 영영 안 끝난다 —
-        // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380). 조작 직후는 승격하지
-        // 않는다: 그 내용 변화는 사용자가 만드는 중일 수 있어(스크롤) 홀드로 가라앉힌다(#32).
-        val promoted = contentSettled(nowMs) && !interactedRecently(nowMs)
+        // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380).
+        //
+        // 조작 직후를 억제하는 것은 [markInteraction]이 **구조 안정 시계를 되감는** 방식이다.
+        // 여기서 `!interactedRecently`로 억제하면 아래 `novel`이 요구하는 값과 정확히 반대가
+        // 되어 두 조건이 상호배타가 된다 — 샘플마다 내용이 바뀌는 화면에서 사용자가 스크롤하면
+        // 창이 열린 동안은 승격이 막혀 WAIT이고, 창이 닫히는 순간 재질의 조건도 함께 꺼져
+        // 안내가 영영 안 온다(그 화면은 7초 뒤 "화면이 안 바뀌었어요"를 본다).
+        // 되감기로 표현하면 억제가 [CONTENT_SETTLE_MS]에 끝나고 인과 창은
+        // [INTERACTION_WINDOW_MS]까지 열려 있어, 그 사이에 재질의가 나간다.
+        val promoted = contentSettled(nowMs)
         if (signature != lastSample) {
             lastSample = signature
             heldSamples = 1
@@ -193,12 +218,16 @@ class ScreenStabilityTracker(
         // 구조가 같은 채 label만 밀린다), 안내가 가리키는 슬롯 자체가 바뀐 경우(목록 재정렬로
         // 강조가 엉뚱한 줄을 가리키게 되는 것)만 새 상황이고, 아니면 자기발생(광고)이다.
         val sent = sentSignature
+        val contentOnly = sent != null &&
+            signature.structure == sent.structure &&
+            signature.content != sent.content
         val novel = when {
             sent == null -> true
             signature.structure != sent.structure -> true
-            signature.content == sent.content -> false
+            !contentOnly -> false
             else -> guidedTargetChanged || interactedRecently(nowMs)
         }
+        if (novel) sendWasContentOnly = contentOnly
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -266,6 +295,10 @@ class ScreenStabilityTracker(
      */
     fun markInteraction(nowMs: Long) {
         lastInteractionMs = nowMs
+        // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
+        // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
+        // 홀드로 가라앉혀야 한다(#32). 억제를 이 자리에 두는 이유는 [onSample]의 주석에 있다.
+        structureStableSinceMs = nowMs
     }
 
     /**
@@ -288,6 +321,13 @@ class ScreenStabilityTracker(
         val at = lastInteractionMs ?: return false
         return at >= sinceMs
     }
+
+    /**
+     * 직전 [Decision.SEND]가 **구조는 그대로이고 내용만 바뀐** 화면에서 났는가(#380).
+     * 스텝 이력의 `screen_changed`가 이 값을 쓴다 — 구조 축만 보면 균일 목록 스크롤이
+     * "화면 안 바뀜"으로 적혀, 서버가 안내가 안 먹혔다고 읽는다.
+     */
+    fun lastSendWasContentOnly(): Boolean = sendWasContentOnly
 
     /** 구조가 이만큼 안정됐으면 내용 흔들림을 홀드에서 면제한다(#380). */
     private fun contentSettled(nowMs: Long): Boolean {
@@ -337,6 +377,10 @@ class ScreenStabilityTracker(
         // [requery]가 [sentSignature]를 비우는 경우와 겹치면 홀드 없이 그 자리에서 SEND가 나간다
         // — 덜 그려진 화면을 보내지 않는다는 #32가 되살아난다. **null로 두어 다음 샘플부터**
         // 다시 세게 한다: 재개 시점과 첫 샘플 사이도 관측 밖이라 지금으로 찍으면 그만큼을 센다.
+        //
+        // **막는 것은 승격 경로뿐이다.** [heldSamples]는 그대로 두므로, 재개 전후 화면이
+        // 똑같으면 첫 샘플이 홀드를 채워 곧바로 나간다 — 그건 맞다. 잠그기 전에 이미 안정으로
+        // 관측한 화면이라 다시 재는 값이 없다.
         structureStableSinceMs = null
         // 조작 관측도 마찬가지다. 잠그기 직전의 탭이 해제 뒤 [INTERACTION_WINDOW_MS]까지 게이트를
         // 열어 두면 그동안 배너가 한 번 도는 것만으로 재질의가 나간다. 관측 불가 구간을 사이에
@@ -392,6 +436,7 @@ class ScreenStabilityTracker(
         minRetryAfterMs = 0L
         unreadableSinceMs = null
         lastInteractionMs = null
+        sendWasContentOnly = false
     }
 
     companion object {
@@ -422,6 +467,10 @@ class ScreenStabilityTracker(
         /**
          * 이 시간 안의 클릭·스크롤 이벤트가 있어야 내용만의 변화를 사용자 유발로 본다(#380).
          * 조작 → 화면 반영 → settle 샘플(350ms)의 한 사이클을 여유 있게 덮는 첫 추정치다.
+         *
+         * **[CONTENT_SETTLE_MS]보다 길어야 한다.** 조작은 승격 시계를 되감으므로, 이 창이 더
+         * 짧으면 승격이 열리는 시점에 인과 창이 이미 닫혀 있어 재질의가 영영 안 나간다.
+         * 두 값 사이의 구간이 "사용자가 만든 내용 변화를 묻는" 창이다.
          */
         const val INTERACTION_WINDOW_MS = 5_000L
 
