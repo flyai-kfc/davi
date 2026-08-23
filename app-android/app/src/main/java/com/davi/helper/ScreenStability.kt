@@ -8,6 +8,23 @@ package com.davi.helper
  *
  * 안드로이드 API에 기대지 않아 JVM 단위 테스트로 검증한다. 시각은 호출자가 넣는다.
  */
+
+/**
+ * 화면 시그니처의 두 축(#380).
+ *
+ * 광고 배너 로테이션도 "진짜" 화면 변화라, 내용 전체 동일성 하나로는 의미 있는 변화와 광고를
+ * 원리적으로 구분할 수 없다 — 둘 다 "글자가 바뀜"으로 똑같이 보인다. 그래서 축을 나눈다.
+ *
+ * - [structure] 뼈대: package·페이지·IME·요소 수·순서·role·행동 상태. label은 뺀다.
+ *   화면 이동·팝업 등장·토글처럼 **지금 안내를 무효화하는 변화**는 전부 이 축에 나타난다.
+ *   안내의 화면 소속(`GuideDisplayState`)·늦은 응답 폐기·스텝 `screen_changed`도 이 축으로
+ *   판정한다 — 내용까지 대조하면 배너가 도는 사이 도착한 정상 응답을 버린다.
+ * - [content] 내용: 요소 label 열(+창 제목). 구조가 그대로인 채 여기만 바뀌는 변화는
+ *   광고·marquee 같은 자기발생이거나(무시), 균일 목록 스크롤처럼 사용자가 일으킨 것이다 —
+ *   그 구분은 내용이 아니라 **인과**(조작 이벤트 관측)로 한다. [ScreenStabilityTracker] 참고.
+ */
+data class ScreenSig(val structure: String, val content: String)
+
 object ScreenSignature {
 
     /** 시계·배터리% 같은 volatile 숫자를 지운다(`HANDOFF.md` §4 — 홀드의 근간). */
@@ -17,34 +34,49 @@ object ScreenSignature {
      * 요소의 **좌표와 node id는 넣지 않는다.** 전환 애니메이션 중 좌표가 미세하게 흔들리고,
      * node id는 직렬화 순서에서 생기는 값이라 화면의 정체성이 아니다.
      */
-    fun of(screen: Screen): String = buildString {
-        append(screen.packageName).append('|')
-        // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
-        // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
-        // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
-        append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
-        append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
-        append(screen.hasScrollableElement ?: "-").append('|')
-        append(screen.imeVisible ?: "-").append('|')
-        screen.elements.forEach { element ->
-            append(if (element.clickable) 't' else '-')
-            append(if (element.editable) 'e' else '-')
-            append(if (element.focused) 'f' else '-')
-            // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
-            // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
-            append(state(element.enabled, on = 'a', off = 'x'))
-            append(state(element.checked, on = 'c', off = 'u'))
-            append(state(element.selected, on = 's', off = 'n'))
-            append(state(element.showingHintText, on = 'h', off = 'v'))
-            // 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 보통은 요소 수도 함께
-            // 변해 서명이 어차피 바뀌지만, 투명 오버레이가 내용을 얻는 경우처럼 구조가
-            // 그대로인 전환도 있어 상태로 남긴다(#271과 같은 결).
-            append(state(element.obscured, on = 'o', off = 'p'))
-            append(element.role).append(':')
-            append(stableLabel(element))
-            append(';')
+    fun of(screen: Screen): ScreenSig {
+        val structure = buildString {
+            append(screen.packageName).append('|')
+            append(screen.currentPage ?: "-").append('/').append(screen.totalPages ?: "-").append('|')
+            append(screen.hasScrollableElement ?: "-").append('|')
+            append(screen.imeVisible ?: "-").append('|')
+            screen.elements.forEach { element ->
+                append(if (element.clickable) 't' else '-')
+                append(if (element.editable) 'e' else '-')
+                append(if (element.focused) 'f' else '-')
+                // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
+                // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
+                append(state(element.enabled, on = 'a', off = 'x'))
+                append(state(element.checked, on = 'c', off = 'u'))
+                append(state(element.selected, on = 's', off = 'n'))
+                append(state(element.showingHintText, on = 'h', off = 'v'))
+                // 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 보통은 요소 수도 함께
+                // 변해 서명이 어차피 바뀌지만, 투명 오버레이가 내용을 얻는 경우처럼 구조가
+                // 그대로인 전환도 있어 상태로 남긴다(#271과 같은 결).
+                append(state(element.obscured, on = 'o', off = 'p'))
+                append(element.role)
+                append(';')
+            }
         }
+        val content = buildString {
+            // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
+            // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
+            // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
+            // label과 같은 취급이므로 축도 내용이다(#380).
+            append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
+            screen.elements.forEach { element ->
+                append(stableLabel(element))
+                append(';')
+            }
+        }
+        return ScreenSig(structure, content)
     }
+
+    /**
+     * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. 시그니처와 **같은 정규화**를 쓴다 —
+     * 다른 정규화면 안 읽은 개수 숫자 같은 volatile 값이 앵커만 다르게 흔든다.
+     */
+    internal fun stableLabelOf(element: UiElement): String = stableLabel(element)
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
@@ -87,19 +119,27 @@ internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNot
  * - [Decision.UNREADABLE] label 없는 상태가 오래 이어졌다. 서버 대신 로컬 안내를 표시한다(#350).
  * - [Decision.IDLE] 안정됐고 이미 처리한 화면이다. 아무것도 하지 않는다.
  *
+ * "직전에 보낸 화면과 다르다"의 판정이 2계층이다(#380) — **구조가 바뀌면 무조건** 새 화면이고,
+ * **내용만 바뀌면 인과가 있어야** 새 화면이다(최근 조작 이벤트 또는 안내 대상 슬롯의 변화).
+ * 광고 배너처럼 스스로 도는 내용 변화는 어느 쪽도 아니라서 같은 화면으로 접힌다 — 그래야
+ * 로테이션마다 재질의가 나가던 무한 호출이 끊긴다.
+ *
  * 상태는 메인 스레드에서만 만진다. 응답이 다른 스레드로 오므로 [markFailed]는 반드시 메인으로 넘겨 부른다.
  */
 class ScreenStabilityTracker(
     private val holdSamples: Int = HOLD_SAMPLES,
     private val stuckAfterMs: Long = STUCK_AFTER_MS,
     private val unreadableAfterMs: Long = UNREADABLE_AFTER_MS,
+    private val contentSettleMs: Long = CONTENT_SETTLE_MS,
+    private val interactionWindowMs: Long = INTERACTION_WINDOW_MS,
 ) {
 
     enum class Decision { WAIT, SEND, STUCK, UNREADABLE, IDLE }
 
-    private var lastSample: String? = null
+    private var lastSample: ScreenSig? = null
     private var heldSamples = 0
-    private var sentSignature: String? = null
+    private var structureStableSinceMs: Long? = null
+    private var sentSignature: ScreenSig? = null
     private var sentAtMs = 0L
     private var stuckReported = false
     private var failures = 0
@@ -107,11 +147,13 @@ class ScreenStabilityTracker(
     private var requestOutstanding = false
     private var minRetryAfterMs = 0L
     private var unreadableSinceMs: Long? = null
+    private var lastInteractionMs: Long? = null
 
     fun onSample(
-        signature: String,
+        signature: ScreenSig,
         nowMs: Long,
         hasLabeledElement: Boolean,
+        guidedTargetChanged: Boolean = false,
     ): Decision {
         if (!hasLabeledElement) {
             // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
@@ -120,6 +162,8 @@ class ScreenStabilityTracker(
             // 전체를 시간으로 묶는다. 시그니처가 A↔B로 흔들려도 타이머를 새로 주지 않는다.
             lastSample = signature
             heldSamples = 0
+            // label 없는 화면은 내용 흔들림 승격의 대상도 아니다(#350) — 타이머를 세우지 않는다.
+            structureStableSinceMs = null
             val since = unreadableSinceMs ?: nowMs.also { unreadableSinceMs = it }
             return if (nowMs - since >= unreadableAfterMs) {
                 Decision.UNREADABLE
@@ -128,15 +172,34 @@ class ScreenStabilityTracker(
             }
         }
         unreadableSinceMs = null
+        if (signature.structure != lastSample?.structure || structureStableSinceMs == null) {
+            structureStableSinceMs = nowMs
+        }
+        // 구조는 안정인데 내용만 계속 흔들리는 화면(광고·marquee)은 홀드가 영영 안 끝난다 —
+        // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380). 조작 직후는 승격하지
+        // 않는다: 그 내용 변화는 사용자가 만드는 중일 수 있어(스크롤) 홀드로 가라앉힌다(#32).
+        val promoted = contentSettled(nowMs) && !interactedRecently(nowMs)
         if (signature != lastSample) {
             lastSample = signature
             heldSamples = 1
-            return Decision.WAIT
+            if (!promoted) return Decision.WAIT
+        } else {
+            heldSamples++
+            if (heldSamples < holdSamples && !promoted) return Decision.WAIT
         }
-        heldSamples++
-        if (heldSamples < holdSamples) return Decision.WAIT
 
-        if (signature != sentSignature) {
+        // 새 상황인가(#380). 구조 변화는 무조건이다 — 화면 이동·팝업·토글은 지금 안내를
+        // 무효화한다. 내용만의 변화는 인과로 가른다: 최근 조작이 관측됐거나(균일 목록 스크롤은
+        // 구조가 같은 채 label만 밀린다), 안내가 가리키는 슬롯 자체가 바뀐 경우(목록 재정렬로
+        // 강조가 엉뚱한 줄을 가리키게 되는 것)만 새 상황이고, 아니면 자기발생(광고)이다.
+        val sent = sentSignature
+        val novel = when {
+            sent == null -> true
+            signature.structure != sent.structure -> true
+            signature.content == sent.content -> false
+            else -> guidedTargetChanged || interactedRecently(nowMs)
+        }
+        if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
             // 영영 오지 않는다(PR #61 리뷰 P1). 응답이 끝나면 [markFinished]가 다시 열어 준다.
@@ -151,6 +214,8 @@ class ScreenStabilityTracker(
         if (requestOutstanding) return Decision.IDLE
 
         // 같은 화면을 다시 물어보지 않는다. 무료 티어 15 RPM이라 폴링이 곧 호출량이다(#39).
+        // 광고가 도는 화면도 이제 여기로 접히므로, 무조작 7초의 정체 알림과 눌림 확인 재질의가
+        // 그런 화면에서도 정상 동작한다(#380 이전에는 로테이션마다 SEND라 영영 못 왔다).
         if (!stuckReported && nowMs - sentAtMs >= stuckAfterMs) {
             stuckReported = true
             return Decision.STUCK
@@ -159,7 +224,7 @@ class ScreenStabilityTracker(
     }
 
     /** **요청이 실제로 나갔을 때만** 부른다. 보낸 셈 치면 그 화면의 안내가 영영 오지 않는다. */
-    fun markSent(signature: String, nowMs: Long) {
+    fun markSent(signature: ScreenSig, nowMs: Long) {
         sentSignature = signature
         sentAtMs = nowMs
         lastAttemptMs = nowMs
@@ -181,8 +246,42 @@ class ScreenStabilityTracker(
     /**
      * 마지막으로 뜬 샘플의 시그니처. 응답이 도착했을 때 **그 사이 화면이 바뀌었는지** 보는 데 쓴다.
      * 세대(generation)만 보면 같은 세션 안에서 A의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
+     *
+     * 폐기 판정은 [ScreenSig.structure]로 한다(#380) — 내용까지 대조하면 응답 대기 2~5초 사이
+     * 배너가 한 번 도는 것만으로 정상 응답이 버려져, 광고 화면에서 안내가 영영 못 뜬다.
+     * 같은 구조의 **다른** 화면으로 이동한 경우는 [interactionAfter]가 마저 거른다.
      */
-    fun currentSignature(): String? = lastSample
+    fun currentSignature(): ScreenSig? = lastSample
+
+    /**
+     * 안내 대상 앱에서 클릭·스크롤 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
+     * 인정하는 유일한 근거다. 이벤트 미탐은 안전한 퇴화다 — 재질의가 한 박자 늦을 뿐이고
+     * 정체 알림(7초)이 받친다. `performed`의 null 강등과 같은 결(`../CLAUDE.md` 정체 감지).
+     */
+    fun markInteraction(nowMs: Long) {
+        lastInteractionMs = nowMs
+    }
+
+    private fun interactedRecently(nowMs: Long): Boolean {
+        val at = lastInteractionMs ?: return false
+        return nowMs - at <= interactionWindowMs
+    }
+
+    /**
+     * [sinceMs] 이후 조작이 관측됐는가. 늦은 응답 폐기가 쓴다(#380) — 구조가 같아도 요청과
+     * 응답 사이에 사용자가 움직였으면 같은 구조의 **다른** 화면(다른 상품 상세, 다른 대화방)일
+     * 수 있어, 내용까지 다르면 버리고 다시 묻는 쪽이 안전하다.
+     */
+    fun interactionAfter(sinceMs: Long): Boolean {
+        val at = lastInteractionMs ?: return false
+        return at >= sinceMs
+    }
+
+    /** 구조가 이만큼 안정됐으면 내용 흔들림을 홀드에서 면제한다(#380). */
+    private fun contentSettled(nowMs: Long): Boolean {
+        val since = structureStableSinceMs ?: return false
+        return nowMs - since >= contentSettleMs
+    }
 
     /**
      * 요청이 실패하면 보낸 적 없는 것으로 되돌려 다시 시도하게 한다. 그러지 않으면 네트워크가
@@ -259,6 +358,7 @@ class ScreenStabilityTracker(
     fun reset() {
         lastSample = null
         heldSamples = 0
+        structureStableSinceMs = null
         sentSignature = null
         sentAtMs = 0L
         stuckReported = false
@@ -267,6 +367,7 @@ class ScreenStabilityTracker(
         requestOutstanding = false
         minRetryAfterMs = 0L
         unreadableSinceMs = null
+        lastInteractionMs = null
     }
 
     companion object {
@@ -286,6 +387,19 @@ class ScreenStabilityTracker(
          * 이 시간이 지나면 로컬 안내만 띄운다. 서버 호출은 여전히 0회다.
          */
         const val UNREADABLE_AFTER_MS = STUCK_AFTER_MS
+
+        /**
+         * 구조는 안정인데 내용만 계속 흔들리면 이 시간 뒤 홀드 없이 승격한다(#380).
+         * 스켈레톤 로딩(label이 늦게 채워짐)은 이보다 먼저 안정되고 marquee·광고만 남는
+         * 경계로 골랐다 — 첫 추정치다. 실기기 픽스처로 다시 정할 것.
+         */
+        const val CONTENT_SETTLE_MS = 3_000L
+
+        /**
+         * 이 시간 안의 클릭·스크롤 이벤트가 있어야 내용만의 변화를 사용자 유발로 본다(#380).
+         * 조작 → 화면 반영 → settle 샘플(350ms)의 한 사이클을 여유 있게 덮는 첫 추정치다.
+         */
+        const val INTERACTION_WINDOW_MS = 5_000L
 
         /** 첫 재시도까지 기다리는 시간. 이후 실패마다 두 배. */
         const val RETRY_BASE_MS = 2_000L

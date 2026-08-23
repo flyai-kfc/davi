@@ -82,12 +82,15 @@ object GuideScreenLog {
      * 구분되지 않는다 — 팝업이 저절로 내려간 27초를 여기서 갈라야 한다.
      *
      * 시그니처는 라벨을 담으므로 **원문 대신 해시만** 남긴다. 같은지 다른지만 알면 된다.
+     * 구조/내용 두 축을 따로 찍는다(#380) — 광고 화면은 `s=`가 고정된 채 `c=`만 도는 것으로,
+     * 실제 전환은 `s=`가 바뀌는 것으로 로그에서 바로 갈린다.
      */
-    fun sample(decision: String, elementCount: Int, signature: String, serializeMs: Long) {
+    fun sample(decision: String, elementCount: Int, signature: ScreenSig, serializeMs: Long) {
         Log.d(
             GuideAccessibilityService.TAG,
             "poll=$decision n=$elementCount ms=$serializeMs " +
-                "sig=${Integer.toHexString(signature.hashCode())}",
+                "s=${Integer.toHexString(signature.structure.hashCode())} " +
+                "c=${Integer.toHexString(signature.content.hashCode())}",
         )
     }
 
