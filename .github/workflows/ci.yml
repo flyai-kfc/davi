@@ -211,7 +211,7 @@ jobs:
           # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
           #   ① 「debug/release 앱 식별자·이름 경계 확인」
           #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
-          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #   ③ 「release 산출물에 debug 전용 흔적이 없는지 확인」
           #
           # **방향은 인자가 아니라 이름에 박는다.** apk를 인자로 받으면 호출을 반대로 바꿔도
           # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 이 스텝은 apk가 딱 둘이라 이 편이 짧다.
@@ -305,7 +305,7 @@ jobs:
           # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
           #   ① 「debug/release 앱 식별자·이름 경계 확인」
           #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
-          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #   ③ 「release 산출물에 debug 전용 흔적이 없는지 확인」
           test -f "$config"
           # **두 방향의 접두어를 나눈다.** 긍정 검사가 깨지는 것은 보안 사고가 아니라 **검사
           # 문자열이 낡은 것**(AGP 출력 형태 변경)이다. 같은 접두어로 찍으면 받는 사람이 평문이
@@ -423,6 +423,10 @@ jobs:
           test -f "$generated"
           grep -q 'PRIVACY_MASKING_DISABLED = false' "$generated"
 
+      # 이 스텝은 **debug 전용 흔적 둘**을 산출물에서 본다 — 화면 상세 로그(#58)와
+      # 목표 주입 진입점의 extra 키(#323)다. 둘 다 "문자열이 산출물에 없으면 그 기능은
+      # 절대 동작할 수 없다"는 같은 논리로 지킨다.
+      #
       # 화면 요소의 label·bounds 상세 로그는 debug 전용이다(#58). 마스킹은 패턴 기반이라
       # 사람 이름·대화 내용처럼 패턴 밖 텍스트를 지우지 못하므로 "마스킹했으니 남겨도 된다"가
       # 성립하지 않는다. **포맷 문자열이 산출물에 없으면 그 줄은 절대 나올 수 없다** —
@@ -430,7 +434,7 @@ jobs:
       #
       # debug 쪽도 함께 본다. release만 검사하면 포맷이 바뀌었을 때 검사가 조용히 통과하는
       # 빈 관문이 된다 — 카나리아가 사라진 걸 실패로 잡아야 검사가 살아 있다.
-      - name: release 산출물에 화면 상세 로그가 없는지 확인
+      - name: release 산출물에 debug 전용 흔적이 없는지 확인
         run: |
           # **덤프는 한 번만 뜨고 파일로 둔다.** `unzip -p … | strings` 는 파이프의 종료 코드가
           # strings의 것이라 **unzip이 실패해도 0**이다. dex 이름·경로가 어긋나면 빈 문자열에서
@@ -485,25 +489,56 @@ jobs:
           # 되돌아간다(PR #354 리뷰 2번이 실제 사례다).
           #   ① 「debug/release 앱 식별자·이름 경계 확인」
           #   ② 「debug Azure HTTPS endpoint 허용」 — 네트워크 보안 config
-          #   ③ 「release 산출물에 화면 상세 로그가 없는지 확인」
+          #   ③ 「release 산출물에 debug 전용 흔적이 없는지 확인」
           #
           # **방향은 인자가 아니라 이름에 박는다.** 덤프를 인자로 받으면 호출을 반대로 바꿔도
           # 조용하고, 메시지가 엉뚱한 산출물을 가리킨다. 산출물이 딱 둘이라 이 편이 짧다.
-          assert_present_in_debug() {  # $1=카나리아
+          # **설명을 인자로 받는다.** 이 스텝이 지키는 경계가 둘이 되면서(화면 상세 로그 ·
+          # debug 전용 진입점) 메시지를 한 문장으로 박아 두면 엉뚱한 경계를 가리킨다.
+          # ①「debug/release 앱 식별자·이름 경계 확인」이 이미 같은 두 인자 모양이다.
+          assert_present_in_debug() {  # $1=카나리아 $2=무엇을 지키는가
             if ! grep -qF "$1" "$debug_dump"; then
-              echo "빈 관문: debug 상세 로그 포맷이 사라졌다 — 카나리아 [$1]가 debug 산출물에 없다" >&2
+              echo "빈 관문: $2 — 카나리아 [$1]가 debug 산출물에 없다" >&2
               exit 1
             fi
           }
-          assert_absent_in_release() {  # $1=카나리아
+          assert_absent_in_release() {  # $1=카나리아 $2=무엇을 지키는가
             if grep -qF "$1" "$release_dump"; then
-              echo "release 경계 위반: 화면 상세 로그가 release에 실렸다 — 카나리아 [$1]가 release 산출물에 있다" >&2
+              echo "release 경계 위반: $2 — 카나리아 [$1]가 release 산출물에 있다" >&2
               exit 1
             fi
           }
           for canary in "label='" " scroll=" " at="; do
-            assert_present_in_debug "$canary"
-            assert_absent_in_release "$canary"
+            assert_present_in_debug "$canary" 'debug 상세 로그 포맷이 사라졌다'
+            assert_absent_in_release "$canary" '화면 상세 로그가 release에 실렸다'
+          done
+
+          # 목표를 인텐트로 넣는 debug 전용 진입점(#323)도 같은 게이트로 본다. 클래스가 debug
+          # 소스셋에만 있어 구조적으로도 안 들어가지만, 그 전제가 깨지는 것을 산출물에서 직접
+          # 잡는다 — 이 키가 release에 있으면 아무 앱이나 목표를 밀어 넣을 수 있다.
+          # **방향마다 목록이 다르다.** "davi.goal"은 "davi.goal.b64"의 부분 문자열이라,
+          # 한 목록을 두 방향에 그대로 쓰면 한쪽이 죽은 게이트가 된다:
+          #   · absent 방향 — "davi.goal"이 b64 키까지 덮으므로 b64를 따로 볼 필요가 없다
+          #   · present 방향 — "davi.goal"이 b64 키에 걸려 **원문 키가 통째로 사라져도 통과**한다
+          # 그래서 원문 키의 present는 **출현 횟수로** 본다. 완전일치(`grep -xF`)를 먼저 썼다가
+          # CI에서 빨개졌다 — dex strings 출력은 상수가 한 줄로 떨어진다는 보장이 없다(로컬
+          # 흉내로는 통과했고 실제 `strings`에서 실패했다, PR #364). 모든 "davi.goal.b64"는
+          # "davi.goal"을 포함하므로, 원문 키가 살아 있으면 전자보다 후자가 반드시 더 많다.
+          # **한계**: 원문 키를 다른 이름으로 개명하면(davi.goal.raw 따위) 이 검사는 통과한다.
+          # 키가 사라지는 것만 잡는다 — 개명은 이 파일을 함께 고치는 사람이 본다.
+          for canary in "davi.goal.b64" "davi.autostart"; do
+            assert_present_in_debug "$canary" 'debug 목표 주입 진입점이 사라졌다'
+          done
+          # **`grep -c`가 아니라 `grep -o | wc -l`이다.** -c는 매칭된 **줄 수**를 세는데 둘이
+          # 같은 줄에 있으면 나란히 1이 되어 이 검사가 통째로 죽는다(실측).
+          raw_hits="$(grep -oF "davi.goal" "$debug_dump" | wc -l)"
+          b64_hits="$(grep -oF "davi.goal.b64" "$debug_dump" | wc -l)"
+          if [ "$raw_hits" -le "$b64_hits" ]; then
+            echo "빈 관문: debug 목표 주입의 원문 키가 사라졌다 — davi.goal($raw_hits) <= davi.goal.b64($b64_hits)" >&2
+            exit 1
+          fi
+          for canary in "davi.goal" "davi.autostart"; do
+            assert_absent_in_release "$canary" 'debug 목표 주입 진입점이 release에 실렸다'
           done
 
   # 서버 스택 검사를 한 잡에 모은다. 나뉘어 있을 땐 각각 20초·33초를 쓰고도 **1분씩**
