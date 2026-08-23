@@ -47,9 +47,14 @@ internal const val EXTRA_INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER =
  * **화면 상태만 만든다.** 실제 대화 세션은 시작하지 않으므로 보기를 눌러도 서버로 답이
  * 가지 않는다 — 모양을 보기 위한 자리이지 흐름을 흉내 내는 자리가 아니다.
  *
+ * **`|`를 중첩 따옴표로 감싼다** — 로컬 셸이 바깥 따옴표를 벗기고 adb가 인자를 다시 이어
+ * 붙이므로, 그대로 두면 **기기 셸이 `|`를 파이프로 읽는다**(「문자 메시지」가 갈라진다).
+ *
  *     adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
- *       --es com.davi.helper.extra.DEBUG_CLARIFICATION "카카오톡|문자 메시지|인스타그램" \
- *       --es com.davi.helper.extra.DEBUG_CLARIFICATION_PROMPT "어느 앱으로 사진을 보낼까요?"
+ *       --es com.davi.helper.extra.DEBUG_CLARIFICATION "'카카오톡|문자 메시지|인스타그램'" \
+ *       --es com.davi.helper.extra.DEBUG_CLARIFICATION_PROMPT "'어느 앱으로 사진을 보낼까요?'"
+ *
+ * 보기를 0개로 두려면 빈 문자열을 준다(`--es ... ""`) — 자유 응답 화면이 뜬다.
  */
 internal const val EXTRA_DEBUG_CLARIFICATION =
     "com.davi.helper.extra.DEBUG_CLARIFICATION"
@@ -126,6 +131,10 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 바로가기 행에 아이콘을 이미 붙인 패키지. 같은 앱이면 다시 조회하지 않는다(#348). */
     private var shownShortcutPackage: String? = null
+
+    /** 보기 라벨 -> 아이콘. [cacheClarificationIcons]가 상태 전이마다 한 번 채운다. */
+    private var clarificationIcons: Map<String, android.graphics.drawable.Drawable?> = emptyMap()
+    private var clarificationIconKey: List<String>? = null
     private val micReadyHandler = Handler(Looper.getMainLooper())
     private val micReadyFallback = Runnable { markMicReady("mic_ready_fallback") }
 
@@ -342,7 +351,33 @@ class ConversationActivity : AppCompatActivity() {
         binding.clarificationChoices.btnDirectSpeak.setOnClickListener {
             beginClarificationSpeech()
         }
+        // **버튼 넷의 그림자 색**(#374 시안 `#000000@12 y7 b16`). elevation은 색을 못 정하므로
+        // 여기서 준다 — 안 주면 시스템 기본 검정이 깔려 시안 값이 죽은 토큰이 된다.
+        //
+        // **스크린리더에는 「버튼」으로 읽힌다.** Button이 아니라 FrameLayout이라(뒤판·아이콘·
+        // 라벨을 한 배경에 담아야 터치가 하나가 된다) 기본으로는 그냥 「그룹」으로 읽힌다.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val shadow = getColor(R.color.davi_choice_shadow)
+            for (button in optionButtons) {
+                button.outlineSpotShadowColor = shadow
+                button.outlineAmbientShadowColor = shadow
+            }
+        }
+        for (button in optionButtons + binding.clarificationChoices.btnDirectSpeak) {
+            button.accessibilityDelegate = object : android.view.View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(
+                    host: android.view.View,
+                    info: android.view.accessibility.AccessibilityNodeInfo,
+                ) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = android.widget.Button::class.java.name
+                }
+            }
+        }
         // **「직접 말하기」의 글로우**(#374 시안 `#F70824@22 y8 b18`).
+        //
+        // **공통 그림자와 함께 줄 수 없다** — 시안은 「글로우 + 공통 그림자」인데 View는
+        // 그림자 색을 하나만 갖는다. 이 버튼에서는 글로우가 이긴다.
         //
         // **채움을 밝게 하거나 투명하게 하지 않는다** — 밝은 빨강 위에는 흰 글자가 안 읽히고
         // (color/highlight #F2001C는 4.38:1), 투명은 배경 베일이 비쳐 2.7~3.2:1까지 내려간다.
@@ -509,6 +544,8 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private fun setState(state: ConversationUiState) {
+        // **아이콘은 render가 아니라 상태 전이에서 찾는다** — render는 부분 인식마다 돈다.
+        if (state is ConversationUiState.Clarifying) cacheClarificationIcons(state)
         // **상태 전이를 남긴다**(#197 리뷰). 안내 중·종료 확인은 사용자가 눈으로만 확인할 수
         // 있어 회귀가 나도 로그로 못 짚었다. **이름과 세션 유무뿐이다** — 발화·질문·goal은
         // 여기에 오지 않는다(기존 금지 그대로).
@@ -752,9 +789,12 @@ class ConversationActivity : AppCompatActivity() {
             )
         }
         // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
+        // **stepChipVisible을 본다** — clarificationVisible로 두면 「직접 말하기」로 넘어가는
+        // 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라 눈에 잘 안 띈다).
+        // 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.clarificationVisible) {
+                if (model.guidingVisible || model.stepChipVisible) {
                     R.dimen.davi_card_padding_top_guiding
                 }
                 else R.dimen.davi_card_padding_top_davi,
@@ -1289,7 +1329,6 @@ class ConversationActivity : AppCompatActivity() {
      * 「가로 중앙」). 좌우 여백만 아이콘 유무에 따라 갈린다.
      */
     private fun renderClarificationOptions(state: ConversationUiState.Clarifying) {
-        val snapshot = launchableAppIndex.current()
         val buttons = listOf(
             binding.clarificationChoices.btnOption1 to
                 (binding.clarificationChoices.option1Icon to binding.clarificationChoices.option1Label),
@@ -1306,16 +1345,36 @@ class ConversationActivity : AppCompatActivity() {
             label.text = option
             button.contentDescription = option
 
-            val app = launchableAppForLabel(option, snapshot)
-            val drawable = app?.let {
-                runCatching { packageManager.getApplicationIcon(it.packageName) }.getOrNull()
-            }
+            val drawable = clarificationIcons[option]
             icon.isVisible(drawable != null)
             // 기기 아이콘은 정사각·원형·스퀘어클이 섞여 있어 슬롯 윤곽으로 깎아야 균일하다
             // (MA-4 바로가기 행과 같은 처리). centerCrop이어야 적응형 아이콘의 25% 여백이
             // 슬롯 안에서 작게 앉지 않는다.
             icon.clipToOutline = true
             icon.setImageDrawable(drawable)
+        }
+    }
+
+    /**
+     * 보기 아이콘을 **상태에 들어올 때 한 번만** 찾는다(#374).
+     *
+     * `render()`는 부분 인식마다 여러 번 도는데, 거기서 찾으면 두 가지를 매번 한다:
+     * `LaunchableAppIndex.current()`(dirty면 다중 프로필 전수 조회 — **KDoc이 voiceExecutor
+     * 전용이라고 적어 둔 호출**)와 `getApplicationIcon`을 보기 수만큼. 둘 다 메인 스레드다.
+     *
+     * MA-4 바로가기 행이 `shownShortcutPackage`로 이미 같은 것을 피하고 있다(#348) —
+     * **같은 화면 안에서 정책이 갈리지 않게** 여기도 한 번만 한다.
+     *
+     * 진입 시점이라 index가 dirty일 수 있지만, 그때 전수 조회는 **상태 전이당 한 번**이다.
+     */
+    private fun cacheClarificationIcons(state: ConversationUiState.Clarifying) {
+        val options = state.outcome.question.options
+        if (clarificationIconKey == options) return
+        clarificationIconKey = options
+        val snapshot = launchableAppIndex.current()
+        clarificationIcons = options.associateWith { option ->
+            val app = launchableAppForLabel(option, snapshot) ?: return@associateWith null
+            runCatching { packageManager.getApplicationIcon(app.packageName) }.getOrNull()
         }
     }
 

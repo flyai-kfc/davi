@@ -32,12 +32,12 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
-    fun optionSelectionMovesToNextQuestionWithoutShowingCancel() {
+    fun optionSelectionMovesToNextQuestionKeepingCancel() {
         val current = launchConversation()
         showClarification(current, questionCount = 2)
 
         instrumentation.runOnMainSync {
-            current.findViewById<Button>(R.id.btn_option_1).performClick()
+            current.findViewById<View>(R.id.btn_option_1).performClick()
         }
         instrumentation.waitForIdleSync()
 
@@ -49,16 +49,19 @@ class ClarificationFlowDeviceTest {
             current.getString(R.string.clarification_progress, 2, 2),
             current.findViewById<TextView>(R.id.question_progress).text.toString(),
         )
-        assertEquals(View.GONE, current.findViewById<View>(R.id.btn_close).visibility)
+        // **보기가 있어도 나가는 길은 있다**(2026-08-23 · #374). 종전에는 「보기 있는 질문에서는
+        // 문답 중 취소를 두지 않는다」였는데, 앞뒤 화면에서 ×가 있다 없다 하면 어르신이
+        // 나가는 길을 매번 새로 찾는다.
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.btn_close).visibility)
     }
 
     @Test
-    fun directSpeechKeepsQuestionAndHasNoCancelAction() {
+    fun directSpeechKeepsQuestionAndCancelAction() {
         val current = launchConversation()
         showClarification(current, questionCount = 1)
 
         instrumentation.runOnMainSync {
-            current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+            current.findViewById<View>(R.id.btn_direct_speak).performClick()
         }
         instrumentation.waitForIdleSync()
 
@@ -67,7 +70,9 @@ class ClarificationFlowDeviceTest {
             current.findViewById<TextView>(R.id.card_question).text.toString(),
         )
         assertEquals(View.VISIBLE, current.findViewById<View>(R.id.btn_mic).visibility)
-        assertEquals(View.GONE, current.findViewById<View>(R.id.btn_close).visibility)
+        // **「직접 말하기」로 넘어가도 ×가 남는다** — 여기서 사라지면 인식이 반복 실패할 때
+        // 갇힌다. 바로 앞 선택 화면이 ×를 보이므로 뒤로 갈수록 출구가 줄어드는 셈이 된다.
+        assertEquals(View.VISIBLE, current.findViewById<View>(R.id.btn_close).visibility)
         assertFalse(current.findViewById<View>(R.id.btn_mic).isEnabled)
         val micToneArmed = ConversationActivity::class.java.getDeclaredField("micToneArmed")
         micToneArmed.isAccessible = true
@@ -136,7 +141,7 @@ class ClarificationFlowDeviceTest {
         showClarification(current, questionCount = 1)
 
         instrumentation.runOnMainSync {
-            current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+            current.findViewById<View>(R.id.btn_direct_speak).performClick()
             invokeSpeechError(current, SpeechRecognizerHelper.ERROR_START_FAILED)
         }
         instrumentation.waitForIdleSync()
@@ -191,7 +196,7 @@ class ClarificationFlowDeviceTest {
         showClarification(current, questionCount = 2)
 
         instrumentation.runOnMainSync {
-            current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+            current.findViewById<View>(R.id.btn_direct_speak).performClick()
             val handleSpeechError = ConversationActivity::class.java.getDeclaredMethod(
                 "handleSpeechError",
                 Int::class.javaPrimitiveType,
@@ -209,7 +214,7 @@ class ClarificationFlowDeviceTest {
         assertEquals(VoiceDialogueSession.Stage.CLARIFYING, voiceSession(current).stage)
 
         instrumentation.runOnMainSync {
-            current.findViewById<Button>(R.id.btn_option_1).performClick()
+            current.findViewById<View>(R.id.btn_option_1).performClick()
         }
         instrumentation.waitForIdleSync()
         assertEquals(
@@ -227,7 +232,7 @@ class ClarificationFlowDeviceTest {
 
         repeat(2) {
             instrumentation.runOnMainSync {
-                current.findViewById<Button>(R.id.btn_direct_speak).performClick()
+                current.findViewById<View>(R.id.btn_direct_speak).performClick()
                 invokeSpeechError(current, SpeechRecognizer.ERROR_NO_MATCH)
             }
             instrumentation.waitForIdleSync()

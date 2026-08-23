@@ -537,6 +537,36 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `질문 칩은 질문이 둘 이상일 때만 서고 직접 말하기 청취까지 남는다`() {
+        // **이 값은 배지 위 여백도 함께 본다**(#374). 뜻이 「구체화 화면인가」로 새면
+        // 칩이 없는데 칩 있는 여백을 써서 **카드가 51dp까지 솟아 종료 ✕에 덮인다**
+        // (2026-08-23 실기기). 그래서 질문 수 판단까지 렌더 모델에서 끝낸다.
+        val two = clarificationOutcome(questionCount = 2)
+        val one = clarificationOutcome(questionCount = 1)
+
+        assertTrue(renderModelOf(ConversationUiState.Clarifying(two)).stepChipVisible)
+        // 「질문 1/1」은 진행도로서 아무 말도 하지 않는다.
+        assertFalse(renderModelOf(ConversationUiState.Clarifying(one)).stepChipVisible)
+
+        // **「직접 말하기」로 넘어가도 남는다** — 답하는 중에도 어디쯤인지 보여야 하고,
+        // 칩이 있다 없다 하면 카드가 뛴다.
+        assertTrue(
+            renderModelOf(
+                ConversationUiState.Listening(question = "누구에게?", clarification = two),
+            ).stepChipVisible,
+        )
+        assertFalse(
+            renderModelOf(
+                ConversationUiState.Listening(question = "누구에게?", clarification = one),
+            ).stepChipVisible,
+        )
+        // 구체화와 무관한 화면에는 없다.
+        assertFalse(renderModelOf(ConversationUiState.Listening()).stepChipVisible)
+        assertFalse(renderModelOf(ConversationUiState.Home()).stepChipVisible)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).stepChipVisible)
+    }
+
+    @Test
     fun `앱 미확인 경고에는 바로가기 행이 없다`() {
         // 사전 점검이 미확인이면 **열 수 있는지 모르는 앱**이다(#185). 여기서 행을 세우면
         // 눌렀을 때 열릴지 안 열릴지 모르는 곳으로 어르신을 보낸다.

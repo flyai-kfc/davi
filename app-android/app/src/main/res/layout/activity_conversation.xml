@@ -111,10 +111,20 @@
 
           **칩의 세로 위치는 그 전역 ✕에 맞춘다** — 아래 토큰 주석에 계산이 있다.
         -->
+        <!--
+          **폭은 wrap_content, 높이만 고정이다.** 시안 92x32(=110x38dp)를 둘 다 고정으로
+          두면 2.0 위 배율(삼성은 더 있다)에서 「질문 1/2」가 잘린다 — 진행도는 짧은 글자라
+          최소 폭만 지키면 되고, **높이는 전역 ✕와 중심을 맞추는 입력**이라 고정이어야 한다
+          (davi_step_row_margin_top 주석의 계산).
+        -->
         <TextView
             android:id="@+id/question_progress"
-            android:layout_width="@dimen/davi_step_chip_width"
+            android:layout_width="wrap_content"
             android:layout_height="@dimen/davi_step_chip_height"
+            android:minWidth="@dimen/davi_step_chip_width"
+            android:paddingLeft="@dimen/davi_spacing_md"
+            android:paddingRight="@dimen/davi_spacing_md"
+            android:maxLines="1"
             android:layout_gravity="start"
             android:layout_marginTop="@dimen/davi_step_row_margin_top"
             android:gravity="center"
