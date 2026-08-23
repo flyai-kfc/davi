@@ -90,6 +90,13 @@
 
       **이름은 짝을 이룬다** — 기준이 "표면 밝기"이지 테마가 아니다. `_on_dark` 하나만 두면
       `values-night` 변종으로 읽힌다(F1: 이름이 리깅의 키다).
+
+      **위 표는 축이 하나다 — 다른 축이 반대로 당긴다**(2026-08-23, #263).
+      흰 20%는 표면 대비를 살리는 대신 **어두운 버튼 위 흰 아이콘의 대비를 깎는다**
+      (가장 낮은 자리가 칩 success `#2E7D32`로 실측 5.06 -> 3.47). 그 축의 실측과
+      「16%로 내리지 않는다」는 판정은 `docs/DESIGN-CONVENTIONS.md`
+      「눌림 상태 — 표면 밝기에 따라 방향을 바꾼다」 절에 있다.
+      **20%를 옮기려면 두 축을 함께 봐야 한다** — 이 표만 보고 내리면 아이콘이 묻힌다.
     -->
     <color name="davi_state_layer_pressed_on_light">#1F000000</color>
     <color name="davi_state_layer_pressed_on_dark">#33FFFFFF</color>

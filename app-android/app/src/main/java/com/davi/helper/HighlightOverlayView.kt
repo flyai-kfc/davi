@@ -1144,7 +1144,6 @@ class HighlightOverlayView(context: Context) : View(context) {
      * 바가 **오른쪽 변으로 가고** 안내창이 그 위를 덮어, 같은 좌표의 홈 버튼이 오버레이가
      * 있을 때만 죽었다(없을 때 `LauncherActivity`, 있을 때 브라우저 그대로).
      */
-
     private fun safeBounds(): GuideBoxLayout.Bounds? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val windowManager = context.getSystemService(WindowManager::class.java) ?: return null
