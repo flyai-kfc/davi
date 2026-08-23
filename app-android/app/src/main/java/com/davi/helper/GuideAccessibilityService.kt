@@ -317,7 +317,9 @@ class GuideAccessibilityService : AccessibilityService() {
         if (GuideSession.active() == null) return
 
         val interesting = isInteresting(event.eventType)
-        // 계측(임시). release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
+        // 계측. release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
+        // **필터 앞이라는 위치는 의도다** — 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다.
+        // 그 위치가 감당 가능한 이유는 이 호출이 더 이상 `event.source`를 읽지 않기 때문이다(#356).
         GuideScreenLog.event(event, interesting)
         if (!interesting) return
 

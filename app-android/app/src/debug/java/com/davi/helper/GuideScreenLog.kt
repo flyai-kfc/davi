@@ -56,13 +56,29 @@ object GuideScreenLog {
      * **이벤트 텍스트는 화면 원문이라 절대 찍지 않는다**(1차 마스킹은 직렬화 경로에만 걸려 있다).
      * 있는지 여부와 길이만 남긴다 — 라벨 대조가 왜 실패했는지는 그것으로 좁혀진다.
      */
+    /**
+     * **`event.source`를 읽지 않는다**(#356). 그 프로퍼티만 `AccessibilityInteractionClient`로
+     * **동기 IPC**를 내고, 이 함수는 `isInteresting` 필터 **앞에서** 불리므로 세션이 켜진 동안
+     * 들어오는 **모든** 이벤트에 그 비용이 붙었다. `TYPE_WINDOW_CONTENT_CHANGED`가 쏟아지는
+     * 화면에서 가장 크고(실측 구간 522건), 당겨온 노드를 회수하지도 않았다 — `recycle()`이
+     * no-op이 되는 것은 API 33부터인데 `minSdk`가 26이다.
+     *
+     * **관측이 대상을 바꾸는 자리였다.** 폴링·안정 판정이 얹힌 같은 메인 스레드를 밀어내
+     * #367이 재는 직렬화 시간이 계측 세금인지 진짜인지 갈리지 않았다.
+     *
+     * 나머지 필드는 그대로 둔다 — 타입·패키지·텍스트 개수·`contentDescription` 유무는 전부
+     * 이벤트 parcel에 이미 들어 있어 IPC가 없다. **필터 앞이라는 위치도 그대로다**: 걸러진
+     * 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다(#336).
+     *
+     * `source`가 간헐적으로 `null`이라는 관측은 이미 `app-android/CLAUDE.md` 기기 함정에 있고
+     * `PressMatch`가 텍스트 폴백으로 받고 있다(#238). 이 로그로 더 얻을 것이 없다.
+     */
     fun event(event: AccessibilityEvent, interesting: Boolean) {
         val texts = event.text.count { !it.isNullOrBlank() }
         Log.d(
             GuideAccessibilityService.TAG,
             "ev=${eventName(event.eventType)} pkg=${event.packageName ?: "-"} " +
-                "src=${event.source != null} texts=$texts " +
-                "desc=${!event.contentDescription.isNullOrBlank()} kept=$interesting",
+                "texts=$texts desc=${!event.contentDescription.isNullOrBlank()} kept=$interesting",
         )
     }
 
