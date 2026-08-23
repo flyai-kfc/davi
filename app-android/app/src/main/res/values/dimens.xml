@@ -442,8 +442,69 @@
     -->
     <dimen name="davi_stacked_button_gap">24dp</dimen>
     <!-- #316 문답은 보기 셋과 직접 말하기, 최대 네 조작을 기본 글꼴에서 같은 화면에 담는다. -->
-    <dimen name="davi_clarification_button_height">56dp</dimen>
-    <dimen name="davi_clarification_button_gap">10dp</dimen>
+    <!--
+      MA-3 보기 선택(#374 · `docs/SCREENS.md` MA-3 「보기 선택」 · 시안 재작업 2026-08-22).
+
+      **버튼 넷은 색만 다르고 나머지가 같다.** 크기·반지름·아이콘·그림자를 전부 맞춰야
+      「같은 종류의 버튼인데 하나가 다른 역할」로 읽힌다. **「직접 말하기」를 크게 만들지
+      않는다** — #316이 보기 선택을 인지 부담이 낮은 권장 동선으로 둔 자리라, 제일 눈에
+      띄는 것이 자유 발화면 유도가 반대로 간다. 반대로 **눈에 안 띄게도 하지 않는다** —
+      목록에서 자기 앱을 못 찾은 사람이 쓰는 유일한 출구다.
+
+      **높이·아이콘·안쪽 여백·라벨은 MA-4 토큰을 그대로 쓴다** — 두 화면의 버튼이 같은
+      규격이라는 것이 값이 아니라 **구조**로 남는다.
+
+        높이      davi_confirm_choice_height   72dp   시안 60 x1.2 (객체)
+        아이콘    davi_shortcut_icon_size      48dp   시안 40 x1.2
+        슬롯 r    davi_shortcut_icon_radius    12dp   반지름 1:1
+        안쪽 여백 davi_shortcut_inset          14dp   시안 12 x1.2 (가로 거리)
+        라벨      davi_type_confirm_choice     20sp   글자 1:1
+
+      **세로 리듬은 1:1이다**(2026-08-19 개정 규칙). 시안 카드 100~276 → 16 → 292 →
+      12 → 364 → 12 → 436 → 16 → 512 → 하단 48.
+    -->
+    <dimen name="davi_choice_radius">16dp</dimen>
+    <dimen name="davi_choice_border_width">2dp</dimen>
+    <!--
+      뒤판이 본체 오른쪽으로 삐져나오는 폭. 시안 12 → 가로 거리 x1.2 = **14dp**.
+
+      **뒤판은 장식이 아니라 버튼의 일부다** — 어르신은 삐져나온 분홍까지를 버튼 끝으로
+      보고, 눌렀는데 반응이 없으면 고장으로 읽는다. 그래서 **한 View의 layer-list 배경**으로
+      만들어 터치 영역을 하나로 둔다. **뒤판을 별도 View로 깔지 않는다.**
+    -->
+    <dimen name="davi_choice_backplate_reveal">14dp</dimen>
+    <!-- 보기 사이. 시안 12 → 세로 거리 1:1. -->
+    <dimen name="davi_choice_gap">12dp</dimen>
+    <!-- 카드→첫 보기, 마지막 보기→직접 말하기. 시안 16 → 세로 거리 1:1. -->
+    <dimen name="davi_choice_group_gap">16dp</dimen>
+    <!--
+      질문 칩(`v2/chip/step`). 시안 24,46 92x32 r16 · 흰 채움 · button/primary w1.5 INSIDE ·
+      13 Pretendard/ExtraBold. 크기는 객체라 x1.2, **반지름 16은 높이 32의 절반이라 캡슐**이므로
+      환산한 값이 아니라 **높이 38의 절반**이다(MA-4 캡슐 선례와 같은 처리).
+    -->
+    <dimen name="davi_step_chip_width">110dp</dimen>
+    <dimen name="davi_step_chip_height">38dp</dimen>
+    <dimen name="davi_step_chip_radius">19dp</dimen>
+    <dimen name="davi_step_chip_stroke">1.5dp</dimen>
+    <dimen name="davi_type_step_chip">13sp</dimen>
+    <!--
+      칩·종료 ✕가 앉는 높이. 시안 y46 → **세로 거리 1:1**.
+      열 상단(인셋 안)에서 이만큼 내려온 자리다.
+    -->
+    <dimen name="davi_step_row_margin_top">46dp</dimen>
+    <!--
+      종료 ✕(`v2/button/stop`). 시안 32x32 r16 원 · button/primary 채움 · 흰 ✕ 12x12 w3.
+      크기는 객체라 x1.2 = 38dp.
+
+      **보이는 크기와 터치 크기를 가른다** — 38dp는 D1(터치 타깃 56dp)에 못 미친다.
+      배경 원은 38dp로 그리고 버튼 자체는 davi_size_touch_target(56dp)로 둬 여백이 터치를
+      받는다. 지금 btn_close가 쓰는 방식과 같다.
+    -->
+    <dimen name="davi_stop_button_size">38dp</dimen>
+    <dimen name="davi_stop_mark_size">14dp</dimen>
+    <!-- 「직접 말하기」 안 흰 카드 속 마이크. 시안 18x25 → 객체 x1.2. -->
+    <dimen name="davi_choice_mic_width">22dp</dimen>
+    <dimen name="davi_choice_mic_height">30dp</dimen>
     <!-- **⚠ 값이 옛 환산이다**(#265). 카드와 버튼 사이 여백이라 개정 규칙(#244)에서는
          세로 거리 1:1로 **44**다. 배치가 통째로 움직여 실기기로 보고 정한다. -->
     <dimen name="davi_stacked_pair_margin_top">53dp</dimen>

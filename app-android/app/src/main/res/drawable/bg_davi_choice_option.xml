@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-3 보기 버튼(#374). **뒤판과 본체를 한 배경으로 만든다.**
+
+  뒤판(분홍)이 본체(흰 카드) 오른쪽으로 14dp 삐져나와 단단한 경계를 만든다.
+  **별도 View로 깔지 않는 것이 핵심이다** — 어르신은 삐져나온 분홍까지를 버튼 끝으로 보고,
+  거기를 눌렀는데 반응이 없으면 고장으로 읽는다. 한 View의 배경이면 터치 영역이 하나다.
+
+  본체 테두리는 `color/highlight` 50%다. 배경 대비 1.6:1로 A2 미달이지만 **식별을 혼자
+  지지 않는다** — 뒤판 경계·앱 아이콘·그림자가 함께 진다(colors.xml davi_choice_border).
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_choice_backplate" />
+            <corners android:radius="@dimen/davi_choice_radius" />
+        </shape>
+    </item>
+    <item android:right="@dimen/davi_choice_backplate_reveal">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_surface_raised" />
+            <stroke
+                android:width="@dimen/davi_choice_border_width"
+                android:color="@color/davi_choice_border" />
+            <corners android:radius="@dimen/davi_choice_radius" />
+        </shape>
+    </item>
+</layer-list>

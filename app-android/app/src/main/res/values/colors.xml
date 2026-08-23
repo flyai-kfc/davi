@@ -186,6 +186,35 @@
     <color name="davi_wave_fade_mid">#FF9A9A</color>
     <color name="davi_wave_fade_end">#FF5C70</color>
     <color name="davi_glow_card">#E0708F</color>
+    <!--
+      MA-3 보기 버튼의 **뒤판**(#374 · 시안 `color/pink/400`). 본체 흰 카드 오른쪽으로 14dp
+      삐져나와 단단한 경계를 만든다.
+
+      **davi_glow_card와 같은 팔레트 항목이라 값을 복제하지 않고 별칭으로 묶는다** — 둘 다
+      시안의 `v2 color/pink/400`이고, 브랜드 분홍이 움직이면 함께 움직여야 한다. 복제해 두면
+      팔레트가 바뀔 때 하나만 남는다(davi_border_quiet 선례).
+    -->
+    <color name="davi_choice_backplate">@color/davi_glow_card</color>
+    <!--
+      MA-3 보기 본체의 테두리(#374 · 시안 `color/highlight` @50 w2).
+
+      **배경 대비 약 1.6:1로 A2(조작 요소 3:1) 미달을 알고 넘긴 자리다.** 식별을 테두리
+      혼자 지지 않는다 — 오른쪽 뒤판 14dp가 단단한 경계를 만들고, 앱 아이콘이 「누르는 것」임을
+      말하며, 그림자가 떠 있음을 보여준다. **MA-4 바로가기 버튼이 같은 근거로 먼저 넘어갔으므로
+      예외가 아니라 규칙이다**(docs/SCREENS.md MA-3 「보기 선택」).
+    -->
+    <color name="davi_choice_border">#80F2001C</color>
+    <!--
+      MA-3 「직접 말하기」 아래 깔리는 글로우(#374 · 시안 `#F70824@22 y8 b18`).
+      **밝기는 글자가 없는 자리에서 낸다** — 채움은 흰 글자가 읽히는 어두운 빨강이고,
+      화면 인상의 밝은 빨강은 이 글로우·아바타·종료 ✕·마이크가 만든다.
+    -->
+    <color name="davi_choice_primary_glow">#38F70824</color>
+    <!--
+      버튼 넷 공통 그림자(#374 · 시안 `#000000@12 y7 b16`). 넷이 **색만 다르고 나머지가
+      같다**는 판정의 일부다 — 그림자가 갈리면 「같은 종류의 버튼」으로 안 읽힌다.
+    -->
+    <color name="davi_choice_shadow">#1F000000</color>
     <color name="davi_mic_capsule_bottom">#FFC2CB</color>
     <!--
       긍정 버튼(○됐어요) 채움 배경. 흰 글자 7.87:1.

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-3 버튼 넷의 아이콘 슬롯(#374). 보기에서는 앱 아이콘을 깎는 윤곽이고,
+  「직접 말하기」에서는 마이크가 앉는 흰 카드다 — **같은 도형이라 넷의 줄이 맞는다.**
+
+  기기 아이콘은 정사각·원형·스퀘어클이 섞여 있어 이 윤곽으로 마스크해야 균일해 보인다
+  (MA-4 바로가기 행이 쓰는 그 방식).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_surface_raised" />
+    <corners android:radius="@dimen/davi_shortcut_icon_radius" />
+</shape>

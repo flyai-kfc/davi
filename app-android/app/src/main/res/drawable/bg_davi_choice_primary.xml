@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-3 「직접 말하기」(#374). 보기와 **색만 다르고 크기·반지름·아이콘·그림자가 같다** —
+  갈리면 「같은 종류의 버튼인데 하나가 다른 역할」로 안 읽힌다.
+
+  **채움은 davi_button_primary(#A50014)다.** 시안이 `color/red/700` #B50016을 골랐지만
+  저장소가 이미 재고 폐기한 값이다 — 흰 글자 7.06:1로 AAA 여유가 0.06뿐이고, **검증 기기의
+  screencap이 Display P3로 나오는 이상 그 0.06은 색공간 변환 한 번에 사라진다**
+  (colors.xml davi_button_affirm 주석의 실측). 두 색은 빨강 채널만 16(6%) 차이라 육안
+  구분도 안 된다. 시안이 #B50016을 고른 이유인 「밝기」는 **글자가 없는 자리**(글로우·
+  아바타·종료 ✕·마이크)가 이미 지고 있어 여기서 낼 필요가 없다.
+
+  **밝은 빨강 위에 글자를 얹지 않는다** — color/highlight #F2001C는 흰 글자 4.38:1로
+  AA도 미달이고, 그것을 투명으로 깐 안은 배경이 비쳐 2.7~3.2:1까지 내려갔다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/davi_button_primary" />
+    <corners android:radius="@dimen/davi_choice_radius" />
+</shape>
