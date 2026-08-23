@@ -65,6 +65,20 @@ internal const val EXTRA_DEBUG_CLARIFICATION_PROMPT =
 internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
     "com.davi.helper.extra.DEBUG_CLARIFICATION_COUNT"
 
+/**
+ * 메인 8(응답 이해 실패)을 **서버 없이** 띄우는 debug 전용 진입점(#263 검증).
+ *
+ * 이 화면은 **스키마는 멀쩡한데 내용이 못 쓰는** 응답에서만 온다 —
+ * `status=READY`인데 `goal`이 비었거나, `NEEDS_CLARIFICATION`인데 questions가 유효하지
+ * 않은 경우다([VoiceDialogueSession]). **형식이 깨진 응답은 여기로 안 온다** — 그쪽은
+ * `SlotFillResult.ParseFailure`라 오류 분기로 빠진다. 서버를 그렇게 만들지 않으면 실기기에서
+ * 이 화면을 볼 수 없어, 치수(`davi_stand_margin_top`)를 확인할 방법이 없었다.
+ *
+ *     adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *       --ez com.davi.helper.extra.DEBUG_FAILED true
+ */
+internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -422,8 +436,9 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestion.isFocusable = false
         binding.cardQuestion.isFocusableInTouchMode = false
 
-        // MA-3 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374). release에서는 무시된다.
-        debugClarificationState()?.let { setState(it) }
+        // MA-3·메인 8 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374·#263).
+        // release에서는 무시된다.
+        debugInjectedState()?.let { setState(it) }
 
 
         render(uiState)
@@ -437,7 +452,7 @@ class ConversationActivity : AppCompatActivity() {
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         intent = newIntent
-        debugClarificationState()?.let { setState(it) }
+        debugInjectedState()?.let { setState(it) }
     }
 
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
@@ -515,6 +530,22 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     /** 상태 전이의 단일 지점 — 복귀 타이머 정리와 렌더가 항상 함께 간다. */
+    /**
+     * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
+     * release에 진입점을 남기지 않는다.
+     *
+     * 메인 8이 먼저다. 둘을 같이 주면 어느 쪽이 이기는지 호출자가 알 수 있어야 하고,
+     * 실패 화면은 **상태 하나를 통째로 갈아 끼우는** 쪽이라 구체화 인자와 섞이지 않는다.
+     */
+    private fun debugInjectedState(): ConversationUiState? {
+        if (!BuildConfig.DEBUG) return null
+        if (intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false)) {
+            GuideTelemetry.voiceState("debug_failed_injected")
+            return ConversationUiState.Failed
+        }
+        return debugClarificationState()
+    }
+
     /**
      * [EXTRA_DEBUG_CLARIFICATION]이 오면 그것으로 만든 구체화 상태. 아니면 null.
      * **`BuildConfig.DEBUG`가 아니면 항상 null이다** — release에 진입점을 남기지 않는다.
