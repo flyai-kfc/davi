@@ -280,7 +280,14 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         // 선택 영역에는 보조 답변을 늘리지 않는다. 자유 응답 질문에서만 기존 대화 닫기를
         // 노출해 `직접 말하기` → NO_MATCH/TIMEOUT의 무한 반복을 빠져나오게 한다.
         closeVisible = state.outcome.question.options.isEmpty(),
-        cardGlowVisible = state.speaking,
+        // **읽는 동안만이 아니라 늘 켠다**(#374, 2026-08-23 시안). 한때 `state.speaking`이라
+        // TTS가 끝나면 글로우가 꺼졌는데, 그러면 **고르는 내내 화자 표시가 없다** —
+        // 이 카드는 다비가 던진 질문이고 그 사실은 읽기가 끝나도 변하지 않는다
+        // (#176 「글로우가 화자를 가리킨다」 · MA-4의 최종 확인 카드와 같은 처리).
+        //
+        // 시니어 카드 쪽 `utteranceSpeaking`은 **여전히 「지금 말하는 중」**을 뜻한다 —
+        // 그쪽은 화자가 이미 라벨로 갈려 있어 글로우가 다른 일을 할 수 있다.
+        cardGlowVisible = true,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(

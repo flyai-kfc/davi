@@ -245,6 +245,32 @@ internal data class LaunchableAppMatch(
     val record: LaunchableAppRecord?,
 )
 
+/**
+ * 보기 라벨이 가리키는 설치된 앱(#374 MA-3 아이콘 슬롯). 못 찾으면 null.
+ *
+ * **서버는 보기를 문자열로만 준다** — 어느 앱인지 알려주지 않는다(`ClarificationQuestion.options`).
+ * 그래서 라벨을 기기 index의 앱 이름과 맞춰 본다.
+ *
+ * **판정 규칙은 [AppCandidateMatcher]와 같은 것을 쓴다** — 정규화한 이름이 **정확히 일치**하고
+ * 프로필+패키지가 **하나로 좁혀질 때만** 앱을 돌려준다. 부분 일치나 최선 추정을 하지 않는
+ * 것이 핵심이다: 「문자」가 엉뚱한 앱 아이콘으로 뜨면 어르신이 **다른 앱으로 가는 줄 알고**
+ * 누른다. **못 찾으면 아이콘을 숨기지, 비슷한 것을 붙이지 않는다.**
+ *
+ * 「시간 정하기」처럼 앱이 아닌 답은 자연히 null이 된다.
+ */
+internal fun launchableAppForLabel(
+    label: String,
+    snapshot: LaunchableAppSnapshot,
+): LaunchableAppRecord? {
+    val normalized = normalizeLaunchableLabel(label)
+    if (normalized.isEmpty()) return null
+    val matches = snapshot.records.filter { normalizeLaunchableLabel(it.label) == normalized }
+    if (matches.isEmpty()) return null
+    val (availability, record) = AppCandidateMatcher.availabilityForRecords(matches)
+    if (availability != AppCandidateAvailability.LAUNCHABLE) return null
+    return record?.takeIf { it.isPersonalProfile }
+}
+
 internal object AppCandidateMatcher {
     fun match(plan: AppCandidatePlan, snapshot: LaunchableAppSnapshot): List<AppCandidateResult> =
         matchDetailed(plan, snapshot).map { it.result }
@@ -282,6 +308,16 @@ internal object AppCandidateMatcher {
             AppCandidateAvailability.UNKNOWN to null
         }
     }
+
+    /**
+     * 같은 이름으로 걸린 record들에서 **하나로 좁혀졌는지**를 판정한다.
+     *
+     * [launchableAppForLabel]도 이것을 쓴다 — **판정 규칙을 하나로 두기 위해서다.**
+     * 둘로 갈리면 「아이콘은 뜨는데 사전 점검은 미확인」 같은 어긋남이 조용히 생긴다.
+     */
+    fun availabilityForRecords(
+        records: List<LaunchableAppRecord>,
+    ): Pair<AppCandidateAvailability, LaunchableAppRecord?> = availabilityOf(records)
 
     private fun availabilityOf(
         records: List<LaunchableAppRecord>,
