@@ -1,6 +1,8 @@
 name: CI
 
-# PR과 main 푸시에서 실행한다. 바뀐 폴더의 잡만 돌린다.
+# PR과 main 푸시에서 실행한다. PR은 바뀐 스택을 전부 검사하고, main 푸시는 저장소 전역
+# 검사와 Android만 돌린다(#363). 서버 런타임은 같은 main 푸시의 Azure development deploy가
+# image 빌드와 /health로 확인한다. pytest/ruff의 병합 후 재검사는 생략하는 비용 절감 결정이다.
 on:
   pull_request:
     branches: [main]
@@ -291,7 +293,11 @@ jobs:
           DAVI_DEBUG_SERVER_URL: https://davi-server-dev.example.azurecontainerapps.io
           DAVI_DEBUG_ACCESS_TOKEN: ci-only-not-a-secret-token-value-0001
         run: |
-          ./gradlew assembleDebug
+          # 이 스텝이 검증하는 입력은 아래 생성 XML 하나다. 전체 debug APK는 앞의
+          # 「debug/release/test APK 빌드 + 단위 테스트」에서 이미 빌드했다. URL을 바꿔
+          # 다시 assembleDebug를 돌리면 같은 잡에서 APK 전체를 중복 빌드하므로 생성 태스크만
+          # 실행한다(#363). 형제 스텝 「debug 평문 허용 host 제한」과도 같은 경계가 된다.
+          ./gradlew generateDebugNetworkSecurityConfig
           config="app/build/generated/res/network-security/debug/xml/network_security_config.xml"
           # `!`로 부정된 명령은 errexit를 타지 않아 **마지막 줄만** 스텝 결과가 됐다. 그래서
           # 평문 트래픽 허용(`cleartextTrafficPermitted="true"`)이 새어도 이 스텝은 초록이었다 —
@@ -506,14 +512,20 @@ jobs:
             assert_absent_in_release "$canary"
           done
 
-  # 서버 스택 검사를 한 잡에 모은다. 나뉘어 있을 땐 각각 20초·33초를 쓰고도 **1분씩**
+  # 서버 스택 검사를 PR에서만 한 잡에 모은다. PR CI는 PR 브랜치를 main에 합쳐 본 merge ref를
+  # 검사한다. main이 나중에 움직여도 그 ref가 자동 갱신되지는 않지만, 무료 private 플랜이라
+  # 최신화 강제도 할 수 없다. main 푸시에서 이 잡을 다시 돌리던 안전망은 비용 대비 포기한다
+  # (#363). 서버 런타임은 Azure development deploy의 image 빌드와 /health가 별도로 확인하지만,
+  # pytest/ruff의 병합 후 재검사는 하지 않는다는 공백은 의도적이다.
+  #
+  # Backend와 Infrastructure를 나누어 두었을 땐 각각 20초·33초를 쓰고도 **1분씩**
   # 냈다 — GitHub은 잡마다 실행 시간을 1분 단위로 올려 청구하기 때문이다. 합치면 둘 다
   # 도는 실행의 청구가 2분에서 1분이 된다(표본 36건 중 34건이 합계 60초 미만).
   # 스텝별 `if`로 실제로 바뀐 쪽만 돌리는 것은 나뉘어 있을 때와 같다.
   backend:
     name: Backend (ruff + pytest + Docker + Bicep)
     needs: changes
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.infrastructure == 'true'
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.infrastructure == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
