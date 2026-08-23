@@ -253,12 +253,24 @@ class UiTreeSerializerTest {
     @Test
     fun `supplementalDescription은 API 36부터만 읽는다`() {
         // 게이트가 열리는 경계를 고정한다 — 결합 규칙 테스트만으로는 `>= 35` 오타를 못 잡는다.
-        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(36, "여성"))
-        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(37, "여성"))
-        assertNull(UiTreeSerializer.supplementalDescriptionFor(35, "여성"))
-        assertNull(UiTreeSerializer.supplementalDescriptionFor(26, "여성"))
+        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(36) { "여성" })
+        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(37) { "여성" })
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(35) { "여성" })
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(26) { "여성" })
         // 게이트가 열려도 값이 없으면 없는 것이다.
-        assertNull(UiTreeSerializer.supplementalDescriptionFor(36, null))
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(36) { null })
+    }
+
+    @Test
+    fun `게이트가 닫히면 값을 읽지도 않는다`() {
+        // 구버전에서 API 36 메서드를 부르면 NoSuchMethodError다 — 값 인자로 받으면 코틀린이
+        // 인자를 먼저 평가해 게이트 밖에서 호출된다(PR #384 2R에서 실제로 그렇게 넣었다가 잡혔다).
+        var read = false
+        assertNull(UiTreeSerializer.supplementalDescriptionFor(35) { read = true; "여성" })
+        assertFalse(read)
+
+        assertEquals("여성", UiTreeSerializer.supplementalDescriptionFor(36) { read = true; "여성" })
+        assertTrue(read)
     }
 
     @Test

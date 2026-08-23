@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.annotation.SuppressLint
 import android.graphics.Rect
 import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
@@ -488,17 +489,28 @@ object UiTreeSerializer {
      * **API 36 미만에서는 값 자체가 없어 항상 `null`이다.** 그래서 이 폴백은 구버전 동작을
      * 한 톨도 바꾸지 않는다(2026-08-22 Android 14 에뮬레이터 대조, #291).
      */
+    // lint는 게이트가 [supplementalDescriptionFor] 안에 있어 **람다 너머를 못 본다.** 런타임은
+    // 안전하다 — 람다는 `sdkInt >= BAKLAVA`일 때만 호출되고 그 성질을 단위 테스트가 잡는다.
+    // 게이트를 이 자리로 인라인하면 lint는 조용해지지만 경계가 테스트에서 빠진다(PR #384 2R).
+    @SuppressLint("NewApi")
     private fun supplementalDescriptionOf(node: AccessibilityNodeInfo): CharSequence? =
-        supplementalDescriptionFor(Build.VERSION.SDK_INT, node.supplementalDescription)
+        supplementalDescriptionFor(Build.VERSION.SDK_INT) { node.supplementalDescription }
 
     /**
      * 위 게이트를 Android 타입 없이 고정하기 위한 순수 함수.
      *
-     * **게이트 자체에 테스트가 없으면 `>= 35`로 잘못 써도 초록이다**(PR #384 리뷰). 이 파일의
-     * `resolveAxis`·`hoistedCheckedState`와 같은 컨벤션으로 뽑아 둔다.
+     * **게이트 자체에 테스트가 없으면 `>= 35`로 잘못 써도 초록이다**(PR #384 리뷰).
+     * 이 파일의 `resolveAxis`·`hoistedCheckedState`와 같은 컨벤션이다.
+     *
+     * **[value]가 람다인 것이 이 함수의 요점이다.** 값으로 받으면 코틀린이 인자를 먼저 평가해
+     * `getSupplementalDescription()`이 게이트 **밖에서** 호출되고, API 36 미만에서는 그 메서드가
+     * 없어 `NoSuchMethodError`로 죽는다. `walk`가 노드마다 부르므로 첫 직렬화에서 즉시다
+     * (PR #384 2R 리뷰에서 실제로 그렇게 넣었다가 잡혔다). **값 인자로 되돌리지 말 것.**
      */
-    internal fun supplementalDescriptionFor(sdkInt: Int, value: CharSequence?): CharSequence? =
-        if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value else null
+    internal fun supplementalDescriptionFor(
+        sdkInt: Int,
+        value: () -> CharSequence?,
+    ): CharSequence? = if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value() else null
 
     /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
     private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
