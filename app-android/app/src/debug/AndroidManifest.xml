@@ -24,10 +24,20 @@
           `com.davi.helper.debug/.MainActivity`는 클래스를 com.davi.helper.debug.MainActivity로
           풀어 틀린다 — #58)
         -->
+        <!--
+          목표를 인텐트로 넣을 수 있다(#323) — adb로 한글을 넣을 방법이 없어서 자판 자모를
+          좌표로 16번 탭하던 것을 대신한다. `am start`의 문자열 extra `davi.goal.b64`(base64)와
+          불리언 extra `davi.autostart`를 읽는다. 값을 base64로 싣는 이유는 전송 바이트를 전부
+          ASCII로 두기 위해서다. 사용법과 근거는 DebugGoalIntent의 KDoc에 있다.
+
+          singleTop인 이유는 **실행 중 재진입** 때문이다. 없으면 `am start`를 다시 해도
+          onNewIntent가 안 불려 새 목표가 조용히 무시되고 첫 회차 값이 그대로 남는다.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/main_backup_label"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize" />
         <receiver
             android:name=".GuideE2eControlReceiver"

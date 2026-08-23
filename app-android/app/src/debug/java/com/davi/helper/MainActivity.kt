@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.SpeechRecognizer
+import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -131,6 +132,63 @@ class MainActivity : AppCompatActivity() {
         binding.btnVoice.setOnClickListener { onVoiceInputTapped() }
         binding.btnStart.setOnClickListener { startGuide() }
         binding.btnStop.setOnClickListener { GuideSession.stop() }
+
+        // **재생성이면 인텐트를 다시 읽지 않는다.** 런치 인텐트는 액티비티가 재생성돼도 남아서,
+        // 그대로 두면 개발자가 던지지 않은 회차가 시작된다. 되살아나는 값도 마지막에 던진 목표가
+        // 아니라 **최초 런치 인텐트의 목표**다 — 시스템이 든 ActivityRecord.intent가 final이고
+        // 재시작 때 오는 것은 그 원본의 새 사본이라(AOSP), 인텐트에서 extra를 지우는 식으로는
+        // 프로세스 복원을 막을 수 없다. savedInstanceState가 있으면 = 재생성이므로 건너뛴다.
+        // 회전(구성 변경)과 프로세스 복원을 **한 조건으로** 덮는다.
+        // (남는 구멍 하나: 시스템이 저장 상태를 버린 뒤 최근앱에서 되살리면 다시 읽힌다.
+        //  debug 도구라 여기까지 막지 않는다 — 그때는 로그의 debug_goal_intent가 근거가 된다.)
+        if (savedInstanceState == null) applyDebugGoalIntent(intent)
+    }
+
+    /**
+     * 실행 중에 `am start`를 다시 하면 새 인텐트가 이 화면으로 배달되는데, **읽어 주지 않으면
+     * 첫 회차만 동작한다**(조건만 바꿔 연달아 던지는 게 이 진입점의 주 용도다). 매니페스트의
+     * `launchMode="singleTop"`과 짝이다 — 그게 없으면 이 콜백이 아예 안 불린다.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyDebugGoalIntent(intent)
+    }
+
+    /**
+     * 인텐트로 온 목표를 입력칸에 넣고, `autostart`면 **버튼과 같은 경로**로 안내를 시작한다(#323).
+     * 분기를 새로 만들지 않는 이유는 접근성 준비 판정([canStartGuide])을 우회하지 않기 위해서다.
+     *
+     * **채널이 adb 하나라 안 된 이유를 화면으로 알릴 수 없다.** 그래서 판정만 logcat에 남긴다 —
+     * 목표 원문은 넘기지 않는다(#81). 이게 없으면 "던졌는데 아무 일도 안 일어났다"에서 끝난다.
+     */
+    private fun applyDebugGoalIntent(intent: Intent?) {
+        if (!DebugGoalIntent.hasGoalExtra(intent)) return
+        val request = DebugGoalIntent.fromIntent(intent)
+        val outcome = DebugGoalIntent.decide(
+            request = request,
+            // **`hasGoalValue`여야 한다.** 위 `hasGoalExtra`는 autostart도 세므로 이 지점에서
+            // 늘 true다 — 그걸 넘기면 NO_GOAL이 영영 안 나오고 전부 undecodable로 찍힌다.
+            goalValuePresent = DebugGoalIntent.hasGoalValue(intent),
+            sessionActive = GuideSession.isActive,
+            canStartGuide = canStartGuide(),
+        )
+        logGoalIntent(request, outcome)
+        if (outcome.fillsField && request != null) binding.goalInput.setText(request.goal)
+        if (outcome.starts) startGuide()
+    }
+
+    private fun logGoalIntent(request: DebugGoalRequest?, outcome: DebugGoalOutcome) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            GuideTelemetry.event(
+                "debug_goal_intent",
+                "source" to request?.source?.name?.lowercase(),
+                "autostart" to request?.autoStart,
+                "started" to outcome.starts,
+                "reason" to outcome.reason,
+            ),
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

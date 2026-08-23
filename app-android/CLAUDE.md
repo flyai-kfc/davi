@@ -240,11 +240,20 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **PowerShell `>`가 `adb exec-out screencap` 바이너리를 깨뜨린다**(2026-07-28 실측). 인코딩이 끼어든다 → `adb shell screencap -p /sdcard/x.png` + `adb pull`.
   깨뜨리는 것은 **PowerShell의 `>`뿐이다** — `cmd /c` 리다이렉트로는 PNG가 멀쩡했다(2026-08-21 실측,
   헤더 `89 50 4E 47` 확인). 다만 `exec-out`이 1485ms로 위 경로(1518ms)보다 빠르지도 않아 쓸 이유가 없다.
-- **`adb shell input text`는 한글을 못 넣는다**(2026-07-28 실측). 목표 입력은 기기에서 직접 치거나 다른 경로로.
+- **`adb shell input text`는 한글을 못 넣는다**(2026-07-28 실측).
   **버전·기기 문제가 아니라 구조다**(2026-08-21 조사) — AOSP `InputShellCommand`가 `KeyCharacterMap`으로
   문자를 키 이벤트로 바꾸는데 가상 키보드 kcm에 없는 글자는 이벤트가 아예 안 난다. `cmd clipboard`
   부재도 삼성이 뺀 게 아니라 **AOSP에 원래 없다**(`ClipboardService`에 `onShellCommand` 구현 없음) —
-  다른 기기로 바꿔도 안 된다. 대안은 #323.
+  다른 기기로 바꿔도 안 된다. **그래서 debug 백업 화면이 목표를 인텐트로 받는다**(#323) —
+  `am start`에 문자열 extra `davi.goal.b64`(base64)와 불리언 extra `davi.autostart`를 붙인다.
+  base64인 이유는 전송 바이트를 전부 ASCII로 만들어 인코딩 통과 여부를 논점에서 지우기 위해서다.
+  근거와 형태는 `DebugGoalIntent`의 KDoc에 있다 — **debug 소스셋 전용이라 릴리스엔 없다**
+  (CI가 release 산출물에 그 키가 없는지 카나리아로 확인한다).
+  **안내 세션이 도는 중에 던지면 목표가 무시된다**(로그에 `reason=session_active`) — 다만
+  `am start`가 이 화면을 앞으로 내므로 안내 중이던 대상 앱이 뒤로 밀린다. 회차를 바꾸려면
+  먼저 중지할 것.
+- **자판 좌표 탭은 목표 입력에는 더 이상 쓰지 않는다**(위 #323이 대신한다). 아래는 다른 앱의
+  입력칸을 채워야 할 때 남는 측정이다.
 - **자판 좌표를 탭해 한글을 넣을 땐 기기 셸 한 번에 몰아친다**(2026-08-21 실측). 탭마다 adb를 부르면
   16탭에 4075ms, `adb shell "input tap ..; input tap .."`로 묶으면 **960ms**다(결과 문자열 동일).
   **`input tap x1 y1 x2 y2`처럼 좌표를 나열하는 건 안 된다 — 첫 쌍만 먹고 조용히 끝난다.**
