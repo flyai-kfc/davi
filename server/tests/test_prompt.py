@@ -22,6 +22,7 @@ from app.prompt import (
     STEP_SCREEN_RETURNED,
     STEP_UNCHANGED,
     SWIPE_DIRECTION_LEGEND,
+    TRIED_COUNT_INSTRUCTION,
     UNCHANGED_STEP_INSTRUCTION,
     build_prompt,
     fallback_prompt,
@@ -850,3 +851,57 @@ def test_returned_screen_ignores_steps_that_never_became_a_line():
     prompt = build_prompt(_back_on(instruction="   "))
 
     assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def _with_target(label: str, *steps: GuideStep) -> NextStepRequest:
+    """그 label을 가진 요소가 지금 화면에 있는 요청."""
+
+    return NextStepRequest(
+        goal="다음 항목 보기",
+        screen=Screen(
+            package_name="com.example.app",
+            elements=[UiElement(node_id="n1", label=label, clickable=True)],
+        ),
+        steps=list(steps),
+    )
+
+
+def test_element_line_carries_how_many_times_it_was_guided():
+    prompt = build_prompt(_with_target("카메라", _step(), _step(instruction="다시 눌러 주세요.")))
+
+    assert "tried=2" in prompt
+    assert TRIED_COUNT_INSTRUCTION in prompt
+
+
+def test_element_line_is_silent_when_it_was_never_guided():
+    """0은 적지 않는다 — 요소가 최대 200개라 기본값 줄이 붙으면 토큰이 그만큼 불어난다."""
+
+    prompt = build_prompt(_with_target("카메라"))
+
+    assert "tried=" not in prompt
+    assert TRIED_COUNT_INSTRUCTION not in prompt
+
+
+def test_tried_count_is_explained_only_when_it_reaches_an_element_on_screen():
+    """이력에 있어도 그 label이 지금 화면에 없으면 요소 줄에 안 붙는다.
+
+    설명만 붙으면 프롬프트에 없는 표기를 설명하게 된다 — 조건부 문장들이 막으려는 그 경우다.
+    """
+
+    prompt = build_prompt(_with_target("설정", _step()))
+
+    assert "tried=" not in prompt
+    assert TRIED_COUNT_INSTRUCTION not in prompt
+
+
+def test_tried_count_ignores_steps_that_never_became_a_line():
+    prompt = build_prompt(_with_target("카메라", _step(instruction="   ")))
+
+    assert "tried=" not in prompt
+
+
+def test_tried_count_states_the_observation_without_prescribing():
+    """상태를 줄 뿐 무엇을 누르라고 하지 않는다(C17 — 문구가 값을 끌어당긴 전례)."""
+
+    assert "이미 N번 안내했다" in TRIED_COUNT_INSTRUCTION
+    assert "다른 요소를 고르세요" in TRIED_COUNT_INSTRUCTION

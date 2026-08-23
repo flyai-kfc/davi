@@ -221,6 +221,13 @@ RETURNED_SCREEN_INSTRUCTION = (
     "구조의 화면**이라는 관측입니다. 구조만 본 것이라 내용이 다른 화면일 수도 있습니다. "
     "그 안내가 돌고 돌아 제자리로 왔다면 같은 선택을 반복하지 말고 다른 길을 고르세요."
 )
+# 요소 줄의 시도 횟수(#386). **상태를 줄 뿐 지시하지 않는다**(루트 CLAUDE.md: 지식이 아니라
+# 상태). 이력 줄에도 같은 사실이 있지만 거기서는 스텝 순서로 흩어져 있어 "이 요소를 몇 번
+# 시도했나"를 세어야 알 수 있다. 요소 줄에 붙이면 모델이 대상을 고르는 그 자리에서 보인다.
+TRIED_COUNT_INSTRUCTION = (
+    "요소 줄의 `tried=N`은 이 세션에서 그 요소를 대상으로 **이미 N번 안내했다**는 뜻입니다. "
+    "여러 번 안내했는데도 목표에 가까워지지 않았다면 다른 요소를 고르세요."
+)
 
 
 def build_prompt(req: NextStepRequest) -> str:
@@ -370,6 +377,10 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
         lines.append(PERFORMED_STEP_INSTRUCTION)
     if any(_returned_to(step, current) for step in steps):
         lines.append(RETURNED_SCREEN_INSTRUCTION)
+    # 요소 줄에 `tried=`가 실제로 붙었을 때만 설명한다. 이력이 있어도 그 label이 지금 화면에
+    # 없으면 요소 줄에 안 붙으므로, 이력이 아니라 **현재 화면 요소**를 기준으로 본다.
+    if _tried_counts(req).keys() & {e.label.strip() for e in _visible_elements(req)}:
+        lines.append(TRIED_COUNT_INSTRUCTION)
     # 단정은 **마지막 스텝**이 tap이고 눌림 확인 + 화면 그대로일 때만이다. 과거 스텝의 이
     # 조합은 그 뒤 진행으로 이미 해소됐을 수 있고(느린 화면 전환이 재질의 직후 일어난 경우),
     # type은 눌림 확인이 "입력칸을 눌렀다"까지라 "아직 안 했다"가 배제되지 않는다.
@@ -607,12 +618,32 @@ def _visible_elements(req: NextStepRequest) -> list[UiElement]:
 
 
 def _screen_elements(req: NextStepRequest) -> str:
+    tried = _tried_counts(req)
     return (
-        "\n".join(_format_element(element) for element in _visible_elements(req)) or "- 요소 없음"
+        "\n".join(_format_element(element, tried) for element in _visible_elements(req))
+        or "- 요소 없음"
     )
 
 
-def _format_element(element: UiElement) -> str:
+def _tried_counts(req: NextStepRequest) -> dict[str, int]:
+    """label별로 이 세션에서 몇 번 안내 대상이 됐는지.
+
+    **`target_label`로 센다.** `target_node_id`는 화면을 다시 읽을 때마다 새로 매겨지는 값이라
+    같은 요소를 가리키지 않는다. label은 1차 마스킹을 거친 값이고 이력에 이미 실려 있다.
+
+    줄이 만들어지지 않은 스텝(빈 안내문)은 세지 않는다 — 이력에 없는 것을 요소 줄이 세면
+    두 자리가 다른 말을 한다.
+    """
+
+    counts: dict[str, int] = {}
+    for step in _history(req):
+        label = (step.target_label or "").strip()
+        if label:
+            counts[label] = counts.get(label, 0) + 1
+    return counts
+
+
+def _format_element(element: UiElement, tried: dict[str, int]) -> str:
     details = [
         f"id={element.node_id}",
         f"label={element.label!r}",
@@ -643,4 +674,8 @@ def _format_element(element: UiElement) -> str:
         ("prev_swipe_direction", element.prev_swipe_direction),
     )
     details.extend(f"{name}={value}" for name, value in optional_fields if value is not None)
+    # 시도한 적이 있을 때만 붙인다(C10의 침묵 규약 — 0은 적지 않는다).
+    count = tried.get(element.label.strip())
+    if count:
+        details.append(f"tried={count}")
     return "- " + ", ".join(details)
