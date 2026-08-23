@@ -89,10 +89,11 @@ object GuideScreenLog {
      *
      * 시그니처는 라벨을 담으므로 **원문 대신 해시만** 남긴다. 같은지 다른지만 알면 된다.
      */
-    fun sample(decision: String, elementCount: Int, signature: String) {
+    fun sample(decision: String, elementCount: Int, signature: String, serializeMs: Long) {
         Log.d(
             GuideAccessibilityService.TAG,
-            "poll=$decision n=$elementCount sig=${Integer.toHexString(signature.hashCode())}",
+            "poll=$decision n=$elementCount ms=$serializeMs " +
+                "sig=${Integer.toHexString(signature.hashCode())}",
         )
     }
 

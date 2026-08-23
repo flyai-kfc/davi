@@ -490,6 +490,9 @@ class GuideAccessibilityService : AccessibilityService() {
         val windowTypes = runCatching { windows.map { it.type } }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
+        // 직렬화에 든 시간(#367). **`SystemClock.uptimeMillis`를 쓴다** — 벽시계는 시각 동기화로
+        // 뒤로 갈 수 있고, 이 값은 `POLL_MS`·`SETTLE_MS` 예산과 비교하는 용도다.
+        val serializeStart = SystemClock.uptimeMillis()
         val result = runCatching {
             UiTreeSerializer.serialize(root, windowTypes, windowTitle)
         }.getOrElse {
@@ -497,13 +500,16 @@ class GuideAccessibilityService : AccessibilityService() {
             scheduleSample(POLL_MS)
             return
         }
+        val serializeMs = SystemClock.uptimeMillis() - serializeStart
 
         val signature = ScreenSignature.of(result.screen)
         val now = SystemClock.uptimeMillis()
         val hasLabeledElement = result.screen.hasLabeledElement()
         val decision = stability.onSample(signature, now, hasLabeledElement)
-        // 계측(임시). IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
-        GuideScreenLog.sample(decision.name, result.screen.elements.size, signature)
+        // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
+        // `ms`는 #367이 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 직렬화 소요다 — 폴링마다 찍혀야
+        // p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
+        GuideScreenLog.sample(decision.name, result.screen.elements.size, signature, serializeMs)
         lastDecision = decision
         updateReading()
 
