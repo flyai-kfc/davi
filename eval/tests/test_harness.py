@@ -104,6 +104,17 @@ def test_iso_date_in_plain_string_field_is_not_flagged(tmp_path: Path):
 
     assert fixture.document.description == "2026-07-27"
 
+    # 이 테스트가 **`input` 밖의 평범한 문자열 필드도 검사 대상**이라는 유일한 증거였다.
+    # 날짜 쪽으로 뒤집으면서 그 증거까지 잃지 않도록 계좌 케이스를 같은 필드에 남긴다.
+    payload["description"] = "123456-01-123456"
+    path = _write_fixture(tmp_path, "account-in-description.json", payload)
+
+    with pytest.raises(FixtureError) as raised:
+        load_fixture(path)
+
+    assert "$.description" in str(raised.value)
+    assert "123456-01-123456" not in str(raised.value)
+
 
 def test_observed_action_requires_explicit_review_state(tmp_path: Path):
     payload = _fixture_payload()

@@ -115,8 +115,11 @@ def test_masks_unicode_digit_and_space_variants(label):
 
     앱은 같은 문자열을 `(?U)`로 컴파일해 여기에 맞춘다. **앱이 놓치면 원본이 그대로 기기를
     떠나므로**(`SPEC.md` §2) 두 쪽이 갈리면 안 된다. 여기서 `re.ASCII`를 켜면 이 줄이 빨개진다.
+
+    앱 쪽 `masksUnicodeDigitAndSpaceVariants`와 **같은 세 입력·같은 기대값**이다. "가려지기만
+    하면 통과"로 두면 부분 치환(`•••01•••`)도 통과해 두 쪽의 결과가 갈려도 모른다.
     """
-    assert mask_text(label) != label
+    assert mask_text(label) == "•••"
 
 
 @pytest.mark.parametrize("label", ["1234-05-06", "12-05-06"])
