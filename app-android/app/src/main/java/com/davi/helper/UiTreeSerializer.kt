@@ -1,6 +1,8 @@
 package com.davi.helper
 
+import android.annotation.SuppressLint
 import android.graphics.Rect
+import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -471,14 +473,44 @@ object UiTreeSerializer {
                     hasNearbyAdjustableAncestor = hasNearbyAdjustableAncestor(node),
                 )?.let { return it }
             }
-            return editableLabel(node.hintText)
+            return editableLabel(node.hintText, supplementalDescriptionOf(node))
         }
-        val text = node.text?.toString()?.trim()
-        if (!text.isNullOrEmpty()) return text
-        val desc = node.contentDescription?.toString()?.trim()
-        if (!desc.isNullOrEmpty()) return desc
-        return null
+        return staticLabel(
+            text = node.text,
+            contentDescription = node.contentDescription,
+            supplementalDescription = supplementalDescriptionOf(node),
+        )
     }
+
+    /**
+     * 관계로 붙은 이름이 사는 칸(#381). Chromium이 `<label for>`·`<label>`로 감싼 이름을
+     * **API 36부터 여기로 보낸다** — 그 전에는 같은 값이 `text`(라디오)·`hintText`(입력칸)로 왔다.
+     *
+     * **API 36 미만에서는 값 자체가 없어 항상 `null`이다.** 그래서 이 폴백은 구버전 동작을
+     * 한 톨도 바꾸지 않는다(2026-08-22 Android 14 에뮬레이터 대조, #291).
+     */
+    // lint는 게이트가 [supplementalDescriptionFor] 안에 있어 **람다 너머를 못 본다.** 런타임은
+    // 안전하다 — 람다는 `sdkInt >= BAKLAVA`일 때만 호출되고 그 성질을 단위 테스트가 잡는다.
+    // 게이트를 이 자리로 인라인하면 lint는 조용해지지만 경계가 테스트에서 빠진다(PR #384 2R).
+    @SuppressLint("NewApi")
+    private fun supplementalDescriptionOf(node: AccessibilityNodeInfo): CharSequence? =
+        supplementalDescriptionFor(Build.VERSION.SDK_INT) { node.supplementalDescription }
+
+    /**
+     * 위 게이트를 Android 타입 없이 고정하기 위한 순수 함수.
+     *
+     * **게이트 자체에 테스트가 없으면 `>= 35`로 잘못 써도 초록이다**(PR #384 리뷰).
+     * 이 파일의 `resolveAxis`·`hoistedCheckedState`와 같은 컨벤션이다.
+     *
+     * **[value]가 람다인 것이 이 함수의 요점이다.** 값으로 받으면 코틀린이 인자를 먼저 평가해
+     * `getSupplementalDescription()`이 게이트 **밖에서** 호출되고, API 36 미만에서는 그 메서드가
+     * 없어 `NoSuchMethodError`로 죽는다. `walk`가 노드마다 부르므로 첫 직렬화에서 즉시다
+     * (PR #384 2R 리뷰에서 실제로 그렇게 넣었다가 잡혔다). **값 인자로 되돌리지 말 것.**
+     */
+    internal fun supplementalDescriptionFor(
+        sdkInt: Int,
+        value: () -> CharSequence?,
+    ): CharSequence? = if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value() else null
 
     /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
     private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
@@ -554,11 +586,50 @@ object UiTreeSerializer {
         return masker.mask(normalized).take(MAX_LABEL_CHARS)
     }
 
-    /** Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수. */
-    internal fun editableLabel(hintText: CharSequence?): String? {
-        val hint = hintText?.toString()?.trim()
-        return hint?.takeIf { it.isNotEmpty() }
+    /**
+     * Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수.
+     *
+     * **입력 원문은 여전히 읽지 않는다** — `hintText`는 placeholder, [name]은 `<label>`이 준
+     * 이름이고 둘 다 사용자가 넣은 값이 아니다(#112 경계 그대로).
+     *
+     * 둘을 합치는 이유는 **구버전이 이미 합쳐서 주기 때문**이다 — API 35 이하에서는
+     * `hint='방문자명 방문자명을 입력하세요'` 한 덩어리로 오고, API 36에서 이름만
+     * `supplementalDescription`으로 갈라졌다(#291 대조). 같은 화면이 버전에 따라 다른 label을
+     * 내지 않게 여기서 되붙인다.
+     */
+    internal fun editableLabel(hintText: CharSequence?, name: CharSequence? = null): String? {
+        val hint = hintText?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val label = name?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        if (label == null) return hint
+        if (hint == null || hint == label) return label
+        // 이름이 hint 앞에 이미 붙어 있으면 두 번 싣지 않는다.
+        //
+        // **구버전이 여기 오지는 않는다**(PR #384 리뷰) — 구버전은 [name]이 항상 `null`이라
+        // 위에서 이미 반환된다. 이 줄이 실제로 막는 것은 **API 36인데 앱이 이름을 hint에도 같이
+        // 실은 경우**다(구 WebView + 신 플랫폼 조합).
+        //
+        // 공백까지 봐야 한다 — `startsWith(label)`만으로는 `'방문자명'`이 `'방문자명을 입력하세요'`에
+        // 걸려 이름이 조용히 안 붙는다(한국어 조사가 붙는 형태라 흔하다).
+        if (hint.startsWith("$label ")) return hint
+        return "$label $hint"
     }
+
+    /**
+     * 편집 불가 노드의 이름을 **우선순위대로** 고른다(#381).
+     *
+     * `text` → `contentDescription` → `supplementalDescription` 순이고 앞의 값이 있으면 뒤는 안 본다.
+     *
+     * **`labeledBy`는 넣지 않았다.** 이름이 다른 노드에 있는 또 하나의 경로이지만, 두 번의
+     * 프로브 실측(웹뷰 · 설정 개발자 옵션)에서 값이 온 적이 **0건**이다. 반면 그 값을 읽으려면
+     * 앞이 전부 빈 노드마다 IPC가 한 번씩 더 나가는데, **이름 없는 컨테이너는 트리에 흔하다** —
+     * 관측된 이득 없이 순회 비용만 는다(#367). 표본이 나오면 그때 넣는다.
+     */
+    internal fun staticLabel(
+        text: CharSequence?,
+        contentDescription: CharSequence?,
+        supplementalDescription: CharSequence?,
+    ): String? = sequenceOf(text, contentDescription, supplementalDescription)
+        .firstNotNullOfOrNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
 
     /** Android 객체 없이 NumberPicker 값 공개 조건과 개인정보 경계를 테스트하기 위한 순수 함수. */
     internal fun adjustableNumericLabel(

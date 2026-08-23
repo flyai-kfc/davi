@@ -379,7 +379,8 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
   카드번호·휴대폰·계좌번호·MAC 주소를 `•••`로 1차 마스킹한다(MAC은 #357). **패턴 밖 고유명
   (사람 이름·기기명·대화방 제목)은 대상이 아니다**(`../SPEC.md` §2, #360). 도그푸딩 raw 저장에는 그대로 남는다(#375). 스크롤 메타·페이지 dot과
   `editable`·`focused`·`ime_visible`도 채운다. 일반 편집 요소의 입력된 `text`와 IME 키 트리는 보내지
-  않고 hint만 label 후보로 쓴다(#112). `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
+  않고 hint와 `supplementalDescription`을 label 후보로 쓴다(#112 경계 그대로, 후자는 #381).
+  `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
   보임·활성·조작 action·가까운 조정 가능 조상을 확인한 짧은 숫자 label만 예외로 보존한다.
   이 선택값의 숫자는 화면 시그니처에도 포함해 picker 스크롤 뒤 후속 안내를 다시 요청한다.
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
