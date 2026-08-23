@@ -120,6 +120,20 @@ data class ConversationRenderModel(
      * 하지 않는다 — 「몇 개 중 몇 번째」가 뜻을 가지려면 뒤에 올 것이 있어야 한다.
      */
     val stepChipVisible: Boolean = false,
+    /**
+     * **구체화 흐름 안인가**(#374) — 선택 화면과 「직접 말하기」 청취를 함께 덮는다.
+     *
+     * [clarificationVisible]과 다르다. 그쪽은 **선택 영역이 화면에 있는가**라 「직접 말하기」로
+     * 넘어가면 꺼진다. 이 값은 **그 흐름 안에 있는가**라 청취에서도 켜져 있다.
+     *
+     * **카드 위치를 잡는 값 둘(배지 위 여백·카드 위 패딩)이 이것을 본다.** 흐름 안에서 카드가
+     * 뛰지 않으려면 두 화면이 같은 신호를 써야 한다 — 한때 `clarificationVisible`을 봐서
+     * **질문이 하나일 때 「직접 말하기」를 누르면 카드가 28dp 내려앉았다**(2026-08-23 리뷰).
+     * 질문이 둘 이상이면 [stepChipVisible]이 두 화면을 묶어 줘서 그 자리만 남았던 것이다.
+     *
+     * 홈에서 바로 들어온 청취는 `clarification == null`이라 켜지지 않는다.
+     */
+    val inClarificationFlow: Boolean = false,
     val safeEndVisible: Boolean = false,
     /** 메인 10 종료 확인 모달(#197). 메인 9 위에 덮인다. */
     val stopConfirmVisible: Boolean = false,
@@ -281,6 +295,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         utteranceSpeaking = true,
         // 구체화에서 넘어온 청취면 진행도를 이어서 보인다 — 답하는 중에도 어디쯤인지 보인다.
         stepChipVisible = (state.clarification?.questionCount ?: 0) > 1,
+        inClarificationFlow = state.clarification != null,
     )
     is ConversationUiState.Requesting -> ConversationRenderModel(
         logoVisible = true,
@@ -311,6 +326,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
         // 그쪽은 화자가 이미 라벨로 갈려 있어 글로우가 다른 일을 할 수 있다.
         cardGlowVisible = true,
         stepChipVisible = state.outcome.questionCount > 1,
+        inClarificationFlow = true,
     )
     is ConversationUiState.Confirm -> when (state.kind) {
         ConfirmKind.GOAL -> ConversationRenderModel(

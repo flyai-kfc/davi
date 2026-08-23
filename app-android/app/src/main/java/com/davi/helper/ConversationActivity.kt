@@ -772,7 +772,11 @@ class ConversationActivity : AppCompatActivity() {
                     // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
                     // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
                     // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
-                    model.clarificationVisible ->
+                    //
+                    // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
+                    // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
+                    // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
+                    model.inClarificationFlow ->
                         R.dimen.davi_badge_margin_top_clarification_nochip
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     else -> R.dimen.davi_badge_margin_top
@@ -784,11 +788,12 @@ class ConversationActivity : AppCompatActivity() {
         // 넘어가는 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라
         // 눈에 잘 안 띈다). 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
         //
-        // **clarificationVisible도 남긴다** — 둘 중 하나만 두면 칩이 없는 1문항 구체화가
-        // 48dp로 떨어지고, 위 배지 여백과 합쳐 화면이 52dp 밀린다(2026-08-23 리뷰).
+        // **inClarificationFlow를 본다** — 칩이 없는 1문항도, 「직접 말하기」로 넘어간 청취도
+        // 같은 값이어야 한다. clarificationVisible은 청취에서 꺼지고 stepChipVisible은
+        // 1문항에서 꺼져, 어느 하나만 보면 그 조합에서 글자가 4dp 밀린다(2026-08-23 리뷰).
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.clarificationVisible || model.stepChipVisible) {
+                if (model.guidingVisible || model.inClarificationFlow) {
                     R.dimen.davi_card_padding_top_guiding
                 }
                 else R.dimen.davi_card_padding_top_davi,

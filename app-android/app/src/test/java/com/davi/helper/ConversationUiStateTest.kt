@@ -567,6 +567,31 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `구체화 흐름 신호는 질문 수와 무관하게 선택과 청취를 함께 덮는다`() {
+        // **카드 위치를 잡는 값 둘이 이것을 본다**(#374). 흐름 안에서 카드가 뛰지 않으려면
+        // 두 화면이 같은 신호를 써야 한다 — clarificationVisible은 청취에서 꺼지고
+        // stepChipVisible은 1문항에서 꺼져, 어느 하나만 보면 **질문이 하나일 때
+        // 「직접 말하기」를 누르는 순간 카드가 28dp 내려앉는다**(2026-08-23 리뷰).
+        for (count in 1..2) {
+            val outcome = clarificationOutcome(questionCount = count)
+            assertTrue(
+                "질문 ${count}개 선택 화면",
+                renderModelOf(ConversationUiState.Clarifying(outcome)).inClarificationFlow,
+            )
+            assertTrue(
+                "질문 ${count}개 직접 말하기 청취",
+                renderModelOf(
+                    ConversationUiState.Listening(question = "누구에게?", clarification = outcome),
+                ).inClarificationFlow,
+            )
+        }
+        // 홈에서 바로 들어온 청취는 구체화 흐름이 아니다.
+        assertFalse(renderModelOf(ConversationUiState.Listening()).inClarificationFlow)
+        assertFalse(renderModelOf(ConversationUiState.Home()).inClarificationFlow)
+        assertFalse(renderModelOf(ConversationUiState.Confirm("목표")).inClarificationFlow)
+    }
+
+    @Test
     fun `앱 미확인 경고에는 바로가기 행이 없다`() {
         // 사전 점검이 미확인이면 **열 수 있는지 모르는 앱**이다(#185). 여기서 행을 세우면
         // 눌렀을 때 열릴지 안 열릴지 모르는 곳으로 어르신을 보낸다.
