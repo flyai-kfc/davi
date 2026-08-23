@@ -89,6 +89,28 @@ class PrivacyMaskerTest {
     }
 
     /**
+     * 날짜와 계좌가 공백 하나로 붙은 형태(PR #377 리뷰). 서버 테스트와 같은 목록이다.
+     *
+     * 날짜를 lookahead로 건너뛰기만 하면 엔진이 월 덩어리에서 다시 시작해 계좌 앞자리를
+     * 삼키고 **뒷자리를 평문으로 남긴다.** 거래내역·이체 화면 label이 이 모양이다.
+     */
+    @Test
+    fun dateNextToAccountMasksOnlyTheAccount() {
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 110-123-456789"))
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 123456-01-123456"))
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 352 1234 5678"))
+        assertEquals("2026-08-18 신한 •••", PrivacyMasker.maskText("2026-08-18 신한 110-123-456789"))
+        // 날짜 뒤에 숫자가 바로 붙는 형태 — 날짜를 소비하므로 날짜도 살아난다.
+        assertEquals("주문번호 2026-08-18-000123", PrivacyMasker.maskText("주문번호 2026-08-18-000123"))
+        assertEquals("2026-08-18-1234", PrivacyMasker.maskText("2026-08-18-1234"))
+        // 실기기 재현에 쓴 형태(#361).
+        assertEquals(
+            "2026-08-20-team-meeting.txt",
+            PrivacyMasker.maskText("2026-08-20-team-meeting.txt"),
+        )
+    }
+
+    /**
      * `\d`·`\s`가 유니코드로 해석되는지 고정한다(#361).
      *
      * 자바는 기본이 ASCII라 전각 숫자·NBSP를 놓쳤고, 파이썬 `re`는 유니코드가 기본이라 서버만
