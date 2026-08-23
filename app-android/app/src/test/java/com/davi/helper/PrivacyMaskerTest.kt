@@ -37,6 +37,56 @@ class PrivacyMaskerTest {
         assertEquals("•••으로 보내기", PrivacyMasker.maskText("hong@example.com으로 보내기"))
     }
 
+    /**
+     * 국내 계좌 표기 형태(숫자는 합성). 날짜를 피하려고 좁히면서 **이것들이 계속 걸리는지**가
+     * 이 변경의 관문이다(#361). 서버 `test_masking.py`와 같은 목록이다.
+     */
+    @Test
+    fun masksAccountLikeNumbers() {
+        assertEquals("•••", PrivacyMasker.maskText("110-123-456789"))
+        assertEquals("•••", PrivacyMasker.maskText("1002-123-456789"))
+        assertEquals("•••", PrivacyMasker.maskText("1234-56-789012"))
+        assertEquals("•••", PrivacyMasker.maskText("333-01-234567"))
+        assertEquals("계좌 •••로 송금", PrivacyMasker.maskText("계좌 123-456-789012로 송금"))
+        // 첫 덩어리가 6자리인 형태(국민은행·우체국)는 이번에 새로 걸린다 — 옛 `\d{2,4}`에
+        // 안 맞아 통째로 새고 있었다.
+        assertEquals("•••", PrivacyMasker.maskText("123456-01-123456"))
+        assertEquals("•••", PrivacyMasker.maskText("012345-01-123456"))
+        // 날짜가 아닌 세 덩어리는 계속 걸린다 — 달·일 범위를 보기 때문이다.
+        assertEquals("•••", PrivacyMasker.maskText("12-34-56"))
+        assertEquals("•••", PrivacyMasker.maskText("02-123-4567"))
+    }
+
+    /**
+     * 날짜가 계좌 패턴에 걸려 가려졌다(#361).
+     *
+     * 개인정보가 새는 문제가 아니라 **안내 품질이 조용히 깎이는** 문제였다 — 알람·캘린더처럼
+     * 날짜가 label의 핵심인 화면에서 모델이 그 날짜를 가리킬 수 없게 된다.
+     */
+    @Test
+    fun leavesDatesUntouched() {
+        listOf(
+            "2026-08-18",
+            "26-08-18",
+            "1999-12-31",
+            "2026 08 18",
+            "2026-01-01",
+            "2026-12-31",
+            "일정 2026-08-20 회의",
+        ).forEach { assertEquals(it, PrivacyMasker.maskText(it)) }
+    }
+
+    /**
+     * `1234-05-06`처럼 **날짜 모양인 8자리 숫자**는 이제 가려지지 않는다.
+     *
+     * 국내 계좌는 그보다 길어 이 형태와 겹치지 않는다고 보고 택한 맞바꿈이다. 이 줄이 빨개지면
+     * 맞바꿈을 되짚는 것이므로, 패턴을 바꾸기 전에 `PrivacyMasker`의 근거 주석부터 읽는다.
+     */
+    @Test
+    fun dateShapedShortNumberIsAKnownTradeoff() {
+        assertEquals("1234-05-06", PrivacyMasker.maskText("1234-05-06"))
+    }
+
     /** 블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②). */
     @Test
     fun masksMacAddresses() {
