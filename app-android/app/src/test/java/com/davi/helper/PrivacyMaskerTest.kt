@@ -77,14 +77,15 @@ class PrivacyMaskerTest {
     }
 
     /**
-     * `1234-05-06`처럼 **날짜 모양인 8자리 숫자**는 이제 가려지지 않는다.
+     * **날짜 모양이면 계좌처럼 생겨도 가려지지 않는다** — 4-2-2(8자리)와 2-2-2(6자리) 둘 다.
      *
-     * 국내 계좌는 그보다 길어 이 형태와 겹치지 않는다고 보고 택한 맞바꿈이다. 이 줄이 빨개지면
+     * 국내 계좌는 둘 다보다 길어 겹치지 않는다고 보고 택한 맞바꿈이다. 이 줄이 빨개지면
      * 맞바꿈을 되짚는 것이므로, 패턴을 바꾸기 전에 `PrivacyMasker`의 근거 주석부터 읽는다.
      */
     @Test
     fun dateShapedShortNumberIsAKnownTradeoff() {
         assertEquals("1234-05-06", PrivacyMasker.maskText("1234-05-06"))
+        assertEquals("12-05-06", PrivacyMasker.maskText("12-05-06"))
     }
 
     /** 블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②). */
