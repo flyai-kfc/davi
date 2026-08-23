@@ -905,3 +905,51 @@ def test_tried_count_states_the_observation_without_prescribing():
 
     assert "이미 N번 안내했다" in TRIED_COUNT_INSTRUCTION
     assert "다른 요소를 고르세요" in TRIED_COUNT_INSTRUCTION
+
+
+def test_tried_count_skips_elements_that_cannot_be_a_target():
+    """label로 세므로 같은 이름의 제목·설명 텍스트에도 걸린다.
+
+    실측(2026-08-23): 목록 항목 '디스플레이'를 누른 뒤 들어간 화면의 **제목** TextView에
+    `tried=1`이 붙었다. 그 요소는 `target_node_id`로 지목된 적이 없다.
+    """
+
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=Screen(
+            package_name="com.example.app",
+            elements=[
+                UiElement(node_id="n1", label="디스플레이", role="TextView"),
+                UiElement(node_id="n2", label="디스플레이", role="LinearLayout", clickable=True),
+            ],
+        ),
+        steps=[_step(target_label="디스플레이")],
+    )
+
+    lines = [ln for ln in build_prompt(request).splitlines() if ln.startswith("- id=")]
+
+    assert "tried=" not in lines[0]
+    assert "tried=1" in lines[1]
+
+
+def test_tried_count_reaches_a_scroll_target():
+    """scroll 대상은 clickable이 아닐 수 있다 — 스크롤 상태가 관측된 요소도 대상이 된다."""
+
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=Screen(
+            package_name="com.example.app",
+            elements=[
+                UiElement(node_id="n1", label="목록", can_scroll_forward=True),
+            ],
+        ),
+        steps=[
+            _step(
+                action_type=ActionType.SCROLL,
+                direction=SwipeDirection.DOWN,
+                target_label="목록",
+            )
+        ],
+    )
+
+    assert "tried=1" in build_prompt(request)

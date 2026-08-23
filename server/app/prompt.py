@@ -625,6 +625,20 @@ def _screen_elements(req: NextStepRequest) -> str:
     )
 
 
+def _can_be_target(element: UiElement) -> bool:
+    """안내 대상으로 지목될 수 있는 요소인가.
+
+    tap 대상은 clickable이어야 하고(C20 · #311), scroll 대상은 스크롤 상태가 관측된 요소다.
+    둘 다 아닌 요소(제목·설명 텍스트)는 `target_node_id`로 지목된 적이 없다.
+    """
+
+    return (
+        element.clickable
+        or element.can_scroll_forward is not None
+        or element.can_scroll_backward is not None
+    )
+
+
 def _tried_counts(req: NextStepRequest) -> dict[str, int]:
     """label별로 이 세션에서 몇 번 안내 대상이 됐는지.
 
@@ -675,7 +689,11 @@ def _format_element(element: UiElement, tried: dict[str, int]) -> str:
     )
     details.extend(f"{name}={value}" for name, value in optional_fields if value is not None)
     # 시도한 적이 있을 때만 붙인다(C10의 침묵 규약 — 0은 적지 않는다).
+    # **대상이 될 수 있는 요소에만 붙인다.** label로 세므로 같은 이름의 제목·설명 텍스트에도
+    # 걸린다 — 실측에서 목록 항목 '디스플레이'를 누른 뒤 들어간 화면의 **제목** TextView에
+    # `tried=1`이 붙었다. 지금은 표시만 어긋나지만 이 값을 배제 근거로 쓰면 시도한 적 없는
+    # 요소를 지운다.
     count = tried.get(element.label.strip())
-    if count:
+    if count and _can_be_target(element):
         details.append(f"tried={count}")
     return "- " + ", ".join(details)
