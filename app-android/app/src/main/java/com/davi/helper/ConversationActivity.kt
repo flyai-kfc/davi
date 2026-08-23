@@ -581,21 +581,6 @@ class ConversationActivity : AppCompatActivity() {
         // 마이크 사이가 시안(48)과 무관하게 벌어진다. 홈은 마이크가 바닥에 못 박혀 있어
         // 아래 여백(davi_home_control_reserve)이 그 자리를 대신한다.
         binding.spaceHomeMid.isVisible(model.guidingVisible)
-        // **확인 화면에서 남는 높이는 버튼 셋 아래에 남긴다**(#378, 2026-08-23 시안 담당 결정).
-        //
-        // 한때 이 Space를 켜서 슬랙을 **카드와 (1) 사이**로 몰았다(#351 리뷰) — 「(3)의 바닥은
-        // 다른 화면의 마이크 바닥과 같은 선」이라는 시안 근거였다. 그런데 **시안 프레임은 620이고
-        // 실기기는 780dp**라, 세로 거리 1:1에서 **시안에 없는 160dp**가 남는다. 그것이 전부
-        // 가운데로 가면 기본 배율에서 카드와 (1) 사이가 **150dp 비었다**(실기기 실측).
-        //
-        // **가운데가 비면 「덜 그려진 화면」으로 읽힌다.** 아래가 비는 것은 다르다 — 그 자리는
-        // 원래 마이크 자리라 「여기엔 마이크가 없다」로 읽히고 어르신이 거기서 무엇을 기다리지
-        // 않는다. **「같은 바닥선」보다 「가운데가 비지 않는 것」이 먼저다.**
-        //
-        // **포기한 것을 숨기지 않는다** — (3)의 바닥이 마이크 바닥선보다 위에 서고, (2)가
-        // 숨으면 (1)(3)이 96dp 위로 뛴다. (3)이 늘 카드를 따라오므로 **내용에 대해서는**
-        // 일관적이다. 되돌리려면 #378의 근거를 먼저 뒤집어야 한다.
-        binding.spaceConfirmFlex.isVisible(false)
         binding.homeHead.isVisible(model.homeVisible)
         binding.homeSubtitle.isVisible(model.homeVisible)
         binding.homeCane.isVisible(model.homeVisible)
@@ -780,21 +765,30 @@ class ConversationActivity : AppCompatActivity() {
                     // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
                     // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
                     // 밀어 카드가 102dp 내려간다.
-                    // **clarificationVisible이 아니라 stepChipVisible을 본다** — 칩이 자리를
-                    // 차지하는 동안에는 청취 화면에서도 같은 값이어야 카드가 안 뛴다.
+                    // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
+                    // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
                     model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
+                    // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
+                    // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
+                    // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
+                    // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
+                    model.clarificationVisible ->
+                        R.dimen.davi_badge_margin_top_clarification_nochip
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     else -> R.dimen.davi_badge_margin_top
                 },
             )
         }
         // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
-        // **stepChipVisible을 본다** — clarificationVisible로 두면 「직접 말하기」로 넘어가는
-        // 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라 눈에 잘 안 띈다).
-        // 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
+        // **stepChipVisible을 함께 본다** — clarificationVisible만 보면 「직접 말하기」로
+        // 넘어가는 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라
+        // 눈에 잘 안 띈다). 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
+        //
+        // **clarificationVisible도 남긴다** — 둘 중 하나만 두면 칩이 없는 1문항 구체화가
+        // 48dp로 떨어지고, 위 배지 여백과 합쳐 화면이 52dp 밀린다(2026-08-23 리뷰).
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.stepChipVisible) {
+                if (model.guidingVisible || model.clarificationVisible || model.stepChipVisible) {
                     R.dimen.davi_card_padding_top_guiding
                 }
                 else R.dimen.davi_card_padding_top_davi,
