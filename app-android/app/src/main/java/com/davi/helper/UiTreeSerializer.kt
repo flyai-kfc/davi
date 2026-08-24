@@ -39,8 +39,9 @@ object UiTreeSerializer {
      *
      * #358이 없앤 절단을 되살리는 것이 아니다 — 거기서 끊던 근거는 노드 **하나의 자기 보고**였고,
      * 가시성은 트리 아래로 단조롭지 않아 그 보고가 자식에 대해 아무것도 말해 주지 않는다. 여기서
-     * 끊는 근거는 **관측이 연속으로 비었다는 사실**이고, 같은 파일의 [MAX_CONTENT_DEPTH]가 같은
-     * 모양의 선례다.
+     * 끊는 근거는 **관측이 연속으로 비었다는 사실**이다. 이 파일이 순회에 상한을 두는 관행은
+     * [MAX_DEPTH]·[MAX_CONTENT_DEPTH]·[MAX_MERGE_DEPTH]에 이미 있으나, 그 셋은 **절대 깊이**이고
+     * 이것은 **연속 길이**다 — 보이는 노드를 하나 만나면 0으로 되돌아간다([nextHiddenRun]).
      *
      * 값은 실측이 정했다(2026-08-24 SM-S921N / One UI, 7개 화면 · 화면당 30여 폴링).
      * 사슬 길이별 방출 요소 수를 재니 **깊이 1까지만 요소가 있었다** — 배민 가게 11개, 메뉴 상세
@@ -51,6 +52,12 @@ object UiTreeSerializer {
      * 이득은 사슬이 긴 화면에 몰린다 — 네이버 앱 홈은 순회 822회 중 **739회가 이 상한 밖**이고,
      * 그 사슬의 정체는 오프스크린 ViewPager 페이지다(최대 깊이 22). 사슬이 얕은 화면(캘린더·
      * 앱서랍·배민)에서는 이득이 0에 가깝고 잃는 것도 없다.
+     *
+     * **측정이 못 본 것이 하나 있다.** 근거로 쓴 것은 사슬 길이별 **방출 요소 수**인데,
+     * `isScrollable`만 있고 scroll action도 label도 없는 노드는 요소로 방출되지 않으면서
+     * `has_scrollable_element`는 올린다([observeScrollable]). 그런 노드가 상한 밖 사슬에 있으면
+     * 화면 단위 스크롤 관측이 뒤집힐 수 있고, 그 값은 화면 서명의 **구조 축**이다. 잰 7개 화면에서는
+     * 구조 서명이 전부 그대로였으나 재지 않은 앱에서는 열려 있다 — 의심되면 `cut=`부터 본다.
      */
     private const val MAX_HIDDEN_RUN = 2
 
@@ -85,34 +92,28 @@ object UiTreeSerializer {
     private const val ROLE_PAGE_DOT = "page_dot"
 
     /**
-     * 순회 한 번의 비용(#367). 세는 것은 "방문한 노드"가 아니라 **`getChild()` 호출 수**다 —
-     * 비용의 실체가 바인더 왕복이다.
+     * 순회 한 번의 비용(#367).
      *
-     * `n`(요소 수)은 정규화 인자가 못 된다. [MAX_ELEMENTS]에서 포화하고, 애초에 비용이
-     * 방출이 아니라 방문을 따른다(실측: 네이버 앱 홈 21요소가 캘린더 55요소보다 30배 비쌌다).
+     * `n`(요소 수)은 정규화 인자가 못 된다 — [MAX_ELEMENTS]에서 포화하고, 애초에 비용이 방출이
+     * 아니라 방문을 따른다(실측: 네이버 앱 홈 21요소가 캘린더 55요소보다 30배 비쌌다).
      * `ms`를 나눠 볼 분모가 [visits]다.
+     *
+     * @param visits [walk]가 들어간 노드 수. **`getChild()` 총 호출 수가 아니다** — 가림 판정
+     *   ([hasPaintedContent])과 라벨 병합([collectDescendantText]·[descendantCheckedState])이
+     *   내는 IPC는 이 값 밖이다. 그 셋의 비율을 알아야 하면 보정 계측을 다시 붙여야 한다.
+     * @param cuts [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수. **요소를 잃었을 때 되짚는
+     *   알람이다.** 0이면 이 화면의 결과는 상한과 무관하고, 0이 아닌데 안내 대상이 안 보이면
+     *   여기부터 의심한다. **상한을 얼마로 올려야 하는지는 이 값이 답하지 못한다** —
+     *   그건 사슬 길이 분포라 보정 계측의 몫이다.
      */
-    class WalkStats {
-        /** [walk]가 들어간 노드 수. */
+    data class WalkCost(val visits: Int, val cuts: Int)
+
+    /** [WalkCost]를 만드는 동안의 가변 카운터. */
+    private class CostCounter {
         var visits = 0
-            internal set
-
-        /**
-         * [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수.
-         *
-         * **요소를 잃었을 때 되짚는 알람이다.** 0이면 이 화면의 결과는 상한과 무관하고,
-         * 0이 아닌데 안내 대상이 안 보이면 여기부터 의심한다.
-         */
         var cuts = 0
-            internal set
 
-        internal fun countVisit() {
-            visits++
-        }
-
-        internal fun countCut() {
-            cuts++
-        }
+        fun snapshot(): WalkCost = WalkCost(visits = visits, cuts = cuts)
     }
 
     /** 직렬화 한 번 동안의 누적 상태. 파라미터가 늘어나는 것을 막는다. */
@@ -126,11 +127,14 @@ object UiTreeSerializer {
         var currentPage: Int? = null
         var totalPages: Int? = null
         var hasScrollableElement = false
-        val stats = WalkStats()
+        val cost = CostCounter()
 
         /**
-         * 기하 판정용 스크래치. 노드마다 `Rect`를 새로 만들면 **재려는 꼬리를 계측이
-         * 오염시킨다** — 네이버 홈 한 폴링이 수천 개를 만든다(#367).
+         * 기하 판정용 스크래치. 노드마다 `Rect`를 새로 만들면 폴링당 수천 개가 된다(#367).
+         *
+         * **채운 즉시 읽고, 그 사이에 다른 호출을 두지 않는다.** 지금 쓰는 자리는
+         * [intersectsScreen] 하나뿐이고 거기서 채움과 소비 사이에 호출이 없다. 이 규칙을 어기면
+         * 앨리어싱이 조용히 생긴다 — `boxOf`가 매번 새 `Rect`를 만드는 것도 그래서다.
          */
         val scratch = Rect()
     }
@@ -144,7 +148,7 @@ object UiTreeSerializer {
      */
     private const val CONTAINER_AREA_RATIO = 0.5
 
-    data class Result(val screen: Screen, val truncated: Boolean, val stats: WalkStats = WalkStats())
+    data class Result(val screen: Screen, val truncated: Boolean, val cost: WalkCost)
 
     /**
      * @param masker 서버로 나갈 label에 적용할 1차 마스킹 정책. 기본값은 빌드 플래그가
@@ -161,7 +165,7 @@ object UiTreeSerializer {
 
         val truncated = ctx.elements.size > MAX_ELEMENTS
         return Result(
-            stats = ctx.stats,
+            cost = ctx.cost.snapshot(),
             screen = Screen(
                 packageName = root.packageName?.toString().orEmpty(),
                 windowTitle = windowTitleOf(windowTitle, masker),
@@ -187,8 +191,12 @@ object UiTreeSerializer {
         cover: List<RectCover.Box>,
         hiddenRun: Int,
     ) {
-        if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
-        ctx.stats.countVisit()
+        if (node == null) return
+        // **상한 검사보다 먼저 센다.** 이 노드는 부모가 이미 `getChild()`로 당겨온 뒤라, 여기서
+        // 돌아가도 그 비용은 치른 것이다. 뒤에 세면 요소가 [MAX_ELEMENTS]에 닿는 순간 `visits`도
+        // 함께 얼어붙어 **`ms`를 나눌 분모가 되지 못한다** — `n`을 버린 이유와 같은 함정이다.
+        ctx.cost.visits++
+        if (depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
         // **가시성은 트리 아래로 단조롭지 않다.** 부모가 false인데 자식은 true인 화면이 있다
         // (2026-08-21 SM-S921N 실측, #358: 배민 메뉴 상세의 상·하단 바 컨테이너가
         // `visibleToUser=false`인데 그 안의 `담기` 버튼·`뒤로가기`·제목은 true였다).
@@ -211,9 +219,9 @@ object UiTreeSerializer {
         // 배민 가게의 가로 필터 칩 줄인데, 같은 화면 본문 스크롤러가 `vis=true`라 화면 단위
         // `has_scrollable_element`는 살아 있었다.
         if (!node.isVisibleToUser) {
-            val run = hiddenRun + 1
+            val run = nextHiddenRun(visibleToUser = false, previousRun = hiddenRun)
             if (exceedsHiddenChain(run)) {
-                ctx.stats.countCut()
+                ctx.cost.cuts++
                 return
             }
             walkChildren(node, ctx, absorbed, depth, cover, hiddenRun = run)
@@ -283,9 +291,26 @@ object UiTreeSerializer {
             ctx.elements.add(element(node, "", ctx, obscured = occluded))
         }
 
-        // 보이는 노드를 만났으니 사슬은 여기서 끊긴다.
-        walkChildren(node, ctx, childrenAbsorbed, depth, cover, hiddenRun = 0)
+        walkChildren(
+            node,
+            ctx,
+            childrenAbsorbed,
+            depth,
+            cover,
+            hiddenRun = nextHiddenRun(visibleToUser = true, previousRun = hiddenRun),
+        )
     }
+
+    /**
+     * 안 보임 사슬의 다음 길이. **보이는 노드를 만나면 0으로 되돌아간다** — 안 보이는 노드가
+     * 화면에 100개 흩어져 있어도 사이사이 보이는 노드가 있으면 상한에 안 걸린다는 뜻이다.
+     *
+     * [exceedsHiddenChain]과 따로 뽑는 이유는 **깨지는 방식이 다르기 때문**이다. 그쪽은 경계
+     * (`>` vs `>=`)가 밀리는 것이고, 이쪽은 **리셋이 빠지는 것**이다. 리셋이 빠지면 사슬이 화면
+     * 전체에 걸쳐 누적돼 깊은 트리의 아래쪽이 통째로 사라지는데, 값 판정만 고정해서는 그걸 못 잡는다.
+     */
+    internal fun nextHiddenRun(visibleToUser: Boolean, previousRun: Int): Int =
+        if (visibleToUser) 0 else previousRun + 1
 
     /**
      * 자식들을 훑는다. 보이는 노드와 [walk]가 건너뛴 노드가 **같은 규칙으로** 자식을 훑도록
@@ -305,19 +330,20 @@ object UiTreeSerializer {
     ) {
         if (!shouldInspectDescendants(node.isEditable)) return
         val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
+        val firstDrawingOrder = kids.firstOrNull()?.drawingOrder
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
         // 직렬화는 폴링마다 돌고 안정·정체 판정이 그 시간 위에 얹혀 있다(PR #336 리뷰).
         //
-        // **아래 `painted[other]`는 `&&`의 마지막 항이라 앞이 거짓이면 평가되지 않는다.** 빈
-        // 목록을 돌려주는 두 갈래가 그 성질에 기대고 있다 — 조건 순서를 바꾸면 색인이 터진다.
+        // **길이가 갈래마다 다르다**(0 또는 `kids.size`). 아래에서 `getOrElse`로 읽는 이유가 그것이고,
+        // 기본값 `false`는 의미상으로도 맞다 — 건너뛴 갈래는 덮개 후보가 없는 경우다.
         val painted = when {
             // **형제가 있어야 읽히는 값이다.** 안드로이드 트리는 단일 자식 래퍼 사슬이 흔한데,
             // 거기서 계산하면 사슬 깊이만큼 안 쓰는 순회(깊이 6, `getChild()` IPC)가 폴링마다 생긴다.
             kids.size < 2 -> emptyList()
             // 그리는 순서가 모두 같으면 아래 `>` 비교가 하나도 참이 안 된다 — 덮개 후보가 없으니
             // 스윕도 필요 없다(#367).
-            kids.all { it.drawingOrder == kids[0].drawingOrder } -> emptyList()
+            kids.all { it.drawingOrder == firstDrawingOrder } -> emptyList()
             // **화면과 안 겹치는 형제는 덮개가 될 수 없다.** [RectCover.isCovered]가 화면으로 자른
             // 뒤 빈 조각을 `continue`로 버리므로, 그런 형제의 판정 결과는 결과에 닿지 않는다.
             // 기하 판정을 앞에 두어 **가장 비싼 스윕을 가장 먼저 없앤다** — 안 보이는 노드만으로
@@ -332,9 +358,17 @@ object UiTreeSerializer {
             // drawingOrder는 Compose의 **가상 노드에서도 채워진다**(2026-08-21 SM-S921N 실측:
             // AndroidComposeView 안쪽에서 스크림 draw=0 / 패널 draw=1). 전부 0으로 와서 판정이
             // 조용히 꺼지는 provider(WebView 등)는 아직 관측하지 못했다 — PR #336 "남은 것".
+            // **`boxOf`는 조건이 참일 때만 부른다.** `takeIf`로 쓰면 인자가 먼저 평가돼 자식 k개마다
+            // 형제 k개의 `Rect`가 만들어진다 — 노드당 k²개이고 대부분 그 자리에서 버려진다(#367).
             val childCover = cover + kids.withIndex().mapNotNull { (other, sibling) ->
-                boxOf(sibling).takeIf {
-                    other != index && sibling.drawingOrder > child.drawingOrder && painted[other]
+                if (
+                    other != index &&
+                    sibling.drawingOrder > child.drawingOrder &&
+                    painted.getOrElse(other) { false }
+                ) {
+                    boxOf(sibling)
+                } else {
+                    null
                 }
             }
             walk(child, ctx, childrenAbsorbed, depth + 1, childCover, hiddenRun)
