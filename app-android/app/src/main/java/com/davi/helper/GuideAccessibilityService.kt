@@ -842,7 +842,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 「바로 입력」의 채울 값·대상 자리를 표시와 같은 깔때기에서 갱신한다 — 버튼이 보이는
         // 화면과 눌렀을 때 채워지는 값이 어긋날 수 없다. 값이 없으면 버튼도 없으니 함께 비운다.
         pendingInputText = content.inputText
-        pendingInputBounds = if (content.inputText != null) rect else null
+        pendingInputBounds = content.bounds?.takeIf { content.inputText != null }
         overlay?.showGuide(
             rect,
             content.text,
@@ -860,7 +860,7 @@ class GuideAccessibilityService : AccessibilityService() {
      * 값이고, 버튼이 없으면(null) 콜백도 올 수 없다.
      */
     private var pendingInputText: String? = null
-    private var pendingInputBounds: Rect? = null
+    private var pendingInputBounds: List<Int>? = null
 
     /**
      * 「바로 입력」 버튼(C21 · #405) — `SPEC.md` §2 「대신 해주지 않는다」의 **유일한 예외**를
@@ -869,16 +869,20 @@ class GuideAccessibilityService : AccessibilityService() {
      * `input_text`다. ③ 채우기만 한다 — IME 액션(검색 실행)은 부르지 않는다.
      *
      * 대상은 **누르는 시점에 다시 찾는다.** 응답 시점의 노드를 들고 있으면 화면이 조금만
-     * 움직여도 stale이고, 시니어가 버튼을 누르기까지의 간격은 길다. 안내가 가리킨 bounds와
-     * 같은 자리의 입력칸을 먼저 찾고, 없으면 입력 포커스를 쓴다 — 타이핑 안내는 키보드가
-     * 열린 화면에서 나가므로(#38 5번) 포커스가 곧 "지금 글자가 들어갈 곳"이다.
+     * 움직여도 stale이고, 시니어가 버튼을 누르기까지의 간격은 길다. 안내가 가리킨 자리의
+     * 입력칸을 먼저 찾고, 없으면 입력 포커스를 쓴다 — 타이핑 안내는 키보드가 열린 화면에서
+     * 나가므로(#38 5번) 포커스가 곧 "지금 글자가 들어갈 곳"이다.
+     *
+     * **루트는 직렬화와 같은 판정기로 고른다**([ActiveWindowResolver]). `rootInActiveWindow`를
+     * 직접 쓰면 대조할 bounds가 나온 창과 **다른 창**을 뒤질 수 있다 — 셰이드가 열리면 systemui가
+     * active가 되는 것이 그 판정기가 존재하는 이유고(HANDOFF §7), 우리 앱 필터도 거기 있다.
      *
      * 채운 뒤 아무것도 하지 않는다 — 대상 앱이 내는 텍스트 변경 이벤트가 손 타이핑과 같은
      * 경로로 샘플을 깨우고, 다음 안내는 그 화면 변화가 부른다.
      */
     private fun performInputFill() {
         val text = pendingInputText ?: return
-        val root = rootInActiveWindow ?: run {
+        val root = ActiveWindowResolver.resolve(this)?.root ?: run {
             Log.w(TAG, "input fill: no root")
             return
         }
@@ -900,14 +904,24 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * [bounds] 자리의 입력칸을 지금 트리에서 찾는다. 자리가 없거나 못 찾으면 null —
+     * [bounds]가 가리킨 자리의 입력칸을 지금 트리에서 찾는다. 자리가 없거나 못 찾으면 null —
      * 호출자가 입력 포커스로 폴백한다.
+     *
+     * **대조는 눌림 판정과 같은 규칙을 쓴다**([PressMatch.byBounds]) — 후보의 중심이 안내한
+     * 사각형 안이면 같은 대상으로 본다. 사각형이 정확히 같기를 요구하면 두 가지에 깨진다:
+     * 안내한 것이 입력칸을 감싼 컨테이너일 때(저 함수가 런처 독에서 겪은 것과 같은 모양), 그리고
+     * 사용자가 버튼을 누르기까지 자리가 몇 px 움직였을 때다. 폴백이 있어 놓쳐도 실패는 아니지만,
+     * **폴백은 안내한 칸이 아닌 곳을 채울 수 있으므로**(포커스가 옮겨간 경우) 이 축이 먼저 맞는
+     * 편이 예외의 범위에 맞다.
      *
      * 순회 상한은 직렬화와 같은 결이다([UiTreeSerializer]) — 병적인 트리에서 클릭 디스패치를
      * 붙잡지 않는다.
      */
-    private fun findEditableNode(root: AccessibilityNodeInfo, bounds: Rect?): AccessibilityNodeInfo? {
-        if (bounds == null) return null
+    private fun findEditableNode(
+        root: AccessibilityNodeInfo,
+        bounds: List<Int>?,
+    ): AccessibilityNodeInfo? {
+        if (bounds == null || bounds.size != 4) return null
         val queue = ArrayDeque(listOf(root))
         val nodeBounds = Rect()
         var visited = 0
@@ -916,7 +930,11 @@ class GuideAccessibilityService : AccessibilityService() {
             visited++
             if (node.isEditable) {
                 node.getBoundsInScreen(nodeBounds)
-                if (nodeBounds == bounds) return node
+                if (!nodeBounds.isEmpty &&
+                    PressMatch.byBounds(bounds, nodeBounds.centerX(), nodeBounds.centerY())
+                ) {
+                    return node
+                }
             }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let(queue::addLast)
