@@ -1062,9 +1062,32 @@ class ScreenStabilityTrackerTest {
 
         tracker.markInteraction(20_000)
 
-        // 조작 직후는 승격이 억제되므로 억제가 풀린 뒤를 본다.
-        val settled = 20_000 + ScreenStabilityTracker.CONTENT_SETTLE_MS
-        assertEquals(Decision.SEND, rotate("A;C;B", settled))
+        // **게이트가 닫힌 뒤를 본다.** 창 안에서 재면 게이트만으로도 SEND가 나서, 조작이
+        // 상한을 연다는 것을 고정하지 못한다(승격 억제는 그보다 먼저 풀린다).
+        val gateClosed = 20_000 + ScreenStabilityTracker.INTERACTION_WINDOW_MS + 1_000
+        assertFalse(tracker.interactionGateOpen(gateClosed))
+        assertEquals(Decision.SEND, rotate("A;C;B", gateClosed))
+    }
+
+    @Test
+    fun `관측 재개와 빈 화면 샘플은 앵커 상한을 열지 않는다`() {
+        // 상한을 여는 자리는 구조 변화와 조작 둘뿐이다. 관측 공백 표식
+        // (`structureStableSinceMs == null`)에 얹으면 재개가 진행으로 둔갑한다.
+        val base = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+        assertEquals(Decision.SEND, rotate("B;A;C", 1_400))
+        tracker.markSent(ScreenSig("rooms", "B;A;C"), 2_100)
+        tracker.markFinished()
+
+        // 빈 화면 샘플 하나(스플래시 등)와 root 복구를 거친다.
+        tracker.onSample(ScreenSig("rooms", ""), 2_800, hasLabeledElement = false)
+        tracker.markResumed(3_500, requery = false)
+
+        // 같은 구조로 돌아왔다 — 진행이 없었으므로 상한은 그대로 닫혀 있다.
+        assertEquals(Decision.IDLE, rotate("C;B;A", 4_200))
     }
 
     @Test

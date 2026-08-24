@@ -220,12 +220,15 @@ class ScreenStabilityTracker(
             }
         }
         unreadableSinceMs = null
-        if (signature.structure != lastSample?.structure || structureStableSinceMs == null) {
+        val structureChanged = signature.structure != lastSample?.structure
+        if (structureChanged || structureStableSinceMs == null) {
             structureStableSinceMs = nowMs
-            // 구조가 바뀌었으면 앵커 상한도 열린다 — 아래 상한의 뜻이 "진행 없이 같은 화면을
-            // 앵커만으로 다시 묻지 않는다"이고, 구조 변화가 곧 진행이다.
-            anchorRequeryUsed = false
         }
+        // **구조가 실제로 바뀐 경우에만** 앵커 상한을 연다. 위 조건에 얹으면
+        // `structureStableSinceMs == null`(빈 화면 샘플·[markResumed])도 상한을 열어,
+        // 여는 자리가 관측 공백 표식에 딸려 들어간다 — 재개는 진행이 아니고, 나중에
+        // 다른 관측 공백이 그 필드를 비우면 상한이 조용히 열린다.
+        if (structureChanged) anchorRequeryUsed = false
         // 구조는 안정인데 내용만 계속 흔들리는 화면(광고·marquee)은 홀드가 영영 안 끝난다 —
         // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380).
         //
@@ -299,7 +302,15 @@ class ScreenStabilityTracker(
         return Decision.IDLE
     }
 
-    /** **요청이 실제로 나갔을 때만** 부른다. 보낸 셈 치면 그 화면의 안내가 영영 오지 않는다. */
+    /**
+     * **요청이 실제로 나갔을 때만** 부른다. 보낸 셈 치면 그 화면의 안내가 영영 오지 않는다.
+     *
+     * 앵커 상한도 여기서 태운다 — 취지는 "안내를 만들지 못한 재질의는 태우지 않는다"다.
+     * **예외 하나를 수용한다**: 앵커 재질의가 나간 뒤 응답 도착 전에 중지 칩이 눌리면 그
+     * 응답은 `awaiting_confirm`으로 버려지는데, 상한은 이미 태워졌다. 되돌리지 않는 이유는
+     * 「계속 볼래요」로 돌아온 시점이면 `sentAtMs`가 이미 정체 시간을 넘겨 곧바로 정체 문구가
+     * 뜨기 때문이다 — 안내 없이 매달리는 구간이 생기지 않는다.
+     */
     fun markSent(signature: ScreenSig, nowMs: Long) {
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature

@@ -85,10 +85,9 @@ object GuideScreenLog {
      * 구조/내용 두 축을 따로 찍는다(#380) — 광고 화면은 `s=`가 고정된 채 `c=`만 도는 것으로,
      * 실제 전환은 `s=`가 바뀌는 것으로 로그에서 바로 갈린다.
      *
-     * `gate=`는 인과 게이트가 그 순간 열려 있었는가다. 자동으로 도는 캐러셀이 조작 없이
-     * 스크롤 이벤트를 내는 오탐을 수용했으므로(`ScreenStabilityTracker.markInteraction`),
-     * **그 빈도를 실기기에서 재는 유일한 창이 이 자리다.** `open`이 사용자가 손댄 구간에만
-     * 뜨는지 보면 된다.
+     * `gate=`는 인과 게이트가 그 순간 열려 있었는가다. 게이트의 근거가 클릭 이벤트뿐이라
+     * (`ScreenStabilityTracker.markInteraction`), **그 앱이 클릭을 쏘는지 · 사용자가 손댄
+     * 구간에만 열리는지를 재는 자리다.** 스크롤을 뺀 근거가 된 실측도 이 계측으로 잡았다.
      *
      * `anchor=`는 다른 쪽 문이다 — 내용만의 변화가 새 상황이 되는 길은 인과 게이트와 타깃
      * 앵커 **둘**이라, 게이트만 찍으면 스스로 갱신되는 목록(새 메시지가 계속 오는 대화 목록)이
@@ -103,8 +102,10 @@ object GuideScreenLog {
         anchorMoved: Boolean,
         anchorSpent: Boolean,
     ) {
+        // `capped`는 **앵커가 열려던 것을 상한이 막았다**는 뜻이다. 게이트가 열려 있으면
+        // 재질의는 어차피 나갔으므로 막힌 것이 아니다 — 그때까지 `capped`로 찍으면 오독한다.
         val anchor = when {
-            anchorMoved && anchorSpent -> "capped"
+            anchorMoved && anchorSpent && !gateOpen -> "capped"
             anchorMoved -> "moved"
             else -> "-"
         }
