@@ -3,7 +3,9 @@ import logging
 import re
 
 import app.main as main_module
+import pytest
 from app.config import settings
+from app.intent_resolution import INTENT_DIALOGUE_RESPONSE_BUDGETS
 from app.kakao_auth import issue_session_token
 from app.llm import StubLlmClient
 from app.main import app
@@ -51,6 +53,29 @@ def test_development_health_includes_diagnostics():
         "privacy_masking_disabled": False,
         "kakao_auth_configured": False,
     }
+
+
+def test_invalid_operation_output_budget_stops_startup_before_health(set_runtime_profile):
+    """한 operation만 작은 전역 상한도 첫 요청의 500이 아니라 서버 기동 실패여야 한다."""
+
+    thinking_budget = 800
+    intent_required = thinking_budget + INTENT_DIALOGUE_RESPONSE_BUDGETS.required
+    override = intent_required - 1
+    # next-step·app-resolution의 기존 1024 여유분은 통과하지만 intent만 실패하는 조합이다.
+    assert override >= thinking_budget + 1024
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider="gemini",
+        gemini_api_key="server-side-key",
+        davi_gemini_thinking_budget=thinking_budget,
+        davi_max_output_tokens=override,
+    )
+
+    with (
+        pytest.raises(ValueError, match=r"DAVI_MAX_OUTPUT_TOKENS.*intent_dialogue"),
+        TestClient(app, client=("127.0.0.1", 50000)),
+    ):
+        pytest.fail("잘못된 출력 예산으로 서버 startup이 완료되면 안 됩니다")
 
 
 def test_development_health_is_public_on_lan_but_inference_requires_token(monkeypatch):

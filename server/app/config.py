@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     # gemini id가 Anthropic으로 나가는 사고를 막으려고 이렇게 뒀다.
     davi_model: str = ""
     # 출력 토큰 상한 강제값. 0이면 공급자별로 계산한다(`llm_provider.build_provider`).
-    # 모델을 바꿨는데 답이 잘리거나 너무 비쌀 때만 손댄다.
+    # 정상 계약 응답 + 보이지 않는 추론 몫보다 작은 값은 공급자를 만들 때 거부한다. 따라서
+    # 이 값은 모델을 바꿔 자동 계산보다 더 큰 예산이 필요할 때만 올리는 안전한 상향 override다.
     davi_max_output_tokens: int = 0
 
     # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는

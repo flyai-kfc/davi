@@ -9,13 +9,18 @@ import pytest
 from app.errors import LlmError
 from app.intent_prompt import build_intent_prompt
 from app.intent_resolution import (
+    _MAXIMUM_DECISIONS,
+    _RESPONSE_HEADROOM_TOKENS,
+    INTENT_DIALOGUE_RESPONSE_BUDGETS,
     INTENT_DIALOGUE_SCHEMA,
     RemoteIntentResolver,
     StubIntentResolver,
     get_intent_resolver,
+    intent_dialogue_provider,
     resolve_intent,
 )
-from app.schemas import ErrorKind, SlotFillRequest, SlotFillState
+from app.llm_provider import _REASONING_HEADROOM
+from app.schemas import ErrorKind, IntentDialogueStatus, SlotFillRequest, SlotFillState
 from pydantic import ValidationError
 
 from tests.factories import gemini_intent_resolver
@@ -147,6 +152,49 @@ def test_response_contract_has_no_fixed_slot_or_action_taxonomy():
     assert question_schema["properties"]["options"]["maxItems"] == 3
 
 
+@pytest.mark.parametrize("exclude_none", [True, False])
+def test_contract_maximum_ready_and_clarification_responses_parse(exclude_none):
+    """필드·배열 상한을 채운 두 응답이 실제 파서와 공개 wire 계약을 통과한다."""
+
+    resolver = _resolver(lambda _: httpx.Response(500))
+    for status, decision in _MAXIMUM_DECISIONS.items():
+        serialized = json.dumps(
+            decision.model_dump(mode="json", exclude_none=exclude_none),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+        state = resolver._parse_state(serialized, finalizing=False)
+
+        assert state.status is status
+        assert len(serialized) <= getattr(INTENT_DIALOGUE_RESPONSE_BUDGETS, status.value)
+
+
+def test_response_budget_is_derived_for_both_contract_shapes():
+    """토크나이저를 흉내 내지 않고 현재 계약 최대 JSON 문자 수를 최소선으로 고정한다."""
+
+    assert INTENT_DIALOGUE_RESPONSE_BUDGETS.ready > 0
+    assert INTENT_DIALOGUE_RESPONSE_BUDGETS.needs_clarification > 0
+    assert (
+        max(
+            INTENT_DIALOGUE_RESPONSE_BUDGETS.ready,
+            INTENT_DIALOGUE_RESPONSE_BUDGETS.needs_clarification,
+        )
+        == _RESPONSE_HEADROOM_TOKENS
+    )
+    # ready와의 상대 크기는 필드 상한이 바뀌면 역전될 수 있다. 대신 #316의 최대 문항·보기가
+    # 실제 최대 응답 구성에 들어갔는지를 계약 스키마 자체와 대조한다.
+    clarification = _MAXIMUM_DECISIONS[IntentDialogueStatus.NEEDS_CLARIFICATION].clarification
+    question_schema = INTENT_DIALOGUE_SCHEMA["properties"]["clarification"]["properties"][
+        "questions"
+    ]
+    assert len(clarification.questions) == question_schema["maxItems"]
+    assert all(
+        len(question.options) == question_schema["items"]["properties"]["options"]["maxItems"]
+        for question in clarification.questions
+    )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -268,7 +316,7 @@ def test_llm_sends_dialogue_schema_and_parses_dynamic_question():
     def handler(http_request: httpx.Request) -> httpx.Response:
         body = json.loads(http_request.content)
         assert body["generationConfig"]["responseSchema"] == INTENT_DIALOGUE_SCHEMA
-        assert body["generationConfig"]["maxOutputTokens"] == 1312
+        assert body["generationConfig"]["maxOutputTokens"] == 800 + _RESPONSE_HEADROOM_TOKENS
         # thinking 모델이 이 예산을 thinking 토큰으로 다 써 응답이 잘리는 걸 막는다
         # (실기기 재현, 2026-08-18 gemini-3.6-flash PARSE/max_output_tokens 실패).
         assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
@@ -708,6 +756,88 @@ def test_get_intent_resolver_wires_thinking_budget_from_settings(set_runtime_pro
 
     assert isinstance(resolver, RemoteIntentResolver)
     # DAVI_GEMINI_THINKING_BUDGET이 공급자까지 흘러가는지(config.py) 확인한다.
-    # maxOutputTokens는 이 값 위에 원래 여유분(512)을 얹은 것이어야 잘림을 안 만든다.
+    # maxOutputTokens는 이 값 위에 계약에서 파생한 응답 여유분을 얹어야 잘림을 안 만든다.
     assert resolver.provider.thinking_budget == 321
-    assert resolver.provider.max_output_tokens == 321 + 512
+    assert resolver.provider.max_output_tokens == 321 + _RESPONSE_HEADROOM_TOKENS
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "key_field", "reasoning_effort", "thinking_budget", "hidden_budget"),
+    [
+        ("gemini", "gemini_api_key", "low", 321, 321),
+        ("openai", "openai_api_key", "none", 321, 0),
+        ("openai", "openai_api_key", "low", 321, _REASONING_HEADROOM),
+        ("anthropic", "anthropic_api_key", "low", 321, _REASONING_HEADROOM),
+    ],
+)
+def test_intent_provider_adds_hidden_reasoning_to_the_contract_budget(
+    set_runtime_profile,
+    provider_name,
+    key_field,
+    reasoning_effort,
+    thinking_budget,
+    hidden_budget,
+):
+    keys = {"gemini_api_key": "", "openai_api_key": "", "anthropic_api_key": ""}
+    keys[key_field] = "server-side-key"
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider=provider_name,
+        davi_model="test-model",
+        davi_max_output_tokens=0,
+        davi_gemini_thinking_budget=thinking_budget,
+        davi_openai_reasoning_effort=reasoning_effort,
+        **keys,
+    )
+
+    provider = intent_dialogue_provider()
+
+    assert provider.max_output_tokens == hidden_budget + _RESPONSE_HEADROOM_TOKENS
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "key_field", "reasoning_effort", "thinking_budget", "hidden_budget"),
+    [
+        ("gemini", "gemini_api_key", "low", 321, 321),
+        ("openai", "openai_api_key", "none", 321, 0),
+        ("openai", "openai_api_key", "low", 321, _REASONING_HEADROOM),
+        ("anthropic", "anthropic_api_key", "low", 321, _REASONING_HEADROOM),
+    ],
+)
+def test_intent_provider_rejects_an_override_below_contract_and_reasoning_budget(
+    set_runtime_profile,
+    provider_name,
+    key_field,
+    reasoning_effort,
+    thinking_budget,
+    hidden_budget,
+):
+    keys = {"gemini_api_key": "", "openai_api_key": "", "anthropic_api_key": ""}
+    keys[key_field] = "server-side-key"
+    required = hidden_budget + _RESPONSE_HEADROOM_TOKENS
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider=provider_name,
+        davi_model="test-model",
+        davi_max_output_tokens=required - 1,
+        davi_gemini_thinking_budget=thinking_budget,
+        davi_openai_reasoning_effort=reasoning_effort,
+        **keys,
+    )
+
+    with pytest.raises(ValueError, match=r"DAVI_MAX_OUTPUT_TOKENS.*intent_dialogue"):
+        intent_dialogue_provider()
+
+
+def test_intent_provider_accepts_an_override_at_the_required_budget(set_runtime_profile):
+    required = 321 + _RESPONSE_HEADROOM_TOKENS
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider="gemini",
+        gemini_api_key="server-side-key",
+        davi_model="test-model",
+        davi_max_output_tokens=required,
+        davi_gemini_thinking_budget=321,
+    )
+
+    assert intent_dialogue_provider().max_output_tokens == required

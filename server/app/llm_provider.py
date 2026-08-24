@@ -499,9 +499,10 @@ def build_provider(
 ) -> StructuredJsonProvider:
     """설정이 고른 공급자를 만든다. 호출부는 어느 공급자인지 알 필요가 없다.
 
-    `response_headroom`은 "정상 응답 하나에 필요한 출력 토큰"이다. 여기에 공급자가 보이지 않는
+    `response_headroom`은 "정상 응답 하나에 필요한 최소 출력 토큰"이다. 여기에 공급자가 보이지 않는
     추론에 쓰는 몫을 더해 출력 상한을 정한다 — 그 몫이 예산을 다 먹어 답이 잘리는 실패가
-    실기기에서 재현된 적이 있다(2026-08-18). `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮을 수 있다.
+    실기기에서 재현된 적이 있다(2026-08-18). `DAVI_MAX_OUTPUT_TOKENS`는 통째로 덮지만,
+    이 합보다 작으면 정상 계약 응답 자리를 훼손하므로 설정 오류로 막는다.
     """
 
     provider = ProviderName(settings.davi_llm_provider)
@@ -510,12 +511,17 @@ def build_provider(
 
     if provider is ProviderName.GEMINI:
         thinking_budget = settings.davi_gemini_thinking_budget
+        max_output_tokens = _max_output_tokens(
+            override=override,
+            required=thinking_budget + response_headroom,
+            operation=operation,
+        )
         return GeminiProvider(
             api_key=settings.gemini_api_key.get_secret_value(),
             model=model,
             operation=operation,
             contract=contract,
-            max_output_tokens=override or thinking_budget + response_headroom,
+            max_output_tokens=max_output_tokens,
             thinking_budget=thinking_budget,
             http_client=http_client,
         )
@@ -523,27 +529,48 @@ def build_provider(
     if provider is ProviderName.OPENAI:
         effort = settings.davi_openai_reasoning_effort
         reasoning_headroom = 0 if effort == "none" else _REASONING_HEADROOM
+        max_output_tokens = _max_output_tokens(
+            override=override,
+            required=reasoning_headroom + response_headroom,
+            operation=operation,
+        )
         return OpenAiProvider(
             api_key=settings.openai_api_key.get_secret_value(),
             model=model,
             operation=operation,
             contract=contract,
-            max_output_tokens=override or reasoning_headroom + response_headroom,
+            max_output_tokens=max_output_tokens,
             reasoning_effort=effort,
             http_client=http_client,
         )
 
+    max_output_tokens = _max_output_tokens(
+        override=override,
+        required=_REASONING_HEADROOM + response_headroom,
+        operation=operation,
+    )
     return AnthropicProvider(
         api_key=settings.anthropic_api_key.get_secret_value(),
         model=model,
         operation=operation,
         contract=contract,
         # thinking을 끌 수 없는 모델이 있으므로 추론 몫을 미리 얹는다(모듈 문서 참고).
-        # 이게 없으면 sonnet-5의 adaptive thinking이 slot-fill의 512를 먹고 stop_reason이
-        # max_tokens로 끝난다 — Gemini·OpenAI에서 막은 그 잘림이 여기만 무방비가 된다.
-        max_output_tokens=override or _REASONING_HEADROOM + response_headroom,
+        # 이게 없으면 sonnet-5의 adaptive thinking이 slot-fill의 계약 기반 응답 최소선을 먹고
+        # stop_reason=max_tokens로 끝난다 — Gemini·OpenAI에서 막은 그 잘림이 여기만 무방비가 된다.
+        max_output_tokens=max_output_tokens,
         http_client=http_client,
     )
+
+
+def _max_output_tokens(*, override: int, required: int, operation: str) -> int:
+    """자동 계산값을 쓰거나, 그보다 작은 전역 override를 명확한 설정 오류로 막는다."""
+
+    if override and override < required:
+        raise ValueError(
+            "DAVI_MAX_OUTPUT_TOKENS가 "
+            f"{operation}의 정상 응답·추론 최소 예산({required})보다 작습니다: {override}"
+        )
+    return override or required
 
 
 def _retry_after_seconds(headers: Mapping[str, str]) -> int | None:

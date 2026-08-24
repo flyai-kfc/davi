@@ -204,7 +204,9 @@ rate limit을 쓰는 `development`를 유지한다.
 | `/docs`·`/redoc`·`/openapi.json` | 로컬 개발 문서 노출 | 404(등록·노출 안 함) |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
-검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+프로필·키·음수 예산 같은 공통 검증은 설정을 import할 때 실행된다. operation마다 다른 출력 예산
+하한은 FastAPI startup에서 next-step·slot-fill·app-resolution 공급자를 모두 미리 만들며 검증한다.
+따라서 어느 경우든 잘못된 조합은 첫 요청의 부분적인 500이 아니라 Uvicorn 기동 전에 실패한다.
 beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`도 둘 다 필수다.
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
@@ -258,7 +260,11 @@ Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모�
 next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
 추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
 OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
-모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 최대 2문항·문항별 3보기를 담는
+`needs_clarification`의 최대 유효 compact JSON 문자 수를 현재 Pydantic `maxLength`·`maxItems`에서
+파생하고 더 큰 쪽을 쓴다. 실제 공급자 토크나이저의 정확한 토큰 수를 흉내 내는 테스트는 두지
+않는다. `DAVI_MAX_OUTPUT_TOKENS`는 자동 계산된 합보다 더 큰 예산이 필요할 때만 통째로 덮는다.
+그보다 작으면 정상 계약 응답 또는 추론 자리를 훼손하므로 공급자 생성 시 설정 오류로 거부한다.
 
 #### #316 목표 구체화 모델·예산 결정 (2026-08-21)
 
@@ -278,10 +284,11 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
 **Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
-상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이
-1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
-`DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
-느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
+상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실린다. next-step과
+app-resolution은 기본 1824이고, slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다.
+대가로 thinking이 있는 모델의 dynamic thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로
+하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼 느슨해진다. 아직 측정하지 않았다 —
+추론 몫을 조정하려면 이 환경변수를 쓴다.
 
 ### 테스트 참가자 토큰
 
