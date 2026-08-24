@@ -361,12 +361,21 @@ class GuideAccessibilityService : AccessibilityService() {
         GuideScreenLog.event(event, interesting)
         if (!interesting) return
 
-        // 인과 게이트(#380). 안내 대상 앱의 클릭·스크롤만 조작으로 친다 — 판정에 쓰는 것은
-        // 타입과 package뿐이라, 부하 시 source가 회수되는 함정(#238)과 무관하게 동작한다.
-        if (
-            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
-        ) {
+        // 인과 게이트의 **폴백 축**(#380). 판정에 쓰는 것은 타입과 package뿐이라, 부하 시
+        // source가 회수되는 함정(#238)과 무관하게 동작한다.
+        //
+        // **스크롤은 여기 없다.** 2026-08-24 SM-S921N 실측 — 인기 검색어가 자동으로 도는
+        // 검색 화면에서 사용자가 손대지 않은 50초 동안 `TYPE_VIEW_SCROLLED`가 92건(초당
+        // 1.8건) 왔다. 게이트가 영구히 열려 로테이션마다 재질의가 나갔다 — 이 이슈가
+        // 막으려던 바로 그 폭주다.
+        //
+        // 자동 스크롤과 사용자 스크롤은 접근성 이벤트만으로 구분되지 않는다. **진짜 터치를
+        // 보는 길(`FLAG_SEND_MOTION_EVENTS` + `setMotionEventSources`, API 34+)은 시도했다가
+        // 걷었다** — 그 플래그가 접근성 입력 필터를 세우고 터치가 아래 앱으로 내려가지 않아
+        // 기기 조작이 통째로 막혔다(2026-08-24 SM-S921N 실측: `dumpsys input`의
+        // `InputFilterEnabled: true`, 서비스는 down/move/up을 받는데 앱은 아무 반응 없음).
+        // 되살리려면 필터가 이벤트를 통과시키는 방법부터 확인해야 한다.
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
                 stability.markInteraction(SystemClock.uptimeMillis())
