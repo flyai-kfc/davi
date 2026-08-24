@@ -278,7 +278,8 @@ android {
     lint {
         // assembleRelease가 이미 실행하는 lintVitalRelease에서 release 변형의 NewApi를 막는다(#385).
         // app/src/main은 debug에도 공유되지만, debug·androidTest 전용 소스는 이 싼 관문 밖이다.
-        // 그 범위까지 보는 lintDebug(+94초 실측)는 일반 CI 비용 때문에 추가하지 않는다.
+        // debug 전용 소스는 lintDebug(+94초 실측)가 보며, androidTest는 checkTestSources도 켜야 한다.
+        // 일반 CI 비용 때문에 둘 다 추가하지 않는다.
         fatal += "NewApi"
     }
 
