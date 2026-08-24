@@ -88,6 +88,39 @@ object GuideSession {
     private var lastStepSignature: String? = null
 
     /**
+     * 내용 서명(#410)의 세션 salt. **generation마다 새로 만든다** — 세션이 바뀌면 같은 화면도
+     * 다른 해시가 되어 이전 세션의 값과 우연히 맞아떨어지지 않는다.
+     *
+     * 영속화하지 않는 근거는 [goal]과 같다. 프로세스가 죽으면 salt도 사라지는 것이 맞다 —
+     * 이 값이 필요한 범위가 애초에 세션 하나다.
+     */
+    private var contentSalt: ByteArray = ContentSignature.newSalt()
+
+    /**
+     * 이 요청에 실을 내용 서명. 없으면 `null`이다.
+     *
+     * `null`이 되는 경우는 둘이다.
+     * - 이미 지난 세대의 요청이다 — 그 응답은 어차피 버려진다.
+     * - **화면에 label이 하나도 없다.** 내용이 없는 화면의 "내용 동일성"은 의미가 없다:
+     *   빈 화면끼리는 요소 수만 같으면 같은 값이 나와, 서버가 서로 다른 스플래시를 같은
+     *   화면으로 읽는다. #350이 그 화면을 안정 화면에서 이미 빼서 지금은 요청 자체가 나가지
+     *   않지만, 규칙은 값이 만들어지는 이 자리에 둔다.
+     *
+     * 입력은 [ScreenSig.content] **그대로**다 — 정규화는 [ScreenSignature]가 이미 했고
+     * 여기서 다시 하지 않는다.
+     */
+    @Synchronized
+    fun contentSignature(
+        generation: Long,
+        signature: ScreenSig,
+        hasLabeledElement: Boolean,
+    ): String? {
+        if (!isCurrent(generation)) return null
+        if (!hasLabeledElement) return null
+        return ContentSignature.of(contentSalt, signature.content)
+    }
+
+    /**
      * 눌림 확인 재질의 토큰(#319). [observePress]가 **tap 스텝의** `performed`를 true로 바꿀 때
      * 무장하고, 정체 판정에서 서비스가 [consumePressRequery]로 소비한다. 새 안내가 나가거나
      * **화면이 바뀌거나**([observeScreen]) 세션이 바뀌면 버린다 — 토큰은 "이 안내를 눌렀는데
@@ -348,7 +381,8 @@ object GuideSession {
      * 않는다는 제약은 그대로다(`../CLAUDE.md`).
      *
      * **true는 되돌리지 않는다.** 한 번 바뀐 화면이 다시 그 화면으로 돌아와도(A→B→A) 그 안내가
-     * 먹혔다는 사실은 그대로다. 회귀 자체를 가리는 것은 내용 서명의 몫이다(#270 서브 4).
+     * 먹혔다는 사실은 그대로다. 회귀 자체를 가리는 것은 **서버**다 — 이력의
+     * `content_signature`를 현재 화면 것과 대조한다(#410). 앱은 그 값을 나르기만 한다.
      * 반대로 false는 true로 덮인다 — 같은 화면에서 다시 묻는 동안(재시도·미검증 done)은 false,
      * 사용자가 결국 진행하면 true다.
      */
@@ -446,6 +480,9 @@ object GuideSession {
             generation++
             steps.clear()
             lastStepSignature = null
+            // 내용 서명의 salt도 세션에 매인다(#410). 남기면 이전 세션의 이력과 해시가 맞아
+            // 서버가 세션을 넘어 같은 화면으로 읽는다.
+            contentSalt = ContentSignature.newSalt()
             pressRequeryArmed = false
             resetUnverifiedDones()
             // 확인 대기와 부정 이력도 세션에 매인다. 남기면 다음 세션의 첫 done이 이전 세션에서

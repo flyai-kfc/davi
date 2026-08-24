@@ -1,5 +1,8 @@
 package com.davi.helper
 
+import java.security.MessageDigest
+import java.security.SecureRandom
+
 /**
  * 화면이 "진짜" 바뀌었는지를 시간 축에서 판정한다.
  *
@@ -60,9 +63,14 @@ object ScreenSignature {
         }
         val content = buildString {
             // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
-            // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
+            // 이 시그니처에는 포함한다 — 원문이 기기를 떠나지 않아서다. 서버 서명은 label처럼
             // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
             // label과 같은 취급이므로 축도 내용이다(#380).
+            //
+            // **이 축의 salt 해시는 기기를 떠난다**(#410). 원문이 아니라 해시이고 salt가
+            // 세션마다 새로 생겨 세션 밖 대조가 성립하지 않으므로 지금은 안전하다. 다만
+            // "내용 축은 어차피 기기 안"으로 읽고 여기에 무언가를 더 넣으면 그때부터 그
+            // 값이 해시로 나간다 — 넣기 전에 그것이 나가도 되는 값인지 본다.
             append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
             screen.elements.forEach { element ->
                 append(stableLabel(element))
@@ -100,6 +108,47 @@ object ScreenSignature {
         } else {
             DIGITS.replace(element.label, "#")
         }
+}
+
+/**
+ * 내용 축([ScreenSig.content])을 세션 salt로 해시한다(#410).
+ *
+ * 구조 축만으로는 서버가 두 경우를 못 가른다 — **구조는 같고 내용만 바뀐 화면**(다른 상품
+ * 상세, 다른 대화방)과 **A→B→A 회귀**. 기기 시그니처는 이웃 샘플과 비교한 뒤 버려지므로 그
+ * 역할을 못 한다. 서버가 이력 간 비교로 판정하려면 세션 안에서 비교되는 값이 이력에 남아야 한다.
+ *
+ * **원문은 나가지 않는다.** 나가는 것은 해시뿐이고, salt는 세션 generation마다 새로 만들어
+ * 프로세스 밖에 저장하지 않는다(#81과 같은 결) — 세션 안 동일성 비교는 되고 장기 역추정
+ * 가치는 없다. salt를 쥐는 것은 [GuideSession]이다.
+ *
+ * 입력은 [ScreenSignature]가 만든 내용 축 **그대로**다. 여기서 다시 정규화하면 기기와 서버가
+ * 같은 구분을 다르게 정의하게 된다 — 이 값이 #380을 기다린 이유가 그것이다.
+ */
+object ContentSignature {
+
+    /**
+     * salt 길이. 세션 하나를 살고 버리는 값이라 `SecureRandom` 16바이트면 충분하다 —
+     * 세션 안 충돌도, 흔한 label 문자열의 사전 대입도 실질적으로 막힌다.
+     */
+    private const val SALT_BYTES = 16
+
+    fun newSalt(): ByteArray = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
+
+    /**
+     * `sha256(salt ‖ content)`의 hex 64자.
+     *
+     * 형식을 서버 `structure_signature`(`^[0-9a-f]{64}$`)와 맞춘다 — 같은 레코드에 나란히 서는
+     * 두 값이라 한쪽만 형식이 다르면 스키마와 읽는 눈이 갈린다.
+     *
+     * [salt]는 [newSalt]가 만든 **고정 길이**여야 한다. 길이가 섞이면 `salt ‖ content`의 경계가
+     * 모호해져 서로 다른 쌍이 같은 입력이 된다.
+     */
+    fun of(salt: ByteArray, content: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(salt)
+        digest.update(content.toByteArray(Charsets.UTF_8))
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 }
 
 /**

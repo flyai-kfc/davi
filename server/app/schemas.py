@@ -139,6 +139,12 @@ class Screen(BaseModel):
     has_scrollable_element: bool | None = None
     # True = IME 창 관측 / False = 정상 window 목록에 없음 / None = 낡은 앱·window 미관측.
     ime_visible: bool | None = None
+    # 지금 이 화면의 내용 축 서명(#410 · C11). 앱이 기기 시그니처의 내용 축을 **세션 salt로
+    # 해시한** 값이라 원문 label은 여기로 오지 않는다. 이력의 `GuideStep.content_signature`와
+    # 대조해 "구조는 같고 내용만 다른 화면"과 A→B→A 회귀를 가른다.
+    # **서버가 스스로 계산할 수 없다** — salt가 기기 안에만 있고 프로세스 밖으로 나가지 않는다.
+    # None은 label 없는 화면이거나 이 값을 아직 안 채우는 낡은 앱이다.
+    content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 MAX_STEPS = 10
@@ -195,9 +201,11 @@ class GuideStep(BaseModel):
     # 또는 미탐), source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다 —
     # **None을 "안 누름"으로 읽지 않는다.**
     performed: bool | None = None
-    # 구조가 같고 내용만 바뀐 화면과 A→B→A 회귀를 서버가 이력 간 비교로 가르기 위한 값
-    # (기기 시그니처 + 세션 salt 해시). **아직 앱이 채우지 않는다** — #270 서브이슈 4.
-    content_signature: str | None = None
+    # 그 안내가 나간 화면의 내용 축 서명(#410). 출처는 같은 요청의 `Screen.content_signature`다 —
+    # 앱이 보낼 때 한 번 계산해 두 자리에 같은 값을 싣는다. `structure_signature`와 형식을
+    # 맞춘다: 한 레코드에 나란히 서는 두 값이라 한쪽만 다르면 읽는 눈이 갈린다.
+    # None은 label 없는 화면이거나 이 값을 아직 안 채우는 낡은 앱이다.
+    content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:

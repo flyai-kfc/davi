@@ -247,6 +247,23 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
     assert "ime_visible" in Screen.model_fields
 
 
+def test_screen_content_signature_exists_on_both_sides(contract_source: str) -> None:
+    """#410의 내용 서명이 `Screen`에서 한쪽에만 생기지 않게 한다.
+
+    스텝 쪽은 위 두 테스트가 이미 덮는다(필드 집합 동등 비교 + wire 이름 대조). 여기서 새로
+    막는 것은 `Screen`이다 — **서버의 판정이 두 자리를 맞대는 것이라** 현재 화면 쪽이 빠지면
+    이력에 값이 흐르는데 비교 상대가 없다.
+    """
+
+    from app.schemas import Screen
+
+    assert (
+        '@SerialName("content_signature") val contentSignature: String? = null'
+        in _kotlin_class_body(contract_source, "Screen")
+    )
+    assert "content_signature" in Screen.model_fields
+
+
 def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:
     """#128의 후보·대조 상태가 Kotlin/Python 중 한쪽에만 생기지 않게 한다."""
 

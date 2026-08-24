@@ -1,3 +1,4 @@
+import pytest
 from app.prompt import (
     ACTIONABLE_RESULT_INSTRUCTION,
     EVIDENCE_INSTRUCTION,
@@ -10,6 +11,7 @@ from app.prompt import (
     PAGE_ONLY_ONE,
     PERFORMED_STEP_INSTRUCTION,
     PRESSED_UNCHANGED_INSTRUCTION,
+    RETURNED_SCREEN_CONFIRMED_INSTRUCTION,
     RETURNED_SCREEN_INSTRUCTION,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
@@ -778,14 +780,17 @@ def test_step_history_escapes_a_value_that_carries_both_quote_marks():
     assert "(대상 '\"확인\"과 김철수\\'s 폰')" in prompt
 
 
-def _back_on(**overrides) -> NextStepRequest:
+def _back_on(*, screen_content: str | None = None, **overrides) -> NextStepRequest:
     """A(지금 화면) → B(다른 화면) → 지금 다시 A인 요청.
 
     **떠난 적이 있어야 회귀다.** 첫 스텝이 현재 서명이고 그 뒤에 다른 서명의 스텝이 있으므로,
     그 사이에 다른 화면으로 갔다가 돌아온 것이 이력으로 드러난다.
+
+    [screen_content]를 안 주면 낡은 앱처럼 내용 서명 없이 돈다 — 판정이 구조 축만 보던
+    이전 동작이고, 기존 테스트가 그 경로를 그대로 지키고 있다.
     """
 
-    screen = Screen(package_name="com.example.app")
+    screen = Screen(package_name="com.example.app", content_signature=screen_content)
     here = screen_signature(screen)
     return NextStepRequest(
         goal="다음 항목 보기",
@@ -876,6 +881,218 @@ def test_returned_screen_explanation_does_not_declare_a_loop():
         assert asserting not in RETURNED_SCREEN_INSTRUCTION
 
 
+# ---- 내용 축(#410) ----
+
+_HERE_CONTENT = "a" * 64
+_OTHER_CONTENT = "b" * 64
+
+
+def test_structure_signature_does_not_absorb_the_content_signature():
+    """새 필드가 구조 서명에 섞이면 두 축이 하나가 된다.
+
+    섞이는 순간 앱이 보관한 이전 스텝의 `structure_signature`가 새 값과 안 맞아 회귀 표시와
+    `tried=`가 **조용히 사라진다**. 게다가 내용이 바뀔 때마다 구조 서명이 흔들려, 구조 축이
+    맡은 "지금 안내를 무효화하는 변화" 판정까지 내용에 끌려간다.
+    """
+
+    bare = Screen(package_name="com.example.app")
+
+    assert screen_signature(bare) == screen_signature(
+        bare.model_copy(update={"content_signature": _HERE_CONTENT})
+    )
+
+
+def test_returned_screen_survives_a_content_difference():
+    """**내용이 다르다는 것만으로 구조가 세운 회귀를 지우지 않는다.**
+
+    같은 화면에서 배너 한 줄이 돈 것과 목록의 다른 항목으로 간 것이 값 안에서 구분되지
+    않는다. 지우는 쪽을 택하면 배너가 도는 화면에서 진짜 회귀가 조용히 사라지고, 그건
+    #386이 실측한 바로 그 미탐이다. 표시는 남기되 문구가 유보를 진다.
+    """
+
+    prompt = build_prompt(_back_on(screen_content=_OTHER_CONTENT, content_signature=_HERE_CONTENT))
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
+def test_matching_content_marks_a_return_the_structure_axis_cannot_see():
+    """구조가 매번 달라지는 화면의 회귀를 내용 축이 잡는다 — #410이 여는 자리.
+
+    2026-08-24 SM-S921N 실측: 카카오T 상세를 오르내리는 동안 서버 구조 서명이 매번 달랐고
+    (요소 수 13/14/10) 내용 서명만 같은 값으로 돌아왔다. 구조 축만으로는 그 루프가 안 보인다.
+
+    자기발생 변화는 내용을 거짓으로 *다르게* 만들지 거짓으로 *같게* 만들지 않으므로, 내용
+    일치는 구조 불일치보다 강한 근거다.
+    """
+
+    screen = Screen(package_name="com.example.app", content_signature=_HERE_CONTENT)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            # 지금과 구조는 다른데 내용이 같다 — 스크롤이 오르내린 그 화면이다.
+            _step(structure_signature="d" * 64, content_signature=_HERE_CONTENT),
+            _step(
+                instruction="다른 화면의 안내",
+                structure_signature="e" * 64,
+                content_signature=_OTHER_CONTENT,
+            ),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION in prompt
+
+
+def test_returned_screen_drops_the_hedge_when_the_content_confirms_it():
+    """내용까지 같으면 "다른 화면일 수도 있다"는 유보가 거짓이므로 뺀다(#410 ②)."""
+
+    prompt = build_prompt(_back_on(screen_content=_HERE_CONTENT, content_signature=_HERE_CONTENT))
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_confirmed_returned_screen_explanation_still_does_not_pick_a_target():
+    """유보를 걷는 것은 문장의 확신이지 선택지가 아니다(C17).
+
+    서버가 대신 무엇을 누르라고 정하면 가드레일이 재선택이 된다 — #386이 배제를 "교정이지
+    재선택이 아니다"로 못 박은 것과 같은 경계다.
+    """
+
+    for picking in ("누르세요", "선택하세요", "id=", "대상은"):
+        assert picking not in RETURNED_SCREEN_CONFIRMED_INSTRUCTION
+
+
+def test_confirmed_returned_screen_explanation_does_not_overclaim():
+    """걷는 것은 "구조만 봤다"는 유보 하나뿐이다.
+
+    내용 축은 숫자를 `#`로 지우므로 주문번호·가격만 다른 상세는 같은 해시다 — "같은 화면이
+    맞다"까지 말하면 축이 뒷받침하지 않는 것을 주장한다. 권고도 조건절로 남는다: 왕복의
+    원인이 사용자 오조작일 수 있고, 확인된 것은 화면 동일성이지 그 안내가 루프였다가 아니다.
+    """
+
+    assert "구조만 본 것이라" not in RETURNED_SCREEN_CONFIRMED_INSTRUCTION
+    assert "왔다면" in RETURNED_SCREEN_CONFIRMED_INSTRUCTION
+    for asserting in ("맞습니다", "루프입니다", "왔으니", "반복되고 있습니다"):
+        assert asserting not in RETURNED_SCREEN_CONFIRMED_INSTRUCTION
+
+
+@pytest.mark.parametrize(
+    ("screen_content", "step_content"),
+    [(None, _HERE_CONTENT), (_HERE_CONTENT, None)],
+)
+def test_returned_screen_keeps_the_hedge_when_one_side_has_no_content(
+    screen_content: str | None,
+    step_content: str | None,
+) -> None:
+    """한쪽이라도 값이 없으면 판단하지 않는다(C10 침묵 규약).
+
+    표시는 구조 근거로 그대로 붙되, 내용이 확인해 준 것이 아니므로 유보를 남긴다.
+    """
+
+    prompt = build_prompt(_back_on(screen_content=screen_content, content_signature=step_content))
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
+def test_returned_screen_hedges_when_any_marked_step_is_unconfirmed():
+    """문장은 이력 전체에 하나만 나가므로 약한 쪽으로 맞춘다."""
+
+    screen = Screen(package_name="com.example.app", content_signature=_HERE_CONTENT)
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here, content_signature=_HERE_CONTENT),
+            _step(instruction="내용 서명이 없는 안내", structure_signature=here),
+            _step(instruction="다른 화면의 안내", structure_signature="e" * 64),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    # 이력 줄만 센다 — 문구 자체가 표시를 인용하고 있어 전체 개수로는 셀 수 없다.
+    marked = [
+        line
+        for line in prompt.splitlines()
+        if line.startswith("- ") and STEP_SCREEN_RETURNED in line
+    ]
+    assert len(marked) == 2
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
+def test_content_repeat_across_structures_is_not_leaving():
+    """경유한 화면이 **내용으로** 같으면 떠난 것이 아니다 — 표시가 빠지는 유일한 경로(#419 리뷰).
+
+    현재 `(S1, C1)`, 이력 `[A:(S1, C1), B:(S2, C1)]`. 구조 축만 보던 때는 B의 구조가 달라
+    A에 표시가 붙었다. 여기서는 B가 내용으로 같은 화면이라 "떠났다"가 성립하지 않는다.
+
+    **그게 맞다** — B가 구조만 흔들린 같은 화면(요소 수가 오가는 상세)이면 사용자는 떠난 적이
+    없다. 이 판정이 새로 잡는 회귀와 같은 기계의 반대편이라, 한쪽만 뒤집는 리팩터를 여기서 막는다.
+    """
+
+    screen = Screen(package_name="com.example.app", content_signature=_HERE_CONTENT)
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here, content_signature=_HERE_CONTENT),
+            _step(
+                instruction="구조만 흔들린 같은 화면의 안내",
+                structure_signature="d" * 64,
+                content_signature=_HERE_CONTENT,
+            ),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
+def test_content_only_cycle_on_one_screen_is_not_a_return():
+    """**"떠났다"의 근거는 구조 축뿐이다.**
+
+    요소 수가 그대로인 배너 로테이션은 구조가 내내 같은 채 label만 X→Y→X로 순환한다.
+    내용까지 "떠났다"의 근거로 삼으면 사용자가 같은 화면에 계속 있었는데 자기발생 변화가
+    회귀 신호를 만든다 — #380이 축을 둘로 나눈 이유가 그것이다.
+    """
+
+    screen = Screen(package_name="com.example.app", content_signature=_HERE_CONTENT)
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here, content_signature=_HERE_CONTENT),
+            _step(
+                instruction="배너가 도는 사이의 다음 안내",
+                structure_signature=here,
+                content_signature=_OTHER_CONTENT,
+            ),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
 def test_returned_screen_marker_sits_after_the_moment_observations():
     """꼬리 순서는 그 시점의 관측(누름 → 변화) 다음에 지금 화면과의 대조다."""
 
@@ -909,9 +1126,11 @@ def test_returned_screen_survives_a_blank_step_on_the_way():
 
 
 def test_tried_count_shares_the_signature_limit_in_its_wording():
-    """`tried=`도 회귀 표시와 같은 구조 서명 하나에 기댄다 — 한계를 함께 말한다.
+    """`tried=`는 구조 서명 하나에 기댄다 — 한계를 함께 말한다.
 
-    회귀 문구만 유보하고 이쪽이 단정하면, 더 센 주장을 하는 쪽이 근거를 덜 밝히는 꼴이 된다.
+    회귀 문구가 내용까지 확인해 유보를 걷은 프롬프트에도 이 유보는 그대로 선다. 모순이
+    아니다 — `tried=`는 `node_id`로 세는데 그 값은 구조가 같을 때만 같은 요소를 가리키므로,
+    내용이 세우는 동일성으로는 셀 대상이 특정되지 않는다(`server/CLAUDE.md` C11).
     """
 
     request = _tried_request(
