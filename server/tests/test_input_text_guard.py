@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import pytest
+from app.prompt import INPUT_TEXT_INSTRUCTION, build_prompt
 from app.reasoning import _instruction_quotes_input_text, next_step
 from app.schemas import (
     ActionType,
@@ -183,3 +184,59 @@ def test_whole_connected_value_is_quoted() -> None:
 )
 def test_grouping_punctuation_still_allows_quoting(input_text: str, instruction: str) -> None:
     assert _instruction_quotes_input_text(input_text, instruction)
+
+
+# ── 지어낸 민감값·목표 echo는 코드가 받는다(PR #406 재리뷰) ───────────
+
+# 안내문 대조만 남기면 `input_text`와 `instruction`이 같은 호출에서 나온 두 필드라,
+# 대조가 보는 것은 내용의 사실 여부가 아니라 둘의 자기 일관성뿐이다. 두 자리를 코드가 막는다.
+
+
+@pytest.mark.parametrize(
+    ("value", "instruction"),
+    [
+        ("010-9999-8888", "연락처 입력칸에 '010-9999-8888'을 입력해 주세요"),
+        ("123-456-789012", "계좌번호 '123-456-789012'를 입력해 주세요"),
+        ("hong@example.com", "'hong@example.com'을 입력해 주세요"),
+    ],
+)
+def test_sensitive_looking_values_are_dropped(value: str, instruction: str) -> None:
+    """모델이 지어내도 안내문에 같이 쓰면 대조를 통과한다 — 그래서 모양으로 막는다.
+
+    사용자가 스스로 정해야 하는 값이라 애초에 버튼이 대신할 자리가 아니다(C21).
+    """
+    action = _guide(_action(ActionType.TYPE, value, instruction=instruction))
+    assert action.input_text is None
+
+
+def test_goal_echoed_into_both_fields_is_dropped() -> None:
+    """실기기에서 재현됐던 버그. 프롬프트가 막고 있지만 코드도 받는다."""
+    goal = "인터넷에 검색해 줘"
+    action = _guide(
+        _action(ActionType.TYPE, goal, instruction=f"검색창에 '{goal}'라고 입력해 주세요"),
+        goal=goal,
+    )
+    assert action.input_text is None
+
+
+# ── 값이 없을 때 (회귀) ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_absent_input_text_stays_absent(value: str | None) -> None:
+    action = _guide(_action(ActionType.TYPE, value, instruction="검색어를 입력해 주세요"))
+    assert not action.input_text
+
+
+# ── 프롬프트에 지시가 실리는 조건 (회귀) ─────────────────────────────
+
+
+def test_instruction_is_included_when_an_input_field_is_visible() -> None:
+    prompt = build_prompt(NextStepRequest(goal=GOAL, screen=_search_screen()))
+    assert INPUT_TEXT_INSTRUCTION in prompt
+
+
+def test_instruction_is_omitted_without_an_input_field() -> None:
+    """C18의 「정보가 있을 때만」 — 입력칸이 없는 화면에는 싣지 않는다."""
+    prompt = build_prompt(NextStepRequest(goal=GOAL, screen=_list_screen()))
+    assert INPUT_TEXT_INSTRUCTION not in prompt

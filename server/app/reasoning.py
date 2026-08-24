@@ -18,7 +18,7 @@ from typing import NamedTuple
 from .config import settings
 from .errors import LlmError
 from .llm import LlmClient
-from .masking import MaskingPolicy, active_masking_policy
+from .masking import MaskingPolicy, active_masking_policy, mask_text
 from .schemas import (
     ActionType,
     ErrorKind,
@@ -146,26 +146,20 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
     _reject_obscured_target(action, req.screen)
 
-    # 1. 복사 신호는 확인받은 목표 문장에서 온 말만 남긴다(C21).
-    #    **이 자리여야 한다** — 아래 tap 분기가 `return action`으로 끝나므로, 뒤로 내리면
-    #    `type`이 아닌 action의 `input_text`를 비우는 일이 tap에서 통째로 건너뛰어진다(PR #406
-    #    리뷰가 "왜 1번인지 설명이 없다"고 짚은 자리다. 두 가드가 `action_type`으로 배타적이라
-    #    **결과가 같아 보이지만**, 그건 지금 tap 가드가 값을 안 읽는다는 것이지 이 가드가
-    #    tap 경로에서 도는 것까지 보장하지는 않는다).
-    #    아래 교정들과 **연쇄하지는 않는다** — 건드리는 필드가 `input_text` 하나뿐이고
-    #    어느 가드도 그 값을 읽지 않는다. 새 가드를 넣는 사람은 두 가지를 함께 본다:
-    #    early return 앞이어야 하는가(도달성), 그리고 다른 가드가 그 필드를 읽는가(연쇄).
-    action = _keep_input_text_named_by_instruction(action)
+    # 1. 복사 신호는 **안내문이 집어 말한 말**만 남긴다(C21). 건드리는 필드가 `input_text`
+    #    하나뿐이고 아래 어느 가드도 그 값을 읽지 않아 연쇄하지 않는다.
+    action = _keep_input_text_named_by_instruction(action, req.goal)
 
-    # 2. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
+    # 2. 동작별 교정. **분기를 if/elif로 두고 반환을 하나로 모은다**(PR #406 재리뷰) —
+    #    early return이 있으면 그 앞뒤로 가드 순서 제약이 생기고, 그 제약을 주석으로만
+    #    강제하게 된다. 여기서는 위 가드가 어디 있든 도달하므로 확인할 것이 하나 준다.
     if action.action_type is ActionType.TAP:
+        # tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
         _reject_unclickable_tap(action, req.screen)
-        return action
-
-    # scroll만 교정 대상이다. 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
-    if action.action_type is not ActionType.SCROLL:
-        return action
-    return _resolve_scroll(action, req.screen)
+    elif action.action_type is ActionType.SCROLL:
+        # 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
+        action = _resolve_scroll(action, req.screen)
+    return action
 
 
 def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
@@ -201,41 +195,76 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
     )
 
 
-def _keep_input_text_named_by_instruction(action: GuideAction) -> GuideAction:
+def _keep_input_text_named_by_instruction(action: GuideAction, goal: str) -> GuideAction:
     """`input_text`는 **안내문이 집어 말한 말**일 때만 남긴다(C21, 2026-08-24 개정).
 
     **동의를 받는 면은 안내문이다.** 사용자는 「검색창에 '한국 미국 시차'라고 입력하세요」를
-    읽고 그 아래 버튼을 누른다 — 채워지는 값이 방금 읽은 그 말과 같으면, 버튼은 사용자가 눈으로
-    확인한 일만 한다. 타이핑이 안전한 이유(화면을 보며 한 글자씩 치니 틀린 값이 손에서 걸린다)를
-    버튼이 그대로 물려받는 자리다.
+    읽고 그 아래 버튼을 누른다 — 채워지는 값이 방금 읽은 말과 같으면, 버튼은 사용자가 눈으로
+    확인한 일만 한다.
 
-    **목표 문장과 대조하지 않는다**(개정 전 규칙). 검색어는 목표에 그대로 있지 않은 것이 정상이라
-    — 목표 `한국이랑 미국의 시차를 알고 싶어`에 사람이 실제로 칠 말은 `한국 미국 시차`다 —
-    출처를 목표로 좁히면 **모델이 어색한 검색어를 쓰도록 강요하거나**(실측: 프롬프트가 강제하니
-    `한국이랑 미국의 시차`라고 썼다) 정상 안내에서 버튼이 사라진다. 승인의 근거를 목표에서
-    안내문으로 옮긴 것이지 없앤 것이 아니다.
+    **목표 문장을 출처로 요구하지는 않는다**(개정 전 규칙). 검색어는 목표에 그대로 있지 않은
+    것이 정상이라 — 목표 `한국이랑 미국의 시차를 알고 싶어`에 사람이 실제로 칠 말은
+    `한국 미국 시차`다 — 출처를 목표로 좁히면 **모델이 어색한 검색어를 쓰도록 강요하거나**
+    (실측) 정상 안내에서 버튼이 사라진다.
+
+    **그 대가를 두 가드가 받는다**(PR #406 재리뷰). 안내문 대조만 남기면 `input_text`와
+    `instruction`이 **같은 호출에서 나온 두 필드**라, 대조가 검증하는 것은 내용의 사실 여부가
+    아니라 둘의 자기 일관성뿐이다 — 지어낸 전화번호도 안내문에 같이 써 주면 통과한다(재현됨).
+    그래서 코드가 두 자리를 따로 막는다:
+
+    - **[_looks_sensitive]** — 값이 개인정보 패턴(전화·계좌·카드·주민·이메일)에 걸리면 비운다.
+      C21이 프롬프트로만 말하던 「값이 곧바로 확정되는 칸에는 쓰지 마세요」를 **가장 위험한
+      모양에 한해 코드로** 받는 것이다. 이런 값은 지어냈을 때의 피해가 검색어와 급이 다르고,
+      **사용자가 스스로 정해야 하는 값**이라 애초에 버튼이 대신할 자리가 아니다.
+    - **[_is_whole_goal]** — 목표 문장을 그대로 echo한 값은 비운다. 실기기에서 재현됐던
+      버그이고(목적어 없는 목표가 통째로 입력칸에 들어갔다), 프롬프트만으로 막으면 모델이
+      지시를 어겼을 때 받아 줄 것이 없다. **대가를 안다**: 목표가 검색어 자체인 짧은 경우
+      (`종로 칼국수`)에는 버튼이 안 뜬다. 그쪽은 사용자가 직접 치면 되는 손해라, 요청 문장이
+      입력칸에 들어가는 쪽보다 실패 방향이 안전하다.
 
     **실패로 닫지 않고 비운다.** 안내 문장 자체는 여전히 맞을 수 있고, 값이 없으면 사용자는
-    지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이라 실패의 방향이 안전한 쪽이다.
-    부수 필드가 주 기능을 죽이지 않는다는 `GuideAction.screen_summary`의 공백 검증 결정과 같은 결.
+    지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이다.
+    `GuideAction.screen_summary`의 공백 검증을 두지 않은 결정과 같은 결.
 
-    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, tap 화면에 입력 제안이 뜨는 경로가 된다.
-    프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`), 필드 순서상 `action_type`이
-    앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
-
-    **하한은 한 글자를 거르는 데까지만 둔다**(`_MIN_INPUT_TEXT_CHARS`, PR #406 리뷰). 근거는
-    매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는 버튼은 사용자가 지우고
-    다시 치는 것보다 낫지 않다. 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **같은 값이지만 다른
-    이유로 서 있다**: 저쪽은 짧은 label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다.
-    그 위로는 올리지 않는다 — 두 글자와 세 글자를 가를 근거가 없다(SPEC §4).
+    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, tap 화면에 입력 제안이 뜨는 경로가
+    된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`), 필드 순서상
+    `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
     """
     if action.input_text is None:
         return action
-    if action.action_type is ActionType.TYPE and _instruction_quotes_input_text(
-        action.input_text, action.instruction
+    if (
+        action.action_type is ActionType.TYPE
+        and _instruction_quotes_input_text(action.input_text, action.instruction)
+        and not _looks_sensitive(action.input_text)
+        and not _is_whole_goal(action.input_text, goal)
     ):
         return action
     return action.model_copy(update={"input_text": None})
+
+
+def _looks_sensitive(input_text: str) -> bool:
+    """값이 개인정보 패턴에 걸리는가 — 걸리면 버튼이 대신 채울 자리가 아니다.
+
+    **2차 마스킹과 같은 패턴을 쓴다**(`masking.mask_text`). 새 목록을 만들지 않는 이유는 둘이다:
+    무엇이 민감한지에 대한 판단이 이미 그 한 곳에 모여 있고, 목록이 둘이면 한쪽만 늘어난다.
+
+    **정책이 아니라 패턴 함수를 직접 부른다.** dev 비교 실험(#203)이 마스킹을 끈 빌드에서도
+    이 판정은 서야 한다 — 저 스위치는 "무엇이 서버로 나가는가"를 재려는 것이지 버튼이 무엇을
+    채워도 되는지를 정하는 스위치가 아니다.
+
+    **패턴 밖 고유명은 여기서도 못 잡는다**(SPEC §2) — 사람 이름·주소는 그대로 통과한다.
+    막을 수 있는 모양만 막는 것이고, 못 막는 자리는 안내문을 읽는 사용자에게 남는다.
+    """
+    return mask_text(input_text) != input_text
+
+
+def _is_whole_goal(input_text: str, goal: str) -> bool:
+    """값이 **목표 문장 그 자체**인가(실기기 재현, PR #406).
+
+    목적어가 없는 목표에서 모델이 목표를 통째로 복사해 검색창에 부탁하는 말이 들어갔다.
+    구두점·띄어쓰기만 다른 재작성도 같은 것으로 본다.
+    """
+    return _normalize_for_evidence(input_text) == _normalize_for_evidence(goal)
 
 
 def _instruction_quotes_input_text(input_text: str, instruction: str) -> bool:
@@ -709,24 +738,24 @@ def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
         if not phrases.compact.startswith(normalized_phrase, start):
             continue
         match_end = start + len(normalized_phrase)
-        last = _index_of_end(phrases.ends, match_end)
-        if last is not None:
-            # 끝나는 어절이 다음 어절과 한 값이면 **뒤가 잘린 것**이다.
-            if not phrases.glued[last]:
-                return True
+        # **한 번만 훑는다**(PR #406 재리뷰). `ends`가 단조증가라, 끝나는 어절을 한 번 찾으면
+        # 정확 일치(`end == match_end`)와 조사 허용(`end > match_end`)이 같은 자리에서 갈린다.
+        last = next(
+            (i for i, end in enumerate(phrases.ends) if end >= match_end),
+            None,
+        )
+        if last is None:
             continue
-        word_end = next(end for end in phrases.ends if end > match_end)
-        if not _is_allowed_korean_evidence_suffix(phrases.compact[match_end:word_end]):
+        word_end = phrases.ends[last]
+        if word_end != match_end and not _is_allowed_korean_evidence_suffix(
+            phrases.compact[match_end:word_end]
+        ):
             continue
-        # 조사까지 먹었으면 그 어절은 통째로 소비된 것이라, 끝 판정은 위와 같다.
-        if not phrases.glued[phrases.ends.index(word_end)]:
+        # 끝나는 어절이 다음 어절과 한 값이면 **뒤가 잘린 것**이다. 조사까지 먹은 경우도
+        # 그 어절은 통째로 소비된 것이라 판정이 같다.
+        if not phrases.glued[last]:
             return True
     return False
-
-
-def _index_of_end(ends: list[int], offset: int) -> int | None:
-    """[offset]에서 끝나는 어절의 번호. 어절 경계가 아니면 None."""
-    return ends.index(offset) if offset in ends else None
 
 
 def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
@@ -744,10 +773,6 @@ def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
         for base in _KOREAN_EVIDENCE_COMPOUND_BASES
         for auxiliary in _KOREAN_EVIDENCE_AUXILIARY_SUFFIXES
     )
-
-
-def _evidence_words(text: str) -> list[str]:
-    return _EVIDENCE_WORD.findall(text.casefold())
 
 
 def _normalize_for_evidence(text: str) -> str:

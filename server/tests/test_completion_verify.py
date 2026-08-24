@@ -238,3 +238,33 @@ def test_non_done_action_is_never_verified():
             )
 
     assert not next_step(request, _TapClient()).verified
+
+
+# ── 값 연결자 경계(C21 리팩터의 부수효과, PR #406 재리뷰) ─────────────
+
+# `_contains_quoted_phrase`를 복사 문구 대조와 공유하면서 이 가드도 **값 연결자 경계 배제**를
+# 함께 물려받았다. C21 스코프 밖에서 조용히 바뀐 동작이라 여기 회귀로 박아 둔다.
+# (대조 방향은 "화면 label이 근거 문장 안에 있는가"다 — 반대가 아니다.)
+
+
+def test_evidence_quoting_a_whole_connected_label_is_verified():
+    """온전한 값은 그대로 통과한다 — 좁힌 것이 정상 인용을 먹으면 안 된다."""
+
+    assert _verified("화면에 앱 정보/권한이 보임", _screen("앱 정보/권한", "저장공간"))
+
+
+def test_evidence_quoting_only_part_of_a_connected_value_is_not_verified():
+    """**이번에 좁아진 자리다.** 근거가 `앱 정보/권한`이라고 썼는데 label은 `앱 정보`뿐이면,
+    그 label은 근거가 가리킨 것의 조각이라 인용으로 보지 않는다.
+
+    `-./:`로만 이어진 자리는 원문에 없던 어절 경계라서다. 잘린 전화번호가 복사 문구로 나가던
+    것을 막으려는 규칙인데, 같은 함수를 쓰는 이 가드에도 걸린다.
+    """
+
+    assert not _verified("화면에 앱 정보/권한이 보임", _screen("앱 정보", "저장공간"))
+
+
+def test_grouping_punctuation_still_matches():
+    """괄호는 값을 잇는 자리가 아니다 — `설정` label을 `설정(Settings)`으로 쓴 근거가 통과한다."""
+
+    assert _verified("화면에 설정(Settings)이 보임", _screen("설정", "정보"))
