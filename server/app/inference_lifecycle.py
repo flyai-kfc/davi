@@ -26,7 +26,7 @@ from threading import Lock
 from pydantic import BaseModel
 
 from .errors import LlmError
-from .schemas import ErrorKind, NextStepRequest
+from .schemas import ErrorKind, GuideStep, NextStepRequest
 
 PROVIDER_CALL_TIMEOUT_SECONDS = 20.0
 INFERENCE_DEADLINE_SECONDS = 40.0
@@ -34,6 +34,10 @@ SUCCESS_REPLAY_TTL_SECONDS = 120.0
 MAX_SUCCESS_REPLAYS = 256
 INFERENCE_MAX_WORKERS = 40
 _MUTABLE_LAST_STEP_FIELDS = frozenset({"screen_changed", "performed", "content_signature"})
+_unknown_mutable_step_fields = _MUTABLE_LAST_STEP_FIELDS - GuideStep.model_fields.keys()
+if _unknown_mutable_step_fields:
+    unknown = ", ".join(sorted(_unknown_mutable_step_fields))
+    raise RuntimeError(f"GuideStep에 없는 재전송 관측 필드입니다: {unknown}")
 
 # schema·계약 복구까지 포함한 실제 공급자 HTTP 호출 상한이다. 호출부가 attempt 번호를 잘못
 # 재사용해도 아래 request-scope 카운터가 실제 호출 수를 따로 세어 상한을 지킨다.
