@@ -277,12 +277,10 @@ DAVI_DISABLE_PRIVACY_MASKING=false
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
 개발 설정으로 취급한다.
 
-**release는 Azure 개발 서버를 바라본다**(2026-08-19, #248). URL은 공개 식별자라 상수이고
-(`build.gradle.kts`의 `releaseServerUrl`), 접근 토큰은 `local.properties`의
-`DAVI_RELEASE_ACCESS_TOKEN`을 **`localSetting`으로** 읽는다 — release가 정당하게 쓰는 값이라
-`debugSetting`이 막는 대상에 넣으면 안 된다. **값이 비면 `verifyReleaseConfiguration`이 빌드를
-실패시킨다.** 토큰은 APK에서 추출되므로 비밀이 아니고 **회전으로 다룬다**(내부 테스트 종료 즉시
-서버에서 무효화). 평문 HTTP는 그대로 거부한다.
+**release는 Azure release 전용 Container App을 바라본다**(#214). URL은 공개 식별자라
+`build.gradle.kts`의 `releaseServerUrl` 상수로 두며, 서버는 `production` 프로필로 실행한다.
+개발 접근 토큰은 release APK에 넣지 않는다. 로그인으로 받은 세션 JWT가 추론 endpoint 접근을
+통제하며, 평문 HTTP는 그대로 거부한다.
 
 `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이 남아 있으면
 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
@@ -367,6 +365,8 @@ sha1 -binary | base64` 한 줄로도 같은 값이 나온다.
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
 Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
+release Container App의 준비·수동 승격 절차는
+[`../docs/deployment/azure-release-server.md`](../docs/deployment/azure-release-server.md)를 따른다.
 
 ## 구성
 
@@ -406,8 +406,8 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
-- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL·접근 토큰 주입 — debug는 `DAVI_DEBUG_*`,
-  release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`), 매니페스트, 접근성 서비스 등록.
+- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL — debug는 `DAVI_DEBUG_*`와
+  개발 접근 토큰, release는 Azure release 상수와 세션 JWT), 매니페스트, 접근성 서비스 등록.
 - `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.

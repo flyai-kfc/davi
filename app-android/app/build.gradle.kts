@@ -233,22 +233,11 @@ if (releaseKeystoreFile == null) {
     }
 }
 
-// release가 바라볼 Azure Container Apps endpoint(#214에서 확정). 공개 식별자라 상수로 둔다 —
-// APK에서 어차피 추출되고, releaseKakaoNativeAppKey와 같은 결이다.
+// release 전용 Azure Container App endpoint(#214). development 앱과 리소스 그룹·managed
+// environment는 공유하지만 Container App과 runtime profile은 분리한다. 같은 managed
+// environment의 기본 domain을 쓰므로 app name만 davi-server-release로 달라진다.
 val releaseServerUrl =
-    "https://davi-server-app.greenbeach-0566d3be.koreacentral.azurecontainerapps.io"
-
-// 서버가 development 프로필이라 원격 요청마다 접근 토큰을 요구한다(server/app/main.py의
-// _development_access_error). 주소만 넣으면 붙기는 해도 모든 요청이 401로 끝난다 — 실측했다.
-// **releaseKakaoNativeAppKey와 같은 결로 이것도 APK에서 추출된다 — 비밀이 아니다**(#248 리뷰).
-// 상수로 두지 않는 이유는 기밀성이 아니라 **회전**이다: 팀 전체가 공유하는 Gemini 쿼터에
-// 물려 있어 기간 제한 임시 capability로 다뤄야 하고(내부 테스트 시작 직전 서버에 적용, 종료
-// 즉시 서버에서 무효화·회전 — local.properties 삭제는 폐기가 아니다), 상수면 회전마다 커밋과
-// 재배포가 필요해진다. beta·production의 세션 접근 통제·분·일 단위 비용 상한·비식별 로그
-// 정책은 #214의 서버 경계가 담당한다. 이 값은 development 공유 서버의 별도 임시 경계다.
-// 값이 비어도 여기서 던지지 않는다 — debug 빌드까지 같이 깨진다. release에서만 아래
-// verifyReleaseConfiguration이 실패로 만든다.
-val releaseAccessToken = localSetting("DAVI_RELEASE_ACCESS_TOKEN")
+    "https://davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io"
 
 // 로그인 버튼은 "키가 있다"가 아니라 **"로그인이 끝까지 갈 수 있다"**에 건다. 카카오 인증에
 // 성공해도 세션을 교환할 상대가 없으면 매번 login_error_server로 끝나므로, 그 상태에서
@@ -358,11 +347,9 @@ android {
             // 빌드는 성공해야 한다 — CI가 이 경로로 assembleRelease를 돈다.
             signingConfigs.findByName("release")?.let { signingConfig = it }
             buildConfigField("String", "SERVER_URL", releaseServerUrl.asBuildConfigString())
-            buildConfigField(
-                "String",
-                "DEV_ACCESS_TOKEN",
-                releaseAccessToken.asBuildConfigString(),
-            )
+            // production 프로필은 카카오 로그인으로 받은 세션 JWT만 받는다. 개발 capability를
+            // release APK에 넣으면 서버가 거부할 뿐 아니라 debug/release 경계도 흐려진다.
+            buildConfigField("String", "DEV_ACCESS_TOKEN", "\"\"")
             // release는 속성을 읽지 않는다. 상수 false를 다시 못박아 debug 값이 새지 않게 한다.
             buildConfigField("boolean", "PRIVACY_MASKING_DISABLED", "false")
             // 키와 placeholder는 함께 켜야 한다. 키만 넣으면 버튼은 뜨지만 handler activity가
@@ -418,7 +405,6 @@ val verifyReleaseConfiguration by tasks.registering {
     // release 산출물의 BuildConfig는 이미 상수 false지만, 우회 설정을 둔 채로 release를 만들면
     // 의도를 오인한 실행이다. 값이 false여도 "설정이 존재하는 것" 자체를 실패로 본다(#203).
     inputs.property("privacyMaskingConfigured", disablePrivacyMaskingConfigured)
-    inputs.property("releaseAccessTokenLength", releaseAccessToken.length)
     doLast {
         val debugServerConfigured = inputs.properties["debugServerConfigured"] as Boolean
         val debugAccessTokenConfigured = inputs.properties["debugAccessTokenConfigured"] as Boolean
@@ -433,15 +419,6 @@ val verifyReleaseConfiguration by tasks.registering {
                         "DAVI_KAKAO_NATIVE_APP_KEY를 제거하세요 — release 카카오 키는 " +
                         "이 경로가 아니라 releaseKakaoNativeAppKey 상수로 들어갑니다.",
                 )
-            }
-            val releaseTokenLength = inputs.properties["releaseAccessTokenLength"] as Int
-            if (releaseTokenLength == 0) {
-                add(
-                    "DAVI_RELEASE_ACCESS_TOKEN을 설정하세요 — 서버가 development 프로필이라 " +
-                        "토큰 없이 나간 빌드는 설치는 되고 모든 요청이 401로 죽습니다.",
-                )
-            } else if (releaseTokenLength < 32) {
-                add("DAVI_RELEASE_ACCESS_TOKEN은 32자 이상이어야 합니다.")
             }
             if (privacyMaskingConfigured) {
                 add(

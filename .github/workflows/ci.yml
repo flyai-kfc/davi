@@ -82,6 +82,7 @@ jobs:
               - 'server/app/**'
               - 'infra/azure/**'
               - '.github/workflows/azure-dev-deploy.yml'
+              - '.github/workflows/azure-release-deploy.yml'
               - '.github/workflows/ci.yml'
 
       - name: 실기기 실행기 구문·회귀 테스트
@@ -208,11 +209,9 @@ jobs:
 
       # 실기기/Gemini 시나리오는 opt-in이다. 여기서는 제품 APK와 e2e-driver test APK, 단위 테스트를
       # 먼저 만들고, :app의 androidTest는 아래 별도 스텝에서 비용을 드러내며 컴파일한다(#385).
-      # assembleRelease는 preReleaseBuild를 거쳐 verifyReleaseConfiguration을 문다(#248) —
-      # DAVI_RELEASE_ACCESS_TOKEN이 없으면 여기서 항상 실패하므로 CI 전용 더미값을 준다.
+      # assembleRelease는 preReleaseBuild를 거쳐 debug 설정 유출 관문을 문다(#248).
+      # release는 production 세션 JWT를 쓰므로 빌드 시 개발 접근 토큰을 주입하지 않는다(#214).
       - name: debug/release/e2e test APK 빌드 + 단위 테스트
-        env:
-          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
 
       # 리소스 id가 삭제됐는데 app/src/androidTest가 옛 R.id를 계속 참조한 회귀를 컴파일에서 잡는다.
@@ -409,37 +408,13 @@ jobs:
           test "$status" -ne 0
           grep -q "release 빌드 전에" <<<"$output"
 
-      # 서버가 development 프로필이라 release도 접근 토큰을 요구한다(#248). 세 경계를 각각 고정한다
-      # — 미설정, 32자 미만, 정상값(통과 + BuildConfig 배선).
-      - name: release 접근 토큰 미설정 거부
-        run: |
-          set +e
-          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
-          status=$?
-          set -e
-          test "$status" -ne 0
-          grep -q "DAVI_RELEASE_ACCESS_TOKEN을 설정하세요" <<<"$output"
-
-      - name: release 접근 토큰 32자 미만 거부
-        env:
-          DAVI_RELEASE_ACCESS_TOKEN: ci-only-short-token-0001
-        run: |
-          set +e
-          output="$(./gradlew verifyReleaseConfiguration 2>&1)"
-          status=$?
-          set -e
-          test "$status" -ne 0
-          grep -q "DAVI_RELEASE_ACCESS_TOKEN은 32자 이상이어야 합니다" <<<"$output"
-
-      - name: release 접근 토큰 정상값 통과 및 BuildConfig 배선 확인
-        env:
-          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
+      - name: release 개발 토큰 미배선 확인
         run: |
           ./gradlew verifyReleaseConfiguration
           ./gradlew :app:generateReleaseBuildConfig
           generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
           test -f "$generated"
-          grep -q 'DEV_ACCESS_TOKEN = "ci-only-not-a-secret-release-token-0001"' "$generated"
+          grep -q 'DEV_ACCESS_TOKEN = ""' "$generated"
 
       # 마스킹 우회는 debug 전용이다(#203). release 경로에서는 값이 false여도 "설정이 있다는 것"
       # 자체를 실패로 본다 — 의도를 오인한 실행이기 때문이다. 두 입력 경로를 각각 확인한다.
@@ -465,11 +440,8 @@ jobs:
 
       # 위 관문이 release + 우회 속성 조합 자체를 막으므로, 여기서는 정상 release 산출물의
       # 상수가 false인지 본다. debug 값이 defaultConfig로 새는 배선 실수를 잡는 자리다.
-      # generateReleaseBuildConfig도 preReleaseBuild를 거쳐 verifyReleaseConfiguration을
-      # 물기 때문에(#248) 토큰이 없으면 이 단계도 실패한다.
+      # generateReleaseBuildConfig도 preReleaseBuild를 거쳐 verifyReleaseConfiguration을 문다.
       - name: release BuildConfig의 마스킹 상수 고정 확인
-        env:
-          DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: |
           ./gradlew :app:generateReleaseBuildConfig
           generated="app/build/generated/source/buildConfig/release/com/davi/helper/BuildConfig.java"
@@ -680,9 +652,11 @@ jobs:
       - name: Bicep 템플릿 빌드
         if: needs.changes.outputs.infrastructure == 'true'
         run: |
+          bash -n infra/azure/deploy-release.sh
           az bicep install --version v0.46.1
           az bicep build --file infra/azure/dev-foundation.bicep --stdout >/dev/null
           az bicep build --file infra/azure/dev-server.bicep --stdout >/dev/null
+          az bicep build --file infra/azure/release-server.bicep --stdout >/dev/null
 
       - name: 서버 이미지 빌드·비루트 확인·health 스모크
         if: needs.changes.outputs.infrastructure == 'true'

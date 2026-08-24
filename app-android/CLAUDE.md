@@ -259,11 +259,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `./scripts/dev-install.sh --a11y-only`로 권한만 복구한다(2초).
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
 - **API 키를 앱에 넣지 않는다.** 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
-  **되살리지 않는다**(HANDOFF §5-2). 서버 URL·접근 토큰은 **빌드 타입마다 따로** 주입한다 —
-  debug는 `DAVI_DEBUG_*`, **release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`**(#248).
-  release가 `debugSetting`이 아니라 `localSetting`으로 읽는 이유는 **정당하게 쓰는 값이라
-  개발 설정 관문이 막을 대상이 아니기 때문**이다(#221 서명 키와 같은 결). 막는 것은
-  `DAVI_DEBUG_*`가 release에 새는 것이다.
+  **되살리지 않는다**(HANDOFF §5-2). 서버 URL은 빌드 타입마다 나눈다 — debug는
+  `DAVI_DEBUG_*`와 개발 접근 토큰, **release는 별도 Azure 상수 + 런타임 세션 JWT**다(#214).
+  `DAVI_DEBUG_*`가 release에 새는 것은 빌드 관문이 막는다.
 - **release 서명은 debug 설정이 아니다**(#221). 업로드 키스토어 경로·비밀번호는
   `local.properties`에서 읽되 `debugSetting`이 아니라 `localSetting`으로 읽는다 — release가
   정당하게 쓰는 값이라 `verifyReleaseConfiguration`이 막는 대상에 넣으면 안 된다.

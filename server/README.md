@@ -172,17 +172,19 @@ profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`
   (`../docs/development/azure-dev-server.md`). 손으로 배선하면 다음 배포가 조용히 지운다.
 - 세션 토큰이 담긴 성공 응답은 `Cache-Control: no-store`로 캐시를 금지한다.
 - 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
-  출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
+  출처별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
   정상 사용자를 지키고, 전역 상한(`DAVI_AUTH_RATE_LIMIT_*`)이 카카오 API 소모 총량을 지킨다.
   두 판정은 한 리미터 안에서 원자적으로 내려지고 **허용된 요청만 기록**하므로, 거부된
   요청은 출처 키를 남기지 않고 활성 출처 키 수는 전역 상한으로 묶인다. 이 상한 보장을
   위해 출처 창은 전역 창 이하여야 하며, 위반 조합은 기동 시 설정 검증이 거부한다.
-  초과하면 429와 `Retry-After`를 돌려준다. 출처 구분은 peer IP 단위이므로 주소를 대량
+  초과하면 429와 `Retry-After`를 돌려준다. 출처 구분은 네트워크 IP 단위이므로 주소를 대량
   순환하는 분산 폭주로부터의 가용성 방어는 애플리케이션 밖 신뢰 ingress의 몫이다.
 - development 게이트의 **토큰 검사는 로그인에도 그대로** 적용되지만, 팀 추론 쿼터(Gemini)를
-  보호하는 dev 요청 제한은 로그인이 **소모하지 않는다** — 로그인 제한은 전용 리미터 몫이다. `X-Forwarded-For`는 애플리케이션에서 파싱하지
-  않는다 — 프록시 뒤 배포는 uvicorn `--proxy-headers`와 `--forwarded-allow-ips`로 신뢰
-  프록시가 재작성한 client 주소를 쓴다.
+  보호하는 dev 요청 제한은 로그인이 **소모하지 않는다** — 로그인 제한은 전용 리미터 몫이다.
+- `DAVI_AUTH_SOURCE=peer`가 기본이며 직접 연결 주소를 쓴다. release Azure Container Apps는
+  `azure_container_apps`를 명시하고, ACA가 덧붙여 보장하는 `X-Forwarded-For`의 **가장 오른쪽
+  IP 하나만** 쓴다. 왼쪽 값은 클라이언트가 위조할 수 있어 전부 버린다. 헤더 누락·오형식은
+  카카오 API 호출 전에 503으로 닫고, 이 IP를 인증·권한·로그에는 사용하지 않는다.
 - 카카오 access token 원문·세션 토큰·서명 비밀은 로그에 남기지 않는다(테스트로 고정).
 
 ## 실행 프로필
@@ -198,6 +200,7 @@ rate limit을 쓰는 `development`를 유지한다.
 | `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
 | `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
+| `DAVI_AUTH_SOURCE` | `peer`만 허용 | beta는 `peer`; production release ACA만 `azure_container_apps` |
 | `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 접근 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
 | `/v1/next-step` 등 추론 endpoint | dev·test 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
 | `/health` | 토큰 없이 development 진단값 | 토큰 없이 `{"status":"ok"}`만 |

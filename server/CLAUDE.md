@@ -34,9 +34,11 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **카카오 로그인 검증·세션 발급**(`kakao_auth.py`, #165) — 앱이 받아 온 카카오 access token을
   검증(발급처 `app_id` 대조)하고 카카오 회원번호를 담은 **무상태 세션 JWT**를 발급한다.
   사용자 DB 없음. 인증 전 공개 endpoint라 dev 게이트와 별개로 **모든 프로필에서 도는**
-  로그인 전용 레이트리밋이 붙는다 — 출처(직접 연결 peer IP)별 제한이 정상 사용자를,
+  로그인 전용 레이트리밋이 붙는다 — 출처별 제한이 정상 사용자를,
   전역 상한이 카카오 API 소모 총량을 지킨다. 세션 토큰이 담긴 성공 응답은
-  `Cache-Control: no-store`다. 카카오 토큰·세션 토큰·서명 비밀은 로그 금지.
+  `Cache-Control: no-store`다. 직접 연결은 peer IP, Azure Container Apps ingress는
+  `X-Forwarded-For`의 플랫폼 보장 **가장 오른쪽 IP만** 쓰며 인증·권한에는 쓰지 않는다.
+  카카오 토큰·세션 토큰·서명 비밀·IP는 로그 금지.
 
 ## 추론 아키텍처 — 실행 → 명시적 검증 2단
 1. **실행** — 현재 화면에서 다음 한 걸음.
@@ -55,9 +57,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - API 키는 **환경변수**. 커밋 금지. `.env`는 gitignore됨.
 - `DAVI_ENV` 미설정은 로컬 호환을 위해 `development`. 제품 배포는 `production`을 명시하고
   실제 LLM + non-empty 키를 사용하며 `DAVI_DEV_ACCESS_TOKEN`을 두지 않는다. #94 Azure 공유 서버는
-  제품 배포가 아닌 dev-only 경로라 `development`와 개발 토큰을 유지한다. 잘못된 조합은
-  `config.Settings`가 import 시 거부한다. **release APK가 이 서버를 바라보게 됐지만(#248)
-  그 성격은 안 바뀐다** — 붙는 쪽이 늘었을 뿐 서버는 여전히 토큰으로 닫힌 개발 서버다.
+  debug용으로 `development`와 개발 토큰을 유지하고, release APK는 같은 resource group의 별도
+  Container App에서 `production` 프로필과 세션 JWT를 쓴다(#214). 잘못된 조합은
+  `config.Settings`가 import 시 거부한다.
 - development를 loopback 밖에 바인딩할 때는 32자 이상 토큰이 필수다 —
   `DAVI_DEV_ACCESS_TOKEN`(팀) 또는 `DAVI_TEST_ACCESS_TOKEN`(외부 테스트 참가자) 중 하나면
   된다. **헤더는 `X-Davi-Dev-Token` 하나뿐이고 값만 다르다** — 그래서 앱에는 대응 코드가 없다.
