@@ -26,12 +26,13 @@ from threading import Lock
 from pydantic import BaseModel
 
 from .errors import LlmError
-from .schemas import ErrorKind
+from .schemas import ErrorKind, NextStepRequest
 
 PROVIDER_CALL_TIMEOUT_SECONDS = 20.0
 INFERENCE_DEADLINE_SECONDS = 40.0
 SUCCESS_REPLAY_TTL_SECONDS = 120.0
 MAX_SUCCESS_REPLAYS = 256
+INFERENCE_MAX_WORKERS = 40
 
 # schema·계약 복구까지 포함한 실제 공급자 HTTP 호출 상한이다. 호출부가 attempt 번호를 잘못
 # 재사용해도 아래 request-scope 카운터가 실제 호출 수를 따로 세어 상한을 지킨다.
@@ -142,15 +143,52 @@ def provider_call_timeout_seconds(operation: str, declared_attempt: int) -> floa
 
 
 def request_fingerprint(request: BaseModel) -> str:
-    """원문을 보관하지 않고 검증·기본값 적용 뒤의 의미상 같은 본문을 같은 digest로 만든다."""
+    """원문을 보관하지 않고 논리 요청의 의미상 identity를 digest로 만든다.
+
+    next-step의 재전송 identity는 Android ``ScreenSignature.structure``와 같은 축을 쓴다.
+    label·window title·node id·bounds·스크롤 위치 메타는 앱이 같은 logical ID에서 허용하는
+    내용/과도기 값이라 제외한다. 그 밖의 endpoint는 검증·기본값 적용 뒤 본문 전체가 identity다.
+    """
 
     canonical = json.dumps(
-        request.model_dump(mode="json"),
+        _request_identity(request),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _request_identity(request: BaseModel) -> dict:
+    if not isinstance(request, NextStepRequest):
+        return request.model_dump(mode="json")
+
+    # 앱은 network/timeout retry에서 화면을 다시 직렬화한다. 구조가 같은 동안에도 시계·배지
+    # label, 정착 중 bounds, 직렬화 node id는 달라질 수 있으므로 본문 전체를 비교하면 정상
+    # 재전송을 409로 오판한다. 요소 순서·수와 아래 행동 상태는 Android 구조 서명과 같다.
+    identity = request.model_dump(mode="json", exclude={"screen"})
+    identity["screen"] = {
+        "package_name": request.screen.package_name,
+        "current_page": request.screen.current_page,
+        "total_pages": request.screen.total_pages,
+        "has_scrollable_element": request.screen.has_scrollable_element,
+        "ime_visible": request.screen.ime_visible,
+        "elements": [
+            {
+                "role": element.role,
+                "clickable": element.clickable,
+                "editable": element.editable,
+                "focused": element.focused,
+                "enabled": element.enabled,
+                "checked": element.checked,
+                "selected": element.selected,
+                "showing_hint_text": element.showing_hint_text,
+                "obscured": element.obscured,
+            }
+            for element in request.screen.elements
+        ],
+    }
+    return identity
 
 
 class InferenceCoordinator:
@@ -166,7 +204,7 @@ class InferenceCoordinator:
         deadline_seconds: float = INFERENCE_DEADLINE_SECONDS,
         replay_ttl_seconds: float = SUCCESS_REPLAY_TTL_SECONDS,
         max_success_replays: int = MAX_SUCCESS_REPLAYS,
-        max_workers: int = 8,
+        max_workers: int = INFERENCE_MAX_WORKERS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.deadline_seconds = deadline_seconds

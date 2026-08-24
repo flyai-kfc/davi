@@ -243,8 +243,9 @@ beta·production은 바인딩 자체를 막지 않는 대신,
 추론 client는 연결·쓰기·읽기를 모두 포함한 45초 call timeout으로 서버보다 5초 늦게 끝난다.
 첫 HTTP 연결이 끊겨도 진행 중 작업은 즉시 취소하지 않는다. 같은 ID retry가 합류하거나 성공
 결과를 받을 수 있게 40초까지만 계속하고, 그 뒤 결과는 버린다. 동기식 공급자 호출을 Python에서
-강제로 종료할 수 없는 구간은 provider timeout이 닫는다. dogfood raw 봉투는 공유 작업 owner만
-기록하고 replay 전송은 중복 저장하지 않는다.
+강제로 종료할 수 없는 구간은 provider timeout이 닫는다. 내부 실행 pool은 FastAPI sync 기본
+수용량과 같은 40개라 기존 동시 처리량을 조용히 줄이지 않는다. dogfood raw 봉투는 공유 작업
+owner만 기록하고 replay 전송은 중복 저장하지 않는다.
 
 ### LLM 공급자 교체
 

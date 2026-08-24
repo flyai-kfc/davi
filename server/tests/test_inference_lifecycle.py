@@ -11,15 +11,17 @@ import app.main as main_module
 import pytest
 from app.errors import LlmError
 from app.inference_lifecycle import (
+    INFERENCE_MAX_WORKERS,
     ExecutionRole,
     InferenceCoordinator,
     LogicalRequestConflict,
     inference_budget,
     provider_call_timeout_seconds,
+    request_fingerprint,
 )
 from app.main import app
 from app.observability import ATTEMPT_HEADER, LOGICAL_REQUEST_ID_HEADER, REQUEST_ID_HEADER
-from app.schemas import ErrorKind
+from app.schemas import ErrorKind, NextStepRequest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -207,6 +209,13 @@ def test_executor_queue_time_counts_toward_hard_deadline():
     assert queued_calls == 0
 
 
+def test_default_worker_capacity_matches_fastapi_sync_capacity():
+    coordinator = InferenceCoordinator()
+
+    assert INFERENCE_MAX_WORKERS == 40
+    assert coordinator._executor._max_workers == INFERENCE_MAX_WORKERS
+
+
 def test_provider_call_count_and_deadline_are_request_scoped():
     with inference_budget(deadline_seconds=1):
         for attempt in range(1, 4):
@@ -221,15 +230,45 @@ def test_provider_call_count_and_deadline_are_request_scoped():
         assert raised.value.kind is ErrorKind.NETWORK
 
 
-def _payload(goal: str = "open app") -> dict:
+def _payload(
+    goal: str = "open app",
+    *,
+    label: str = "masked",
+    node_id: str = "n1",
+    bounds: list[int] | None = None,
+    window_title: str | None = None,
+) -> dict:
     return {
         "goal": goal,
         "client_version": "0.1.0",
         "screen": {
             "package_name": "com.example.launcher",
-            "elements": [{"node_id": "n1", "label": "masked", "clickable": True}],
+            "window_title": window_title,
+            "elements": [
+                {
+                    "node_id": node_id,
+                    "label": label,
+                    "clickable": True,
+                    "bounds": bounds,
+                }
+            ],
         },
     }
+
+
+def test_next_step_fingerprint_matches_android_structure_axis():
+    first = NextStepRequest.model_validate(
+        _payload(label="3:45", node_id="n1", bounds=[0, 0, 100, 100], window_title="받은편지함 3")
+    )
+    volatile_retry = NextStepRequest.model_validate(
+        _payload(label="3:46", node_id="n9", bounds=[1, 2, 101, 102], window_title="받은편지함 4")
+    )
+    structural_change_payload = _payload()
+    structural_change_payload["screen"]["elements"][0]["checked"] = True
+    structural_change = NextStepRequest.model_validate(structural_change_payload)
+
+    assert request_fingerprint(first) == request_fingerprint(volatile_retry)
+    assert request_fingerprint(first) != request_fingerprint(structural_change)
 
 
 def _headers(logical_id: str, attempt: int) -> dict[str, str]:
@@ -258,10 +297,20 @@ def test_http_retransmission_joins_one_logical_work_and_echoes_each_attempt(monk
     logical_id = str(uuid.uuid4())
 
     def send(attempt: int):
+        payload = (
+            _payload()
+            if attempt != 2
+            else _payload(
+                label="updated label",
+                node_id="n9",
+                bounds=[1, 2, 101, 102],
+                window_title="updated title",
+            )
+        )
         with TestClient(app, client=("127.0.0.1", 50000 + attempt)) as client:
             return client.post(
                 "/v1/next-step",
-                json=_payload(),
+                json=payload,
                 headers=_headers(logical_id, attempt),
             )
 
