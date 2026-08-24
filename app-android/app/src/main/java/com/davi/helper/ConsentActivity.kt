@@ -2,12 +2,14 @@ package com.davi.helper
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -119,9 +121,14 @@ class ConsentActivity : AppCompatActivity() {
         item.consentItemViewDetail.setOnClickListener {
             val expanding = !item.consentItemDetail.isVisible
             item.consentItemDetail.isVisible = expanding
-            item.consentItemViewDetail.text = getString(
-                if (expanding) R.string.consent_detail_close else R.string.consent_view_detail,
-            )
+            val label = getString(if (expanding) R.string.consent_detail_close else R.string.consent_view_detail)
+            item.consentItemViewDetail.text = label
+            // **contentDescription을 함께 갱신한다.** 있으면 TalkBack이 그것만 읽고 text를
+            // 무시하므로, 안 바꾸면 「닫기」가 보이는데 「…자세한 내용 보기」로 읽힌다 —
+            // 이미 펼친 것을 또 열라고 말하게 된다(PR #409 리뷰).
+            // 펼친 뒤에는 라벨이 곧 설명이라 따로 문자열을 두지 않는다.
+            item.consentItemViewDetail.contentDescription =
+                if (expanding) label else getString(R.string.consent_view_detail_desc)
         }
 
         setItemChecked(item, checked = false)
@@ -235,7 +242,7 @@ class ConsentActivity : AppCompatActivity() {
     }
 
     private fun bindFooter() {
-        binding.consentPrivacyPolicyLink.isVisible = getString(R.string.consent_policy_url).isNotEmpty()
+        bindPrivacyPolicyLink()
 
         binding.btnConsentNext.setOnClickListener {
             if (ConsentGate.canProceed(checkedKeys)) {
@@ -270,6 +277,30 @@ class ConsentActivity : AppCompatActivity() {
     }
 
     /**
+     * 처리방침 전문 링크. **주소가 비어 있으면 감춘다** — 게시 시점이 이 화면을 막지 않는다.
+     *
+     * ⚠ **`strings.xml`은 「앱 안에서 연다」고 정해 뒀는데 여기는 브라우저로 보낸다.**
+     * 그쪽 근거는 「브라우저로 튕기면 시니어가 돌아오지 못한다」이고 옳지만, 이 앱에는 WebView를
+     * 쓰는 자리가 하나도 없어 화면을 새로 세워야 한다 — 주소도 아직 없는 지금 그걸 만들지
+     * 않았다. **그래도 리스너는 지금 단다**: 값만 채우면 되는 것처럼 보이는 자리라, 나중에
+     * `consent_policy_url`만 채우고 여기를 안 보면 **눌러도 아무 일 없는 링크가 나간다**
+     * (PR #409 리뷰). 앱 안에서 여는 화면은 주소가 정해질 때 함께 만든다.
+     */
+    private fun bindPrivacyPolicyLink() {
+        val url = getString(R.string.consent_policy_url)
+        binding.consentPrivacyPolicyLink.isVisible = url.isNotEmpty()
+        if (url.isEmpty()) return
+        binding.consentPrivacyPolicyLink.setOnClickListener {
+            val opened = runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+            }.isSuccess
+            // 브라우저가 없는 기기. 조용히 지나가되 왜 안 열렸는지는 남긴다 — 주소는 공개값이라
+            // 로그에 담아도 되지만 굳이 적지 않는다(루트 CLAUDE.md의 로그 최소화).
+            if (!opened) Log.i(TAG, "privacy policy link: no handler")
+        }
+    }
+
+    /**
      * 필수가 덜 채워졌을 때 **비활성으로 보이되 눌리면 이유를 말한다**(strings.xml 주석) —
      * 진짜 `isEnabled = false`로 두면 클릭 자체가 안 와서 그 이유를 말할 기회가 없다.
      */
@@ -280,4 +311,8 @@ class ConsentActivity : AppCompatActivity() {
     }
 
     private fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1000
+
+    private companion object {
+        const val TAG = "GuideSvc"
+    }
 }

@@ -1207,9 +1207,7 @@
     <dimen name="davi_consent_footer_margin_top">24dp</dimen>
     <dimen name="davi_consent_bottom_margin">40dp</dimen>
 
-    <dimen name="davi_type_consent_title">28sp</dimen>
     <dimen name="davi_type_consent_badge">14sp</dimen>
     <dimen name="davi_type_consent_label">17sp</dimen>
-    <dimen name="davi_type_consent_summary">14sp</dimen>
     <dimen name="davi_type_consent_view_button">14sp</dimen>
 </resources>
