@@ -55,6 +55,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# 실패는 throw로 알린다. scripts/dev-driver.ps1 호출자가 예외 전파를 계약으로 쓰므로 exit를 넣지 않는다.
 
 # 한글 출력이 깨지지 않게.
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
