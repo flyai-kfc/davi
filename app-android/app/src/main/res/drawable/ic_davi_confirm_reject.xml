@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-4 ③의 글리프 ✕(#396 · 08-22 시안). 시안 18x18 선 w3.5 -> 객체 자기 크기라 ×1.2.
+  색은 `davi_highlight`(#F2001C) — 아이콘 칸 #F7DFE6 위에서 3.47:1로 A2를 넘는다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M4,4 L18,18 M18,4 L4,18"
+        android:strokeColor="@color/davi_highlight"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round" />
+</vector>

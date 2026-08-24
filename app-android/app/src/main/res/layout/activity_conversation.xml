@@ -570,18 +570,60 @@
           그 뒤로는 닫힌 루프가 평소대로 화면을 읽어 다음 한 걸음을 안내만 한다.
           「어차피 앱도 열어 줬으니 한 걸음만 더」가 원칙이 무너지는 전형적인 경로다.
 
-          **채워진 주 버튼이 없다.** 셋 다 흰/회색이다 — 최종 확인은 우리가 권하는 자리가
-          아니라 사용자가 고르는 자리다. #A50014 채움을 다시 넣으면 그쪽을 누르라는 화면이 된다.
+          **셋의 우열은 없다** — 최종 확인은 우리가 권하는 자리가 아니라 사용자가 고르는
+          자리다. 구분은 **겹수와 형태·아이콘·글자**가 한다: (1)(2)는 뒤판이 오른쪽으로
+          보이는 두 겹으로 「진행한다」, (3)은 한 겹으로 「그만둔다」, (2)만 뾰족한 끝으로
+          「이 앱을 떠난다」.
+
+          **한때 이 자리는 「채워진 주 버튼이 없다. 셋 다 흰/회색이다」였다**(2026-08-21 판정).
+          08-22 시안이 셋 다 채워진 면으로 바꾸면서 그 문장이 낡았다(#396) — 그때 근거는
+          「취소가 주 버튼이 되면 안 된다」였고 지금은 취소가 가장 옅은 면이라 그 문제가 없다.
+          **다만 「(3)을 (1)(2)보다 진하게 만들지 않는다」는 남는다.**
         -->
-        <TextView
+        <!--
+          (1) 처음부터 안내. **08-22 시안에서 아이콘 칸이 생겨 행 구조가 됐다**(#396) —
+          전에는 TextView 하나였다. 셋이 같은 꼴이어야 하므로 (2)(3)과 같은 짜임이다.
+
+          **그림자는 elevation으로 낸다**(시안 #000000@12 y7 b16). layer-list로 그리면
+          blur가 없어 하단에 단단한 띠가 되는데, 두 겹 위에 그 띠가 얹히면 겹수가 흐려진다.
+        -->
+        <LinearLayout
             android:id="@+id/confirm_accept"
             android:layout_width="match_parent"
             android:layout_height="@dimen/davi_confirm_choice_height"
             android:layout_marginTop="@dimen/davi_confirm_choice_margin_top"
-            android:gravity="center"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
             android:background="@drawable/bg_davi_confirm_choice"
-            android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice"
-            android:visibility="gone" />
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:background="@drawable/bg_davi_confirm_choice_icon_slot"
+                android:src="@drawable/ic_davi_confirm_accept"
+                android:scaleType="center"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:id="@+id/confirm_accept_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="@dimen/davi_shortcut_inset"
+                android:gravity="center"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+
+            <!-- 라벨을 버튼 전체 기준 가운데에 두기 위한 균형추. 아이콘과 같은 폭이다. -->
+            <Space
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="1dp" />
+        </LinearLayout>
 
         <!--
           (2) 앱 바로가기. **사전 점검이 미확인이면 이것만 숨고 (1)(3)은 남는다** —
@@ -600,10 +642,14 @@
             android:paddingRight="@dimen/davi_shortcut_inset"
             android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
             android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
-            android:background="@drawable/bg_davi_confirm_choice"
+            android:elevation="@dimen/davi_choice_elevation"
             android:clickable="true"
             android:focusable="true"
             android:visibility="gone">
+            <!--
+              **배경은 코드가 넣는다**(`ConfirmShortcutBackground`) — 오른쪽 끝이 사선이라
+              XML 드로어블로 그릴 수 없다. 이유와 대안 검토는 그 클래스 KDoc에 있다.
+            -->
 
             <ImageView
                 android:id="@+id/shortcut_icon"
@@ -635,26 +681,55 @@
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
-
-            <ImageView
-                android:layout_width="@dimen/davi_shortcut_chevron_width"
-                android:layout_height="@dimen/davi_shortcut_chevron_height"
-                android:src="@drawable/ic_davi_chevron_right"
-                android:scaleType="fitCenter"
-                android:importantForAccessibility="no" />
         </LinearLayout>
 
-        <TextView
+        <!--
+          (3) 그만두기. **한 겹이다 — 뒤판도 테두리도 없다**(08-22 시안, #396).
+          겹수가 뜻을 나른다: (1)(2)의 두 겹이 「진행한다」이고 이 한 겹이 「그만둔다」다.
+
+          ⚠ **라벨이 흰색이라 A1은커녕 AA도 못 넘는다**(3.24~3.40). 예외가
+          `DESIGN-CONVENTIONS.md` 「A1 예외 — 반투명 채움 위 흰 라벨 둘」에 등록돼 있고
+          **2026-08-24 팀 합의 대상**이다. 지금은 시안대로 흰색이다.
+        -->
+        <LinearLayout
             android:id="@+id/confirm_reject"
             android:layout_width="match_parent"
             android:layout_height="@dimen/davi_confirm_choice_height"
             android:layout_marginTop="@dimen/davi_confirm_choice_gap"
             android:layout_marginBottom="@dimen/davi_confirm_choices_margin_bottom"
-            android:gravity="center"
-            android:background="@drawable/bg_davi_confirm_choice_quiet"
-            android:text="@string/conversation_confirm_reject"
-            android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice"
-            android:visibility="gone" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
+            android:background="@drawable/bg_davi_confirm_choice_reject"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:background="@drawable/bg_davi_confirm_choice_icon_slot"
+                android:src="@drawable/ic_davi_confirm_reject"
+                android:scaleType="center"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:id="@+id/confirm_reject_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="@dimen/davi_shortcut_inset"
+                android:gravity="center"
+                android:text="@string/conversation_confirm_reject"
+                android:textColor="@color/davi_button_on_primary"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+
+            <Space
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="1dp" />
+        </LinearLayout>
 
         <Space
             android:id="@+id/space_home_mid"

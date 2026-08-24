@@ -411,7 +411,27 @@
     -->
     <dimen name="davi_confirm_choices_margin_bottom">-85dp</dimen>
     <dimen name="davi_confirm_choice_height">72dp</dimen>
-    <dimen name="davi_confirm_choice_radius">12dp</dimen>
+    <!--
+      **08-22 시안에서 r12 -> r16이 됐다**(#396). 반지름은 1:1이라 프레임 r16이 그대로 16dp다.
+      MA-3 보기 버튼의 `davi_choice_radius`와 같은 값인데 **합치지 않는다** — 두 화면이
+      각자 시안을 따르고, 한쪽이 바뀔 때 다른 쪽이 딸려 오면 안 된다.
+    -->
+    <dimen name="davi_confirm_choice_radius">16dp</dimen>
+    <!--
+      ②의 본체 오른쪽 끝 사선 깊이. **시안 14를 ×1.2로 옮긴 값이다**(2026-08-24 시안 담당 확인).
+
+      **겹침 깊이와 같은 자다** — 반지름이 1:1인 것과 이유가 갈린다. 반지름은 규칙으로 정한
+      절대값이지만 **사선은 그 도형의 비례**라, 버튼 높이가 60 -> 72dp로 커지는데 사선만
+      1:1이면 각도가 완만해져 시안보다 뭉툭해진다.
+
+        시안   14 / 60 = 0.233
+        17dp   17 / 72 = 0.236   각도 유지
+        14dp   14 / 72 = 0.194   완만해진다
+
+      **높이가 변해도 이 값은 고정이다** — ②는 셋 중 유일하게 높이가 변한다(라벨 두 줄 106dp ·
+      짧은 화면 50dp). 종횡비에 따라 늘어나는 드로어블을 쓰면 안 되는 이유다(`SCREENS.md`).
+    -->
+    <dimen name="davi_confirm_choice_notch">17dp</dimen>
     <dimen name="davi_confirm_choice_stroke">2dp</dimen>
     <dimen name="davi_type_confirm_choice">20sp</dimen>
     <!--
@@ -430,8 +450,6 @@
     <dimen name="davi_shortcut_icon_size">48dp</dimen>
     <dimen name="davi_shortcut_icon_radius">12dp</dimen>
     <dimen name="davi_shortcut_inset">14dp</dimen>
-    <dimen name="davi_shortcut_chevron_width">9.6dp</dimen>
-    <dimen name="davi_shortcut_chevron_height">24dp</dimen>
 
     <!--
       메인 9 안내 중 화면과 메인 10 종료 확인 모달(#197). 기하는 배율 1.2로 환산하고

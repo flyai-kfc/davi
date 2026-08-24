@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-4 ①의 글리프 O(#396 · 08-22 시안). 시안 22x22 선 w3.5 -> 객체 자기 크기라 ×1.2.
+  **색은 davi_success(#2E7D32)다** — 이미 있는 토큰이고, 거기 붙은
+  「버튼 배경 금지 — 점·아이콘 같은 작은 표식용」 단서에 **아이콘 획이라 정확히 맞는다.**
+  아이콘 칸 #F7DFE6 위에서 4.07:1로 A2를 넘는다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="26"
+    android:viewportHeight="26">
+    <path
+        android:pathData="M13,2.1a10.9,10.9 0 1,0 0.01,0z"
+        android:strokeColor="@color/davi_success"
+        android:strokeWidth="4.2"
+        android:fillColor="@android:color/transparent" />
+</vector>

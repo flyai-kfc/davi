@@ -3,8 +3,10 @@ package com.davi.helper
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -437,6 +439,21 @@ class ConversationActivity : AppCompatActivity() {
         // 넘기는 데 포커스가 필요 없다. 이 카드는 입력란이 아니라 읽는 글이라 포커스를
         // 받을 이유가 없고, 스크린리더는 accessibilityLiveRegion으로 따로 읽는다.
         // **XML로는 못 막는다** — setMovementMethod가 나중에 덮으므로 여기서 꺼야 한다.
+        // MA-4 (2)의 배경은 코드가 넣는다(#396) — 오른쪽 끝이 사선이라 XML 드로어블로
+        // 그릴 수 없고, 높이가 변해도 r16·사선 17dp가 고정이어야 한다.
+        // 이유와 대안 검토는 [ConfirmShortcutBackground] KDoc에 있다.
+        //
+        // **ripple로 감싼다** — (1)(3)은 XML에서 ripple이라 (2)만 도형이면 누르는 동안
+        // 이 행만 아무 말도 안 한다. mask에는 같은 모양의 **다른 인스턴스**를 준다
+        // (한 Drawable을 content와 mask로 함께 쓰면 그리기 상태가 엉킨다).
+        binding.shortcutRow.background = RippleDrawable(
+            ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.davi_state_layer_pressed_on_light),
+            ),
+            ConfirmShortcutBackground(this),
+            ConfirmShortcutBackground(this),
+        )
+
         binding.cardQuestion.isFocusable = false
         binding.cardQuestion.isFocusableInTouchMode = false
 
@@ -873,7 +890,7 @@ class ConversationActivity : AppCompatActivity() {
         // 확인 화면이 둘이라 (1)의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라
         // 스크린 리더에게만 구분을 줄 수 있었는데, 이제 글자가 있어 눈으로도 갈린다.
-        binding.confirmAccept.setText(model.confirmAcceptTextRes)
+        binding.confirmAcceptLabel.setText(model.confirmAcceptTextRes)
         renderShortcutRow(model)
         binding.btnClose.isVisible(model.closeVisible)
 
