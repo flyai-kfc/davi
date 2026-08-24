@@ -825,6 +825,9 @@ logo · icon/*(Lucide, 브랜드 제외)
    - [미결] **말투가 갈린다.** 대부분 해요체인데 합니다체가 섞여 있다 —
      `onboarding_permission_note`("최초 1회만 하면 됩니다", #236) ·
      `accessibility_service_description` · `conversation_guiding_title`("안내가 진행 중입니다", #224).
+     (`accessibility_service_description`의 **문안 자체는 #371이 확정했다** — 합니다체를 그대로
+     두었고, 여기 말투 미결은 그대로 남는다. 고칠 때 `docs/PRIVACY-POLICY.md` §3-1과
+     ON-1.5(#389)를 함께 본다 — 셋이 같은 사실을 말해야 한다.)
      (`guide_hint`·`onboarding_body`도 합니다체지만 release가 안 써서 뺐다. `guide_hint`는
      #232가 `src/debug`로 옮겼다. `onboarding_body`는 **옮기지 않고 `src/main`에 남겼다** —
      `strings.xml`이 그 키를 #227의 접근성 고지·동의 문구 몫으로 예약해 뒀다.)
