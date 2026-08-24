@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import pytest
 from app.errors import LlmError
-from app.llm import LlmClient
 from app.prompt import (
     CLICKABLE_TARGET_INSTRUCTION,
     NO_CLICKABLE_ELEMENT_NOTICE,
@@ -36,15 +35,7 @@ from app.schemas import (
     UiElement,
 )
 
-
-class _FixedLlmClient(LlmClient):
-    """모델이 내놓은 행동을 그대로 돌려주는 fake. 가드레일만 관측한다."""
-
-    def __init__(self, action: GuideAction) -> None:
-        self._action = action
-
-    def reason(self, req: NextStepRequest) -> GuideAction:
-        return self._action
+from tests.conftest import FixedLlmClient
 
 
 def _action(action_type: ActionType, target: str | None, **extra) -> GuideAction:
@@ -92,7 +83,7 @@ def _splash_screen() -> Screen:
 
 def _guide(action: GuideAction, screen: Screen) -> GuideAction:
     request = NextStepRequest(goal="치킨을 주문한다", screen=screen)
-    return next_step(request, _FixedLlmClient(action)).action
+    return next_step(request, FixedLlmClient(action)).action
 
 
 # ── 가드 ──────────────────────────────────────────────────────────────

@@ -11,11 +11,12 @@
 from __future__ import annotations
 
 import re
+from typing import NamedTuple
 
 from .config import settings
 from .errors import LlmError
 from .llm import LlmClient
-from .masking import MaskingPolicy, active_masking_policy
+from .masking import MaskingPolicy, active_masking_policy, mask_text
 from .schemas import (
     ActionType,
     ErrorKind,
@@ -43,9 +44,23 @@ _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
 _EVIDENCE_NOISE = re.compile(r"[^\w]+", re.UNICODE)
 _EVIDENCE_WORD = re.compile(r"\w+", re.UNICODE)
 
+# **한 값을 이어 붙이는 구두점**(PR #406 리뷰). 어절 토큰화(`_EVIDENCE_WORD`)는 구두점을
+# 경계로 삼는데, 그 경계가 **원문에는 없던 것**일 때가 있다 — `010-1234-5678`은 사람이 읽기에
+# 값 하나지만 토큰은 셋이라, 잘린 `010-1234`가 두 어절의 경계에 정확히 맞아떨어져 "인용됨"으로
+# 통과했다(리뷰 재현). 그래서 **이 문자들로만 이어진 자리는 어절 경계로 보지 않는다.**
+#
+# 괄호·쉼표는 **넣지 않는다.** 저것들은 값을 잇는 것이 아니라 묶거나 나열하는 자리라, 넣으면
+# `설정(Settings)`의 `설정`이나 `사과,배`의 `사과` 같은 **정당한 인용이 막힌다** — 완료 근거
+# 대조가 같은 함수를 쓰므로 그 손해가 먼저 온다.
+_VALUE_CONNECTORS = frozenset("-./:")
+
 # 한 글자 label(아이콘·숫자)은 우연 일치가 잦고, 숫자 키패드에서는 거의 모든 문장에 걸린다.
 # 대조할 긴 label이 없더라도 한 글자로 폴백하지 않는다(#71 fixture 평가).
 _MIN_EVIDENCE_LABEL_CHARS = 2
+
+# 복사 문구의 하한. 근거는 매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는
+# 버튼은 사용자가 지우고 다시 치는 것보다 낫지 않다(`_instruction_quotes_input_text`).
+_MIN_INPUT_TEXT_CHARS = 2
 
 # label 뒤에 붙어도 **같은 어절을 인용한 것**으로 볼 수 있는 한국어 조사·서술격 어미.
 # 이 목록 밖의 글자까지 부분 일치로 받으면 `사용 중`과 `사용 중지`처럼 상태가 뒤집힌다.
@@ -130,15 +145,20 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
     _reject_obscured_target(action, req.screen)
 
-    # 1. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
-    if action.action_type is ActionType.TAP:
-        _reject_unclickable_tap(action, req.screen)
-        return action
+    # 1. 복사 신호는 **안내문이 집어 말한 말**만 남긴다(C21). 건드리는 필드가 `input_text`
+    #    하나뿐이고 아래 어느 가드도 그 값을 읽지 않아 연쇄하지 않는다.
+    action = _keep_input_text_named_by_instruction(action, req.goal)
 
-    # scroll만 교정 대상이다. 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
-    if action.action_type is not ActionType.SCROLL:
-        return action
-    return _resolve_scroll(action, req.screen)
+    # 2. 동작별 교정. **분기를 if/elif로 두고 반환을 하나로 모은다**(PR #406 재리뷰) —
+    #    early return이 있으면 그 앞뒤로 가드 순서 제약이 생기고, 그 제약을 주석으로만
+    #    강제하게 된다. 여기서는 위 가드가 어디 있든 도달하므로 확인할 것이 하나 준다.
+    if action.action_type is ActionType.TAP:
+        # tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
+        _reject_unclickable_tap(action, req.screen)
+    elif action.action_type is ActionType.SCROLL:
+        # 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
+        action = _resolve_scroll(action, req.screen)
+    return action
 
 
 def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
@@ -172,6 +192,106 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
         ErrorKind.SERVER,
         "안내 대상이 다른 요소에 완전히 가려져 있어 사용자가 보거나 누를 수 없음",
     )
+
+
+def _keep_input_text_named_by_instruction(action: GuideAction, goal: str) -> GuideAction:
+    """`input_text`는 **안내문이 집어 말한 말**일 때만 남긴다(C21, 2026-08-24 개정).
+
+    **동의를 받는 면은 안내문이다.** 사용자는 「검색창에 '한국 미국 시차'라고 입력하세요」를
+    읽고 그 아래 버튼을 누른다 — 채워지는 값이 방금 읽은 말과 같으면, 버튼은 사용자가 눈으로
+    확인한 일만 한다.
+
+    **목표 문장을 출처로 요구하지는 않는다**(개정 전 규칙). 검색어는 목표에 그대로 있지 않은
+    것이 정상이라 — 목표 `한국이랑 미국의 시차를 알고 싶어`에 사람이 실제로 칠 말은
+    `한국 미국 시차`다 — 출처를 목표로 좁히면 **모델이 어색한 검색어를 쓰도록 강요하거나**
+    (실측) 정상 안내에서 버튼이 사라진다.
+
+    **그 대가를 두 가드가 받는다**(PR #406 재리뷰). 안내문 대조만 남기면 `input_text`와
+    `instruction`이 **같은 호출에서 나온 두 필드**라, 대조가 검증하는 것은 내용의 사실 여부가
+    아니라 둘의 자기 일관성뿐이다 — 지어낸 전화번호도 안내문에 같이 써 주면 통과한다(재현됨).
+    그래서 코드가 두 자리를 따로 막는다:
+
+    - **[_looks_sensitive]** — 값이 개인정보 패턴(전화·계좌·카드·주민·이메일)에 걸리면 비운다.
+      C21이 프롬프트로만 말하던 「값이 곧바로 확정되는 칸에는 쓰지 마세요」를 **가장 위험한
+      모양에 한해 코드로** 받는 것이다. 이런 값은 지어냈을 때의 피해가 검색어와 급이 다르고,
+      **사용자가 스스로 정해야 하는 값**이라 애초에 버튼이 대신할 자리가 아니다.
+    - **[_is_whole_goal]** — 목표 문장을 그대로 echo한 값은 비운다. 실기기에서 재현됐던
+      버그이고(목적어 없는 목표가 통째로 입력칸에 들어갔다), 프롬프트만으로 막으면 모델이
+      지시를 어겼을 때 받아 줄 것이 없다. **대가를 안다**: 목표가 검색어 자체인 짧은 경우
+      (`종로 칼국수`)에는 버튼이 안 뜬다. 그쪽은 사용자가 직접 치면 되는 손해라, 요청 문장이
+      입력칸에 들어가는 쪽보다 실패 방향이 안전하다.
+
+    **실패로 닫지 않고 비운다.** 안내 문장 자체는 여전히 맞을 수 있고, 값이 없으면 사용자는
+    지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이다.
+    `GuideAction.screen_summary`의 공백 검증을 두지 않은 결정과 같은 결.
+
+    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, tap 화면에 입력 제안이 뜨는 경로가
+    된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`), 필드 순서상
+    `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
+    """
+    if action.input_text is None:
+        return action
+    if (
+        action.action_type is ActionType.TYPE
+        and _instruction_quotes_input_text(action.input_text, action.instruction)
+        and not _looks_sensitive(action.input_text)
+        and not _is_whole_goal(action.input_text, goal)
+    ):
+        return action
+    return action.model_copy(update={"input_text": None})
+
+
+def _looks_sensitive(input_text: str) -> bool:
+    """값이 개인정보 패턴에 걸리는가 — 걸리면 버튼이 대신 채울 자리가 아니다.
+
+    **2차 마스킹과 같은 패턴을 쓴다**(`masking.mask_text`). 새 목록을 만들지 않는 이유는 둘이다:
+    무엇이 민감한지에 대한 판단이 이미 그 한 곳에 모여 있고, 목록이 둘이면 한쪽만 늘어난다.
+
+    **정책이 아니라 패턴 함수를 직접 부른다.** dev 비교 실험(#203)이 마스킹을 끈 빌드에서도
+    이 판정은 서야 한다 — 저 스위치는 "무엇이 서버로 나가는가"를 재려는 것이지 버튼이 무엇을
+    채워도 되는지를 정하는 스위치가 아니다.
+
+    **패턴 밖은 못 잡는다**(SPEC §2) — 지어낸 주소·사람 이름·금액은 그대로 통과한다.
+    **이건 구멍이 아니라 수용한 위험이다**(2026-08-24 팀 결정, PR #406 리뷰):
+    남는 방어선은 **사용자가 버튼을 누르기 직전에 안내문을 읽는 것**이고, 그 자리는 코드가
+    보장하지 않는다. 근거는 **손으로 칠 때와 노출이 같다**는 것이다 — 안내문이 틀린 주소를
+    말하면 버튼이 없어도 사용자는 그 주소를 친다. 버튼이 새로 만드는 위험은 "읽지 않고 누를 수
+    있다"는 것뿐이고, 그 몫을 사용자에게 남기기로 했다.
+
+    **되짚을 때 이 문단부터 보라.** 이 판단이 바뀌면(예: 시니어가 실제로 안 읽는다는 관측이
+    나오면) 고칠 곳은 이 함수의 패턴 목록이 아니라 **버튼이 값을 보여주는 방식**이다 —
+    지금은 안내창 문장에만 값이 있고 버튼 라벨은 「바로 입력하기」로 고정이다(#405).
+    """
+    return mask_text(input_text) != input_text
+
+
+def _is_whole_goal(input_text: str, goal: str) -> bool:
+    """값이 **목표 문장 그 자체**인가(실기기 재현, PR #406).
+
+    목적어가 없는 목표에서 모델이 목표를 통째로 복사해 검색창에 부탁하는 말이 들어갔다.
+    구두점·띄어쓰기만 다른 재작성도 같은 것으로 본다.
+    """
+    return _normalize_for_evidence(input_text) == _normalize_for_evidence(goal)
+
+
+def _instruction_quotes_input_text(input_text: str, instruction: str) -> bool:
+    """**사용자가 지금 읽는 문장이 그 말을 집어 말하는가.**
+
+    「바로 입력」이 서는 유일한 근거다([_keep_input_text_named_by_instruction]) — 버튼이 채우는
+    값과 사용자가 방금 읽은 문장이 같아야 버튼이 눈으로 확인된 일만 한다.
+
+    **따옴표를 파싱하지 않는다.** C21이 구조화 필드를 둔 이유가 "모델 문장이 조금만 달라져도
+    조용히 깨진다"였고 그 판단은 그대로다 — 여기서는 문장을 해석하지 않고, 모델이 준 값이 문장
+    안에 있는지만 **완료 근거와 같은 매처**로 본다(`'한국 미국 시차'를`·`한국 미국 시차라고`
+    모두 조사 허용으로 걸린다). 파싱은 형태를 맞춰야 하지만 대조는 맞출 것이 없다.
+
+    같은 매처를 쓰므로 **값 연결자 경계 배제도 그대로 적용된다** — 안내문이
+    `010-1234-5678을 입력하세요`인데 값이 `010-1234`면 잘린 조각이라 걸러진다(PR #406 리뷰).
+    """
+    normalized = _normalize_for_evidence(input_text)
+    if len(normalized) < _MIN_INPUT_TEXT_CHARS:
+        return False
+    return _contains_quoted_phrase(_phrase_offsets(instruction), normalized)
 
 
 def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
@@ -483,18 +603,9 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     허용한다(`카카오톡` vs `카카오톡이`). 임의의 접두 일치는 허용하지 않는다: label `사용 중`을
     근거 `사용 중지했습니다`에서 찾으면 정반대 상태가 통과한다(#71).
     """
-    evidence_words = _evidence_words(evidence)
-    if not evidence_words:
+    phrases = _phrase_offsets(evidence)
+    if not phrases.compact:
         return False
-
-    compact_evidence = "".join(evidence_words)
-    starts: list[int] = []
-    ends: list[int] = []
-    cursor = 0
-    for word in evidence_words:
-        starts.append(cursor)
-        cursor += len(word)
-        ends.append(cursor)
 
     # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
     # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
@@ -511,31 +622,88 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
         # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
         return False
 
-    return any(
-        _evidence_contains_label(compact_evidence, starts, ends, label) for label in comparable
-    )
+    return any(_contains_quoted_phrase(phrases, label) for label in comparable)
 
 
-def _evidence_contains_label(
-    compact_evidence: str,
-    starts: list[int],
-    ends: list[int],
-    normalized_label: str,
-) -> bool:
-    """미리 토큰화한 evidence에 정규화한 label의 어절 연속이 있는지 판정한다.
+class _Phrases(NamedTuple):
+    """어절 토큰화 결과. [_contains_quoted_phrase]가 경계를 판정하는 데 필요한 전부다.
 
-    구두점·공백을 접은 문자열은 비교하되 시작은 evidence의 어절 경계여야 하고, 끝은 어절
-    경계이거나 정해 둔 한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는
-    받으면서도 어휘가 이어진 부분 문자열은 받지 않는다.
+    대조 대상이 여럿인 호출자는 한 번만 만들어 재사용한다.
     """
-    for start in starts:
-        if not compact_evidence.startswith(normalized_label, start):
+
+    compact: str
+    """어절만 이어 붙인 문자열. 구두점·공백이 빠져 `Wi-Fi`와 `WiFi`가 같은 값이 된다."""
+
+    starts: list[int]
+    ends: list[int]
+    """[compact] 안에서 각 어절이 시작·끝나는 자리."""
+
+    glued: list[bool]
+    """이 어절이 **다음 어절과 한 값인가**([_VALUE_CONNECTORS]로만 이어졌는가). 마지막은 False.
+
+    참이면 그 자리는 원문에 없던 경계이므로 인용의 시작·끝이 될 수 없다.
+    """
+
+
+def _phrase_offsets(text: str) -> _Phrases:
+    """문장 하나를 어절로 끊어 [_Phrases]로 만든다."""
+    folded = text.casefold()
+    matches = list(_EVIDENCE_WORD.finditer(folded))
+    starts: list[int] = []
+    ends: list[int] = []
+    glued: list[bool] = []
+    cursor = 0
+    for index, match in enumerate(matches):
+        starts.append(cursor)
+        cursor += match.end() - match.start()
+        ends.append(cursor)
+        following = matches[index + 1] if index + 1 < len(matches) else None
+        separator = folded[match.end() : following.start()] if following else ""
+        glued.append(bool(separator) and all(char in _VALUE_CONNECTORS for char in separator))
+    return _Phrases("".join(m.group() for m in matches), starts, ends, glued)
+
+
+def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
+    """미리 토큰화한 문장에 정규화한 문구의 어절 연속이 있는지 판정한다.
+
+    구두점·공백을 접은 문자열은 비교하되 시작은 어절 경계여야 하고, 끝은 어절 경계이거나 정해 둔
+    한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는 받으면서도 어휘가 이어진
+    부분 문자열은 받지 않는다.
+
+    **대조 둘이 이 규칙을 공유한다** — 완료 근거가 화면 label을 물었는지
+    (`_evidence_quotes_screen`)와 복사 문구가 안내문에 있는 말인지
+    (`_instruction_quotes_input_text`)다. 이름에 evidence·label이 없는 이유가 그것이고,
+    경계를 이렇게 정한 근거는 #71 fixture 평가다.
+    """
+    for index, start in enumerate(phrases.starts):
+        # 앞 어절과 한 값이면 그 자리는 원문에 없던 경계다 — `010-1234-5678`의 `1234`에서
+        # 시작하는 인용은 값의 조각이지 인용이 아니다.
+        if index > 0 and phrases.glued[index - 1]:
             continue
-        match_end = start + len(normalized_label)
-        if match_end in ends:
-            return True
-        word_end = next(end for end in ends if end > match_end)
-        if _is_allowed_korean_evidence_suffix(compact_evidence[match_end:word_end]):
+        if not phrases.compact.startswith(normalized_phrase, start):
+            continue
+        match_end = start + len(normalized_phrase)
+        # **한 번만 훑는다**(PR #406 재리뷰). `ends`가 단조증가라, 끝나는 어절을 한 번 찾으면
+        # 정확 일치(`end == match_end`)와 조사 허용(`end > match_end`)이 같은 자리에서 갈린다.
+        #
+        # **없을 수 없다** — 위 `startswith`가 문구를 [_Phrases.compact] 안에 가뒀으므로
+        # `match_end <= ends[-1]`이다. 그래도 `next`가 던지지 않게 기본값을 두는 이유는,
+        # 이 함수가 안내 응답 경로 한복판이라 불변식이 깨졌을 때 500으로 죽는 것보다
+        # **그 문구를 인용으로 안 보는 쪽**이 안전해서다.
+        last = next(
+            (i for i, end in enumerate(phrases.ends) if end >= match_end),
+            None,
+        )
+        if last is None:
+            continue
+        word_end = phrases.ends[last]
+        if word_end != match_end and not _is_allowed_korean_evidence_suffix(
+            phrases.compact[match_end:word_end]
+        ):
+            continue
+        # 끝나는 어절이 다음 어절과 한 값이면 **뒤가 잘린 것**이다. 조사까지 먹은 경우도
+        # 그 어절은 통째로 소비된 것이라 판정이 같다.
+        if not phrases.glued[last]:
             return True
     return False
 
@@ -558,6 +726,13 @@ def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
 
 
 def _evidence_words(text: str) -> list[str]:
+    """문장을 어절로 끊는다.
+
+    **서버 안에서는 [_phrase_offsets]가 같은 일을 오프셋까지 함께 하지만, 이 함수를 지우면
+    안 된다** — `eval/tests/test_completion_verify.py`가 후보 정책 실험에서 직접 import한다
+    (루트 `CLAUDE.md`: eval 하니스는 서버 코드를 직접 import한다). PR #406 재리뷰에서 죽은
+    코드로 보고 지웠다가 CI가 잡았고, 그때 grep 범위가 `server/`뿐이었다.
+    """
     return _EVIDENCE_WORD.findall(text.casefold())
 
 

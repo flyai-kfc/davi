@@ -165,6 +165,26 @@ ACTIONABLE_RESULT_INSTRUCTION = (
     "추가 type보다 우선하세요. 그 요소를 누르기 전에 키보드를 닫는 별도 동작을 먼저 안내하지 "
     "마세요."
 )
+# 복사 신호의 발화 조건(C21). **언제 쓰지 않는지까지 말한다** — 스키마에 필드가 있으면 모델은
+# 빈칸을 채우는 쪽으로 기울고, 채울 조건만 적으면 **무엇을 칠지 정할 수 없는 화면에서도** 아무
+# 말이나 넣는 자리가 된다. 목표에 없는 말을 조합하는 것 자체는 막을 일이 아니다 — 검색어는
+# 목표에 그대로 없는 것이 정상이고(`한국이랑 미국의 시차를 알고 싶어` → `한국 미국 시차`),
+# 그래서 가드도 목표가 아니라 **안내문**과 대조한다(`_keep_input_text_named_by_instruction`).
+# 프롬프트가 먼저 좁혀야 대조에서 버려지는 값이 줄어든다.
+# `GuideAction.input_text`의 description과 **같은 뜻**이어야 한다 — 무스키마 폴백에서는
+# 스키마 JSON이 프롬프트 본문에 통째로 붙으므로, 한쪽만 고치면 한 프롬프트에 서로 다른 지시가
+# 둘 들어간다(PR #62 리뷰).
+INPUT_TEXT_INSTRUCTION = (
+    "type을 안내할 때는 사용자가 입력칸에 칠 말을 정해 input_text에 쓰고, instruction에도 "
+    "그 말을 그대로 넣으세요. 예: input_text 「한국 미국 시차」, instruction 「검색창에 "
+    "'한국 미국 시차'라고 입력해 주세요」. 검색어는 목표 문장을 그대로 옮기지 말고 사람이 "
+    "실제로 칠 말로 쓰세요 — 목표가 「한국이랑 미국의 시차를 알고 싶어」면 "
+    "「한국 미국 시차」입니다. "
+    "무엇을 칠지 목표만으로 정할 수 없으면 instruction에 예시를 지어내지 말고 "
+    "「검색어를 입력해 주세요」처럼 쓰고 input_text를 비우세요. "
+    "검색어처럼 입력한 뒤 결과에서 사용자가 다시 고르는 자리에서만 쓰고, 입력한 값이 곧바로 "
+    "확정되는 칸이거나 사용자가 지금 정해야 하는 값이면 쓰지 마세요."
+)
 
 # 이력 블록(C11 · #305). 헤더에 "그 결과"가 붙은 이유는 줄에 결과가 실려서다 —
 # 안내 문구만 나열하던 옛 이력의 헤더(`최근에 했던 안내:`)는 이제 줄과 어긋난다.
@@ -635,13 +655,20 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
     # 요소 줄과 같은 목록을 본다 — 검색창에 포커스가 남은 채 시트가 올라오면 포커스는 뒤에
     # 남으므로, 전체를 보면 목록에 없는 입력칸을 두고 입력 안내가 나간다(PR #336 리뷰).
-    input_ready = any(element.editable and element.focused for element in _visible_elements(req))
+    # **한 번만 훑는다**(`_state_context`와 같은 모양) — 이 함수는 조건 둘이 같은 목록을 본다.
+    elements = _visible_elements(req)
+    input_ready = any(element.editable and element.focused for element in elements)
     if input_ready and ime_visible is not False:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
         context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
     if input_ready:
         context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
+    # 입력칸이 하나라도 보이면 붙인다 — 포커스도 키보드도 보지 않는다. 위 문장들과 조건이 다른
+    # 이유는 주제가 달라서다: 저것들은 "지금 입력 단계인가"를 말하고, 이 문장은 type을 고를 때의
+    # 필드 작성 규칙이라 아직 아무 칸도 포커스되지 않은 화면에서도 필요하다.
+    if any(element.editable for element in elements):
+        context += f"{INPUT_TEXT_INSTRUCTION}\n"
     return context
 
 

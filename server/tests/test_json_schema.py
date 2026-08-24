@@ -59,6 +59,7 @@ def test_property_order_follows_declaration_order():
         "action_type",
         "direction",
         "target_node_id",
+        "input_text",
         "instruction",
     ]
 

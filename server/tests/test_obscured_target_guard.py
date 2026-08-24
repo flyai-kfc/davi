@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 from app.errors import LlmError
-from app.llm import LlmClient
 from app.prompt import (
     FOCUSED_INPUT_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
@@ -31,15 +30,7 @@ from app.schemas import (
     UiElement,
 )
 
-
-class _FixedLlmClient(LlmClient):
-    """모델이 내놓은 행동을 그대로 돌려주는 fake. 가드레일만 관측한다."""
-
-    def __init__(self, action: GuideAction) -> None:
-        self._action = action
-
-    def reason(self, req: NextStepRequest) -> GuideAction:
-        return self._action
+from tests.conftest import FixedLlmClient
 
 
 def _tap(target: str) -> GuideAction:
@@ -66,7 +57,7 @@ def _sheet_screen(*, obscured: bool | None) -> Screen:
 
 def _guide(action: GuideAction, screen: Screen) -> GuideAction:
     request = NextStepRequest(goal="치킨을 주문한다", screen=screen)
-    return next_step(request, _FixedLlmClient(action)).action
+    return next_step(request, FixedLlmClient(action)).action
 
 
 def test_obscured_target_is_closed_as_a_failure_instead_of_going_out():

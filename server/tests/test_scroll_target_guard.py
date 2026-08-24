@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 from app.errors import LlmError
-from app.llm import LlmClient
 from app.reasoning import next_step
 from app.schemas import (
     ActionType,
@@ -23,15 +22,7 @@ from app.schemas import (
     UiElement,
 )
 
-
-class _FixedLlmClient(LlmClient):
-    """모델이 내놓은 행동을 그대로 돌려주는 fake. 가드레일만 관측한다."""
-
-    def __init__(self, action: GuideAction) -> None:
-        self._action = action
-
-    def reason(self, req: NextStepRequest) -> GuideAction:
-        return self._action
+from tests.conftest import FixedLlmClient
 
 
 def _scroll(
@@ -74,7 +65,7 @@ def _request(screen: Screen) -> NextStepRequest:
 
 
 def _guide(action: GuideAction, screen: Screen) -> GuideAction:
-    return next_step(_request(screen), _FixedLlmClient(action)).action
+    return next_step(_request(screen), FixedLlmClient(action)).action
 
 
 def test_scroll_without_a_target_gets_the_scrollable_element_of_the_screen():

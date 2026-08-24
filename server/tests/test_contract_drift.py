@@ -179,6 +179,51 @@ def test_step_wire_names_match_the_kotlin_serial_names(contract_source: str) -> 
         assert expected in step_block, f"GuideStep.{name}이 Kotlin 쪽에 없다"
 
 
+# **앱이 아직 안 받는 응답 필드.** 여기 있는 이름은 서버가 보내지만 Kotlin `GuideAction`에
+# 없어도 된다 — `ignoreUnknownKeys=true`라 파싱은 살아 있고, 값만 안 넘어간다.
+# **비워 두는 것이 정상이고, 채워 두는 것은 빚이다.** 소비자 PR이 Kotlin 필드를 넣으면서 함께
+# 지운다. 늘리려면 "왜 앱이 아직 못 받는가"를 이슈로 적을 것 — 조용히 늘면 이 테스트는 드리프트
+# 테스트가 아니라 드리프트 목록이 된다.
+_ACTION_FIELDS_APP_DOES_NOT_READ_YET = {
+    # C21 복사 신호(#404). 소비자는 「바로 입력」 버튼(#405)이고 그 PR이 이 줄을 지운다.
+    "input_text",
+}
+
+
+def test_action_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
+    """응답의 action도 `GuideStep`과 같은 전수 대조를 받는다(PR #406 리뷰).
+
+    스팟체크만 있던 자리다. 서버가 필드를 늘렸는데 Kotlin이 안 따라오면 **디코딩은 조용히
+    성공하고 값만 안 넘어가므로**, 소비자 PR이 필드 추가를 빠뜨려도 아무 테스트도 울지 않았다.
+    """
+
+    from app.schemas import GuideAction
+
+    action_block = _kotlin_class_body(contract_source, "GuideAction")
+    for name in GuideAction.model_fields:
+        if name in _ACTION_FIELDS_APP_DOES_NOT_READ_YET:
+            continue
+        expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
+        assert expected in action_block, f"GuideAction.{name}이 Kotlin 쪽에 없다"
+
+
+def test_pending_action_fields_are_really_absent_from_kotlin(contract_source: str) -> None:
+    """위 목록이 **낡지 않게** 한다.
+
+    Kotlin이 필드를 받기 시작했는데 목록에 이름이 남아 있으면, 그때부터 그 필드는 전수 대조
+    **밖**이라 이름이 어긋나도 안 잡힌다. 목록을 지우는 일을 사람 기억에 맡기지 않는다.
+    """
+
+    from app.schemas import GuideAction
+
+    action_block = _kotlin_class_body(contract_source, "GuideAction")
+    for name in _ACTION_FIELDS_APP_DOES_NOT_READ_YET:
+        assert name in GuideAction.model_fields, f"{name}은 서버에도 없다 — 목록에서 지울 것"
+        assert f'@SerialName("{name}")' not in action_block, (
+            f"Kotlin이 {name}을 받기 시작했다 — _ACTION_FIELDS_APP_DOES_NOT_READ_YET에서 지울 것"
+        )
+
+
 def _kotlin_class_body(source: str, name: str) -> str:
     """`data class <name>(...)`의 괄호 안만 돌려준다. 없으면 그 자체가 드리프트다."""
 

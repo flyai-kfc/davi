@@ -5,12 +5,13 @@ import pytest
 from app.app_resolution import get_app_candidate_resolver
 from app.config import Settings, settings
 from app.intent_resolution import get_intent_resolver
-from app.llm import get_llm_client
+from app.llm import LlmClient, get_llm_client
 from app.main import (
     auth_rate_limiter,
     dev_rate_limiter,
     external_rate_limiter,
 )
+from app.schemas import GuideAction, NextStepRequest
 
 
 def _validated_runtime_profile(**overrides: Any) -> Settings:
@@ -79,3 +80,17 @@ def set_runtime_profile(
         return profile
 
     return apply
+
+
+class FixedLlmClient(LlmClient):
+    """모델이 내놓은 행동을 그대로 돌려주는 fake. 가드레일만 관측한다.
+
+    가드 테스트 넷이 공유한다(PR #406 리뷰) — scroll·obscured·clickable tap·input_text.
+    네 곳에 같은 클래스가 복제돼 있었고, 다섯 번째를 만들 이유가 없다.
+    """
+
+    def __init__(self, action: GuideAction) -> None:
+        self._action = action
+
+    def reason(self, req: NextStepRequest) -> GuideAction:
+        return self._action
