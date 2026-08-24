@@ -131,7 +131,11 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
     _reject_obscured_target(action, req.screen)
 
-    # 1. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
+    # 1. 복사 신호는 확인받은 목표 문장에서 온 말만 남긴다(C21). **아래 교정들과 연쇄하지
+    #    않는다** — 건드리는 필드가 `input_text` 하나뿐이고, 아래 어느 가드도 그 값을 읽지 않는다.
+    action = _keep_input_text_from_goal(action, req.goal)
+
+    # 2. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
     if action.action_type is ActionType.TAP:
         _reject_unclickable_tap(action, req.screen)
         return action
@@ -173,6 +177,34 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
         ErrorKind.SERVER,
         "안내 대상이 다른 요소에 완전히 가려져 있어 사용자가 보거나 누를 수 없음",
     )
+
+
+def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
+    """`input_text`는 **사용자가 확인한 목표 문장에 있는 말**일 때만 남긴다(C21).
+
+    타이핑은 사용자가 화면을 보며 한 글자씩 치므로 틀린 값이 손에서 걸린다. 이 필드를 소비하는
+    경로에는 그 단계가 없어서, 값의 출처를 코드가 대신 좁힌다. 앱에서 오는 목표는 사용자가 최종
+    확인 화면에서 읽고 시작을 누른 문장이고(`docs/SCREENS.md` MA-4 — 세션을 켜는 두 경로가 모두
+    그 화면에서 출발한다), 거기 있는 말만 남기면 나가는 값은 이미 사용자가 승인한 값이다.
+    모델이 요약하거나 바꿔 쓴 값은 아무도 확인한 적이 없다.
+
+    **실패로 닫지 않고 비운다.** 안내 문장 자체는 여전히 맞을 수 있고, 값이 없으면 사용자는
+    지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이라 실패의 방향이 안전한 쪽이다.
+    부수 필드가 주 기능을 죽이지 않는다는 `GuideAction.screen_summary`의 공백 검증 결정과 같은 결.
+
+    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, 소비자가 생겼을 때 tap 화면에 복사
+    제안이 뜨는 경로가 된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`),
+    필드 순서상 `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
+
+    **최소 길이 임계값은 두지 않는다.** 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`는 짧은 label이
+    아무 문장에나 우연히 걸려 **검증이 헐거워지는** 것을 막지만, 여기서 짧은 값은 헐거움이 아니라
+    복사할 것이 별로 없다는 뜻일 뿐이다. 근거 없이 임계값을 정하지 않는다(SPEC §4).
+    """
+    if action.input_text is None:
+        return action
+    if action.action_type is ActionType.TYPE and _goal_quotes_input_text(action.input_text, goal):
+        return action
+    return action.model_copy(update={"input_text": None})
 
 
 def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
@@ -550,14 +582,7 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     if not evidence_words:
         return False
 
-    compact_evidence = "".join(evidence_words)
-    starts: list[int] = []
-    ends: list[int] = []
-    cursor = 0
-    for word in evidence_words:
-        starts.append(cursor)
-        cursor += len(word)
-        ends.append(cursor)
+    compact_evidence, starts, ends = _phrase_offsets(evidence_words)
 
     # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
     # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
@@ -575,30 +600,68 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
         return False
 
     return any(
-        _evidence_contains_label(compact_evidence, starts, ends, label) for label in comparable
+        _contains_quoted_phrase(compact_evidence, starts, ends, label) for label in comparable
     )
 
 
-def _evidence_contains_label(
-    compact_evidence: str,
+def _goal_quotes_input_text(input_text: str, goal: str) -> bool:
+    """복사 문구가 목표 문장에 실제로 있는 말인가.
+
+    경계 규칙은 완료 근거와 **같은 것을 쓴다**(`_contains_quoted_phrase`) — 방향만 반대다. 근거
+    대조는 모델 문장에서 화면 label을 찾고, 여기서는 목표 문장에서 모델이 준 문구를 찾는다.
+    조사를 허용하는 이유도 같다: `'테헤란로 4번지'`는 목표에 `'테헤란로 4번지로'`로 적혀 있다.
+
+    **여기서는 원문끼리 비교한다.** 목표 문장은 마스킹을 거치지 않으므로(SPEC §4) 마스킹 정책이
+    바뀌어도 이 판정은 흔들리지 않는다 — 마스킹된 label과 대조하는 근거 검사와 다른 점이다.
+    """
+    normalized = _normalize_for_evidence(input_text)
+    if not normalized:
+        return False
+    compact_goal, starts, ends = _phrase_offsets(_evidence_words(goal))
+    return _contains_quoted_phrase(compact_goal, starts, ends, normalized)
+
+
+def _phrase_offsets(words: list[str]) -> tuple[str, list[int], list[int]]:
+    """어절 목록을 붙인 문자열과 각 어절의 시작·끝 오프셋.
+
+    [_contains_quoted_phrase]가 어절 경계를 보려면 이 세 값이 필요하다. 대조 대상이 여럿인
+    호출자는 한 번만 만들어 재사용한다.
+    """
+    compact = "".join(words)
+    starts: list[int] = []
+    ends: list[int] = []
+    cursor = 0
+    for word in words:
+        starts.append(cursor)
+        cursor += len(word)
+        ends.append(cursor)
+    return compact, starts, ends
+
+
+def _contains_quoted_phrase(
+    compact_text: str,
     starts: list[int],
     ends: list[int],
-    normalized_label: str,
+    normalized_phrase: str,
 ) -> bool:
-    """미리 토큰화한 evidence에 정규화한 label의 어절 연속이 있는지 판정한다.
+    """미리 토큰화한 문장에 정규화한 문구의 어절 연속이 있는지 판정한다.
 
-    구두점·공백을 접은 문자열은 비교하되 시작은 evidence의 어절 경계여야 하고, 끝은 어절
-    경계이거나 정해 둔 한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는
-    받으면서도 어휘가 이어진 부분 문자열은 받지 않는다.
+    구두점·공백을 접은 문자열은 비교하되 시작은 어절 경계여야 하고, 끝은 어절 경계이거나 정해 둔
+    한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는 받으면서도 어휘가 이어진
+    부분 문자열은 받지 않는다.
+
+    **대조 둘이 이 규칙을 공유한다** — 완료 근거가 화면 label을 물었는지
+    (`_evidence_quotes_screen`)와 복사 문구가 목표 문장에 있는 말인지(`_goal_quotes_input_text`)다.
+    이름에 evidence·label이 없는 이유가 그것이고, 경계를 이렇게 정한 근거는 #71 fixture 평가다.
     """
     for start in starts:
-        if not compact_evidence.startswith(normalized_label, start):
+        if not compact_text.startswith(normalized_phrase, start):
             continue
-        match_end = start + len(normalized_label)
+        match_end = start + len(normalized_phrase)
         if match_end in ends:
             return True
         word_end = next(end for end in ends if end > match_end)
-        if _is_allowed_korean_evidence_suffix(compact_evidence[match_end:word_end]):
+        if _is_allowed_korean_evidence_suffix(compact_text[match_end:word_end]):
             return True
     return False
 

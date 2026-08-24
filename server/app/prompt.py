@@ -164,6 +164,18 @@ ACTIONABLE_RESULT_INSTRUCTION = (
     "추가 type보다 우선하세요. 그 요소를 누르기 전에 키보드를 닫는 별도 동작을 먼저 안내하지 "
     "마세요."
 )
+# 복사 신호의 발화 조건(C21). **언제 쓰지 않는지까지 말한다** — 스키마에 필드가 있으면 모델은
+# 빈칸을 채우는 쪽으로 기울고, 채울 조건만 적으면 목표에 없는 검색어를 지어내는 자리가 된다.
+# 가드가 마지막에 목표 문장과 대조해 받아내지만, 프롬프트가 먼저 좁혀야 대조에서 버려지는 값이
+# 줄어든다. `GuideAction.input_text`의 description과 **같은 뜻**이어야 한다 — 무스키마 폴백에서는
+# 스키마 JSON이 프롬프트 본문에 통째로 붙으므로, 한쪽만 고치면 한 프롬프트에 서로 다른 지시가
+# 둘 들어간다(PR #62 리뷰).
+INPUT_TEXT_INSTRUCTION = (
+    "type을 안내할 때, 사용자가 입력해야 할 말이 목표에 이미 그대로 적혀 있으면 그 말을 "
+    "input_text에 그대로 옮겨 쓰세요. 목표에 없는 말을 지어내지 마세요. 검색어처럼 입력한 뒤 "
+    "결과에서 사용자가 다시 고르는 자리에서만 쓰고, 입력한 값이 곧바로 확정되는 칸이거나 "
+    "사용자가 지금 정해야 하는 값이면 쓰지 마세요."
+)
 
 # 이력 블록(C11 · #305). 헤더에 "그 결과"가 붙은 이유는 줄에 결과가 실려서다 —
 # 안내 문구만 나열하던 옛 이력의 헤더(`최근에 했던 안내:`)는 이제 줄과 어긋난다.
@@ -553,6 +565,11 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
     if input_ready:
         context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
+    # 입력칸이 하나라도 보이면 붙인다 — 포커스도 키보드도 보지 않는다. 위 문장들과 조건이 다른
+    # 이유는 주제가 달라서다: 저것들은 "지금 입력 단계인가"를 말하고, 이 문장은 type을 고를 때의
+    # 필드 작성 규칙이라 아직 아무 칸도 포커스되지 않은 화면에서도 필요하다.
+    if any(element.editable for element in _visible_elements(req)):
+        context += f"{INPUT_TEXT_INSTRUCTION}\n"
     return context
 
 

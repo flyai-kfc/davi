@@ -258,7 +258,14 @@ def test_every_provider_produces_the_same_guide_action(cls, body_factory):
 
     action = RemoteLlmClient(_provider(cls, handler)).reason(_request())
 
-    assert action.model_dump() == {**_ACTION, "action_type": "tap", "direction": None}
+    # `input_text`는 응답 본문에 없다 — 값이 없는 선택 필드를 생략하는 Gemini 규약이 다른
+    # 공급자에서도 같은 계약(None)으로 도착하는지 함께 본다(C21).
+    assert action.model_dump() == {
+        **_ACTION,
+        "action_type": "tap",
+        "direction": None,
+        "input_text": None,
+    }
 
 
 @pytest.mark.parametrize("cls", [OpenAiProvider, AnthropicProvider])
