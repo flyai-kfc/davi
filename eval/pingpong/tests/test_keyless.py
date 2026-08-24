@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from pingpong_eval.cli import DEFAULT_SCENARIOS, load_scenarios
+from pingpong_eval.metrics import summarize
 from pingpong_eval.models import (
     Exposure,
     PingpongStatus,
@@ -13,6 +15,7 @@ from pingpong_eval.models import (
     Question,
     Slot,
 )
+from pingpong_eval.report import render_completion_comparison
 from pingpong_eval.runner import run_scenario
 from pingpong_eval.sut import PingpongError, _parse
 from pingpong_eval.user_sim import leaked_slots
@@ -137,6 +140,11 @@ def test_326_흐름은_요청_두_번으로_끝난다(scenarios):
     assert result.transcript.final_goal == "확정된 목표"
     assert result.metrics["질문수"] == 2
     assert result.metrics["요청수"] == 2
+    assert result.metrics["2회이내_ready"] is True
+    # 새 화면은 첫 질문만 읽고, ready 확인 문구를 한 번 더 읽는다.
+    assert result.metrics["TTS_발화수"] == 2
+    assert result.metrics["TTS_문자수"] == len("누구에게 보낼까요?") + len("확인")
+    assert result.metrics["보기_적중률"] == 1.0
 
 
 def test_두_번째_요청은_원래_발화와_답을_함께_보낸다(scenarios):
@@ -246,12 +254,66 @@ def test_옛_형식은_여러_왕복을_돈다(scenarios):
     result = run_scenario(scenarios[0], _FakeUser(), adapter, max_legacy_requests=3)
     assert adapter.sent == 3
     assert result.transcript.stop_reason.value == "limit"
+    assert result.metrics["TTS_발화수"] == 3
+    assert result.metrics["TTS_문자수"] == len("뭘 하실래요?") * 3
+
+
+def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(scenarios):
+    from pingpong_eval.models import (
+        Achievement,
+        JudgeBatch,
+        JudgeResult,
+        SlotScore,
+        SlotVerdict,
+        Violation,
+        ViolationAxis,
+    )
+
+    good = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    good.judge = JudgeResult(
+        achievement=Achievement.FULL,
+        reason="충족",
+        slot_scores=[],
+        violations=[],
+    )
+    good.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+
+    hallucinated = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    hallucinated.missing_slot_keys = ["대상"]
+    hallucinated.judge = JudgeResult(
+        achievement=Achievement.FAIL,
+        reason="누락 정보를 지어냄",
+        slot_scores=[
+            SlotScore(key="대상", verdict=SlotVerdict.WRONG, evidence="다른 사람")
+        ],
+        violations=[
+            Violation(
+                axis=ViolationAxis.FORCED_CHOICE,
+                round_index=1,
+                quote="둘 중 고르세요",
+                why="선택 강요",
+            )
+        ],
+    )
+    hallucinated.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+
+    summary = summarize([good, hallucinated], batch=("judge", "same"))["전체"]
+    assert summary["2회이내_ready율"] == 1.0
+    assert summary["goal_유효율"] == 0.5
+    assert summary["누락정보_환각률"] == 0.5
+    assert summary["선택_강요율"] == 0.5
+    assert summary["보기_선택률"] == 1.0
+
+    report = render_completion_comparison("옛 흐름", summary, "새 흐름", summary)
+    assert "| 옛 흐름 | 100% | 50% | 50% | 50% | 100% |" in report
+    assert "| 새 흐름 | 100% | 50% | 50% | 50% | 100% |" in report
 
 
 def test_preflight는_스텁_서버를_거부한다():
     """스텁은 무조건 ready에 발화를 그대로 돌려준다 — 그 수치가 기준선처럼 남으면 안 된다."""
 
     import httpx
+
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     adapter = SlotFillHttpAdapter(
@@ -269,6 +331,7 @@ def test_preflight는_스텁_서버를_거부한다():
 
 def test_preflight는_실제_모델_서버를_통과시킨다():
     import httpx
+
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     for body in ({"status": "ok", "stub_llm": False}, {"status": "ok"}):

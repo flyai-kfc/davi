@@ -18,9 +18,9 @@ from pathlib import Path
 
 from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
-from .metrics import in_batch, transcript_metrics
+from .metrics import batch_of, in_batch, summarize, transcript_metrics
 from .models import JudgeBatch, ScenarioFile, ScenarioResult, StopReason, Transcript
-from .report import write_run
+from .report import render_completion_comparison, write_run
 from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
 from .user_sim import UserSimulator
@@ -315,6 +315,76 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_run(run_dir: Path) -> tuple[list[ScenarioResult], dict]:
+    transcript_path = run_dir / "transcripts.jsonl"
+    meta_path = run_dir / "meta.json"
+    if not transcript_path.is_file() or not meta_path.is_file():
+        raise ValueError(f"{run_dir} 는 실행 디렉터리가 아니다")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    results = [
+        ScenarioResult.model_validate_json(line)
+        for line in transcript_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return results, meta
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    """두 실행에서 #316 완료 지표만 비교한다."""
+
+    try:
+        baseline_results, baseline_meta = _load_run(Path(args.baseline))
+        candidate_results, candidate_meta = _load_run(Path(args.candidate))
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+    baseline_digest = baseline_meta.get("시나리오해시")
+    candidate_digest = candidate_meta.get("시나리오해시")
+    if baseline_digest != candidate_digest and not args.allow_scenario_drift:
+        print(
+            "시나리오 해시가 다르다 — 같은 입력이 아니므로 A/B로 묶을 수 없다. "
+            "알고 비교하려면 --allow-scenario-drift 를 쓴다.",
+            file=sys.stderr,
+        )
+        return 1
+
+    baseline_batch = batch_of(baseline_meta)
+    candidate_batch = batch_of(candidate_meta)
+    if (
+        baseline_batch is not None
+        and candidate_batch is not None
+        and baseline_batch != candidate_batch
+    ):
+        print(
+            "평가자 모델·채점 시나리오 배치가 다르다 — goal·환각·선택 강요를 A/B로 "
+            "묶을 수 없다. 같은 배치로 다시 채점한다.",
+            file=sys.stderr,
+        )
+        return 1
+
+    baseline = summarize(
+        baseline_results,
+        batch=baseline_batch,
+    )["전체"]
+    candidate = summarize(
+        candidate_results,
+        batch=candidate_batch,
+    )["전체"]
+    report = render_completion_comparison(
+        args.baseline_name,
+        baseline,
+        args.candidate_name,
+        candidate,
+    )
+    if args.out:
+        Path(args.out).write_text(report, encoding="utf-8")
+        print(f"비교 보고서: {args.out}")
+    else:
+        print(report)
+    return 0
+
+
 def _headline(results: list) -> dict:
     judged = [r for r in results if r.judge]
     return {
@@ -384,6 +454,15 @@ def main(argv: list[str] | None = None) -> int:
         help="시나리오 파일이 실행 당시와 달라도 알고 채점한다(수치 비교 불가)",
     )
     judge_cmd.set_defaults(func=cmd_judge)
+
+    compare = sub.add_parser("compare", help="#316 완료 지표로 두 실행을 A/B 비교한다")
+    compare.add_argument("baseline", help="기준 runs/<타임스탬프>")
+    compare.add_argument("candidate", help="후보 runs/<타임스탬프>")
+    compare.add_argument("--baseline-name", default="기존 자유 발화")
+    compare.add_argument("--candidate-name", default="#316 질문 계획")
+    compare.add_argument("--out", help="Markdown 출력 경로")
+    compare.add_argument("--allow-scenario-drift", action="store_true")
+    compare.set_defaults(func=cmd_compare)
 
     args = parser.parse_args(argv)
     return args.func(args)
