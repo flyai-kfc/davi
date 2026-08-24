@@ -32,11 +32,13 @@ class ConsentActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityConsentBinding
     private lateinit var consentStore: ConsentStore
+    private lateinit var authStore: AuthStore
     private val checkedKeys = mutableSetOf<ConsentItemKey>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         consentStore = ConsentStore(this)
+        authStore = AuthStore(this)
         binding = ActivityConsentBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -56,8 +58,15 @@ class ConsentActivity : AppCompatActivity() {
         // 없고 저장소가 재생성 경로를 의도적으로 열어 뒀다(매니페스트의 ConversationActivity
         // 주석 「fontScale·uiMode는 일부러 넣지 않는다」). 전문을 읽다 글자 배율을 올리고
         // 돌아오면 체크가 통째로 풀리는데 **왜 그런지는 아무 데도 안 나온다.**
-        savedInstanceState?.getStringArrayList(STATE_CHECKED)?.let { saved ->
-            saved.mapNotNullTo(checkedKeys) { name -> ConsentItemKey.entries.find { it.name == name } }
+        if (savedInstanceState == null) {
+            // **이미 카카오로 로그인한 사람에게는 켜진 채로 보여준다**(#409 리뷰 P1, 선택지 ⓒ).
+            // ON-1에서 로그인하면 세션이 이미 저장된 뒤라, 여기서 꺼진 채로 보여주면 **화면과
+            // 실제 상태가 어긋난다** — 체크를 안 하고 넘어가도 세션은 남아 계속 쓰인다.
+            if (authStore.sessionToken(nowEpochSeconds()) != null) checkedKeys.add(ConsentItemKey.KAKAO)
+        } else {
+            savedInstanceState.getStringArrayList(STATE_CHECKED)?.let { saved ->
+                saved.mapNotNullTo(checkedKeys) { name -> ConsentItemKey.entries.find { it.name == name } }
+            }
         }
 
         bindItems()
@@ -169,9 +178,29 @@ class ConsentActivity : AppCompatActivity() {
         val item = itemBindingFor(key)
         val checked = key !in checkedKeys
         if (checked) checkedKeys.add(key) else checkedKeys.remove(key)
+        if (key == ConsentItemKey.KAKAO && !checked) disconnectKakao()
         setItemChecked(item, checked)
         updateAgreeAllCheckbox()
         updateNextButtonAppearance()
+    }
+
+    /**
+     * 카카오 연결을 **실제로 끊는다**(#409 리뷰 P1, 선택지 ⓒ). 끄기만 하고 세션을 두면
+     * `consent_items`에서만 빠질 뿐 토큰은 남아 계속 서버 호출에 쓰인다 — **동의 기록과
+     * 실제 상태가 어긋난다.**
+     *
+     * `markSkipped()`는 토큰을 지우고 「로그인 없이 쓰기로 했다」를 남긴다. 그래서 이 화면을
+     * 지나 앱을 다시 켜도 ON-1이 다시 뜨지 않는다 — `consent_kakao_detail`이 안내하는
+     * 「'로그인 없이 시작하기'로 그대로 쓰실 수 있습니다」와 같은 상태가 된다.
+     *
+     * **다시 켜도 연결이 돌아오지는 않는다** — 지운 토큰을 되살릴 수 없고 이 화면에서 카카오
+     * 로그인을 띄우지도 않는다. 그때의 체크는 「앞으로 연결한다면 회원번호를 받아도 된다」는
+     * 동의로만 남는다. 로그인 자체를 다시 하려면 앱을 지우고 깔거나 ON-1으로 돌아가야 한다.
+     */
+    private fun disconnectKakao() {
+        if (authStore.sessionToken(nowEpochSeconds()) == null) return
+        authStore.markSkipped()
+        Log.i(TAG, "kakao disconnected by consent toggle")
     }
 
     private fun itemBindingFor(key: ConsentItemKey): ViewDaviConsentItemBinding = when (key) {
