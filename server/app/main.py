@@ -595,6 +595,44 @@ def _auth_rate_limit_response(
     )
 
 
+def _login_rate_limit_source(request: Request) -> str | None:
+    """로그인 레이트리밋의 비식별 네트워크 출처를 반환한다.
+
+    Azure Container Apps HTTP ingress는 클라이언트가 보낸 X-Forwarded-For 뒤에 자신이
+    관측한 IP를 붙이고, 그중 가장 오른쪽 값만 플랫폼 제공값으로 보장한다. 따라서 ACA
+    프로필에서는 왼쪽 값을 전부 버린다. 이 값은 로그인 폭주 제한에만 쓰며 인증·권한이나
+    로그에는 사용하지 않는다.
+    """
+
+    if settings.davi_auth_source == "peer":
+        return request.client.host if request.client else None
+
+    forwarded_values = request.headers.getlist("X-Forwarded-For")
+    if not forwarded_values:
+        return None
+    candidates = [part.strip() for value in forwarded_values for part in value.split(",")]
+    candidate = candidates[-1] if candidates else ""
+    try:
+        return str(ip_address(candidate))
+    except ValueError:
+        return None
+
+
+def _auth_source_unavailable_response(request: Request) -> JSONResponse:
+    """신뢰할 로그인 출처가 없으면 카카오 API를 소모하지 않고 닫는다."""
+
+    request.state.error_kind = "AUTH_SOURCE_UNAVAILABLE"
+    error = ApiError(
+        kind=ErrorKind.SERVER,
+        message="login request source unavailable",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=error.model_dump(),
+    )
+
+
 @app.post("/v1/auth/kakao", response_model=SessionTokenResponse)
 def post_kakao_login(
     req: KakaoLoginRequest,
@@ -607,10 +645,9 @@ def post_kakao_login(
     """
 
     request.state.request_metadata = {"client_version": req.client_version}
-    # 출처는 직접 연결 peer IP만 쓴다. X-Forwarded-For는 클라이언트가 임의로 채울 수 있어
-    # 여기서 파싱하지 않는다 — 프록시 뒤 배포에서는 uvicorn --proxy-headers와
-    # --forwarded-allow-ips로 신뢰 프록시가 request.client를 재작성한 값이 그대로 들어온다.
-    source = request.client.host if request.client else "unknown"
+    source = _login_rate_limit_source(request)
+    if source is None:
+        return _auth_source_unavailable_response(request)
     decision = auth_rate_limiter.check(
         source,
         source_limit=settings.davi_auth_rate_limit_per_source_requests,

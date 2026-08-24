@@ -287,6 +287,106 @@ def test_login_rate_limit_is_per_source(monkeypatch, set_runtime_profile):
     assert other_source_ok.status_code == 200
 
 
+def test_aca_login_rate_limit_trusts_only_rightmost_forwarded_ip(
+    monkeypatch,
+    set_runtime_profile,
+):
+    """클라이언트가 넣을 수 있는 왼쪽 값은 출처 분리에 영향을 주지 않는다."""
+
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_auth_source="azure_container_apps",
+        davi_auth_rate_limit_per_source_requests=1,
+        davi_auth_rate_limit_requests=100,
+    )
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+
+    first = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers={"X-Forwarded-For": "192.0.2.10, 203.0.113.9"},
+    )
+    same_rightmost = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers={"X-Forwarded-For": "198.51.100.88, 203.0.113.9"},
+    )
+    different_rightmost = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers={"X-Forwarded-For": "192.0.2.10, 203.0.113.10"},
+    )
+
+    assert first.status_code == 200
+    assert same_rightmost.status_code == 429
+    assert different_rightmost.status_code == 200
+
+
+@pytest.mark.parametrize("forwarded_for", [None, "not-an-ip", "203.0.113.9, "])
+def test_aca_login_rejects_missing_or_invalid_rightmost_before_kakao(
+    forwarded_for,
+    monkeypatch,
+    set_runtime_profile,
+):
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_auth_source="azure_container_apps",
+    )
+    called = False
+
+    def unexpected_call(kakao_access_token: str, transport=None) -> dict:
+        nonlocal called
+        called = True
+        return {"id": 1234, "app_id": _APP_ID}
+
+    monkeypatch.setattr(kakao_auth, "fetch_access_token_info", unexpected_call)
+    headers = {} if forwarded_for is None else {"X-Forwarded-For": forwarded_for}
+
+    response = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers=headers,
+    )
+
+    assert response.status_code == 503
+    assert response.json()["kind"] == "SERVER"
+    assert called is False
+
+
+def test_development_peer_mode_ignores_forwarded_header(
+    configured_auth,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "davi_auth_rate_limit_per_source_requests", 1)
+    monkeypatch.setattr(
+        kakao_auth,
+        "fetch_access_token_info",
+        _fake_token_info({"id": 1234, "app_id": _APP_ID}),
+    )
+
+    first = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers={"X-Forwarded-For": "203.0.113.9"},
+    )
+    second = client.post(
+        "/v1/auth/kakao",
+        json={"kakao_access_token": "token"},
+        headers={"X-Forwarded-For": "203.0.113.10"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
 def test_login_global_cap_still_limits_across_sources(monkeypatch, set_runtime_profile):
     """출처별 창과 별개로 전역 상한이 카카오 API 소모 총량을 지킨다."""
 
