@@ -159,6 +159,31 @@ SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 �
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture
 기준의 낙관적 상한”이라는 단서를 유지한다.
 
+### 완료 근거 판정 fixture
+
+`completion-fixtures/evidence_cases.json`은 일반 화면 fixture와 목적이 다르다. fake LLM이 각
+사례의 `expected_result`·`evidence`로 `done`을 내게 하고, `expected_verified`와 비교해
+TP/TN/FP/FN을 센다. 실기기 기반 사례는 `fixtures/*.json`을 파일명으로 참조하고, 합성 사례는
+`source=eval_case`와 최소 화면을 직접 넣는다. 두 종류 모두 하니스의 PII 검사를 먼저 통과한다.
+
+#71에서 조사·동사 활용·부정 표현 위험을 포함한 18사례를 비교한 결과는 다음과 같다. 이 수치는
+실제 사용 성공률이 아니라 정책 후보를 같은 작은 표본에서 비교한 결정론적 회귀값이다.
+
+| 정책 | TP | TN | FP | FN | 결정 |
+|---|---:|---:|---:|---:|---|
+| 기존 정규화 부분 문자열 | 9 | 2 | 6 | 1 | 교체 |
+| 최소 두 글자 + 어절 경계(한국어 조사 허용) | 9 | 5 | 3 | 1 | 채택 |
+| 위 정책 + clickable label 제외 | 7 | 7 | 1 | 3 | 부정문 FP는 남기고 정상 버튼·스위치 완료를 막아 보류 |
+| 위 정책 + goal/expected_result 어절 겹침 | 6 | 7 | 1 | 4 | 부정문 FP는 남기고 앱 내부 label 정상 근거를 막아 보류 |
+
+남은 FP는 런처에 보이는 앱 이름, 목표와 무관한 긴 label, 정확히 인용했지만 의미가 부정인 문장이고,
+남은 FN은 label을 의미만 같게 풀어 쓴 근거다. case id를 테스트가 정확히 고정하므로 표본을
+늘리거나 정책을 바꾸면 수치와 문서를 함께 갱신한다. 특히 `valid-clickable-home-item`과
+`invalid-unrelated-visible-label`은 같은 실기기 화면과
+같은 `전화` label을 쓰고 의미 기대값만 반대다. 목표를 보지 않는 현재 정책은 구조적으로 둘 중
+하나를 틀린다. `invalid-negated-visible-label`은 인용의 충분성을 판정하지 않는 현재 경계가 부정문을
+통과시키는 별도 한계를 의도적으로 드러낸다.
+
 ## 선택적 실제 모델 + LLM judge
 
 골든패스 exact-match는 동등하거나 더 나은 대안 경로도 오답으로 처리한다. PoC2의 FAIL 4건이

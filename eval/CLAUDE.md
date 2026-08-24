@@ -14,6 +14,9 @@ Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증
   그쪽 방어선은 사람이 먼저 익명화하는 것이다(`SPEC.md` §2 「패턴 밖 고유명」, #360).
 - `../server/`의 최신 `NextStepRequest` 스키마와 추론 코드를 직접 import한다. 선택 필드는
   fixture에서 생략 가능해야 하며, 알 수 없는 필드가 조용히 버려지면 실패해야 한다.
+- `completion-fixtures/evidence_cases.json`은 완료 근거 판정의 TP/TN/FP/FN을 고정한다. 실기기
+  화면은 기존 익명화 fixture를 파일명으로 참조하고, 합성 사례는 `eval_case`로 명시한다. 후보
+  정책 수치는 `tests/test_completion_verify.py`가 키 없이 결정론적으로 센다(#71).
 - 실제 후보 모델과 LLM judge는 `judge.py`의 별도 HTTP 경계로 호출한다. 키나 judge 모델이
   없으면 명시적으로 skip하고, 활성화된 실행의 HTTP·파싱 오류와 오답 판정은 실패한다.
 - HTTP·실패·출력 정책은 서버와 분리하되, Gemini 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON
@@ -52,6 +55,8 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   내놓는 fake LLM으로 서버 가드레일을 키 없이 검증한다 — 런처의 앱서랍 즉시 전환, 목록 화면의
   대상 교정, 대체 행동도 대상도 없는 화면의 실패, 스크롤 미관측 앱의 통과(#202).
   #36 반복 가드 회귀(`test_repeat_guard.py`)를 대신한다 — 반복 카운트가 #202에서 걷혔다.
+- 완료 근거 fixture의 `expected_verified`는 모델 응답의 관측값이 아니라 사람이 정한 의미상
+  기대값이다. 알려진 FP/FN도 지우지 않고 case id와 혼동행렬로 남겨 정책 비용을 드러낸다(#71).
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
 

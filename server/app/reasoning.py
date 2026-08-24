@@ -42,10 +42,83 @@ _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
 # **글자는 문자 종류를 가리지 않고 남긴다.** 한글·라틴만 남기면 label이 한자·가나·키릴인 화면
 # (微信, 設定, Настройки)에서 정규화 결과가 통째로 비어 검사가 조용히 꺼진다(PR #62 리뷰 2번).
 _EVIDENCE_NOISE = re.compile(r"[^\w]+", re.UNICODE)
+_EVIDENCE_WORD = re.compile(r"\w+", re.UNICODE)
 
-# 한 글자 label(아이콘·숫자)은 우연 일치가 잦아 우선 제외한다. 다만 화면 전체가 한 글자 label뿐이면
-# (숫자 키패드 등) 검사를 끄는 대신 그것들로라도 대조한다.
+# 한 글자 label(아이콘·숫자)은 우연 일치가 잦고, 숫자 키패드에서는 거의 모든 문장에 걸린다.
+# 대조할 긴 label이 없더라도 한 글자로 폴백하지 않는다(#71 fixture 평가).
 _MIN_EVIDENCE_LABEL_CHARS = 2
+
+# label 뒤에 붙어도 **같은 어절을 인용한 것**으로 볼 수 있는 한국어 조사·서술격 어미.
+# 이 목록 밖의 글자까지 부분 일치로 받으면 `사용 중`과 `사용 중지`처럼 상태가 뒤집힌다.
+# 일반 동사 접미사는 일부러 넣지 않는다. 예를 들어 버튼 label `저장`과 `저장되었습니다`를
+# 같은 근거로 보면 저장 전 화면의 버튼만으로 완료를 통과시키기 때문이다.
+_KOREAN_EVIDENCE_SUFFIXES = frozenset(
+    {
+        "가",
+        "고",
+        "과",
+        "까지",
+        "께",
+        "께서",
+        "나",
+        "는",
+        "도",
+        "라",
+        "라고",
+        "랑",
+        "로",
+        "를",
+        "마다",
+        "만",
+        "며",
+        "보다",
+        "부터",
+        "에",
+        "에게",
+        "에서",
+        "예요",
+        "였습니다",
+        "와",
+        "으로",
+        "은",
+        "을",
+        "의",
+        "이",
+        "이고",
+        "이며",
+        "이나",
+        "이랑",
+        "이라",
+        "이라고",
+        "이었습니다",
+        "이에요",
+        "입니다",
+        "인",
+        "처럼",
+    }
+)
+
+# 격조사 뒤에 붙을 수 있는 보조사 한 개. `에서는`·`에도`를 완성형으로 하나씩 적으면
+# `에서도`·`에는`·`으로는`이 빠질 때마다 목록을 늘려야 한다. 결합 가능한 앞 조사와 뒤 보조사를
+# 따로 두어 같은 문법을 한 규칙으로 받되, 두 번 이상 이어 붙인 임의 문자열까지 넓히지는 않는다.
+_KOREAN_EVIDENCE_COMPOUND_BASES = frozenset(
+    {
+        "과",
+        "까지",
+        "께",
+        "께서",
+        "로",
+        "보다",
+        "부터",
+        "에",
+        "에게",
+        "에서",
+        "와",
+        "으로",
+        "처럼",
+    }
+)
+_KOREAN_EVIDENCE_AUXILIARY_SUFFIXES = frozenset({"는", "도", "만", "까지"})
 
 
 def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
@@ -454,9 +527,9 @@ def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
     두 근거 필드는 `GuideAction`의 필수 필드라 구조화 출력이 항상 채운다. 비었는지만 보면
     `done`은 언제나 통과했다(빈 evidence로 done을 거부한 실측 사례는 그 앞 단계에서 걸린 것이다).
 
-    **충분한 근거인지는 판정하지 않는다.** `evidence='지도'`처럼 흔한 단어 하나로 형식만 채우는
-    성의 없는 근거도(HANDOFF §9) 그 단어가 화면에 있으면 통과한다 — 임계값을 근거 없이 정하면
-    정당한 완료를 막는다. 이 함수는 `verified` 플래그만 정확하게 만들고 안내를 막지 않는다.
+    **목표 달성에 충분한 근거인지는 판정하지 않는다.** 최소 두 글자·어절 경계로 우연 일치만
+    줄이고, role/clickable이나 목표 문자열 겹침은 쓰지 않는다 — #71 fixture에서 정상 완료를
+    더 많이 막았다. 이 함수는 `verified` 플래그만 정확하게 만들고 안내를 막지 않는다.
     """
     if action.action_type is not ActionType.DONE:
         return False
@@ -469,32 +542,86 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     """근거가 화면 label 중 하나를 실제로 물고 있는가.
 
     label은 2차 마스킹을 거친 값이다 — 모델이 본 것과 같은 값으로 비교해야 한다.
-    한국어는 조사가 붙어 토큰 일치가 깨지므로(`카카오톡` vs `카카오톡이`) **label이 근거 안에
-    들어 있는지**를 본다. 구두점·띄어쓰기는 양쪽에서 지운다: 실측된 좋은 근거
-    `'Wi-Fi, 사용 중, AITECHLAB 연결됨'`은 쉼표만 다르고 label과 같은 문자열이다(HANDOFF §9).
+    구두점 차이는 어절 토큰화로 흡수하고, 한국어 조사·서술격 어미만 label의 마지막 어절 뒤에
+    허용한다(`카카오톡` vs `카카오톡이`). 임의의 접두 일치는 허용하지 않는다: label `사용 중`을
+    근거 `사용 중지했습니다`에서 찾으면 정반대 상태가 통과한다(#71).
     """
-    normalized_evidence = _normalize_for_evidence(evidence)
-    if not normalized_evidence:
+    evidence_words = _evidence_words(evidence)
+    if not evidence_words:
         return False
+
+    compact_evidence = "".join(evidence_words)
+    starts: list[int] = []
+    ends: list[int] = []
+    cursor = 0
+    for word in evidence_words:
+        starts.append(cursor)
+        cursor += len(word)
+        ends.append(cursor)
 
     # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
     # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
     # 대조에 넣으면 지어낸 근거를 통과시키는 쪽으로만 작용한다 — 검증이 느슨해진다.
-    labels = [
-        _normalize_for_evidence(element.label) for element in visible_elements(screen.elements)
+    comparable = [
+        normalized
+        for element in visible_elements(screen.elements)
+        if len(normalized := _normalize_for_evidence(element.label)) >= _MIN_EVIDENCE_LABEL_CHARS
     ]
-    present = [label for label in labels if label]
-    if not present:
-        # 화면에 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로 돌리면
-        # 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
+    if not comparable:
+        # 화면에 비교 가능한 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로
+        # 돌리면 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
+        # 한 글자 label도 아이콘·숫자라 아무 문장에나 걸리므로 폴백하지 않는다(#71).
         # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
         return False
 
-    # 한 글자 label은 아이콘·숫자라 아무 문장에나 우연히 걸린다. 다만 화면이 전부 한 글자면
-    # (숫자 키패드 등) 검사를 끄는 대신 그것들로 대조한다 — 끄면 지어낸 근거가 그대로 통과한다.
-    comparable = [label for label in present if len(label) >= _MIN_EVIDENCE_LABEL_CHARS] or present
+    return any(
+        _evidence_contains_label(compact_evidence, starts, ends, label) for label in comparable
+    )
 
-    return any(label in normalized_evidence for label in comparable)
+
+def _evidence_contains_label(
+    compact_evidence: str,
+    starts: list[int],
+    ends: list[int],
+    normalized_label: str,
+) -> bool:
+    """미리 토큰화한 evidence에 정규화한 label의 어절 연속이 있는지 판정한다.
+
+    구두점·공백을 접은 문자열은 비교하되 시작은 evidence의 어절 경계여야 하고, 끝은 어절
+    경계이거나 정해 둔 한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는
+    받으면서도 어휘가 이어진 부분 문자열은 받지 않는다.
+    """
+    for start in starts:
+        if not compact_evidence.startswith(normalized_label, start):
+            continue
+        match_end = start + len(normalized_label)
+        if match_end in ends:
+            return True
+        word_end = next(end for end in ends if end > match_end)
+        if _is_allowed_korean_evidence_suffix(compact_evidence[match_end:word_end]):
+            return True
+    return False
+
+
+def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
+    """label 뒤의 조사·서술격 어미인가.
+
+    복수 접미사 `들`은 한 번 붙을 수 있고, 격조사 뒤에는 보조사 한 개를 조합할 수 있다
+    (`사진들`, `사진들이`, `설정에서도`, `사진들에서는`). 임의의 동사 접미사나 보조사를 두 번
+    이어 붙인 문자열은 받지 않는다.
+    """
+    tail = suffix.removeprefix("들")
+    if not tail or tail in _KOREAN_EVIDENCE_SUFFIXES:
+        return True
+    return any(
+        base != auxiliary and tail == base + auxiliary
+        for base in _KOREAN_EVIDENCE_COMPOUND_BASES
+        for auxiliary in _KOREAN_EVIDENCE_AUXILIARY_SUFFIXES
+    )
+
+
+def _evidence_words(text: str) -> list[str]:
+    return _EVIDENCE_WORD.findall(text.casefold())
 
 
 def _normalize_for_evidence(text: str) -> str:

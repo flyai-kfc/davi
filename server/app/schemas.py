@@ -239,7 +239,10 @@ class GuideAction(BaseModel):
     # JSON이 프롬프트 본문에 통째로 붙으므로, `prompt.EVIDENCE_INSTRUCTION`과 **같은 뜻**이어야
     # 한다. 한쪽이 "짧게 적어라"가 되면 한 프롬프트에 정반대 지시가 둘 들어간다(PR #62 리뷰).
     evidence: str = Field(
-        description="현재 화면 요소의 label 하나를 그대로 포함하고, 그것이 왜 근거인지 이어 쓴 문장"
+        description=(
+            "현재 화면 요소의 label 하나를 작은따옴표로 감싸 글자 그대로 인용하고, "
+            "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장"
+        )
     )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
