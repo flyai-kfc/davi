@@ -94,7 +94,7 @@ def _start_probe_process(cwd: Path, *command_markers: str) -> int:
     expected_marker = " ".join(command_markers)
     for _attempt in range(50):
         command = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "command="],
+            ["ps", "-ww", "-p", str(pid), "-o", "command="],
             check=False,
             capture_output=True,
             text=True,
