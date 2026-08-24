@@ -40,6 +40,12 @@ macOS에서는 다음을 준비한다.
 실기기 로그는 `adb -s <serial> logcat -s GuideSvc`로 본다. `-t N`은 태그 필터 전에 버퍼를
 잘라 필요한 로그가 0줄이 될 수 있으므로 구간이 필요하면 `-T '<MM-DD HH:MM:SS.mmm>'`를 쓴다.
 
+2026-08-24 macOS 기본 Bash 3.2.57과 SM-S921N(Android 15,
+`ro.build.version.oneui=70000`)에서 기본 명령의 debug 빌드·설치, 일부러 접근성을 끈 뒤
+`--a11y-only` 복구, `--status`의 목록 등록·실제 바인딩 판정을 확인했다. 복구 뒤 전역
+`accessibility_enabled=1`, `Crashed services:{}`였고 `GuideSvc`의 연결 로그와
+`privacyMasking=on`도 확인했다. 서버 주소와 기기 식별자는 기록하지 않았다.
+
 ### 지금 상태만 보고 싶다면
 
 아무것도 바꾸지 않고 기기·설치 패키지·접근성 상태를 한 줄씩 출력한다.
@@ -52,11 +58,13 @@ macOS에서는 다음을 준비한다.
 ./scripts/dev-install.sh --status
 ```
 
-```
+```text
 기기      : SM-S921N [R3CX...] 
 패키지    : com.davi.helper.debug 0.2.0-debug 설치됨
 접근성    : 목록엔 있으나 바인딩 없음 — --a11y-only로 복구
 ```
+
+위는 Bash판 출력 예시다. PowerShell판은 같은 판정의 복구 명령을 `-A11yOnly`로 표시한다.
 
 오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 

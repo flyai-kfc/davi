@@ -87,7 +87,7 @@ jobs:
       - name: 실기기 결과 문서 렌더러 테스트
         working-directory: app-android
         run: |
-          bash -n scripts/dev-install.sh
+          bash -n scripts/dev-install.sh scripts/lib/accessibility.sh
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
           ./scripts/run-device-e2e.sh --list-scenarios
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).parents[1] / "dev-install.sh"
+ACCESSIBILITY_LIB = Path(__file__).parents[1] / "lib/accessibility.sh"
 SERVICE = "com.davi.helper.debug/com.davi.helper.GuideAccessibilityService"
 TALKBACK = "com.google.android.marvin.talkback/.TalkBackService"
 
@@ -89,11 +90,13 @@ class DevInstallShTest(unittest.TestCase):
         self.sdk = self.root / "sdk"
         self.state = self.root / "state"
         self.scripts.mkdir(parents=True)
+        (self.scripts / "lib").mkdir()
         (self.sdk / "platform-tools").mkdir(parents=True)
         self.state.mkdir()
 
         self.script = self.scripts / "dev-install.sh"
         shutil.copy2(SCRIPT, self.script)
+        shutil.copy2(ACCESSIBILITY_LIB, self.scripts / "lib/accessibility.sh")
         self.adb = self.sdk / "platform-tools" / "adb"
         self.adb.write_text(FAKE_ADB, encoding="utf-8")
         self.adb.chmod(0o755)
@@ -278,6 +281,20 @@ class DevInstallShTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("adb devices 실행에 실패", result.stderr)
         self.assertNotIn("기기      : 없음", result.stdout)
+
+    def test_explicit_serial_with_no_devices_reports_the_intended_error_on_bash_32(self):
+        env = {**self.env, "FAKE_DEVICES": ""}
+
+        status = self.run_script("--status", "--serial", "MISSING", env=env)
+        install = self.run_script("--a11y-only", "--serial", "MISSING", env=env)
+
+        expected = "지정한 기기(MISSING)가 연결 상태가 아닙니다. 연결된 기기: 없음"
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn(f"기기      : {expected}", status.stdout)
+        self.assertNotIn("unbound variable", status.stdout + status.stderr)
+        self.assertNotEqual(install.returncode, 0)
+        self.assertIn(expected, install.stderr)
+        self.assertNotIn("unbound variable", install.stderr)
 
     def test_missing_adb_and_invalid_java_home_explain_the_required_setting(self):
         missing_sdk = self.root / "missing-sdk"

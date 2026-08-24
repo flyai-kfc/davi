@@ -6,6 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/accessibility.sh
+. "$SCRIPT_DIR/lib/accessibility.sh"
 SERVICE_CLASS="com.davi.helper.GuideAccessibilityService"
 FALLBACK_PACKAGE="com.davi.helper.debug"
 
@@ -180,9 +182,13 @@ resolve_serial() {
     local item found=false count="${#CONNECTED_SERIALS[@]}"
 
     if [[ -n "$requested" ]]; then
-        for item in "${CONNECTED_SERIALS[@]}"; do
-            [[ "$item" == "$requested" ]] && found=true
-        done
+        # macOS 기본 Bash 3.2 + `set -u`에서는 빈 배열의 `[@]` 전개 자체가 unbound variable이다.
+        # USB가 빠진 채 ANDROID_SERIAL이 남은 흔한 조합이므로, 원소가 있을 때만 전개한다.
+        if [[ "$count" -gt 0 ]]; then
+            for item in "${CONNECTED_SERIALS[@]}"; do
+                [[ "$item" == "$requested" ]] && found=true
+            done
+        fi
         if [[ "$found" != true ]]; then
             die "지정한 기기($requested)가 연결 상태가 아닙니다. 연결된 기기: $(if [[ "$count" -gt 0 ]]; then joined_serials; else printf '없음'; fi)"
         fi
@@ -209,15 +215,6 @@ adb_checked() {
     if ! "${ADB_DEVICE[@]}" "$@"; then
         die "$what 실패"
     fi
-}
-
-dumpsys_section() {
-    awk -v label="$1" '
-        finished { next }
-        !inside && $0 ~ "^[[:space:]]*" label "[[:space:]]*:[{]" { inside = 1; print; next }
-        inside && $0 ~ "^[[:space:]]*[A-Za-z][A-Za-z0-9 ]*:[{]" { inside = 0; finished = 1; next }
-        inside { print }
-    '
 }
 
 installed_service_packages() {
