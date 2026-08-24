@@ -5,14 +5,17 @@ import android.os.Bundle
 import android.util.Log
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.updateLayoutParams
 import com.davi.helper.databinding.ActivityConsentBinding
 import com.davi.helper.databinding.ViewDaviConsentItemBinding
@@ -62,7 +65,14 @@ class ConsentActivity : AppCompatActivity() {
             // **이미 카카오로 로그인한 사람에게는 켜진 채로 보여준다**(#409 리뷰 P1, 선택지 ⓒ).
             // ON-1에서 로그인하면 세션이 이미 저장된 뒤라, 여기서 꺼진 채로 보여주면 **화면과
             // 실제 상태가 어긋난다** — 체크를 안 하고 넘어가도 세션은 남아 계속 쓰인다.
-            if (authStore.sessionToken(nowEpochSeconds()) != null) checkedKeys.add(ConsentItemKey.KAKAO)
+            //
+            // **`LOGIN_ENABLED`도 함께 본다**(2차 리뷰 P2). 카드를 감춘 빌드에서 세션만 보고
+            // 켜면 **화면에 서지도 않은 동의가 저장된다.** 키가 있는 맥의 debug로 로그인한
+            // 기기에 키 없는 맥의 debug를 덮어 설치하면(같은 `.debug` applicationId라 데이터가
+            // 남는다) 실제로 닿는 상태다.
+            if (BuildConfig.LOGIN_ENABLED && authStore.sessionToken(nowEpochSeconds()) != null) {
+                checkedKeys.add(ConsentItemKey.KAKAO)
+            }
         } else {
             savedInstanceState.getStringArrayList(STATE_CHECKED)?.let { saved ->
                 saved.mapNotNullTo(checkedKeys) { name -> ConsentItemKey.entries.find { it.name == name } }
@@ -73,14 +83,22 @@ class ConsentActivity : AppCompatActivity() {
         bindNotices()
         bindAgreeAll()
         bindFooter()
+        binding.consentDeclineScrim.isVisible =
+            savedInstanceState?.getBoolean(STATE_DECLINE_SHOWN) == true
         updateAgreeAllCheckbox()
         updateNextButtonAppearance()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        // 펼침·확인창 표시는 뷰 상태라 시스템이 id로 되살린다. 체크는 메모리에만 있어 여기서 든다.
+        // ⚠ 이 주석은 「펼침·확인창은 뷰 상태라 시스템이 id로 되살린다」고 적고 있었는데
+        // **틀렸다**(2차 리뷰 P2). `View.onSaveInstanceState`가 드는 것은 포커스·스크롤·편집 중
+        // 텍스트 같은 것이고 **`visibility`는 저장 대상이 아니다.**
+        //   · 펼친 전문은 되살아나는 게 아니라 bindItem/bindNotice가 다시 접는 것뿐이다
+        //   · **확인창은 실제로 사라졌다** — 「그만두시겠어요?」를 띄운 채 배율을 바꾸면
+        //     답하지 않은 물음이 증발했다. 그래서 여기서 함께 든다.
         outState.putStringArrayList(STATE_CHECKED, checkedKeys.mapTo(ArrayList()) { it.name })
+        outState.putBoolean(STATE_DECLINE_SHOWN, binding.consentDeclineScrim.isVisible)
     }
 
     private fun bindItems() {
@@ -157,6 +175,24 @@ class ConsentActivity : AppCompatActivity() {
         )
         item.root.setOnClickListener { toggleItem(key) }
 
+        // 전문은 `clickable`로 카드 토글에서 떼 두었는데(레이아웃 주석), 그러면 리스너가
+        // 없어도 접근성 노드에 ACTION_CLICK이 붙어 **TalkBack이 「두 번 탭하여 활성화」를
+        // 붙여 읽는다** — 눌러도 아무 일 없는 안내이고, 다섯 문단짜리 읽을거리라 스크린리더
+        // 사용자가 반드시 지나는 자리다(2차 리뷰 P3). 터치를 먹는 목적만 남기고 액션은 뗀다.
+        ViewCompat.setAccessibilityDelegate(
+            item.consentItemDetail,
+            object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(
+                    host: View,
+                    info: AccessibilityNodeInfoCompat,
+                ) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.isClickable = false
+                    info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+                }
+            },
+        )
+
         // 열지 않아도 체크는 된다(consent_view_detail_desc) — root 클릭과 독립된 토글.
         item.consentItemViewDetail.setOnClickListener {
             val expanding = !item.consentItemDetail.isVisible
@@ -178,7 +214,6 @@ class ConsentActivity : AppCompatActivity() {
         val item = itemBindingFor(key)
         val checked = key !in checkedKeys
         if (checked) checkedKeys.add(key) else checkedKeys.remove(key)
-        if (key == ConsentItemKey.KAKAO && !checked) disconnectKakao()
         setItemChecked(item, checked)
         updateAgreeAllCheckbox()
         updateNextButtonAppearance()
@@ -189,18 +224,23 @@ class ConsentActivity : AppCompatActivity() {
      * `consent_items`에서만 빠질 뿐 토큰은 남아 계속 서버 호출에 쓰인다 — **동의 기록과
      * 실제 상태가 어긋난다.**
      *
-     * `markSkipped()`는 토큰을 지우고 「로그인 없이 쓰기로 했다」를 남긴다. 그래서 이 화면을
-     * 지나 앱을 다시 켜도 ON-1이 다시 뜨지 않는다 — `consent_kakao_detail`이 안내하는
-     * 「'로그인 없이 시작하기'로 그대로 쓰실 수 있습니다」와 같은 상태가 된다.
+     * **부르는 자리는 「다음으로」 하나뿐이다**(2차 리뷰 P1). 토글에서 부르던 것을 옮겼다 —
+     * 카드 전체가 탭 영역이라(D1 때문에 넓힌 것) 크게 한 번 스치면 확인도 없이 로그아웃이었고,
+     * 실수로 껐다가 「지금은 그만둘래요」로 나가도 **세션은 이미 지워져 있었다.** 저장하는
+     * 시점에 한 번만 반영하면 화면을 포기한 사람의 연결은 그대로 남는다.
+     * 그래서 **「모두 동의」로 끄는 길도 자동으로 덮인다** — 그쪽에만 없어서 어긋남이 되살아났던
+     * 회귀도 같은 이동으로 닫힌다.
      *
-     * **다시 켜도 연결이 돌아오지는 않는다** — 지운 토큰을 되살릴 수 없고 이 화면에서 카카오
-     * 로그인을 띄우지도 않는다. 그때의 체크는 「앞으로 연결한다면 회원번호를 받아도 된다」는
-     * 동의로만 남는다. 로그인 자체를 다시 하려면 앱을 지우고 깔거나 ON-1으로 돌아가야 한다.
+     * **`markSkipped()`가 아니라 `clearAuthenticationDecision()`이다**(2차 리뷰 P1).
+     * 전자는 「로그인 없이 쓰기로 했다」는 **사용자가 하지 않은 결정**을 남겨 `hasDecision()`이
+     * true가 되고, 그러면 다음 실행에도 ON-1이 뜨지 않아 **다시 연결할 길이 없다.**
+     * 후자는 결정 자체를 비워 ON-1이 다시 뜬다 — 껐다가 마음이 바뀌어도 되돌릴 수 있다.
      */
-    private fun disconnectKakao() {
+    private fun disconnectKakaoIfDeselected() {
+        if (ConsentItemKey.KAKAO in checkedKeys) return
         if (authStore.sessionToken(nowEpochSeconds()) == null) return
-        authStore.markSkipped()
-        Log.i(TAG, "kakao disconnected by consent toggle")
+        authStore.clearAuthenticationDecision()
+        Log.i(TAG, "kakao disconnected by consent")
     }
 
     private fun itemBindingFor(key: ConsentItemKey): ViewDaviConsentItemBinding = when (key) {
@@ -296,7 +336,7 @@ class ConsentActivity : AppCompatActivity() {
             getString(R.string.consent_agree_all) + ". " + getString(R.string.consent_agree_all_note)
         binding.consentAgreeAllRow.setOnClickListener {
             val keys = visibleKeys()
-            val allChecked = checkedKeys.size == keys.size
+            val allChecked = checkedKeys.containsAll(keys)
             checkedKeys.clear()
             if (!allChecked) checkedKeys.addAll(keys)
             keys.forEach { setItemChecked(itemBindingFor(it), it in checkedKeys) }
@@ -306,7 +346,9 @@ class ConsentActivity : AppCompatActivity() {
     }
 
     private fun updateAgreeAllCheckbox() {
-        val allChecked = checkedKeys.size == visibleKeys().size
+        // **크기 비교가 아니라 포함 관계다**(2차 리뷰 P2) — 감춘 카드의 키가 checkedKeys에
+        // 남아 있으면 크기 비교는 보이는 것을 다 켜도 영원히 거짓이 된다.
+        val allChecked = checkedKeys.containsAll(visibleKeys())
         binding.consentAgreeAllCheckbox.setImageResource(
             if (allChecked) R.drawable.ic_davi_consent_check_checked else R.drawable.ic_davi_consent_check_unchecked,
         )
@@ -322,6 +364,7 @@ class ConsentActivity : AppCompatActivity() {
         binding.btnConsentNext.setOnClickListener {
             if (ConsentGate.canProceed(checkedKeys)) {
                 binding.consentRequiredMissing.isVisible = false
+                disconnectKakaoIfDeselected()
                 consentStore.saveDecision(
                     nowEpochSeconds(),
                     checkedKeys,
@@ -390,5 +433,6 @@ class ConsentActivity : AppCompatActivity() {
     private companion object {
         const val TAG = "GuideSvc"
         const val STATE_CHECKED = "consent_checked_keys"
+        const val STATE_DECLINE_SHOWN = "consent_decline_shown"
     }
 }
