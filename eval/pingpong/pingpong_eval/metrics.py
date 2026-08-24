@@ -85,7 +85,7 @@ def _has_missing_information_hallucination(result: ScenarioResult) -> bool:
 
     if result.judge is None:
         return False
-    missing = set(result.missing_slot_keys)
+    missing = set(result.missing_slot_keys or [])
     wrong_missing_slot = any(
         score.key in missing and score.verdict is SlotVerdict.WRONG
         for score in result.judge.slot_scores
@@ -137,6 +137,9 @@ def summarize(
             and r.judge.achievement is not Achievement.FAIL
         ]
         hallucinated = [r for r in judged if _has_missing_information_hallucination(r)]
+        hallucination_comparable = bool(judged) and all(
+            r.missing_slot_keys is not None for r in judged
+        )
         selection_biased = [
             r
             for r in judged
@@ -144,6 +147,11 @@ def summarize(
         ]
         answers = sum(r.metrics.get("답변수", 0) for r in subset)
         option_answers = sum(r.metrics.get("보기_선택수", 0) for r in subset)
+        tts_observed = [
+            r.metrics.get("TTS_문자수", 0)
+            for r in subset
+            if r.metrics.get("TTS_발화수", 0) > 0
+        ]
         return {
             "건수": len(subset),
             "충족": sum(1 for r in judged if r.judge.achievement is Achievement.FULL),
@@ -179,20 +187,16 @@ def summarize(
             else None,
             "goal_유효": len(valid_goals),
             "goal_유효율": round(len(valid_goals) / len(judged), 3) if judged else None,
-            "누락정보_환각": len(hallucinated),
+            "누락정보_환각": len(hallucinated) if hallucination_comparable else None,
             "누락정보_환각률": round(len(hallucinated) / len(judged), 3)
-            if judged
+            if hallucination_comparable
             else None,
             "선택_강요": len(selection_biased),
             "선택_강요율": round(len(selection_biased) / len(judged), 3)
             if judged
             else None,
             "보기_선택률": round(option_answers / answers, 3) if answers else None,
-            "평균_TTS_문자수": round(
-                mean([r.metrics.get("TTS_문자수", 0) for r in subset]), 1
-            )
-            if subset
-            else None,
+            "평균_TTS_문자수": round(mean(tts_observed), 1) if tts_observed else None,
         }
 
     by_difficulty: dict[str, list[ScenarioResult]] = {}

@@ -43,6 +43,23 @@ def scenario_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
+def _load_results(path: Path) -> list[ScenarioResult]:
+    """저장된 transcript를 정본으로 코드 지표를 다시 계산한다.
+
+    #316 지표가 생기기 전 run의 ``metrics``는 새 키가 없다. 예전 dict를
+    그대로 쓰면 compare가 관측하지 않은 값을 0으로 보여 준다.
+    """
+
+    results = [
+        ScenarioResult.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    for result in results:
+        result.metrics = transcript_metrics(result.transcript)
+    return results
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     file = load_scenarios(args.scenarios)
     total_slots = sum(len(s.slots) for s in file.scenarios)
@@ -93,11 +110,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         )
         return 1
     scenarios = {s.id: s for s in load_scenarios(args.scenarios).scenarios}
-    results = [
-        ScenarioResult.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    results = _load_results(path)
 
     picked = results
     if args.difficulty:
@@ -321,11 +334,7 @@ def _load_run(run_dir: Path) -> tuple[list[ScenarioResult], dict]:
     if not transcript_path.is_file() or not meta_path.is_file():
         raise ValueError(f"{run_dir} 는 실행 디렉터리가 아니다")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    results = [
-        ScenarioResult.model_validate_json(line)
-        for line in transcript_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    results = _load_results(transcript_path)
     return results, meta
 
 

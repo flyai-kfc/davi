@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
-
-from pingpong_eval.cli import DEFAULT_SCENARIOS, load_scenarios
+from pingpong_eval.cli import DEFAULT_SCENARIOS, _load_run, load_scenarios
 from pingpong_eval.metrics import summarize
 from pingpong_eval.models import (
     Exposure,
@@ -309,11 +309,65 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
     assert "| 새 흐름 | 100% | 50% | 50% | 50% | 100% |" in report
 
 
+def test_TTS_평균은_실제_발화가_있던_실행만_세다(scenarios):
+    from pingpong_eval.models import ScenarioResult, StopReason, Transcript
+
+    spoken = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    failed_transcript = Transcript(
+        scenario_id=scenarios[1].id,
+        opening="",
+        stop_reason=StopReason.ERROR,
+        error="network unavailable",
+    )
+    failed = ScenarioResult(
+        scenario_id=scenarios[1].id,
+        difficulty=scenarios[1].difficulty,
+        factors=scenarios[1].factors,
+        transcript=failed_transcript,
+        metrics={
+            "TTS_발화수": 0,
+            "TTS_문자수": 0,
+            "2회이내_ready": False,
+            "종료사유": "error",
+        },
+    )
+
+    summary = summarize([spoken, failed])["전체"]
+    assert summary["평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]
+
+
+def test_예전_run은_transcript로_새_지표를_재계산한다(scenarios, tmp_path):
+    from pingpong_eval.models import Achievement, JudgeBatch, JudgeResult
+
+    result = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    result.judge = JudgeResult(
+        achievement=Achievement.FULL,
+        reason="충족",
+        slot_scores=[],
+        violations=[],
+    )
+    result.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+    old_record = result.model_dump(mode="json", exclude={"missing_slot_keys"})
+    old_record["metrics"] = {"질문수": 99}  # #316 지표가 없던 예전 저장값
+    (tmp_path / "transcripts.jsonl").write_text(
+        json.dumps(old_record, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    (tmp_path / "meta.json").write_text("{}\n", encoding="utf-8")
+
+    loaded, _ = _load_run(tmp_path)
+
+    assert loaded[0].metrics["질문수"] == 2
+    assert loaded[0].metrics["2회이내_ready"] is True
+    assert loaded[0].missing_slot_keys is None
+    summary = summarize(loaded, batch=("judge", "same"))["전체"]
+    assert summary["누락정보_환각"] is None
+    assert summary["누락정보_환각률"] is None
+
+
 def test_preflight는_스텁_서버를_거부한다():
     """스텁은 무조건 ready에 발화를 그대로 돌려준다 — 그 수치가 기준선처럼 남으면 안 된다."""
 
     import httpx
-
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     adapter = SlotFillHttpAdapter(
@@ -331,7 +385,6 @@ def test_preflight는_스텁_서버를_거부한다():
 
 def test_preflight는_실제_모델_서버를_통과시킨다():
     import httpx
-
     from pingpong_eval.sut import SlotFillHttpAdapter
 
     for body in ({"status": "ok", "stub_llm": False}, {"status": "ok"}):
