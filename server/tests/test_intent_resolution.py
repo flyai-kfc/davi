@@ -150,6 +150,10 @@ def test_response_contract_has_no_fixed_slot_or_action_taxonomy():
     assert "allow_freeform" in question_schema["required"]
     assert "minItems" not in question_schema["properties"]["options"]
     assert question_schema["properties"]["options"]["maxItems"] == 3
+    assert (
+        "첫 prompt와 정확히 같아야 한다"
+        in INTENT_DIALOGUE_SCHEMA["properties"]["message"]["description"]
+    )
 
 
 @pytest.mark.parametrize("exclude_none", [True, False])

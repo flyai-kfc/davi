@@ -8,7 +8,7 @@
 
 ## 2026-08-24 · #421 계약 복구 신뢰성 재확인 (seed 1, 30개 요청)
 
-- 핑퐁: davi `07e7e65`, 로컬 실제 모델 서버(OpenAI `gpt-5.6-luna`·reasoning `low`)
+- 핑퐁: davi `c06941b`, 로컬 실제 모델 서버(OpenAI `gpt-5.6-luna`·reasoning `low`)
 - 공통 조건: `handwritten-30.json`, seed 1, `max_requests=5`, 사용자
   `gemini-3.5-flash-lite`, 평가자 `claude-opus-5`
 - `h07` 한 건은 사용자 시뮬레이터가 숨길 슬롯을 반복 노출해 서버 호출 전에 중단됐다. 서버를 실제로

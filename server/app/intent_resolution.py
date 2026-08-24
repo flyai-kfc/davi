@@ -55,7 +55,10 @@ class _IntentDialogueDecision(BaseModel):
     message: str = Field(
         min_length=1,
         max_length=MAX_INTENT_MESSAGE_LENGTH,
-        description="TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장",
+        description=(
+            "TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장. "
+            "needs_clarification이면 clarification.questions의 첫 prompt와 정확히 같아야 한다."
+        ),
     )
     goal: str | None = Field(
         default=None,
