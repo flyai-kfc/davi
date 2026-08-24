@@ -31,6 +31,7 @@ object GuideScreenLog {
         serializeMs: Long,
         gateOpen: Boolean,
         anchorMoved: Boolean,
+        anchorSpent: Boolean,
     ) = Unit
 
     /**

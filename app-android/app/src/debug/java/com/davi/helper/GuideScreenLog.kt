@@ -101,14 +101,20 @@ object GuideScreenLog {
         serializeMs: Long,
         gateOpen: Boolean,
         anchorMoved: Boolean,
+        anchorSpent: Boolean,
     ) {
+        val anchor = when {
+            anchorMoved && anchorSpent -> "capped"
+            anchorMoved -> "moved"
+            else -> "-"
+        }
         Log.d(
             GuideAccessibilityService.TAG,
             "poll=$decision n=$elementCount ms=$serializeMs " +
                 "s=${Integer.toHexString(signature.structure.hashCode())} " +
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
-                "anchor=${if (anchorMoved) "moved" else "-"}",
+                "anchor=$anchor",
         )
     }
 

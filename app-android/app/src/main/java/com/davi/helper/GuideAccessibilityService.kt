@@ -610,6 +610,7 @@ class GuideAccessibilityService : AccessibilityService() {
             serializeMs,
             stability.interactionGateOpen(now),
             targetSlotChanged,
+            stability.anchorRequerySpent(),
         )
         lastDecision = decision
         updateReading()
@@ -1237,9 +1238,6 @@ class GuideAccessibilityService : AccessibilityService() {
         guidedTargetNodeId = target?.nodeId
         guidedTargetStableLabel = target?.let { ScreenSignature.stableLabelOf(it) }
         guidedTargetStructure = if (target != null) requestSignature.structure else null
-        // 앵커 재질의 상한은 **가리키는 대상이 달라졌을 때만** 다시 열린다(#380 리뷰).
-        // label은 넣지 않는다 — 그게 회전하는 값이다.
-        stability.armAnchor(guidedTargetNodeId?.let { "$it@${requestSignature.structure}" })
         // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
         // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
         guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }

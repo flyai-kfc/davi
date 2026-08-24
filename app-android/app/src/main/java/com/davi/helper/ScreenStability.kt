@@ -176,8 +176,25 @@ class ScreenStabilityTracker(
     private var unreadableSinceMs: Long? = null
     private var lastInteractionMs: Long? = null
     private var sendWasContentOnly = false
+    /**
+     * 앵커가 여는 재질의의 상한(#380 리뷰). **진행 신호가 있기 전까지 한 번만** 연다.
+     *
+     * 앵커(안내 대상 슬롯의 label 변화)는 인과 게이트를 우회하는데 게이트의
+     * [INTERACTION_WINDOW_MS] 같은 시간 상한이 없다. 안내 대상이 스스로 갱신되는 영역 안에
+     * 있으면 응답이 도착할 때마다 슬롯이 또 어긋나 **왕복당 한 번씩 재질의가 도는 루프**가
+     * 된다 — 이 이슈가 배너에 대해 닫은 것과 같은 폭주다.
+     *
+     * **안내마다 여는 것으로는 못 막는다.** 그 루프의 주기가 바로 "응답 하나 = 안내 하나"라
+     * 상한이 매 왕복 초기화되고, 왕복당 1회는 [requestOutstanding] 가드가 이미 하던 일이다.
+     * **안내 대상의 정체성으로도 못 막는다.** node id는 직렬화 순서라 사실상 자리 번호이고,
+     * 대상이 슬롯을 옮기면(새 메시지가 대화방 순서를 밀면) 그 자리가 매번 달라진다.
+     *
+     * 그래서 **진행 신호**로 연다 — 구조 변화와 조작 관측 둘뿐이다. 앵커가 답하는 질문이
+     * "강조가 엉뚱한 줄을 가리킨다"이고 그 해법은 새 안내 하나인데, 진행 없이 또 어긋나는
+     * 화면은 다시 물어서 나아지지 않는다. 막히면 강조를 내리고(호출자) 정체 문구로 떨어진다.
+     * 눌림 확인 재질의가 눌림당 1회인 것과 같은 결(#319).
+     */
     private var anchorRequeryUsed = false
-    private var anchorId: String? = null
     private var sendWasAnchorOpened = false
 
     fun onSample(
@@ -205,6 +222,9 @@ class ScreenStabilityTracker(
         unreadableSinceMs = null
         if (signature.structure != lastSample?.structure || structureStableSinceMs == null) {
             structureStableSinceMs = nowMs
+            // 구조가 바뀌었으면 앵커 상한도 열린다 — 아래 상한의 뜻이 "진행 없이 같은 화면을
+            // 앵커만으로 다시 묻지 않는다"이고, 구조 변화가 곧 진행이다.
+            anchorRequeryUsed = false
         }
         // 구조는 안정인데 내용만 계속 흔들리는 화면(광고·marquee)은 홀드가 영영 안 끝난다 —
         // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380).
@@ -234,8 +254,8 @@ class ScreenStabilityTracker(
         val contentOnly = sent != null &&
             signature.structure == sent.structure &&
             signature.content != sent.content
-        // 앵커는 인과 게이트를 우회하지만 게이트와 달리 시간 상한이 없다. 안내 하나가
-        // 앵커로 여는 재질의를 **한 번으로 끊는다**([armAnchor]).
+        // 앵커는 인과 게이트를 우회하지만 게이트와 달리 시간 상한이 없다. **진행 신호가
+        // 있기 전까지 한 번만** 연다([anchorRequeryUsed]).
         val anchorOpened = contentOnly && guidedTargetChanged && !anchorRequeryUsed
         val novel = when {
             sent == null -> true
@@ -251,7 +271,10 @@ class ScreenStabilityTracker(
         // 상한은 **요청이 실제로 나갔을 때만** 쓴다([markSent]). `SEND`는 그 보장이 아니다 —
         // 호출자가 확인 대기(GD-4)나 in-flight CAS에 막혀 요청 없이 돌아설 수 있고, 그때
         // 소진하면 그 안내의 앵커 재질의가 나가지도 못한 채 끝난다.
-        sendWasAnchorOpened = novel && anchorOpened
+        //
+        // 게이트가 이미 열려 있으면 태우지 않는다 — 그 재질의는 조작이 만든 것이라 앵커가
+        // 없어도 나갔다. 태우면 뒤이은 자기발생 변화에 쓸 앵커가 없다.
+        sendWasAnchorOpened = novel && anchorOpened && !interactedRecently(nowMs)
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -322,31 +345,10 @@ class ScreenStabilityTracker(
     fun currentSignature(): ScreenSig? = lastSample
 
     /**
-     * 새 안내가 나갔다 — [id]가 **직전과 다를 때만** 앵커 재질의 상한을 연다(#380 리뷰).
-     *
-     * 앵커(안내 대상 슬롯의 label 변화)는 인과 게이트를 우회하는데, 게이트의
-     * [INTERACTION_WINDOW_MS] 같은 시간 상한이 없다. 안내 대상이 스스로 갱신되는 영역
-     * 안에 있으면(회전하는 인기 검색어의 "N위를 누르세요", 새 메시지가 계속 오는 대화방
-     * 목록) 응답이 도착할 때마다 슬롯이 또 어긋나 **왕복당 한 번씩 재질의가 도는 루프**가
-     * 된다 — 이 이슈가 배너에 대해 닫은 것과 같은 폭주다.
-     *
-     * 한 번으로 끊는 근거는 앵커가 답하는 질문 자체다 — "강조가 엉뚱한 줄을 가리킨다"의
-     * 해법은 새 안내 하나이고, **그래도 같은 슬롯을 가리키면 다시 물어서 나아지지 않는다.**
-     *
-     * 그래서 무조건 열지 않는다. 무조건 열면 상한이 매 왕복 초기화돼 **아무것도 막지 못한다** —
-     * 막으려는 루프의 주기가 바로 "응답 하나 = 안내 하나"이고, 왕복당 1회는
-     * [requestOutstanding] 가드가 이미 하던 일이다. [id]는 안내 대상의 **정체성**
-     * (node id + 구조 축)이고 label은 넣지 않는다 — label이 곧 회전하는 값이라 넣으면
-     * 매 회전마다 다시 열린다.
-     *
-     * 상한을 넘으면 강조를 내리고(호출자) 정체 문구로 떨어진다. 눌림 확인 재질의가 눌림당
-     * 1회인 것과 같은 결(#319).
+     * 앵커 상한이 소진됐는가. **계측 전용**(`poll=`의 `anchor=capped`) — 상한에 막혀 IDLE인
+     * 것과 그냥 안 바뀐 것을 실기기 로그에서 갈라야 이 상한이 도는지 볼 수 있다.
      */
-    fun armAnchor(id: String?) {
-        if (id == anchorId) return
-        anchorId = id
-        anchorRequeryUsed = false
-    }
+    fun anchorRequerySpent(): Boolean = anchorRequeryUsed
 
     /**
      * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
@@ -368,6 +370,9 @@ class ScreenStabilityTracker(
      */
     fun markInteraction(nowMs: Long) {
         lastInteractionMs = nowMs
+        // 조작은 진행 신호다 — 앵커 상한을 다시 연다(그 뒤의 슬롯 이동은 사용자가 만든 것일
+        // 수 있다). 상한이 열리는 자리는 여기와 구조 변화 둘뿐이다.
+        anchorRequeryUsed = false
         // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
         // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
         // 홀드로 가라앉혀야 한다(#32). 억제를 이 자리에 두는 이유는 [onSample]의 주석에 있다.
@@ -516,7 +521,6 @@ class ScreenStabilityTracker(
         lastInteractionMs = null
         sendWasContentOnly = false
         anchorRequeryUsed = false
-        anchorId = null
         sendWasAnchorOpened = false
     }
 
