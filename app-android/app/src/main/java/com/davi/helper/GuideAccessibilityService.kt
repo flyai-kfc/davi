@@ -839,10 +839,16 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        // 「바로 입력」의 채울 값·대상 자리를 표시와 같은 깔때기에서 갱신한다 — 버튼이 보이는
-        // 화면과 눌렀을 때 채워지는 값이 어긋날 수 없다. 값이 없으면 버튼도 없으니 함께 비운다.
+        // 「바로 입력」이 채울 값은 표시와 같은 깔때기에서 갱신한다 — 버튼이 보이는 화면과
+        // 눌렀을 때 채워지는 값이 어긋날 수 없다. 값이 없으면 버튼도 없으니 자리까지 함께 비운다.
+        //
+        // **자리는 여기서 채우지 않는다**([pendingInputBounds]) — 이 깔때기로 오는 Content 중에는
+        // 표시 사정으로 `bounds`가 지워진 것이 있다. `hideTarget()`이 강조만 내릴 때
+        // `copy(bounds = null, ...)`를 쓰기 때문이고(#225), 그 Content도 `input_text`는 그대로
+        // 들고 온다. 여기서 자리를 따라 지우면 **사용자가 조금 기다린 것만으로** 대조 축이 꺼지고
+        // 입력 포커스 폴백으로 떨어진다 — 안내한 칸이 아닌 곳을 채울 수 있는 그 경로다.
         pendingInputText = content.inputText
-        pendingInputBounds = content.bounds?.takeIf { content.inputText != null }
+        if (content.inputText == null) pendingInputBounds = null
         overlay?.showGuide(
             rect,
             content.text,
@@ -855,11 +861,16 @@ class GuideAccessibilityService : AccessibilityService() {
         )
     }
 
-    /**
-     * 「바로 입력」이 채울 글자와 그 안내의 대상 bounds. [draw]만 쓴다 — 버튼이 떠 있는 동안의
-     * 값이고, 버튼이 없으면(null) 콜백도 올 수 없다.
-     */
+    /** 「바로 입력」이 채울 글자. 버튼이 떠 있는 동안의 값이고, 없으면(null) 콜백도 올 수 없다. */
     private var pendingInputText: String? = null
+
+    /**
+     * 그 값을 넣을 칸의 자리. **안내가 도착할 때 한 번만 정한다** — 표시 경로가 강조를 내리며
+     * `bounds`를 지워도(#225) 대조 축이 살아 있어야 하기 때문이다.
+     *
+     * 안내가 대상을 못 찾았으면(`highlight miss`) null이고, 그때는 입력 포커스로 폴백한다 —
+     * **옛 안내의 자리를 물려주지 않는다.** 그러면 다른 칸을 채울 수 있다.
+     */
     private var pendingInputBounds: List<Int>? = null
 
     /**
@@ -1377,6 +1388,9 @@ class GuideAccessibilityService : AccessibilityService() {
         // 서버 방향(보러 가는 쪽) → 손가락 방향. **변환은 여기 한 곳에서만** 한다(C17). 아래로 흘러가는 값은
         // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
         val fingerDirection = action.direction?.let { GestureMotion.fingerDirectionFor(it) }
+        // 「바로 입력」이 채울 칸의 자리를 **이 안내에 대해 한 번** 정한다(위 [pendingInputBounds]).
+        // 대상을 못 찾았으면 null이고, 그 값이 그대로 폴백 신호가 된다.
+        pendingInputBounds = bounds
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
         // 소속도 구조 축이다(#380) — 내용까지 묶으면 배너가 도는 화면에서 재표시·복원이 죽는다.
         draw(
