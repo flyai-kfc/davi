@@ -178,7 +178,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
   `scripts/run-device-e2e.sh` 또는 `.ps1`을 쓴다. API 키는 서버에만 두고, 일반 CI는
-  `assembleDebugAndroidTest`로 test APK 컴파일까지만 수행한다. 실행별 상세 요청·응답 보고서는
+  `:app:assembleDebugAndroidTest`와 `:e2e-driver:assembleDebugAndroidTest`로 두 test APK의
+  **컴파일까지만** 수행한다(#385). `connectedDebugAndroidTest`는 돌리지 않는다 — 앱 계측 테스트에
+  삼성 카메라 package 전제가 있어 범용 에뮬레이터 관문이 아니고, 외부 앱을 포함한 동작은 위
+  opt-in 실기기 E2E가 맡는다. 따라서 일반 CI가 잡는 것은 소스·리소스 계약 파손까지이고,
+  Activity 실행·클릭 뒤 상태 전이 같은 런타임 assertion은 포기한 커버리지다. 구버전 API 사용은
+  별도 `lintDebug` 대신 `NewApi`를 fatal로 올려 기존 `assembleRelease`의 `lintVitalRelease`에서
+  막는다. 실행별 상세 요청·응답 보고서는
   `build/reports/device-e2e-private/`에 기본 생성되며 로컬 분석 전용이라 공유·커밋하지 않는다.
   기본 시나리오는 Davi 최신 화면 → Android 홈 → 여러 package를 같은 세션에서 잇는
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.

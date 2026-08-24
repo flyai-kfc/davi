@@ -4,10 +4,8 @@
       시스템 다크에서 검증 안 된 M3 다크 팔레트를 적용해 B3와 충돌했다(#97 리뷰 → #100).
       다크 대응은 토큰에 다크 값을 설계하는 시점에 착수한다.
     -->
-    <style name="Theme.Davi" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.Davi.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@color/davi_bg</item>
-        <!-- 라이트 고정을 시스템 강제 다크에서도 지킨다(B3). Material은 이 값을 설정하지 않는다. -->
-        <item name="android:forceDarkAllowed">false</item>
         <!-- Pretendard 전역 적용 (C1). textStyle=bold가 700 파일로 해석된다. -->
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="fontFamily">@font/pretendard</item>
@@ -20,6 +18,8 @@
         <item name="android:textColorPrimary">@color/davi_text_primary</item>
         <item name="android:textColorSecondary">@color/davi_text_secondary</item>
     </style>
+    <!-- API 29 전용 forceDarkAllowed는 values-v29의 같은 테마가 덧붙인다(#385). -->
+    <style name="Theme.Davi" parent="Theme.Davi.Base" />
 
     <!--
       타입 램프 (C2) — Figma davi/* 텍스트 스타일과 1:1.

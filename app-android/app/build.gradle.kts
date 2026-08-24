@@ -275,6 +275,12 @@ android {
     namespace = "com.davi.helper"
     compileSdk = 36
 
+    lint {
+        // assembleRelease가 이미 실행하는 lintVitalRelease에 구버전 API 경계를 태운다(#385).
+        // 별도 lintDebug(+94초 실측)를 추가하지 않고 API 26~35의 즉시 크래시를 막는다.
+        fatal += "NewApi"
+    }
+
     // 키가 있는 머신에서만 만든다. 없으면 아예 만들지 않아 release가 서명 없이 나간다.
     signingConfigs {
         if (releaseKeystoreFile != null) {

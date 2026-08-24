@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Davi" parent="Theme.Davi.Base">
+        <!-- 라이트 고정을 시스템 강제 다크에서도 지킨다(B3). Material은 이 값을 설정하지 않는다. -->
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

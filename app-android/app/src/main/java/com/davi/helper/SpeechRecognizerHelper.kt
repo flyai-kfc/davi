@@ -125,7 +125,7 @@ class SpeechRecognizerHelper(
     }
 
     private fun createRecognizer(onDevice: Boolean): SpeechRecognizer =
-        if (onDevice) {
+        if (onDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
         } else {
             SpeechRecognizer.createSpeechRecognizer(appContext)
