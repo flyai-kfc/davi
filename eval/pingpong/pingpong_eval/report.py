@@ -91,7 +91,7 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         _completion_row("전체", summary["전체"]),
         "",
         "> #316 새 형식은 최대 2회 호출로 고정되므로 ready와 2호출 이내 ready가 같다. 새 형식 행에서 두 값이 같은 사실을 별도 개선 신호로 해석하지 않는다.",
-        "> goal 유효·환각·선택 강요의 분모는 같은 배치로 채점된 건수다. 보기 선택은 답변 수, ready·2호출 ready는 전체 실행, TTS는 ready 실행 건수가 분모다.",
+        "> goal 유효·선택 강요의 분모는 같은 배치로 채점된 건수다. 누락 정보 환각은 최초 누락 슬롯을 기록한 채점 결과만 개별 분모에 넣고 셀에 n을 표시한다. 보기 선택은 답변 수, ready·2호출 ready는 전체 실행, TTS는 ready 실행 건수가 분모다.",
         "> TTS는 성공한 사용자 여정 1건의 총 청취 부담이다. 발화당 문구 길이가 아니며, 불필요한 질문이 줄어 값이 낮아지는 효과를 포함한다.",
         "",
         "## 시나리오별",
@@ -173,8 +173,11 @@ def _completion_row(name: str, block: dict) -> str:
         return "-" if value is None else f"{value:.0%}"
 
     tts = block["ready_평균_TTS_문자수"]
+    hallucination = rate("누락정보_환각률")
+    if hallucination != "-":
+        hallucination += f" (n={block['누락정보_환각_분모']})"
     return (
         f"| {name} | {rate('ready율')} | {rate('2회이내_ready율')} | {rate('goal_유효율')} "
-        f"| {rate('누락정보_환각률')} | {rate('선택_강요율')} "
+        f"| {hallucination} | {rate('선택_강요율')} "
         f"| {rate('보기_선택률')} | {'-' if tts is None else tts} |"
     )

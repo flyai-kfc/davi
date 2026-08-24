@@ -298,7 +298,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         "시나리오파일": str(args.scenarios),
         "시나리오해시": digest,
         "시나리오수": len(scenarios),
-        "시나리오id": [scenario.id for scenario in scenarios],
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,
         "평가자경유": judge_client.base_url if judge_client else None,

@@ -137,10 +137,10 @@ def summarize(
             if r.metrics.get("2회이내_ready")
             and r.judge.achievement is not Achievement.FAIL
         ]
-        hallucinated = [r for r in judged if _has_missing_information_hallucination(r)]
-        hallucination_comparable = bool(judged) and all(
-            r.missing_slot_keys is not None for r in judged
-        )
+        hallucination_judged = [r for r in judged if r.missing_slot_keys is not None]
+        hallucinated = [
+            r for r in hallucination_judged if _has_missing_information_hallucination(r)
+        ]
         selection_biased = [
             r
             for r in judged
@@ -191,9 +191,10 @@ def summarize(
             else None,
             "goal_유효": len(valid_goals),
             "goal_유효율": round(len(valid_goals) / len(judged), 3) if judged else None,
-            "누락정보_환각": len(hallucinated) if hallucination_comparable else None,
-            "누락정보_환각률": round(len(hallucinated) / len(judged), 3)
-            if hallucination_comparable
+            "누락정보_환각": len(hallucinated) if hallucination_judged else None,
+            "누락정보_환각_분모": len(hallucination_judged),
+            "누락정보_환각률": round(len(hallucinated) / len(hallucination_judged), 3)
+            if hallucination_judged
             else None,
             "선택_강요": len(selection_biased),
             "선택_강요율": round(len(selection_biased) / len(judged), 3)

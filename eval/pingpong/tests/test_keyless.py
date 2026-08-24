@@ -306,8 +306,8 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
     assert summary["보기_선택률"] == 1.0
 
     report = render_completion_comparison("옛 흐름", summary, "새 흐름", summary)
-    assert "| 옛 흐름 | 100% | 100% | 50% | 50% | 50% | 100% |" in report
-    assert "| 새 흐름 | 100% | 100% | 50% | 50% | 50% | 100% |" in report
+    assert "| 옛 흐름 | 100% | 100% | 50% | 50% (n=2) | 50% | 100% |" in report
+    assert "| 새 흐름 | 100% | 100% | 50% | 50% (n=2) | 50% | 100% |" in report
 
 
 def test_TTS_평균은_ready로_완료된_실행만_세다(scenarios):
@@ -364,7 +364,29 @@ def test_예전_run은_transcript로_새_지표를_재계산한다(scenarios, tm
     assert loaded[0].missing_slot_keys is None
     summary = summarize(loaded, batch=("judge", "same"))["전체"]
     assert summary["누락정보_환각"] is None
+    assert summary["누락정보_환각_분모"] == 0
     assert summary["누락정보_환각률"] is None
+
+
+def test_누락정보_환각률은_측정불가_결과만_개별로_뺀다(scenarios):
+    from pingpong_eval.models import Achievement, JudgeResult
+
+    comparable = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    comparable.judge = JudgeResult(
+        achievement=Achievement.FULL,
+        reason="충족",
+        slot_scores=[],
+        violations=[],
+    )
+    unknown = comparable.model_copy(deep=True)
+    unknown.scenario_id = scenarios[1].id
+    unknown.missing_slot_keys = None
+
+    summary = summarize([comparable, unknown])["전체"]
+
+    assert summary["누락정보_환각"] == 0
+    assert summary["누락정보_환각_분모"] == 1
+    assert summary["누락정보_환각률"] == 0.0
 
 
 def test_preflight는_스텁_서버를_거부한다():
@@ -536,7 +558,7 @@ def test_run_명령이_끝까지_배선돼_돈다(monkeypatch, tmp_path):
     assert (run_dir / "transcripts.jsonl").exists()
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     first_id = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0].id
-    assert meta["시나리오id"] == [first_id]
+    assert first_id in (run_dir / "transcripts.jsonl").read_text(encoding="utf-8")
     # 생략해도 실제로 쓴 시드는 복원 가능해야 한다.
     assert isinstance(meta["seed"], int)
     report = (run_dir / "report.md").read_text(encoding="utf-8")
