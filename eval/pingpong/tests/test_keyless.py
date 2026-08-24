@@ -298,6 +298,7 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
     hallucinated.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
 
     summary = summarize([good, hallucinated], batch=("judge", "same"))["전체"]
+    assert summary["ready율"] == 1.0
     assert summary["2회이내_ready율"] == 1.0
     assert summary["goal_유효율"] == 0.5
     assert summary["누락정보_환각률"] == 0.5
@@ -305,11 +306,11 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
     assert summary["보기_선택률"] == 1.0
 
     report = render_completion_comparison("옛 흐름", summary, "새 흐름", summary)
-    assert "| 옛 흐름 | 100% | 50% | 50% | 50% | 100% |" in report
-    assert "| 새 흐름 | 100% | 50% | 50% | 50% | 100% |" in report
+    assert "| 옛 흐름 | 100% | 100% | 50% | 50% | 50% | 100% |" in report
+    assert "| 새 흐름 | 100% | 100% | 50% | 50% | 50% | 100% |" in report
 
 
-def test_TTS_평균은_실제_발화가_있던_실행만_세다(scenarios):
+def test_TTS_평균은_ready로_완료된_실행만_세다(scenarios):
     from pingpong_eval.models import ScenarioResult, StopReason, Transcript
 
     spoken = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
@@ -331,9 +332,11 @@ def test_TTS_평균은_실제_발화가_있던_실행만_세다(scenarios):
             "종료사유": "error",
         },
     )
+    unable = run_scenario(scenarios[2], _FakeUser(), _ClarificationAdapter("unable"))
+    assert unable.metrics["TTS_발화수"] == 1  # 첫 질문은 읽었지만 완료하지 못했다.
 
-    summary = summarize([spoken, failed])["전체"]
-    assert summary["평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]
+    summary = summarize([spoken, unable, failed])["전체"]
+    assert summary["ready_평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]
 
 
 def test_예전_run은_transcript로_새_지표를_재계산한다(scenarios, tmp_path):
@@ -531,6 +534,9 @@ def test_run_명령이_끝까지_배선돼_돈다(monkeypatch, tmp_path):
     (run_dir,) = tmp_path.iterdir()
     assert (run_dir / "report.md").exists()
     assert (run_dir / "transcripts.jsonl").exists()
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    first_id = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0].id
+    assert meta["시나리오id"] == [first_id]
 
 
 def test_실행_실패는_현_지표_계약으로_남고_exit_code로_드러난다(monkeypatch, tmp_path):
@@ -566,16 +572,18 @@ def test_실행_실패는_현_지표_계약으로_남고_exit_code로_드러난�
     assert summary["전체"]["건수"] == 2
 
 
-def _make_run_dir(tmp_path, scenario, *, digest, judge=None):
+def _make_run_dir(
+    tmp_path, scenario, *, digest, judge=None, name="run", meta_overrides=None
+):
     import json
 
     from pingpong_eval.models import ScenarioResult, StopReason, Transcript
 
-    run_dir = tmp_path / "run"
+    run_dir = tmp_path / name
     run_dir.mkdir()
-    (run_dir / "meta.json").write_text(
-        json.dumps({"시나리오해시": digest}), encoding="utf-8"
-    )
+    meta = {"시나리오해시": digest}
+    meta.update(meta_overrides or {})
+    (run_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     result = ScenarioResult(
         scenario_id=scenario.id,
         difficulty=scenario.difficulty,
@@ -589,6 +597,69 @@ def _make_run_dir(tmp_path, scenario, *, digest, judge=None):
         result.model_dump_json() + "\n", encoding="utf-8"
     )
     return run_dir
+
+
+@pytest.mark.parametrize(
+    ("field", "baseline_value", "candidate_value"),
+    [("seed", 1, 2), ("max_requests", 1, 2)],
+)
+def test_compare는_실행_조건이_다르면_막는다(
+    scenarios, tmp_path, field, baseline_value, candidate_value
+):
+    from pingpong_eval import cli
+
+    common = {"seed": 1, "max_requests": 2}
+    baseline_meta = {**common, field: baseline_value}
+    candidate_meta = {**common, field: candidate_value}
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=baseline_meta,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="candidate",
+        meta_overrides=candidate_meta,
+    )
+
+    assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    assert (
+        cli.main(
+            [
+                "compare",
+                str(baseline),
+                str(candidate),
+                "--allow-scenario-drift",
+            ]
+        )
+        == 0
+    )
+
+
+def test_compare는_파일이_같아도_실행_id가_다르면_막는다(scenarios, tmp_path):
+    from pingpong_eval import cli
+
+    meta = {"seed": 1, "max_requests": 2}
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=meta,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[1],
+        digest="same",
+        name="candidate",
+        meta_overrides=meta,
+    )
+
+    assert cli.main(["compare", str(baseline), str(candidate)]) == 1
 
 
 def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(tmp_path):

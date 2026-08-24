@@ -91,6 +91,17 @@ SM-S921N(Android 15 / One UI 7.0)에 최신 main 기반 debug 앱과 app 계측 
 서버(`stub_llm=false`, OpenAI `gpt-5.6-luna`)로 `ClarificationFlowDeviceTest`의 두 live test를
 실행했다. 둘 다 최종 확인 화면의 goal 조각까지 통과했다.
 
+아래는 debug 앱과 app 계측 APK를 설치하고 로컬 8000 서버를 켠 뒤 실제로 쓴 실행 경계다.
+`davi.liveGemini=true`를 빼면 두 live test가 assume skip되므로 명령에서 이 인자를 유지한다.
+
+```bash
+adb reverse tcp:8000 tcp:8000
+adb shell am instrument -w -r \
+  -e davi.liveGemini true \
+  -e class com.davi.helper.ClarificationFlowDeviceTest \
+  com.davi.helper.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 | eval 시나리오 | 실기기 입력 | 실제로 지난 경계 | 결과 |
 |---|---|---|---|
 | `e01` 사진 공유 | 첫 질문 계획 fixture + 보기 선택 | Android View click → `clarification_answers` 두 번째 서버 호출 → 앱 후보 판정 → Confirm | 통과 |

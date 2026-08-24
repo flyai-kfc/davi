@@ -85,11 +85,12 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         "",
         "## #316 완료 지표",
         "",
-        "| 구간 | 2회 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | 평균 TTS 글자 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| 구간 | ready | 2호출 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | ready 실행당 TTS 글자 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
         _completion_row("전체", summary["전체"]),
         "",
-        "> goal 유효·환각·선택 강요의 분모는 같은 배치로 채점된 건수다. 보기 선택은 답변 수, 나머지는 실행 건수가 분모다.",
+        "> #316 새 형식은 최대 2회 호출로 고정되므로 ready와 2호출 이내 ready가 같다. 새 형식 행에서 두 값이 같은 사실을 별도 개선 신호로 해석하지 않는다.",
+        "> goal 유효·환각·선택 강요의 분모는 같은 배치로 채점된 건수다. 보기 선택은 답변 수, ready·2호출 ready는 전체 실행, TTS는 ready 실행 건수가 분모다.",
         "",
         "## 시나리오별",
         "",
@@ -132,12 +133,12 @@ def render_completion_comparison(
         [
             "# #316 목표 구체화 A/B",
             "",
-            "| 대상 | 2회 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | 평균 TTS 글자 |",
-            "|---|---:|---:|---:|---:|---:|---:|",
+            "| 대상 | ready | 2호출 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | ready 실행당 TTS 글자 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
             _completion_row(baseline_name, baseline),
             _completion_row(candidate_name, candidate),
             "",
-            "> goal 유효·환각·선택 강요는 같은 평가자·시나리오 배치로 채점된 결과만 비교한다.",
+            "> #316 새 형식은 최대 2회 호출로 고정되어 ready와 2호출 이내 ready가 같다. goal 유효·환각·선택 강요는 같은 평가자·시나리오 배치로 채점된 결과만 비교한다.",
             "",
         ]
     )
@@ -161,9 +162,9 @@ def _completion_row(name: str, block: dict) -> str:
         value = block[key]
         return "-" if value is None else f"{value:.0%}"
 
-    tts = block["평균_TTS_문자수"]
+    tts = block["ready_평균_TTS_문자수"]
     return (
-        f"| {name} | {rate('2회이내_ready율')} | {rate('goal_유효율')} "
+        f"| {name} | {rate('ready율')} | {rate('2회이내_ready율')} | {rate('goal_유효율')} "
         f"| {rate('누락정보_환각률')} | {rate('선택_강요율')} "
         f"| {rate('보기_선택률')} | {'-' if tts is None else tts} |"
     )

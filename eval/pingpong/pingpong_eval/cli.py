@@ -290,6 +290,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "시나리오파일": str(args.scenarios),
         "시나리오해시": digest,
         "시나리오수": len(scenarios),
+        "시나리오id": [scenario.id for scenario in scenarios],
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,
         "평가자경유": judge_client.base_url if judge_client else None,
@@ -348,11 +349,29 @@ def cmd_compare(args: argparse.Namespace) -> int:
         print(str(error), file=sys.stderr)
         return 1
 
+    input_mismatches = []
     baseline_digest = baseline_meta.get("시나리오해시")
     candidate_digest = candidate_meta.get("시나리오해시")
-    if baseline_digest != candidate_digest and not args.allow_scenario_drift:
+    if (
+        not baseline_digest
+        or not candidate_digest
+        or baseline_digest != candidate_digest
+    ):
+        input_mismatches.append("시나리오 파일 해시")
+    if [r.scenario_id for r in baseline_results] != [
+        r.scenario_id for r in candidate_results
+    ]:
+        input_mismatches.append("실행한 시나리오 id·순서")
+    for key in ("seed", "max_requests"):
+        if (
+            key not in baseline_meta
+            or key not in candidate_meta
+            or baseline_meta[key] != candidate_meta[key]
+        ):
+            input_mismatches.append(key)
+    if input_mismatches and not args.allow_scenario_drift:
         print(
-            "시나리오 해시가 다르다 — 같은 입력이 아니므로 A/B로 묶을 수 없다. "
+            f"A/B 입력 조건이 다르거나 기록되지 않았다: {', '.join(input_mismatches)}. "
             "알고 비교하려면 --allow-scenario-drift 를 쓴다.",
             file=sys.stderr,
         )
@@ -470,7 +489,11 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("--baseline-name", default="기존 자유 발화")
     compare.add_argument("--candidate-name", default="#316 질문 계획")
     compare.add_argument("--out", help="Markdown 출력 경로")
-    compare.add_argument("--allow-scenario-drift", action="store_true")
+    compare.add_argument(
+        "--allow-scenario-drift",
+        action="store_true",
+        help="해시·실행 id·seed·요청 상한이 달라도 알고 비교한다",
+    )
     compare.set_defaults(func=cmd_compare)
 
     args = parser.parse_args(argv)

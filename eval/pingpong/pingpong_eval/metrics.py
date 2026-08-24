@@ -129,6 +129,7 @@ def summarize(
     def block(subset: list[ScenarioResult]) -> dict:
         judged = [r for r in subset if in_batch(r, batch)]
         slots = [s for r in judged for s in r.judge.slot_scores]
+        ready = [r for r in subset if r.metrics.get("종료사유") == "ready"]
         ready_within_two = [r for r in subset if r.metrics.get("2회이내_ready")]
         valid_goals = [
             r
@@ -147,9 +148,9 @@ def summarize(
         ]
         answers = sum(r.metrics.get("답변수", 0) for r in subset)
         option_answers = sum(r.metrics.get("보기_선택수", 0) for r in subset)
-        tts_observed = [
+        completed_tts = [
             r.metrics.get("TTS_문자수", 0)
-            for r in subset
+            for r in ready
             if r.metrics.get("TTS_발화수", 0) > 0
         ]
         return {
@@ -180,7 +181,10 @@ def summarize(
                 else None
             ),
             "위반수": sum(len(r.judge.violations) for r in judged),
-            # #316 완료 조건의 A/B 다섯 축. 분모가 다른 값은 건수와 비율을 함께 남긴다.
+            # #316 완료 조건의 A/B 축. 새 형식은 요청 상한이 2라 ready와
+            # 2회 이내 ready가 같다. 두 값을 따로 남겨 이 구조적 관계를 숨기지 않는다.
+            "ready": len(ready),
+            "ready율": round(len(ready) / len(subset), 3) if subset else None,
             "2회이내_ready": len(ready_within_two),
             "2회이내_ready율": round(len(ready_within_two) / len(subset), 3)
             if subset
@@ -196,7 +200,11 @@ def summarize(
             if judged
             else None,
             "보기_선택률": round(option_answers / answers, 3) if answers else None,
-            "평균_TTS_문자수": round(mean(tts_observed), 1) if tts_observed else None,
+            # 문구 길이를 비교하는 축에 안전 종료·중도 오류의 짧은 발화가
+            # 섞이면 실패가 "TTS 단축"으로 보인다. ready로 완료된 실행만 세다.
+            "ready_평균_TTS_문자수": round(mean(completed_tts), 1)
+            if completed_tts
+            else None,
         }
 
     by_difficulty: dict[str, list[ScenarioResult]] = {}
