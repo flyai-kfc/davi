@@ -18,10 +18,23 @@ Kotlin 파일을 정규식으로 읽는 방식이 투박하다는 것은 안다.
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
-from app.schemas import ActionType, ErrorKind, RateLimitScope, ScrollAxis, SwipeDirection
+from app import schemas
+from app.schemas import (
+    ActionType,
+    AppCandidateAvailability,
+    AppResolutionStatus,
+    ClarificationAnswerSource,
+    ConversationRole,
+    ErrorKind,
+    IntentDialogueStatus,
+    RateLimitScope,
+    ScrollAxis,
+    SwipeDirection,
+)
 
 CONTRACT_KT = (
     Path(__file__).resolve().parents[2]
@@ -36,6 +49,19 @@ CONTRACT_KT = (
     / "Contract.kt"
 )
 ANDROID_MANIFEST = CONTRACT_KT.parents[4] / "AndroidManifest.xml"
+
+_ENUM_PAIRS = (
+    ("ActionType", ActionType),
+    ("SwipeDirection", SwipeDirection),
+    ("ScrollAxis", ScrollAxis),
+    ("ApiErrorKind", ErrorKind),
+    ("RateLimitScope", RateLimitScope),
+    ("ConversationRole", ConversationRole),
+    ("ClarificationAnswerSource", ClarificationAnswerSource),
+    ("IntentDialogueStatus", IntentDialogueStatus),
+    ("AppCandidateAvailability", AppCandidateAvailability),
+    ("AppResolutionStatus", AppResolutionStatus),
+)
 
 
 def _kotlin_enum_values(source: str, enum_name: str) -> set[str]:
@@ -59,13 +85,7 @@ def contract_source() -> str:
 
 @pytest.mark.parametrize(
     ("kotlin_enum", "python_enum"),
-    [
-        ("ActionType", ActionType),
-        ("SwipeDirection", SwipeDirection),
-        ("ScrollAxis", ScrollAxis),
-        ("ApiErrorKind", ErrorKind),
-        ("RateLimitScope", RateLimitScope),
-    ],
+    _ENUM_PAIRS,
 )
 def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_enum) -> None:
     app_values = _kotlin_enum_values(contract_source, kotlin_enum)
@@ -80,6 +100,39 @@ def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_
         f"  서버에만 있음: {sorted(only_server) or '없음'}\n"
         "계약은 앱·서버·평가 셋이 동시에 무는 지점이다. 한쪽만 고치지 말 것 "
         "(server/CLAUDE.md 'API 계약 결정')."
+    )
+
+
+def test_every_kotlin_contract_enum_is_in_the_drift_check(contract_source: str) -> None:
+    """앱에 wire enum을 추가하면서 값 대조 목록을 빼먹으면 그 커밋에서 바로 실패한다."""
+
+    declared = set(re.findall(r"^\s*enum\s+class\s+(\w+)", contract_source, re.MULTILINE))
+    checked = {kotlin_enum for kotlin_enum, _ in _ENUM_PAIRS}
+
+    assert declared == checked, (
+        f"Contract.kt enum과 드리프트 검사 목록이 다르다. "
+        f"검사 누락: {sorted(declared - checked) or '없음'}, "
+        f"선언 누락: {sorted(checked - declared) or '없음'}"
+    )
+
+
+def test_every_server_wire_enum_is_in_the_drift_check() -> None:
+    """서버 schemas.py에 enum을 먼저 추가해도 앱 대응·값 대조 없이는 통과하지 못한다."""
+
+    declared = {
+        value
+        for value in vars(schemas).values()
+        if isinstance(value, type)
+        and issubclass(value, StrEnum)
+        and value is not StrEnum
+        and value.__module__ == schemas.__name__
+    }
+    checked = {python_enum for _, python_enum in _ENUM_PAIRS}
+
+    assert declared == checked, (
+        "schemas.py wire enum과 드리프트 검사 목록이 다르다. "
+        f"검사 누락: {sorted(item.__name__ for item in declared - checked) or '없음'}, "
+        f"선언 누락: {sorted(item.__name__ for item in checked - declared) or '없음'}"
     )
 
 
@@ -150,8 +203,6 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
 
 def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:
     """#128의 후보·대조 상태가 Kotlin/Python 중 한쪽에만 생기지 않게 한다."""
-
-    from app.schemas import AppCandidateAvailability, AppResolutionStatus
 
     assert _kotlin_enum_values(contract_source, "AppCandidateAvailability") == {
         member.value for member in AppCandidateAvailability
