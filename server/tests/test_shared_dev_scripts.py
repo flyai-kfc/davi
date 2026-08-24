@@ -1,5 +1,9 @@
 import os
+import shutil
+import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -47,6 +51,137 @@ def test_stop_script_never_uses_broad_process_kill():
     assert "kill -TERM" in content
     assert "pkill" not in content
     assert "killall" not in content
+
+
+def _isolated_stop_script(tmp_path: Path) -> tuple[Path, Path]:
+    """실제 저장소 PID 파일과 격리된 공용 서버 디렉터리를 만든다."""
+
+    server_dir = tmp_path / "server"
+    scripts_dir = server_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (server_dir / ".shared-dev").mkdir()
+    for name in ("shared-dev-common.sh", "stop-shared-dev.sh"):
+        shutil.copy2(SCRIPTS_DIR / name, scripts_dir / name)
+    return server_dir, scripts_dir / "stop-shared-dev.sh"
+
+
+def _start_probe_process(cwd: Path, *command_markers: str) -> int:
+    """start 스크립트처럼 부모 셸이 끝난 임시 프로세스의 PID를 돌려준다.
+
+    pytest의 직접 자식으로 두면 SIGTERM 뒤 부모가 wait하기 전까지 zombie로 남아 `kill -0`가
+    생존으로 읽는다. 실제 start 스크립트는 백그라운드 uvicorn을 띄운 뒤 셸이 끝나므로, 같은
+    프로세스 수명을 만들고 OS가 종료된 자식을 회수하게 한다.
+    """
+
+    launcher = 'cd "$1"; shift; "$@" >/dev/null 2>&1 & printf "%s\\n" "$!"'
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            launcher,
+            "probe-launcher",
+            str(cwd),
+            sys.executable,
+            "-c",
+            "import time; time.sleep(60)",
+            *command_markers,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    pid = int(result.stdout.strip())
+    expected_marker = " ".join(command_markers)
+    for _attempt in range(50):
+        command = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout
+        if expected_marker in command:
+            return pid
+        time.sleep(0.02)
+    raise AssertionError("임시 프로세스가 기대한 command로 시작되지 않았다")
+
+
+def _record_probe_pid(server_dir: Path, pid: int) -> Path:
+    pid_file = server_dir / ".shared-dev" / "server.pid"
+    pid_file.write_text(f"{pid}\n", encoding="utf-8")
+    return pid_file
+
+
+def _run_isolated_stop(stop_script: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(stop_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
+def _probe_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _terminate_probe(pid: int) -> None:
+    if not _probe_is_alive(pid):
+        return
+    os.kill(pid, signal.SIGTERM)
+    for _attempt in range(30):
+        if not _probe_is_alive(pid):
+            return
+        time.sleep(0.1)
+    os.kill(pid, signal.SIGKILL)
+
+
+def test_stop_script_terminates_the_recorded_managed_process(tmp_path: Path):
+    server_dir, stop_script = _isolated_stop_script(tmp_path)
+    pid = _start_probe_process(
+        server_dir,
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8000",
+    )
+    pid_file = _record_probe_pid(server_dir, pid)
+
+    try:
+        result = _run_isolated_stop(stop_script)
+
+        assert result.returncode == 0, result.stderr
+        assert not _probe_is_alive(pid)
+        assert not pid_file.exists()
+    finally:
+        _terminate_probe(pid)
+
+
+@pytest.mark.parametrize("mismatch", ["command", "cwd"])
+def test_stop_script_preserves_a_process_that_does_not_match(tmp_path: Path, mismatch: str):
+    server_dir, stop_script = _isolated_stop_script(tmp_path)
+    process_cwd = tmp_path if mismatch == "cwd" else server_dir
+    markers = (
+        ("unrelated-process", "--port", "8000")
+        if mismatch == "command"
+        else ("uvicorn", "app.main:app", "--port", "8000")
+    )
+    pid = _start_probe_process(process_cwd, *markers)
+    pid_file = _record_probe_pid(server_dir, pid)
+
+    try:
+        result = _run_isolated_stop(stop_script)
+
+        assert result.returncode == 1
+        assert "일치하지 않아 종료하지 않습니다" in result.stderr
+        assert _probe_is_alive(pid)
+        assert pid_file.exists()
+    finally:
+        _terminate_probe(pid)
 
 
 def test_start_script_enforces_development_real_llm_and_lan_bind():

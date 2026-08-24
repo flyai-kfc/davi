@@ -200,6 +200,7 @@ rate limit을 쓰는 `development`를 유지한다.
 | `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
 | `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 접근 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
 | `/v1/next-step` 등 추론 endpoint | dev·test 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
+| `/health` | 토큰 없이 development 진단값 | 토큰 없이 `{"status":"ok"}`만 |
 | `/docs`·`/redoc`·`/openapi.json` | 로컬 개발 문서 노출 | 404(등록·노출 안 함) |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
@@ -218,6 +219,11 @@ beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`�
 둘 다 인프로세스 상태라 worker·replica는 각각 하나여야 하고, **재시작·재배포 때 하루 창도
 초기화된다.** 영속적인 production 일일 상한이 필요하면 공유 저장소 기반 제한기로 교체해야 하며,
 그 전까지 공급자 자체 일일 쿼터가 최종 비용 경계다.
+
+development 요청 제한은 **토큰 검사를 통과한 요청 시도**를 body 검증보다 먼저 센다(#67).
+따라서 인증 실패 `401`은 팀 전체 창을 소비하지 않고, 인증된 형식 오류 `422`와 정상 `200`은
+각각 한 칸을 소비한다. 형식 오류도 서버의 검증 자원을 쓰므로 인증된 클라이언트가 잘못된 요청을
+무제한 반복하는 길을 열지 않는다. 이 순서는 상태 코드별 회귀 테스트로 고정한다.
 키와 접근 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
 
 ### LLM 공급자 교체
@@ -290,6 +296,11 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 토큰 값 자체는 어떤 프로필에서도 로그에 남기지 않는다.
 
 `/health` 응답도 프로필에 따라 다르다.
+
+development `/health`는 **loopback·LAN·Azure에서 토큰 없이 유지한다**(#67). 시작/배포 스크립트와
+기기 E2E가 provider·model·stub·마스킹 우회·카카오 배선 상태를 진단하는 경로이고, 응답에는 키·토큰·
+사용자 데이터가 없다. 대신 beta·production은 외부 공개 범위를 `status` 하나로 좁힌다. 같은 LAN의
+추론 endpoint는 이 예외에 포함되지 않으며 계속 dev·test 토큰을 요구한다.
 
 development:
 
@@ -399,6 +410,11 @@ DAVI_DEBUG_ACCESS_TOKEN=<shared-dev.env와 같은 값>
 cd server
 ./scripts/stop-shared-dev.sh
 ```
+
+종료 스크립트는 PID가 살아 있다는 사실만 믿지 않는다. 그 PID의 command에
+`uvicorn app.main:app`과 공유 포트가 있고 cwd가 이 `server/`일 때만 `SIGTERM`을 보낸다. 셋 중
+하나라도 다르면 프로세스를 보존하고 실패한다(#67). 이 경계는 임시 프로세스를 실제로 띄우는
+통합 테스트로 고정한다.
 
 PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
 PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰고 시작 시 7일보다 오래된 파일을
