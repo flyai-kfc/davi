@@ -53,6 +53,31 @@ def test_development_health_includes_diagnostics():
     }
 
 
+def test_development_health_is_public_on_lan_but_inference_requires_token(monkeypatch):
+    """공용 개발 진단만 무토큰으로 열고 추론 API는 같은 LAN에서도 닫는다(#67)."""
+
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+    remote_client = TestClient(app, client=("192.168.1.23", 50000))
+
+    health = remote_client.get("/health")
+    inference = remote_client.post("/v1/next-step", json=_next_step_payload())
+
+    assert health.status_code == 200
+    health_body = health.json()
+    assert health_body["status"] == "ok"
+    assert {
+        "environment",
+        "provider",
+        "model",
+        "stub_llm",
+        "privacy_masking_disabled",
+        "kakao_auth_configured",
+    }.issubset(health_body)
+    assert inference.status_code == 401
+    assert inference.json()["kind"] == "AUTH"
+
+
 def test_development_health_reports_the_masking_bypass(set_runtime_profile):
     """실기기 E2E 실행기가 이 값을 읽어 상세 보고서 생성을 끈다(#203)."""
     set_runtime_profile(davi_disable_privacy_masking=True)
@@ -215,6 +240,43 @@ def test_development_rate_limit_is_global_and_returns_retry_after(monkeypatch):
     assert limited.json()["request_id"]
     assert limited.headers["X-Request-ID"] == limited.json()["request_id"]
     assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
+
+
+def test_development_rate_limit_counts_authenticated_attempts(monkeypatch):
+    """401은 팀 창을 쓰지 않고, 토큰을 통과한 422·200은 각각 한 칸을 쓴다(#67)."""
+
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+    monkeypatch.setattr(settings, "davi_dev_rate_limit_requests", 1)
+    headers = {"X-Davi-Dev-Token": token}
+
+    unauthorized = client.post("/v1/next-step", json=_next_step_payload())
+    allowed_after_401 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+    limited_after_200 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+
+    assert unauthorized.status_code == 401
+    assert allowed_after_401.status_code == 200
+    assert limited_after_200.status_code == 429
+
+    main_module.dev_rate_limiter.reset()
+
+    invalid = client.post("/v1/next-step", json={}, headers=headers)
+    limited_after_422 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+
+    assert invalid.status_code == 422
+    assert limited_after_422.status_code == 429
 
 
 def test_development_access_token_is_not_logged(caplog, monkeypatch):

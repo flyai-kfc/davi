@@ -85,6 +85,10 @@ _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
 _AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
 _DOCUMENTATION_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
+# `/health`는 의도적으로 여기서 뺀다(#67). 공용 개발 서버의 배포·기기 진단이 토큰 없이
+# provider/model/stub 배선을 확인해야 하고, 비밀값·사용자 데이터는 응답에 없다. 이 집합의
+# 추론 endpoint는 development 토큰·요청 제한을 모두 거치고, 로그인은 토큰 검사 뒤 전용 로그인
+# 리미터만 거친다. production health는 status 하나로 좁힌다.
 _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )
@@ -210,6 +214,10 @@ def _development_access_error(request: Request) -> JSONResponse | None:
         # 잠그면 안 된다 — 토큰 검사까지만 적용하고 dev 창은 건너뛴다.
         return None
 
+    # 토큰 검사를 통과한 **요청 시도**를 body 검증보다 먼저 센다(#67). 따라서 인증 실패 401은
+    # 팀 창을 소모하지 않지만, 인증된 422와 정상 200은 모두 소모한다. 형식 오류를 무제한으로
+    # 보내 개발 endpoint의 검증 자원을 점유하는 길을 닫고, 상태 코드를 추측해 슬롯을 되돌리는
+    # 복잡한 후처리도 두지 않는다. 이 순서는 test_health.py가 401·422·200으로 고정한다.
     decision = dev_rate_limiter.check(
         settings.davi_dev_rate_limit_requests,
         settings.davi_dev_rate_limit_window_seconds,
