@@ -72,15 +72,24 @@ def test_punctuation_and_spacing_differences_are_absorbed():
         "Wi-Fi, 사용 중, AITECHLAB 연결됨",
         _screen("Wi-Fi 사용 중 AITECHLAB 연결됨"),
     )
+    assert _verified("WiFi가 연결됨", _screen("Wi-Fi"))
 
 
-def test_lazy_but_real_evidence_still_passes():
-    """`evidence='지도'` 같은 성의 없는 근거는 **의도적으로** 통과시킨다(SPEC §4).
-
-    임계값을 근거 없이 정하면 정당한 완료를 막는다. 실사용 로그를 보고 다시 연다.
-    """
+def test_short_but_two_character_evidence_still_passes():
+    """두 글자 label은 짧아도 화면에서 정확한 어절로 인용했으면 통과한다."""
 
     assert _verified("지도", _screen("지도", "사진", "설정"))
+
+
+def test_partial_word_with_opposite_state_is_not_verified():
+    """`사용 중`은 `사용 중지`의 부분 문자열이지만 정반대 상태다(#71)."""
+
+    assert not _verified("사용 중지했습니다", _screen("사용 중"))
+    assert _verified("현재 사용 중입니다", _screen("사용 중"))
+
+
+def test_lexical_continuation_is_not_a_quoted_label():
+    assert not _verified("Mapping 작업을 마쳤습니다", _screen("Map"))
 
 
 def test_screen_without_any_label_is_not_verified():
@@ -135,13 +144,13 @@ def test_non_latin_labels_are_still_compared():
     assert _verified("設定 화면이 보임", _screen("微信", "設定"))
 
 
-def test_screen_of_single_character_labels_is_still_compared():
-    """숫자 키패드처럼 전부 한 글자면, 검사를 끄는 대신 그것들로 대조한다."""
+def test_screen_of_single_character_labels_is_not_enough_to_verify_done():
+    """숫자 키패드의 한 글자는 대부분의 문장에 우연히 들어가므로 근거로 쓰지 않는다(#71)."""
 
     keypad = _screen("1", "2", "3", "0")
 
     assert not _verified("결제가 완료되었습니다", keypad)
-    assert _verified("3을 눌렀습니다", keypad)
+    assert not _verified("3을 눌렀습니다", keypad)
 
 
 def test_empty_evidence_is_not_verified():

@@ -522,8 +522,9 @@ pytest
   `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 5건. 위 "도그푸딩 raw 보존" 절.
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
-- `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,
-  SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
+- `reasoning._verify_done` — evidence가 현재 화면의 최소 두 글자 label을 어절 경계로 인용했는지
+  대조한다(#62·#71, SPEC §4). 한국어 조사·서술격 어미는 허용하되 `사용 중`/`사용 중지` 같은
+  어휘 연장은 막고, 한 글자 label로는 완료를 검증하지 않는다.
 - `reasoning._apply_guardrails` — 단일 결정 지점. `scroll`의 대상을 요구한다(#202): 화면의
   스크롤 요소로 교정하거나, 런처처럼 대체 행동이 있는 화면은 `open_app_drawer`로 돌리거나,
   둘 다 없으면 SERVER 오류로 닫는다. 정책은 `CLAUDE.md` "scroll 대상 정책".

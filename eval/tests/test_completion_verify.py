@@ -8,18 +8,68 @@
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+from pathlib import Path
+from typing import Literal
+
 import pytest
 from app.llm import LlmClient
 from app.reasoning import (
     _MIN_EVIDENCE_LABEL_CHARS,
+    _evidence_words,
     _normalize_for_evidence,
     next_step,
 )
 from app.schemas import ActionType, GuideAction, NextStepRequest
+from app.screen_view import visible_elements
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from harness import FIXTURES, load_fixture
+from harness import FIXTURES, assert_no_sensitive_data, load_fixture
 
 _FIXTURE = "samsung_launcher_open_camera.json"
+_COMPLETION_CASES = (
+    Path(__file__).parents[1] / "completion-fixtures" / "evidence_cases.json"
+)
+
+
+class CompletionCase(BaseModel):
+    """#71의 개인정보 없는 완료 판정 사례 한 건."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    axis: str
+    source: Literal["eval_case", "anonymized_real_device_fixture"]
+    request: dict | None = None
+    screen_fixture: str | None = Field(default=None, pattern=r"^[a-z0-9_]+\.json$")
+    goal: str | None = None
+    expected_result: str
+    evidence: str
+    evidence_label: str
+    expected_verified: bool
+
+    @model_validator(mode="after")
+    def validate_source(self) -> CompletionCase:
+        if self.source == "eval_case" and (
+            self.request is None
+            or self.screen_fixture is not None
+            or self.goal is not None
+        ):
+            raise ValueError("eval_case는 request만 가져야 한다")
+        if self.source == "anonymized_real_device_fixture" and (
+            self.screen_fixture is None or self.request is not None
+        ):
+            raise ValueError("실기기 참조 사례는 screen_fixture만 가져야 한다")
+        return self
+
+
+class CompletionDataset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_version: Literal[1]
+    description: str
+    cases: list[CompletionCase] = Field(min_length=1)
 
 
 class DoneLlmClient(LlmClient):
@@ -97,3 +147,110 @@ def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device)
     )
 
     assert response.verified
+
+
+def _load_completion_cases() -> list[tuple[CompletionCase, NextStepRequest]]:
+    raw = json.loads(_COMPLETION_CASES.read_text(encoding="utf-8"))
+    assert_no_sensitive_data(raw, filename=_COMPLETION_CASES.name)
+    dataset = CompletionDataset.model_validate(raw)
+    assert len({case.id for case in dataset.cases}) == len(dataset.cases)
+
+    loaded: list[tuple[CompletionCase, NextStepRequest]] = []
+    for case in dataset.cases:
+        if case.request is not None:
+            request = NextStepRequest.model_validate(case.request)
+        else:
+            assert case.screen_fixture is not None
+            request = load_fixture(FIXTURES / case.screen_fixture).request
+            if case.goal is not None:
+                request = request.model_copy(update={"goal": case.goal})
+        loaded.append((case, request))
+    return loaded
+
+
+def _new_policy(case: CompletionCase, request: NextStepRequest) -> bool:
+    return next_step(
+        request,
+        DoneLlmClient(case.evidence, expected_result=case.expected_result),
+    ).verified
+
+
+def _legacy_policy(case: CompletionCase, request: NextStepRequest) -> bool:
+    """#71 직전의 `정규화한 label in evidence` 정책을 평가 안에서만 재현한다."""
+    normalized_evidence = _normalize_for_evidence(case.evidence)
+    labels = [
+        _normalize_for_evidence(element.label)
+        for element in visible_elements(request.screen.elements)
+    ]
+    present = [label for label in labels if label]
+    comparable = [
+        label for label in present if len(label) >= _MIN_EVIDENCE_LABEL_CHARS
+    ] or present
+    return bool(
+        normalized_evidence
+        and any(label in normalized_evidence for label in comparable)
+    )
+
+
+def _non_clickable_policy(case: CompletionCase, request: NextStepRequest) -> bool:
+    """후보: 최종 어절 정책에 더해 clickable label을 완료 근거에서 제외한다."""
+    if not _new_policy(case, request):
+        return False
+    return any(
+        element.label == case.evidence_label and not element.clickable
+        for element in visible_elements(request.screen.elements)
+    )
+
+
+def _goal_overlap_policy(case: CompletionCase, request: NextStepRequest) -> bool:
+    """후보: 인용 label의 어절 하나가 goal/expected_result에도 있어야 한다."""
+    if not _new_policy(case, request):
+        return False
+    label_words = {
+        word
+        for word in _evidence_words(case.evidence_label)
+        if len(_normalize_for_evidence(word)) >= _MIN_EVIDENCE_LABEL_CHARS
+    }
+    goal_words = set(_evidence_words(f"{request.goal} {case.expected_result}"))
+    return bool(label_words & goal_words)
+
+
+def _confusion_matrix(policy) -> Counter[str]:
+    matrix: Counter[str] = Counter()
+    for case, request in _load_completion_cases():
+        actual = policy(case, request)
+        if case.expected_verified:
+            matrix["tp" if actual else "fn"] += 1
+        else:
+            matrix["fp" if actual else "tn"] += 1
+    return matrix
+
+
+def test_completion_policy_fixture_is_valid_and_measures_candidates():
+    """현재 오탐·미탐과 후보별 비용을 결정론적으로 센다(#71).
+
+    어절 경계+최소 두 글자는 정상 사례를 더 잃지 않고 FP 두 건을 줄인다. clickable 필터는 남은
+    FP를 없애지만 정상 버튼·스위치 두 건까지 막아 FN이 셋으로 늘고, 목표 문자열 겹침은 앱 내부
+    label이 목표 문장에 없는 정상 사례를 넷이나 막는다. 따라서 둘은 적용하지 않는다.
+    """
+    assert _confusion_matrix(_legacy_policy) == Counter(tp=5, tn=2, fp=4, fn=1)
+    assert _confusion_matrix(_new_policy) == Counter(tp=5, tn=4, fp=2, fn=1)
+    assert _confusion_matrix(_non_clickable_policy) == Counter(tp=3, tn=6, fp=0, fn=3)
+    assert _confusion_matrix(_goal_overlap_policy) == Counter(tp=2, tn=6, fp=0, fn=4)
+
+
+def test_remaining_false_results_are_named_instead_of_hidden():
+    results = {
+        case.id: (case.expected_verified, _new_policy(case, request))
+        for case, request in _load_completion_cases()
+    }
+
+    assert {
+        case_id for case_id, result in results.items() if result == (False, True)
+    } == {
+        "invalid-app-name-on-launcher",
+        "invalid-unrelated-visible-label",
+    }
+    assert {
+        case_id for case_id, result in results.items() if result == (True, False)
+    } == {"valid-paraphrase-without-exact-label"}

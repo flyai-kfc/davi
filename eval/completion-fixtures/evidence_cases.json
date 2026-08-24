@@ -1,0 +1,201 @@
+{
+  "dataset_version": 1,
+  "description": "완료 근거 판정 후보를 비교하는 개인정보 없는 실기기 참조·eval 사례",
+  "cases": [
+    {
+      "id": "valid-korean-particle",
+      "axis": "token_boundary",
+      "source": "eval_case",
+      "request": {
+        "goal": "카카오톡 열기",
+        "screen": {
+          "package_name": "com.example.chat",
+          "elements": [
+            {"node_id": "n1", "label": "카카오톡", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "카카오톡이 열려 있다",
+      "evidence": "카카오톡이 열렸습니다",
+      "evidence_label": "카카오톡",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-punctuation-spacing",
+      "axis": "token_boundary",
+      "source": "eval_case",
+      "request": {
+        "goal": "무선 인터넷 연결 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "Wi-Fi 사용 중 테스트망 연결됨", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "무선 인터넷이 연결되어 있다",
+      "evidence": "Wi-Fi, 사용 중, 테스트망 연결됨",
+      "evidence_label": "Wi-Fi 사용 중 테스트망 연결됨",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-clickable-home-item",
+      "axis": "role_clickable",
+      "source": "anonymized_real_device_fixture",
+      "screen_fixture": "samsung_launcher_open_camera.json",
+      "goal": "홈 화면으로 가기",
+      "expected_result": "홈 화면이 보인다",
+      "evidence": "홈 화면에 전화가 보입니다",
+      "evidence_label": "전화",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-internal-label-without-goal-overlap",
+      "axis": "goal_evidence",
+      "source": "eval_case",
+      "request": {
+        "goal": "카카오톡 열기",
+        "screen": {
+          "package_name": "com.example.chat",
+          "elements": [
+            {"node_id": "n1", "label": "채팅", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "카카오톡이 열려 있다",
+      "evidence": "화면에 채팅 목록이 보입니다",
+      "evidence_label": "채팅",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-clickable-alarm-state",
+      "axis": "role_clickable",
+      "source": "eval_case",
+      "request": {
+        "goal": "오전 8시 알람 설정",
+        "screen": {
+          "package_name": "com.example.clock",
+          "elements": [
+            {"node_id": "n1", "label": "오전 8시 알람 사용 중", "role": "Switch", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오전 8시 알람이 켜져 있다",
+      "evidence": "오전 8시 알람 사용 중입니다",
+      "evidence_label": "오전 8시 알람 사용 중",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-paraphrase-without-exact-label",
+      "axis": "false_negative",
+      "source": "eval_case",
+      "request": {
+        "goal": "무선 인터넷 켜기",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "Wi-Fi 사용 중", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "무선 인터넷이 켜져 있다",
+      "evidence": "무선 인터넷이 켜져 있습니다",
+      "evidence_label": "Wi-Fi 사용 중",
+      "expected_verified": true
+    },
+    {
+      "id": "invalid-fabricated-label",
+      "axis": "fabricated",
+      "source": "eval_case",
+      "request": {
+        "goal": "채팅방 열기",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "Wi-Fi", "role": "TextView", "clickable": false},
+            {"node_id": "n2", "label": "블루투스", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "채팅방 목록이 보인다",
+      "evidence": "채팅방 목록이 보입니다",
+      "evidence_label": "채팅방 목록",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-empty-screen",
+      "axis": "empty_screen",
+      "source": "eval_case",
+      "request": {
+        "goal": "일정 저장",
+        "screen": {
+          "package_name": "com.example.calendar",
+          "elements": []
+        }
+      },
+      "expected_result": "일정이 저장되어 있다",
+      "evidence": "일정이 저장되었습니다",
+      "evidence_label": "일정",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-opposite-state-prefix",
+      "axis": "partial_substring",
+      "source": "eval_case",
+      "request": {
+        "goal": "기능 켜기",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "사용 중", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "기능이 켜져 있다",
+      "evidence": "사용 중지했습니다",
+      "evidence_label": "사용 중",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-single-character-keypad",
+      "axis": "single_character",
+      "source": "eval_case",
+      "request": {
+        "goal": "잠금 해제",
+        "screen": {
+          "package_name": "com.example.lock",
+          "elements": [
+            {"node_id": "n1", "label": "1", "role": "Button", "clickable": true},
+            {"node_id": "n2", "label": "2", "role": "Button", "clickable": true},
+            {"node_id": "n3", "label": "3", "role": "Button", "clickable": true},
+            {"node_id": "n4", "label": "0", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "잠금이 풀려 있다",
+      "evidence": "3을 눌러 잠금이 풀렸습니다",
+      "evidence_label": "3",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-unrelated-visible-label",
+      "axis": "unrelated_label",
+      "source": "anonymized_real_device_fixture",
+      "screen_fixture": "samsung_launcher_open_camera.json",
+      "expected_result": "카메라가 열려 있다",
+      "evidence": "화면에 전화가 보이므로 완료됐습니다",
+      "evidence_label": "전화",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-app-name-on-launcher",
+      "axis": "app_name",
+      "source": "anonymized_real_device_fixture",
+      "screen_fixture": "samsung_launcher_open_camera.json",
+      "expected_result": "카메라가 열려 있다",
+      "evidence": "카메라가 열렸습니다",
+      "evidence_label": "카메라",
+      "expected_verified": false
+    }
+  ]
+}
