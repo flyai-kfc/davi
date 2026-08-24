@@ -180,7 +180,12 @@ STEP_PRESSED = "누른 것이 확인됨"
 STEP_PRESSED_ELSEWHERE = "안내한 대상이 아닌 곳을 누름"
 # 회귀 표시(#386). **지금 화면과의 대조**라 앞의 둘과 성격이 다르다 — 그 둘은 안내 직후의
 # 관측이고 이것은 "그래서 지금 어디에 있나"다. 구조 서명 비교이므로 label은 안 본다.
-STEP_SCREEN_RETURNED = "지금 화면이 그때와 구조가 같음"
+#
+# **문구가 동일성이 아니라 경유를 말한다.** 판정([_returned_to])이 "그 뒤 다른 화면을 거쳤다"를
+# 요구하므로, 지금 화면에서 방금 낸 안내(뒤에 아무것도 없는 마지막 스텝)에는 안 붙는다.
+# 문구를 "지금 화면과 구조가 같음"으로 두면 그 스텝의 침묵이 "다른 화면"으로 읽혀
+# 같은 화면 두 줄에 반대 신호가 실린다(C10 침묵 규약).
+STEP_SCREEN_RETURNED = "다른 화면을 거쳐 지금 다시 이 화면임"
 # `screen_changed=False`가 실제로 실렸을 때만 붙인다. 위 스크롤 문장들과 같은 규칙이다.
 #
 # **단정하지 않는다.** `False`의 원인은 "안내가 틀렸다"와 "사용자가 아직 안 했다" 둘 다이고
@@ -217,15 +222,15 @@ PRESSED_UNCHANGED_INSTRUCTION = (
 # 다른 항목으로 이동한 것도 "구조가 같음"이 된다. 그래서 문장이 말하는 것은 관측뿐이고,
 # 판단은 모델에게 맡긴다 — [UNCHANGED_STEP_INSTRUCTION]이 `False`를 단정하지 않는 것과 같은 결이다.
 RETURNED_SCREEN_INSTRUCTION = (
-    f'"{STEP_SCREEN_RETURNED}"은 그 안내로 화면이 한 번 바뀌었는데 **지금 다시 그때와 같은 '
-    "구조의 화면**이라는 관측입니다. 구조만 본 것이라 내용이 다른 화면일 수도 있습니다. "
+    f'"{STEP_SCREEN_RETURNED}"은 그 안내 뒤에 **다른 화면을 거쳤다가 지금 다시 그 화면에 '
+    "와 있다**는 관측입니다. 구조만 본 것이라 내용이 다른 화면일 수도 있습니다. "
     "그 안내가 돌고 돌아 제자리로 왔다면 같은 선택을 반복하지 말고 다른 길을 고르세요."
 )
 # 요소 줄의 시도 횟수(#386). **상태를 줄 뿐 지시하지 않는다**(루트 CLAUDE.md: 지식이 아니라
 # 상태). 이력 줄에도 같은 사실이 있지만 거기서는 스텝 순서로 흩어져 있어 "이 요소를 몇 번
 # 시도했나"를 세어야 알 수 있다. 요소 줄에 붙이면 모델이 대상을 고르는 그 자리에서 보인다.
 TRIED_COUNT_INSTRUCTION = (
-    "요소 줄의 `tried=N`은 이 세션에서 그 요소를 대상으로 **이미 N번 안내했다**는 뜻입니다. "
+    "요소 줄의 `tried=N`은 이 화면에서 그 요소를 대상으로 **이미 N번 안내했다**는 뜻입니다. "
     "여러 번 안내했는데도 목표에 가까워지지 않았다면 다른 요소를 고르세요."
 )
 
@@ -290,8 +295,8 @@ def _recent_step_lines(req: NextStepRequest, current: str) -> str:
 
     wire는 구조화, 프롬프트는 문장이다 — 자연어 이력이 구조화 나열보다 우세하다는 보고가
     근거다(GUI-Rise, arXiv:2510.27210). 절 순서는 **어디서 → 무엇을 안내했고 → 대상은
-    무엇이며 → 눌렀는가 → 그래서 화면이 바뀌었는가**다(꼬리 둘은 시간순 — 누름이 변화보다
-    앞선다).
+    무엇이며 → 눌렀는가 → 그래서 화면이 바뀌었는가 → 지금 어디에 있는가**다. 꼬리 셋 중 앞의
+    둘은 안내 직후의 관측이라 시간순(누름 → 변화)이고, 셋째는 **지금 화면과의 대조**라 뒤에 온다.
 
     **없는 값은 그 절을 통째로 생략한다.** "알 수 없음"을 적지 않는 것은 미관측에 침묵하는
     C10 규약과 같다. 빈 문장은 스텝째로 거른다 — 앱은 문장이 비어도 스텝을 남기지만(조작과
@@ -332,8 +337,9 @@ def _step_line(step: GuideStep, index: int, steps: list[GuideStep], current: str
     label = (step.target_label or "").strip()
     where = f"{hint!r}에서 " if hint else ""
     target = f"(대상 {label!r})" if label else ""
-    # 꼬리는 관측 목록이다 — 값이 있는 것만 시간순(누름 → 변화)으로 잇는다. 관측이 하나도
-    # 없으면 꼬리째 생략한다(C10 침묵 규약).
+    # 꼬리는 관측 목록이다 — 값이 있는 것만 잇는다. 앞의 둘은 안내 직후의 관측이라 시간순
+    # (누름 → 변화)이고, 회귀 표시는 지금 화면과의 대조라 뒤에 온다. 관측이 하나도 없으면
+    # 꼬리째 생략한다(C10 침묵 규약).
     notes = []
     if step.performed is not None:
         notes.append(STEP_PRESSED if step.performed else STEP_PRESSED_ELSEWHERE)
@@ -372,8 +378,8 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
     조건을 다는 이유는 [_end_instruction]과 같다 — 관측된 것이 없으면 없는 상태를 설명하는
     문장이 된다. 줄이 만들어지지 않은 스텝을 세지 않으려고 [_history]를 함께 쓴다.
     순서는 일반 유보([UNCHANGED_STEP_INSTRUCTION]) → 눌림 표시의 뜻 → 그 둘이 겹친 확정
-    ([PRESSED_UNCHANGED_INSTRUCTION])이다 — 넓은 규칙 뒤에 좁은 예외가 와야 겹칠 때
-    모순으로 읽히지 않는다.
+    ([PRESSED_UNCHANGED_INSTRUCTION]) → 회귀 표시 → 시도 횟수다 — 넓은 규칙 뒤에 좁은 예외가
+    와야 겹칠 때 모순으로 읽히지 않는다. 뒤의 둘은 앞 셋과 다른 관측이라 순서를 다투지 않는다.
     """
 
     steps = _history(req)
@@ -384,8 +390,8 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
         lines.append(PERFORMED_STEP_INSTRUCTION)
     if any(_returned_to(step, i, steps, current) for i, step in enumerate(steps)):
         lines.append(RETURNED_SCREEN_INSTRUCTION)
-    # 요소 줄에 `tried=`가 실제로 붙었을 때만 설명한다. 이력이 있어도 그 label이 지금 화면에
-    # 없으면 요소 줄에 안 붙으므로, 이력이 아니라 **현재 화면 요소**를 기준으로 본다.
+    # 요소 줄에 `tried=`가 실제로 붙었을 때만 설명한다. 이력이 있어도 그 요소가 지금 화면에
+    # 없으면 줄에 안 붙으므로, 이력이 아니라 **현재 화면 요소**를 기준으로 본다.
     if _tried_counts(req, current).keys() & {e.node_id for e in _visible_elements(req)}:
         lines.append(TRIED_COUNT_INSTRUCTION)
     # 단정은 **마지막 스텝**이 tap이고 눌림 확인 + 화면 그대로일 때만이다. 과거 스텝의 이

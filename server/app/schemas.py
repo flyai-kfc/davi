@@ -152,8 +152,8 @@ class GuideStep(BaseModel):
     구조 쪽은 소비자가 사라져 빈 계약으로 남아 있었다(#251).
 
     값의 출처는 두 가지뿐이다 — **서버 응답의 echo**(``instruction``·``action_type``·
-    ``direction``·``target_label``·``screen_hint``·``structure_signature``)와 **앱의 관측**
-    (``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
+    ``direction``·``target_label``·``target_node_id``·``screen_hint``·``structure_signature``)와
+    **앱의 관측**(``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
     해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
     붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
 

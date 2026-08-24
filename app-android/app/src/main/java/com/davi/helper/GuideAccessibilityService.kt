@@ -1253,7 +1253,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 actionType = action.actionType,
                 direction = action.direction,
                 targetLabel = guidedTargetLabel,
-                targetNodeId = action.targetNodeId,
+                // label과 같은 조회 결과를 쓴다 — 응답 원문을 그대로 넣으면 대상이 현재
+                // 화면에서 안 잡혔을 때 label은 null인데 id만 남아 두 자리가 어긋난다.
+                targetNodeId = target?.nodeId,
                 screenHint = action.screenSummary.takeIf { it.isNotBlank() },
                 structureSignature = response.screenSignature,
             ),

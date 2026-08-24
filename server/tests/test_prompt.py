@@ -861,16 +861,19 @@ def test_returned_screen_does_not_read_screen_changed():
 
 
 def test_returned_screen_explanation_does_not_declare_a_loop():
-    """구조 서명은 label을 안 봐서 같은 목록의 다른 항목도 "구조가 같음"이 된다.
+    """구조 서명은 label을 안 봐서 같은 목록의 다른 항목도 같은 서명이 된다.
 
-    그래서 문장은 관측만 말하고 판단을 모델에게 남긴다.
+    그래서 문장은 관측과 조건부 권고까지만이고 "루프다"라고 단정하지 않는다.
     """
 
     prompt = build_prompt(_back_on())
 
     assert RETURNED_SCREEN_INSTRUCTION in prompt
+    # 한계를 함께 말한다 — 이 문장이 빠지면 오탐이 확정으로 읽힌다.
     assert "내용이 다른 화면일 수도" in RETURNED_SCREEN_INSTRUCTION
-    assert "다른 길을 고르세요" in RETURNED_SCREEN_INSTRUCTION
+    # 권고는 조건부다("…왔다면"). 단정하는 표현이 들어가면 C17 · #109를 재현한다.
+    for asserting in ("루프입니다", "반복되고 있습니다", "잘못된 안내입니다"):
+        assert asserting not in RETURNED_SCREEN_INSTRUCTION
 
 
 def test_returned_screen_marker_sits_after_the_moment_observations():
@@ -997,8 +1000,12 @@ def test_tried_count_ignores_steps_that_never_became_a_line():
     assert "tried=" not in build_prompt(request)
 
 
-def test_tried_count_states_the_observation_without_prescribing():
-    """상태를 줄 뿐 무엇을 누르라고 하지 않는다(C17 — 문구가 값을 끌어당긴 전례)."""
+def test_tried_count_names_no_element_to_press():
+    """관측과 배제 방향까지만 말하고 **무엇을 누르라고는 하지 않는다**(C17).
 
-    assert "이미 N번 안내했다" in TRIED_COUNT_INSTRUCTION
-    assert "다른 요소를 고르세요" in TRIED_COUNT_INSTRUCTION
+    문구 규칙이 값을 끌어당겨 원래 맞던 값을 틀리게 만든 전례가 있다(#109). 여기서 주는 것은
+    "몇 번 시도했나"라는 상태이고, 다음 대상은 모델이 고른다.
+    """
+
+    for prescribing in ("누르세요", "탭하세요", "선택하세요"):
+        assert prescribing not in TRIED_COUNT_INSTRUCTION
