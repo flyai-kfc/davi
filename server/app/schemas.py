@@ -154,8 +154,9 @@ class GuideStep(BaseModel):
     값의 출처는 두 가지뿐이다 — **서버 응답의 echo**(``instruction``·``action_type``·
     ``direction``·``target_label``·``target_node_id``·``screen_hint``·``structure_signature``)와
     **앱의 관측**(``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
-    해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
-    붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
+    해석하지 않는다. ``target_label``과 ``target_node_id`` 둘만은 앱이 응답의
+    ``target_node_id``로 **현재 화면 요소에서 찾은 결과**다 — 강조를 그리려고 어차피 하는
+    조회라 새 해석이 아니다. 그래서 모델이 화면에 없는 id를 고른 스텝에는 둘 다 실리지 않는다.
 
     **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다
     (``prompt._step_line``, #305).

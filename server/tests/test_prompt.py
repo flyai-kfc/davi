@@ -884,6 +884,39 @@ def test_returned_screen_marker_sits_after_the_moment_observations():
     assert f"{STEP_PRESSED} · {STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
 
 
+def test_returned_screen_survives_a_blank_step_on_the_way():
+    """경유한 화면의 스텝이 빈 안내문이어도 떠난 증거는 남는다.
+
+    "한 번 떠났다"는 화면 서명의 흐름이지 그 스텝이 줄을 만들었는지와 무관하다. 걸러진 목록으로
+    판정하면 있어야 할 신호가 조용히 사라진다(#388 리뷰에서 재현).
+    """
+
+    screen = Screen(package_name="com.example.app")
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here),
+            _step(instruction="   ", structure_signature="e" * 64),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+
+
+def test_tried_count_shares_the_signature_limit_in_its_wording():
+    """`tried=`도 회귀 표시와 같은 구조 서명 하나에 기댄다 — 한계를 함께 말한다.
+
+    회귀 문구만 유보하고 이쪽이 단정하면, 더 센 주장을 하는 쪽이 근거를 덜 밝히는 꼴이 된다.
+    """
+
+    assert "구조로만 가르므로" in TRIED_COUNT_INSTRUCTION
+
+
 def test_returned_screen_ignores_steps_that_never_became_a_line():
     """빈 안내문 스텝은 줄을 안 만드므로 그 관측을 설명하지도 않는다."""
 

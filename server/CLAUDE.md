@@ -192,7 +192,7 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 |---|---|---|
 | `instruction` · `action_type` · `direction` | 응답 echo | 채움 |
 | `target_label` | 앱이 `target_node_id`로 현재 화면 요소에서 조회(강조를 그리려고 어차피 하는 조회다) | 채움 |
-| `target_node_id` | 응답 `target_node_id`의 echo. **화면마다 다시 매겨지는 값이라 `structure_signature`와 짝으로만 쓴다** — 서명이 그 id를 포함하므로 서명이 같으면 같은 요소를 가리킨다. label이 요소 신원이 못 되기 때문에 둔다(한 화면에 같은 label이 여럿·부제목이 값이라 같은 행의 label이 바뀜·scroll에는 label이 없음) | 채움 |
+| `target_node_id` | 앱이 응답 `target_node_id`로 현재 화면 요소에서 찾은 결과(`target_label`과 같은 조회다 — 대상이 안 잡히면 둘 다 없다). **화면마다 다시 매겨지는 값이라 `structure_signature`와 짝으로만 쓴다** — 서명이 그 id를 포함하므로 서명이 같으면 같은 요소를 가리킨다. label이 요소 신원이 못 되기 때문에 둔다(한 화면에 같은 label이 여럿·부제목이 값이라 같은 행의 label이 바뀜·scroll에는 label이 없음) | 채움 |
 | `screen_hint` | 응답 `screen_summary`의 echo | 채움 |
 | `structure_signature` | 응답 `screen_signature`의 echo | 채움 |
 | `screen_changed` | 앱 관측 — **요청을 보내기 직전에** 마지막 스텝을 판정한다. 화면이 바뀌었으면 `true`, 같은 화면에서 다시 묻는 중이면 `false`, 그 안내 뒤 아직 요청이 없었으면 `null`. `false`가 실리는 경로에 **눌림 확인 재질의**(#319)가 있다 — **tap** 대상을 눌렀는데 눌림 시점부터 7초 무변화면 앱이 같은 화면을 한 번 더 묻는다(눌림당 최대 1회 + 화면이 바뀌면 토큰 소멸, #39의 유일한 예외. type은 입력 중일 수 있어 제외) | 채움 |

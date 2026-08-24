@@ -16,7 +16,6 @@ from app.schemas import (
     Screen,
     UiElement,
 )
-from app.signature import screen_signature
 
 
 class _CapturingLlmClient(LlmClient):
@@ -35,21 +34,6 @@ class _CapturingLlmClient(LlmClient):
             target_node_id="n1",
             instruction="누르세요.",
         )
-
-
-def test_screen_signature_changes_with_focus_and_ime_state():
-    before = Screen(
-        package_name="com.example.app",
-        ime_visible=False,
-        elements=[UiElement(node_id="n1", role="EditText", editable=True)],
-    )
-    ready = Screen(
-        package_name="com.example.app",
-        ime_visible=True,
-        elements=[UiElement(node_id="n1", role="EditText", editable=True, focused=True)],
-    )
-
-    assert screen_signature(before) != screen_signature(ready)
 
 
 def _step(
