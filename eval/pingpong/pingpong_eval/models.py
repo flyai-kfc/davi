@@ -222,6 +222,11 @@ class ScenarioResult(BaseModel):
     scenario_id: str
     difficulty: Difficulty
     factors: list[str]
+    # 첫 발화에 없어서 핑퐁이 질문으로만 얻을 수 있었던 슬롯. 값은 남기지 않고 키만 남긴다.
+    # 최종 goal이 이 자리를 틀리게 채운 비율이 #316의 「누락 정보 환각률」이다.
+    # 이 필드가 생기기 전 실행은 최초 발화에서 빠진 슬롯을 복원할 수 없다. 빈 목록은
+    # "빠진 슬롯 없음"이라는 관측값이고 None은 "당시 기록하지 않아 측정 불가"다.
+    missing_slot_keys: list[str] | None = None
     transcript: Transcript
     judge: JudgeResult | None = None
     # judge와 함께 채워지고 함께 비워진다. judge가 있는데 배치가 없으면 출처 미상이라

@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.content.Intent
 import android.graphics.Rect
+import android.os.SystemClock
 import android.speech.SpeechRecognizer
 import android.view.View
 import android.widget.Button
@@ -13,6 +14,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -246,6 +248,72 @@ class ClarificationFlowDeviceTest {
         assertEquals(VoiceDialogueSession.Stage.IDLE, voiceSession(current).stage)
     }
 
+    /**
+     * eval `e01`의 목표 조각을 실제 main 서버에 보내, 보기 선택이 두 번째 요청과 goal까지
+     * 이어지는지 실기기에서 확인한다. 원문은 테스트 프로세스 메모리에만 있고 logcat에 쓰지 않는다.
+     */
+    @Test
+    fun liveOptionSelectionFinalizesEvalE01Goal() {
+        assumeLiveServer()
+        val current = launchConversation()
+
+        // 첫 계획은 모델의 보기 생성 여부에 흔들리지 않게 고정하고, 선택 이후 최종화는 실제
+        // 서버로 보낸다. e01 goal 조각과 #316 wire 계약을 그대로 쓴다.
+        showLiveClarification(
+            current,
+            utterance = "순자에게 사진 보내기",
+            question = ClarificationQuestion(
+                id = "e01-app",
+                prompt = "어느 앱으로 사진을 보낼까요?",
+                options = listOf("카카오톡", "문자"),
+                allowFreeform = true,
+            ),
+        )
+
+        instrumentation.runOnMainSync {
+            current.findViewById<View>(R.id.btn_option_1).performClick()
+        }
+        val confirm = waitForState<ConversationUiState.Confirm>(current)
+        assertTrue(confirm.goal.contains("카카오톡"))
+        assertTrue(confirm.goal.contains("순자"))
+        assertTrue(confirm.goal.contains("사진"))
+    }
+
+    /**
+     * eval `h07`의 숨은 지역을 「직접 말하기」 경로로 보낸다. 음향 인식기의 비결정성은 섞지
+     * 않고 성공한 STT callback부터 실제 앱·서버 최종화까지 관통한다.
+     */
+    @Test
+    fun liveDirectSpeechFinalizesEvalH07Goal() {
+        assumeLiveServer()
+        val current = launchConversation()
+
+        showLiveClarification(
+            current,
+            utterance = "네이버에서 비가 오는지 확인하기",
+            question = ClarificationQuestion(
+                id = "h07-region",
+                prompt = "어느 지역의 비를 확인할까요?",
+                options = emptyList(),
+                allowFreeform = true,
+            ),
+        )
+        instrumentation.runOnMainSync {
+            current.findViewById<View>(R.id.btn_direct_speak).performClick()
+            val listenerField = ConversationActivity::class.java.getDeclaredField(
+                "voiceRecognitionListener",
+            )
+            listenerField.isAccessible = true
+            val listener = listenerField.get(current) as SpeechRecognizerHelper.Listener
+            listener.onFinalResult("인천 서구")
+        }
+
+        val confirm = waitForState<ConversationUiState.Confirm>(current)
+        assertTrue(confirm.goal.contains("네이버"))
+        assertTrue(confirm.goal.contains("인천 서구"))
+        assertTrue(confirm.goal.contains("비") || confirm.goal.contains("강수"))
+    }
+
     private fun launchConversation(fontScale: Float? = null): ConversationActivity {
         ConversationInstrumentationConfiguration.fontScale = fontScale
         val intent = Intent(instrumentation.targetContext, ConversationActivity::class.java)
@@ -256,6 +324,62 @@ class ClarificationFlowDeviceTest {
             activity = it
             instrumentation.waitForIdleSync()
         }
+    }
+
+    private fun assumeLiveServer() {
+        assumeTrue(
+            "역사적으로 이름 붙은 -e davi.liveGemini true에서만 실제 모델 서버를 호출한다",
+            InstrumentationRegistry.getArguments().getString("davi.liveGemini") == "true",
+        )
+    }
+
+    private fun showLiveClarification(
+        current: ConversationActivity,
+        utterance: String,
+        question: ClarificationQuestion,
+    ) {
+        instrumentation.runOnMainSync {
+            val session = voiceSession(current)
+            session.start()
+            val pending = requireNotNull(session.nextRequest(utterance))
+            val outcome = session.applyResponse(
+                pending,
+                SlotFillState(
+                    status = IntentDialogueStatus.NEEDS_CLARIFICATION,
+                    message = question.prompt,
+                    clarification = ClarificationPlan(listOf(question)),
+                ),
+            ) as VoiceDialogueSession.Outcome.Clarify
+            val setState = ConversationActivity::class.java.getDeclaredMethod(
+                "setState",
+                ConversationUiState::class.java,
+            )
+            setState.isAccessible = true
+            setState.invoke(current, ConversationUiState.Clarifying(outcome, speaking = false))
+        }
+        instrumentation.waitForIdleSync()
+    }
+
+    private inline fun <reified T : ConversationUiState> waitForState(
+        current: ConversationActivity,
+        timeoutMs: Long = 45_000,
+    ): T {
+        val stateField = ConversationActivity::class.java.getDeclaredField("uiState")
+        stateField.isAccessible = true
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            instrumentation.waitForIdleSync()
+            val state = stateField.get(current)
+            if (state is T) return state
+            if (
+                state is ConversationUiState.Home ||
+                state is ConversationUiState.SafeEnd ||
+                state is ConversationUiState.Failed
+            ) break
+            SystemClock.sleep(100)
+        }
+        // 원문 상태 내용은 실패 출력에 넣지 않는다 — 타입만으로 서버/화면 경로를 진단한다.
+        throw AssertionError("${T::class.java.simpleName} 상태에 도달하지 못했다")
     }
 
     private fun voiceSession(current: ConversationActivity): VoiceDialogueSession {

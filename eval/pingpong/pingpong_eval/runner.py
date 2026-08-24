@@ -41,6 +41,7 @@ def run_scenario(
     started = time.monotonic()
     opening, revealed = user.opening(scenario, avoid=avoid_openings)
     said = [slot.key for slot in revealed]
+    missing_slot_keys = [slot.key for slot in scenario.slots if slot.key not in said]
 
     history: list[dict[str, str]] = []
     utterance = opening
@@ -101,6 +102,7 @@ def run_scenario(
         scenario_id=scenario.id,
         difficulty=scenario.difficulty,
         factors=scenario.factors,
+        missing_slot_keys=missing_slot_keys,
         transcript=transcript,
         metrics=transcript_metrics(transcript),
     )
