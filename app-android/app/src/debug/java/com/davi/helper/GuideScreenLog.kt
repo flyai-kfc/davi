@@ -92,6 +92,11 @@ object GuideScreenLog {
      * `anchor=`는 다른 쪽 문이다 — 내용만의 변화가 새 상황이 되는 길은 인과 게이트와 타깃
      * 앵커 **둘**이라, 게이트만 찍으면 스스로 갱신되는 목록(새 메시지가 계속 오는 대화 목록)이
      * 앵커만으로 재질의를 계속 내는 것이 로그에서 안 보인다.
+     *
+     * `v=`는 순회가 노드를 몇 번 당겼는가, `cut=`은 [UiTreeSerializer]의 사슬 상한이 끊은
+     * 서브트리 수다(#367). **`n=`은 `ms=`의 분모가 못 된다** — `MAX_ELEMENTS`에서 포화하고,
+     * 비용이 방출이 아니라 방문을 따른다. `cut=`이 0이 아닌 화면에서 안내 대상이 안 보이면
+     * 상한부터 의심한다.
      */
     fun sample(
         decision: String,
@@ -117,27 +122,9 @@ object GuideScreenLog {
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
                 "anchor=$anchor " +
-                walkCost(stats),
+                "v=${stats.visits} cut=${stats.cuts}",
         )
     }
-
-    /**
-     * 순회 비용의 계측(#367). **보정용이라 K가 정해지면 `w=`·`cut=`만 남기고 걷는다.**
-     *
-     * `n=`은 정규화 인자가 못 된다 — `MAX_ELEMENTS`에서 포화한다. 그래서 `ms=`를 나눠 볼 분모가
-     * 필요하고 그것이 `w=`다. `ms/w`가 폴링마다 안정적이어야 "비용은 방문 수를 따른다"가 서고,
-     * 꼬리에서만 치솟으면 그 꼬리는 노드 수가 아니라 메인 스레드 경합이 만든 것이다.
-     *
-     * `hv=`·`he=`는 **안 보임 사슬** 길이별 방문·방출이고 `gv=`·`ge=`는 **(안 보임 ∧ 화면 밖)**
-     * 사슬 기준이다. 상한 K를 고르면 `이득 = Σ v[k>K]`, `비용 = Σ e[k>K]`가 된다.
-     */
-    private fun walkCost(stats: UiTreeSerializer.WalkStats): String =
-        "w=${stats.walkFetch} p=${stats.paintFetch} l=${stats.labelFetch} " +
-            "hid=${stats.hiddenFetch} run=${stats.maxRun} cut=${stats.cuts} " +
-            "hv=${stats.visitsByRun.joinToString(",")} " +
-            "he=${stats.emitsByRun.joinToString(",")} " +
-            "gv=${stats.visitsByGeoRun.joinToString(",")} " +
-            "ge=${stats.emitsByGeoRun.joinToString(",")}"
 
     private fun eventName(type: Int): String = when (type) {
         AccessibilityEvent.TYPE_VIEW_CLICKED -> "VIEW_CLICKED"

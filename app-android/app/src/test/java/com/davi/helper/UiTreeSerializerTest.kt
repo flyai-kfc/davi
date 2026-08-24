@@ -55,6 +55,23 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `안 보임이 연속으로 이어진 길이로만 끊는다`() {
+        // 실측이 정한 상한은 2다. **1은 안 된다** — #358이 되찾은 요소가 깊이 1에 있어
+        // (배민 메뉴 상세 7개·가게 11개), 거기서 끊으면 그 요소들이 통째로 사라진다.
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(1))
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(2))
+        assertTrue(UiTreeSerializer.exceedsHiddenChain(3))
+
+        // 보이는 노드를 만나면 사슬은 0으로 리셋된다 — 안 보이는 노드 100개가 흩어져 있어도
+        // 사이사이 보이는 노드가 있으면 끊기지 않는다.
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(0))
+
+        // 경계가 `>=`로 밀리는 것을 막는다. cap을 받는 형태라 값과 규칙을 따로 고정할 수 있다.
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(run = 5, cap = 5))
+        assertTrue(UiTreeSerializer.exceedsHiddenChain(run = 6, cap = 5))
+    }
+
+    @Test
     fun `화면과 겹치는지로 기하 사슬을 끊는다`() {
         val screen = RectCover.Box(0, 0, 1080, 2340)
 

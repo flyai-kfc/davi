@@ -33,6 +33,27 @@ object UiTreeSerializer {
     /** 가림 판정에서 "내용이 있나"를 볼 때 내려갈 깊이. */
     private const val MAX_CONTENT_DEPTH = 6
 
+    /**
+     * **안 보이는 노드만 연속으로 이어진 사슬**을 몇 겹까지 따라갈지(#367). 보이는 노드를 만나면
+     * 0으로 리셋된다.
+     *
+     * #358이 없앤 절단을 되살리는 것이 아니다 — 거기서 끊던 근거는 노드 **하나의 자기 보고**였고,
+     * 가시성은 트리 아래로 단조롭지 않아 그 보고가 자식에 대해 아무것도 말해 주지 않는다. 여기서
+     * 끊는 근거는 **관측이 연속으로 비었다는 사실**이고, 같은 파일의 [MAX_CONTENT_DEPTH]가 같은
+     * 모양의 선례다.
+     *
+     * 값은 실측이 정했다(2026-08-24 SM-S921N / One UI, 7개 화면 · 화면당 30여 폴링).
+     * 사슬 길이별 방출 요소 수를 재니 **깊이 1까지만 요소가 있었다** — 배민 가게 11개, 메뉴 상세
+     * 7개(#358이 되찾은 `담기`·상단 바가 그것이다). 깊이 2 이상에서 방출된 요소는 7개 화면
+     * 어디에도 없었다. 그래서 비용 0의 하한이 1이고, **재지 않은 앱이 한 겹 더 깊을 수 있어 여유를
+     * 한 겹 산다.** 그 여유의 값은 네이버 앱 홈 이득의 2.6%(759 → 739회)뿐이다.
+     *
+     * 이득은 사슬이 긴 화면에 몰린다 — 네이버 앱 홈은 순회 822회 중 **739회가 이 상한 밖**이고,
+     * 그 사슬의 정체는 오프스크린 ViewPager 페이지다(최대 깊이 22). 사슬이 얕은 화면(캘린더·
+     * 앱서랍·배민)에서는 이득이 0에 가깝고 잃는 것도 없다.
+     */
+    private const val MAX_HIDDEN_RUN = 2
+
     /** 라벨을 만들 때 자손을 몇 단계까지 훑을지. */
     private const val MAX_MERGE_DEPTH = 4
 
@@ -63,76 +84,35 @@ object UiTreeSerializer {
 
     private const val ROLE_PAGE_DOT = "page_dot"
 
-    /** 사슬 길이 히스토그램의 칸 수. 마지막 칸은 `그 이상`을 모은다. */
-    private const val RUN_BUCKETS = 11
-
     /**
-     * 순회 한 번이 접근성 노드를 몇 번 당겼는지(#367).
+     * 순회 한 번의 비용(#367). 세는 것은 "방문한 노드"가 아니라 **`getChild()` 호출 수**다 —
+     * 비용의 실체가 바인더 왕복이다.
      *
-     * **보정용이다. K를 정하면 [walkFetch]와 [cuts]만 남기고 나머지는 걷는다.**
-     * 세는 것은 "방문한 노드"가 아니라 **`getChild()` 호출 수**다 — 비용의 실체가 바인더
-     * 왕복이라, 그 수를 세야 어느 경로가 비싼지가 갈린다.
-     *
-     * 히스토그램의 키는 **진성 조상만의 최대 사슬 길이**다. 자기 run을 접은 값으로 세면
-     * 절단 지점이 이득에 섞인다 — 절단될 노드도 부모가 이미 `getChild()`로 당겨온 뒤라
-     * **K로 끊어도 그 왕복은 그대로 일어난다.**
+     * `n`(요소 수)은 정규화 인자가 못 된다. [MAX_ELEMENTS]에서 포화하고, 애초에 비용이
+     * 방출이 아니라 방문을 따른다(실측: 네이버 앱 홈 21요소가 캘린더 55요소보다 30배 비쌌다).
+     * `ms`를 나눠 볼 분모가 [visits]다.
      */
     class WalkStats {
-        /** [walkChildren]이 당긴 자식 수. */
-        var walkFetch = 0
+        /** [walk]가 들어간 노드 수. */
+        var visits = 0
             internal set
 
-        /** [hasPaintedContent]가 당긴 자식 수. 형제마다·조상마다 다시 도는 경로다. */
-        var paintFetch = 0
-            internal set
-
-        /** 라벨 병합·상태 hoist가 당긴 자식 수. */
-        var labelFetch = 0
-            internal set
-
-        /** [walkFetch] 중 안 보이는 조상이 하나라도 있던 것. #359 이전이면 안 했을 왕복이다. */
-        var hiddenFetch = 0
-            internal set
-
-        /** 관측된 최대 사슬 길이. 버킷 상한이 표본을 자르는지 보려고 따로 든다. */
-        var maxRun = 0
-            internal set
-
-        /** 앵커가 실제로 끊은 서브트리 수. 계측 단계에서는 늘 0이다. */
+        /**
+         * [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수.
+         *
+         * **요소를 잃었을 때 되짚는 알람이다.** 0이면 이 화면의 결과는 상한과 무관하고,
+         * 0이 아닌데 안내 대상이 안 보이면 여기부터 의심한다.
+         */
         var cuts = 0
             internal set
 
-        /** 안 보임 사슬 기준 방문·방출. `이득 = Σ visits[k>K]`, `비용 = Σ emits[k>K]`. */
-        val visitsByRun = IntArray(RUN_BUCKETS)
-        val emitsByRun = IntArray(RUN_BUCKETS)
-
-        /** (안 보임 ∧ 화면과 안 겹침) 사슬 기준. 순수 가시성 사슬로 안 될 때의 대안이다. */
-        val visitsByGeoRun = IntArray(RUN_BUCKETS)
-        val emitsByGeoRun = IntArray(RUN_BUCKETS)
-
-        internal fun countVisit(run: Int, geoRun: Int, hidden: Boolean) {
-            walkFetch++
-            visitsByRun[bucket(run)]++
-            visitsByGeoRun[bucket(geoRun)]++
-            if (hidden) hiddenFetch++
-            if (run > maxRun) maxRun = run
+        internal fun countVisit() {
+            visits++
         }
 
-        internal fun countPaintFetch() {
-            paintFetch++
+        internal fun countCut() {
+            cuts++
         }
-
-        internal fun countLabelFetch() {
-            labelFetch++
-        }
-
-        internal fun countEmits(run: Int, geoRun: Int, count: Int) {
-            if (count <= 0) return
-            emitsByRun[bucket(run)] += count
-            emitsByGeoRun[bucket(geoRun)] += count
-        }
-
-        private fun bucket(run: Int): Int = run.coerceAtMost(RUN_BUCKETS - 1)
     }
 
     /** 직렬화 한 번 동안의 누적 상태. 파라미터가 늘어나는 것을 막는다. */
@@ -177,17 +157,7 @@ object UiTreeSerializer {
         masker: LabelMasker = labelMaskerFor(BuildConfig.PRIVACY_MASKING_DISABLED),
     ): Result {
         val ctx = Ctx(boxOf(root), masker)
-        walk(
-            root,
-            ctx,
-            absorbed = false,
-            depth = 0,
-            cover = emptyList(),
-            hiddenRun = 0,
-            ancestorMaxRun = 0,
-            geoRun = 0,
-            ancestorMaxGeoRun = 0,
-        )
+        walk(root, ctx, absorbed = false, depth = 0, cover = emptyList(), hiddenRun = 0)
 
         val truncated = ctx.elements.size > MAX_ELEMENTS
         return Result(
@@ -216,21 +186,18 @@ object UiTreeSerializer {
         depth: Int,
         cover: List<RectCover.Box>,
         hiddenRun: Int,
-        ancestorMaxRun: Int,
-        geoRun: Int,
-        ancestorMaxGeoRun: Int,
     ) {
         if (node == null || depth > MAX_DEPTH || ctx.elements.size > MAX_ELEMENTS) return
-        // 계측(#367). **받은 값으로 인덱싱한다** — 자기 run을 먼저 접으면 절단될 노드가 이득에
-        // 섞인다. 그 노드는 부모가 이미 당겨온 뒤라 K로 끊어도 왕복이 그대로 일어난다.
-        ctx.stats.countVisit(ancestorMaxRun, ancestorMaxGeoRun, hidden = ancestorMaxRun > 0)
-        val emittedBefore = ctx.elements.size
+        ctx.stats.countVisit()
         // **가시성은 트리 아래로 단조롭지 않다.** 부모가 false인데 자식은 true인 화면이 있다
         // (2026-08-21 SM-S921N 실측, #358: 배민 메뉴 상세의 상·하단 바 컨테이너가
         // `visibleToUser=false`인데 그 안의 `담기` 버튼·`뒤로가기`·제목은 true였다).
-        // 그래서 여기서 서브트리를 끊지 않는다 — 이 노드만 건너뛰고 자식은 계속 훑는다.
+        // 그래서 **이 노드 하나의 보고로는 끊지 않는다** — 자기만 건너뛰고 자식은 계속 훑는다.
         // 화면 밖 목록 항목은 **자기 자신이** false라 그대로 걸러지므로, 이 규칙이 원래 막으려던
         // 것은 그대로 막힌다.
+        // **끊는 자리는 하나 있고 근거가 다르다**([MAX_HIDDEN_RUN], #367) — 노드 하나의 자기
+        // 보고가 아니라 **안 보인다는 관측이 연속으로 이어진 길이**다. 실측한 7개 화면에서
+        // 요소가 나온 사슬은 깊이 1까지였고 상한은 그보다 한 겹 위다.
         // **아직 끊는 자리가 셋 남아 있다**(가림 판정 [hasPaintedContent]는 이 PR에서 맞췄다).
         // 라벨 병합·상태 hoist([collectDescendantText]·[descendantCheckedState])는 고치면 화면
         // 전반의 label이 함께 바뀌어 별도 측정이 필요하다.
@@ -245,22 +212,12 @@ object UiTreeSerializer {
         // 배민 가게의 가로 필터 칩 줄인데, 같은 화면 본문 스크롤러가 `vis=true`라 화면 단위
         // `has_scrollable_element`는 살아 있었다.
         if (!node.isVisibleToUser) {
-            // 사슬을 한 칸 늘린다(#367 계측). 기하 사슬은 **화면과 겹치면 끊긴다** — #358의
-            // 배민 하단 바가 안 보이면서 화면 안에 면적을 갖는 노드라, 그 계열에서는 사슬에
-            // 들어가지도 못한다.
             val run = hiddenRun + 1
-            val nextGeoRun = if (intersectsScreen(node, ctx)) 0 else geoRun + 1
-            walkChildren(
-                node,
-                ctx,
-                absorbed,
-                depth,
-                cover,
-                hiddenRun = run,
-                ancestorMaxRun = maxOf(ancestorMaxRun, run),
-                geoRun = nextGeoRun,
-                ancestorMaxGeoRun = maxOf(ancestorMaxGeoRun, nextGeoRun),
-            )
+            if (exceedsHiddenChain(run)) {
+                ctx.stats.countCut()
+                return
+            }
+            walkChildren(node, ctx, absorbed, depth, cover, hiddenRun = run)
             return
         }
 
@@ -294,11 +251,11 @@ object UiTreeSerializer {
             // 편집 노드는 hint만 쓰고 자손을 라벨에 합치지도, 아래에서 순회하지도 않는다.
             val inspectDescendants = shouldInspectDescendants(node.isEditable)
             val merge = inspectDescendants && shouldMergeDescendants(node, ctx.screenArea)
-            val label = if (merge) mergedLabel(node, ctx) else ownTextValue.orEmpty()
+            val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
             // 라벨을 흡수했으면 상태도 함께 올린다. 그러지 않으면 스위치가 든 행에서 켬/끔이
             // 통째로 사라진다 — 자식 스위치는 흡수돼 안 나가고, 행 자신은 checkable이 아니라
             // null이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
-            val checked = if (merge) mergedCheckedState(node, ctx) else ownCheckedState(node)
+            val checked = if (merge) mergedCheckedState(node) else ownCheckedState(node)
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
@@ -327,26 +284,15 @@ object UiTreeSerializer {
             ctx.elements.add(element(node, "", ctx, obscured = occluded))
         }
 
-        // 방출은 자손을 훑기 전에 센다 — 이 노드 몫만 이 노드의 키로 들어가야 한다.
-        ctx.stats.countEmits(ancestorMaxRun, ancestorMaxGeoRun, ctx.elements.size - emittedBefore)
-
-        // 보이는 노드에서 두 사슬이 함께 끊긴다.
-        walkChildren(
-            node,
-            ctx,
-            childrenAbsorbed,
-            depth,
-            cover,
-            hiddenRun = 0,
-            ancestorMaxRun = ancestorMaxRun,
-            geoRun = 0,
-            ancestorMaxGeoRun = ancestorMaxGeoRun,
-        )
+        // 보이는 노드를 만났으니 사슬은 여기서 끊긴다.
+        walkChildren(node, ctx, childrenAbsorbed, depth, cover, hiddenRun = 0)
     }
 
     /**
      * 자식들을 훑는다. 보이는 노드와 [walk]가 건너뛴 노드가 **같은 규칙으로** 자식을 훑도록
-     * 한 곳에 둔다 — 건너뛴 노드는 자기 자신을 내보내지 않을 뿐, 아래는 그대로 살아 있다(#358).
+     * 한 곳에 둔다 — 건너뛴 노드는 자기 자신을 내보내지 않을 뿐, 아래는 살아 있다(#358).
+     * 그 "아래"의 끝이 [MAX_HIDDEN_RUN]이다 — 안 보임이 그만큼 연속되면 [walk]가 여기 오기 전에
+     * 돌아간다(#367).
      * 순회를 끊는 편집 경계([shouldInspectDescendants])도 여기서 한 번만 본다 — 호출자마다
      * 두면 두 경로가 조용히 어긋난다.
      */
@@ -357,18 +303,30 @@ object UiTreeSerializer {
         depth: Int,
         cover: List<RectCover.Box>,
         hiddenRun: Int,
-        ancestorMaxRun: Int,
-        geoRun: Int,
-        ancestorMaxGeoRun: Int,
     ) {
         if (!shouldInspectDescendants(node.isEditable)) return
         val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
         // 직렬화는 폴링마다 돌고 안정·정체 판정이 그 시간 위에 얹혀 있다(PR #336 리뷰).
-        // **형제가 있어야 읽히는 값이다.** 안드로이드 트리는 단일 자식 래퍼 사슬이 흔한데,
-        // 거기서 계산하면 사슬 깊이만큼 안 쓰는 순회(깊이 6, `getChild()` IPC)가 폴링마다 생긴다.
-        val painted = if (kids.size < 2) emptyList() else kids.map { hasPaintedContent(it, 0, ctx) }
+        //
+        // **아래 `painted[other]`는 `&&`의 마지막 항이라 앞이 거짓이면 평가되지 않는다.** 빈
+        // 목록을 돌려주는 두 갈래가 그 성질에 기대고 있다 — 조건 순서를 바꾸면 색인이 터진다.
+        val painted = when {
+            // **형제가 있어야 읽히는 값이다.** 안드로이드 트리는 단일 자식 래퍼 사슬이 흔한데,
+            // 거기서 계산하면 사슬 깊이만큼 안 쓰는 순회(깊이 6, `getChild()` IPC)가 폴링마다 생긴다.
+            kids.size < 2 -> emptyList()
+            // 그리는 순서가 모두 같으면 아래 `>` 비교가 하나도 참이 안 된다 — 덮개 후보가 없으니
+            // 스윕도 필요 없다(#367).
+            kids.all { it.drawingOrder == kids[0].drawingOrder } -> emptyList()
+            // **화면과 안 겹치는 형제는 덮개가 될 수 없다.** [RectCover.isCovered]가 화면으로 자른
+            // 뒤 빈 조각을 `continue`로 버리므로, 그런 형제의 판정 결과는 결과에 닿지 않는다.
+            // 기하 판정을 앞에 두어 **가장 비싼 스윕을 가장 먼저 없앤다** — 안 보이는 노드만으로
+            // 이뤄진 오프스크린 페이지는 [paintsOwnContent]가 `visibleToUser`를 요구해 조기 반환이
+            // 한 번도 안 걸리고 깊이 6까지 전수 조사를 돈다(2026-08-24 SM-S921N 실측: 네이버 앱
+            // 홈에서 이 스윕이 `getChild()` 3788회로 순회 822회의 4.6배였다).
+            else -> kids.map { intersectsScreen(it, ctx) && hasPaintedContent(it, 0) }
+        }
         for ((index, child) in kids.withIndex()) {
             // 이 자식보다 **위에 그려지고 내용이 있는** 형제만 가림으로 친다.
             // 내용 조건이 없으면 빈 투명 오버레이(실측: draw=5)가 시트를 가린 것으로 잡힌다.
@@ -380,17 +338,7 @@ object UiTreeSerializer {
                     other != index && sibling.drawingOrder > child.drawingOrder && painted[other]
                 }
             }
-            walk(
-                child,
-                ctx,
-                childrenAbsorbed,
-                depth + 1,
-                childCover,
-                hiddenRun,
-                ancestorMaxRun,
-                geoRun,
-                ancestorMaxGeoRun,
-            )
+            walk(child, ctx, childrenAbsorbed, depth + 1, childCover, hiddenRun)
         }
     }
 
@@ -431,15 +379,17 @@ object UiTreeSerializer {
      * 이 서브트리가 실제로 무언가를 그리는지. **투명한 빈 오버레이를 가림에서 빼려고** 둔다.
      * 접근성 트리에는 알파가 없어서 이것이 유일한 대용 신호다.
      */
-    private fun hasPaintedContent(node: AccessibilityNodeInfo, depth: Int, ctx: Ctx): Boolean {
+    private fun hasPaintedContent(node: AccessibilityNodeInfo, depth: Int): Boolean {
         if (depth > MAX_CONTENT_DEPTH) return false
-        ctx.stats.countPaintFetch()
         // 안 보이는 노드는 **자기 자신만** 내용에서 빼고 자식은 계속 본다([walk]와 같은 이유).
         // 안 보인다고 보고된 컨테이너가 실제로는 그리는 경우가 있어서다 — 2026-08-21 SM-S921N
         // 실측(#358): 배민 메뉴 상세 하단 바 `[0,1928,1080,2178]`가 `visibleToUser=false`인데
         // 화면을 덮고 있고, 그 뒤로 완전히 들어간 옵션 행 `[0,1933,1080,2137]`이 한 픽셀도 안
         // 보이는데 `obscured`로 안 찍혔다.
         // 안 그리는 것을 가림으로 치는 반대쪽 사고는 열리지 않는다 — 자식까지 안 보이면 false다.
+        // **[MAX_HIDDEN_RUN]은 여기 걸지 않는다.** 실패 방향이 반대다 — 여기서 덜 보면 덮개를
+        // 놓쳐 **모달 뒤 요소가 안내 대상이 된다**(#336이 고친 것). 이미 [MAX_CONTENT_DEPTH]로
+        // 묶여 있고, 비용은 호출부가 화면과 안 겹치는 형제를 빼면서 걷었다(#367).
         if (
             paintsOwnContent(
                 visibleToUser = node.isVisibleToUser,
@@ -451,7 +401,7 @@ object UiTreeSerializer {
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            if (hasPaintedContent(child, depth + 1, ctx)) return true
+            if (hasPaintedContent(child, depth + 1)) return true
         }
         return false
     }
@@ -568,6 +518,15 @@ object UiTreeSerializer {
         clickable: Boolean,
         hasOwnLabel: Boolean,
     ): Boolean = visibleToUser && (clickable || hasOwnLabel)
+
+    /**
+     * 안 보이는 노드가 [cap]겹 넘게 이어졌는가. 넘으면 그 자리에서 서브트리를 끊는다(#367).
+     *
+     * Android 타입 없이 고정하려고 순수 함수로 뺀다 — 이 파일의 [paintsOwnContent]·[resolveAxis]와
+     * 같은 자리다. 경계가 테스트에 없으면 `>=`로 잘못 써도 초록이고, 그 한 칸이 #358이 되찾은
+     * 요소를 통째로 지운다.
+     */
+    internal fun exceedsHiddenChain(run: Int, cap: Int = MAX_HIDDEN_RUN): Boolean = run > cap
 
     /** 보이는 노드를 순회하며 한 번 본 `true`가 뒤의 일반 노드 때문에 사라지지 않게 한다. */
     internal fun observeScrollable(
@@ -694,8 +653,8 @@ object UiTreeSerializer {
      * 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면, 그 자식은 흡수돼
      * 별도 요소로 나가지 않는다. 그때 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다.
      */
-    private fun mergedCheckedState(node: AccessibilityNodeInfo, ctx: Ctx): Boolean? =
-        hoistedCheckedState(ownCheckedState(node), descendantCheckedState(node, 0, ctx))
+    private fun mergedCheckedState(node: AccessibilityNodeInfo): Boolean? =
+        hoistedCheckedState(ownCheckedState(node), descendantCheckedState(node, 0))
 
     /** 위 병합 규칙을 Android 타입 없이 고정하기 위한 순수 함수. 자기 것이 언제나 이긴다. */
     internal fun hoistedCheckedState(own: Boolean?, descendant: Boolean?): Boolean? =
@@ -713,16 +672,15 @@ object UiTreeSerializer {
      * 그 `Switch`는 `clickable=true checkable=true`인데 text·content-desc가 **둘 다 없다.**
      * 라벨은 TextView에서 행으로 합쳐지는데 상태만 갈 곳이 없었다.
      */
-    private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int, ctx: Ctx): Boolean? {
+    private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int): Boolean? {
         if (depth >= MAX_MERGE_DEPTH) return null
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            ctx.stats.countLabelFetch()
             if (!child.isVisibleToUser) continue
-            if (child.isClickable && emitsOwnElement(mergedLabel(child, ctx), child.isEditable)) continue
+            if (child.isClickable && emitsOwnElement(mergedLabel(child), child.isEditable)) continue
             ownCheckedState(child)?.let { return it }
             if (child.isEditable) continue
-            descendantCheckedState(child, depth + 1, ctx)?.let { return it }
+            descendantCheckedState(child, depth + 1)?.let { return it }
         }
         return null
     }
@@ -896,10 +854,10 @@ object UiTreeSerializer {
         return ratio < CONTAINER_AREA_RATIO
     }
 
-    private fun mergedLabel(node: AccessibilityNodeInfo, ctx: Ctx): String {
+    private fun mergedLabel(node: AccessibilityNodeInfo): String {
         ownText(node)?.let { return it }
         val parts = mutableListOf<String>()
-        collectDescendantText(node, parts, 0, ctx)
+        collectDescendantText(node, parts, 0)
         return parts.joinToString(" ")
     }
 
@@ -907,19 +865,17 @@ object UiTreeSerializer {
         node: AccessibilityNodeInfo,
         out: MutableList<String>,
         depth: Int,
-        ctx: Ctx,
     ) {
         if (depth >= MAX_MERGE_DEPTH || out.size >= MAX_LABEL_PARTS) return
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            ctx.stats.countLabelFetch()
             if (!child.isVisibleToUser) continue
             // 중첩된 클릭 노드의 글자는 그 노드가 자기 라벨로 가져간다.
             if (child.isClickable) continue
             ownText(child)?.let { if (out.size < MAX_LABEL_PARTS) out.add(it) }
             // 편집 노드 아래의 구현별 자손에 입력 원문이 중복 노출될 수 있어 더 내려가지 않는다.
             if (child.isEditable) continue
-            collectDescendantText(child, out, depth + 1, ctx)
+            collectDescendantText(child, out, depth + 1)
         }
     }
 
