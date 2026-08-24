@@ -305,7 +305,8 @@ def _recent_step_lines(req: NextStepRequest, current: str) -> str:
     `content_signature`는 아직 앱이 채우지 않는다(#270 서브 4).
     """
 
-    recent = "\n".join(_step_line(step, current) for step in _history(req))
+    steps = _history(req)
+    recent = "\n".join(_step_line(step, index, steps, current) for index, step in enumerate(steps))
     return recent or "- 없음"
 
 
@@ -315,7 +316,7 @@ def _history(req: NextStepRequest) -> list[GuideStep]:
     return [step for step in req.steps[-MAX_HISTORY:] if step.instruction.strip()]
 
 
-def _step_line(step: GuideStep, current: str) -> str:
+def _step_line(step: GuideStep, index: int, steps: list[GuideStep], current: str) -> str:
     """스텝 하나를 한 줄로.
 
     **세 값 모두 요소 줄과 같은 `!r` 표기다.** 안내문만 큰따옴표로 감싸 눈에 띄게 하려던 초안은
@@ -338,25 +339,31 @@ def _step_line(step: GuideStep, current: str) -> str:
         notes.append(STEP_PRESSED if step.performed else STEP_PRESSED_ELSEWHERE)
     if step.screen_changed is not None:
         notes.append(STEP_CHANGED if step.screen_changed else STEP_UNCHANGED)
-    if _returned_to(step, current):
+    if _returned_to(step, index, steps, current):
         notes.append(STEP_SCREEN_RETURNED)
     outcome = f" — {' · '.join(notes)}" if notes else ""
     return f"- {where}{step.instruction.strip()!r}라고 안내함{target}{outcome}"
 
 
-def _returned_to(step: GuideStep, current: str) -> bool:
-    """그 안내로 떠났던 화면에 **지금 다시 와 있는가**.
+def _returned_to(step: GuideStep, index: int, steps: list[GuideStep], current: str) -> bool:
+    """그 안내가 나간 화면에 **떠났다가 지금 다시 와 있는가**.
 
-    **"한 번 떠났다"는 근거를 요구한다** — `screen_changed`가 `True`가 아니면 애초에 떠난 적이
-    없어 "돌아옴"이 성립하지 않는다. 그 화면에서 계속 다시 묻는 중(`False`)이거나 아직 모르는
-    것(`None`)을 회귀로 적으면, 진행이 없었던 것과 돌고 온 것이 한 문장으로 뭉개진다.
+    **"한 번 떠났다"를 이력 안에서 본다** — 그 스텝 뒤에 서명이 다른 스텝이 하나라도 있으면
+    그 사이에 다른 화면으로 갔다는 뜻이다. 없으면 그 화면에 계속 머무는 중이라 회귀가 아니다.
+
+    **`screen_changed`를 쓰지 않는다.** 그 값은 "구조 변화 ∨ 인과 있는 내용 변화"로 넓어졌고
+    (#380), 내용만 바뀐 화면에 머무는 동안에도 `True`가 된다 — 그걸 근거로 삼으면 광고가 도는
+    화면에서 떠난 적 없이 회귀로 적힌다. 판정에 필요한 값은 서명뿐이므로 남의 필드 의미에
+    기대지 않는다.
 
     비교하는 값은 둘 다 서버가 label 없이 만든 구조 서명이다(`signature.screen_signature`).
     그래서 **구조가 같은 다른 화면**을 회귀로 볼 수 있다 — 그 폭을 좁히는 것은 내용 서명의
     몫이고(#270 서브 4b), 여기서는 문장이 단정하지 않는 것으로 감당한다.
     """
 
-    return step.screen_changed is True and step.structure_signature == current
+    if step.structure_signature != current:
+        return False
+    return any(later.structure_signature != current for later in steps[index + 1 :])
 
 
 def _history_instruction(req: NextStepRequest, current: str) -> str:
@@ -375,7 +382,7 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
         lines.append(UNCHANGED_STEP_INSTRUCTION)
     if any(step.performed is not None for step in steps):
         lines.append(PERFORMED_STEP_INSTRUCTION)
-    if any(_returned_to(step, current) for step in steps):
+    if any(_returned_to(step, i, steps, current) for i, step in enumerate(steps)):
         lines.append(RETURNED_SCREEN_INSTRUCTION)
     # 요소 줄에 `tried=`가 실제로 붙었을 때만 설명한다. 이력이 있어도 그 label이 지금 화면에
     # 없으면 요소 줄에 안 붙으므로, 이력이 아니라 **현재 화면 요소**를 기준으로 본다.

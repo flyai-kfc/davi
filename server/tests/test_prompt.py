@@ -779,18 +779,21 @@ def test_step_history_escapes_a_value_that_carries_both_quote_marks():
 
 
 def _back_on(**overrides) -> NextStepRequest:
-    """지금 화면이 그 스텝이 떠났던 화면과 같은 구조인 요청.
+    """A(지금 화면) → B(다른 화면) → 지금 다시 A인 요청.
 
-    스텝의 `structure_signature`는 그 안내를 낸 응답의 echo이므로, 현재 화면의 서명과 같으면
-    "그때 그 화면으로 돌아와 있다"는 뜻이다.
+    **떠난 적이 있어야 회귀다.** 첫 스텝이 현재 서명이고 그 뒤에 다른 서명의 스텝이 있으므로,
+    그 사이에 다른 화면으로 갔다가 돌아온 것이 이력으로 드러난다.
     """
 
     screen = Screen(package_name="com.example.app")
-    fields = {"structure_signature": screen_signature(screen)}
+    here = screen_signature(screen)
     return NextStepRequest(
         goal="다음 항목 보기",
         screen=screen,
-        steps=[_step(**(fields | overrides))],
+        steps=[
+            _step(**({"structure_signature": here} | overrides)),
+            _step(instruction="다른 화면의 안내", structure_signature="e" * 64),
+        ],
     )
 
 
@@ -810,24 +813,57 @@ def test_step_history_is_silent_when_the_screen_never_came_back():
 
 
 def test_returned_screen_needs_evidence_that_we_ever_left():
-    """`screen_changed`가 True가 아니면 떠난 적이 없어 "돌아옴"이 성립하지 않는다.
+    """그 화면에 **계속 머무는 중**이면 회귀가 아니다.
 
-    그 화면에서 계속 다시 묻는 중(False)이거나 아직 모르는 것(None)을 회귀로 적으면,
-    진행이 없었던 것과 돌고 온 것이 한 문장으로 뭉개진다.
+    서명이 같은 스텝만 이어지면 떠난 적이 없다. 그걸 회귀로 적으면 진전이 없었던 것과
+    돌고 온 것이 한 문장으로 뭉개진다.
     """
 
-    unchanged = build_prompt(_back_on(screen_changed=False))
-    unknown = build_prompt(_back_on(screen_changed=None))
+    screen = Screen(package_name="com.example.app")
+    here = screen_signature(screen)
+    staying = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here),
+            _step(instruction="같은 화면의 다음 안내", structure_signature=here),
+        ],
+    )
 
-    assert STEP_SCREEN_RETURNED not in unchanged
-    assert STEP_SCREEN_RETURNED not in unknown
+    prompt = build_prompt(staying)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_does_not_read_screen_changed():
+    """`screen_changed`는 "구조 변화 ∨ 인과 있는 내용 변화"로 넓어졌다(#380).
+
+    그 값에 기대면 내용만 바뀐 화면에 머무는 동안에도 회귀로 적힌다. 판정은 서명만 본다.
+    """
+
+    marked = build_prompt(_back_on(screen_changed=None))
+    unmarked = build_prompt(
+        NextStepRequest(
+            goal="다음 항목 보기",
+            screen=Screen(package_name="com.example.app"),
+            steps=[
+                _step(
+                    structure_signature=screen_signature(Screen(package_name="com.example.app")),
+                    screen_changed=True,
+                )
+            ],
+        )
+    )
+
+    assert STEP_SCREEN_RETURNED in marked
+    assert STEP_SCREEN_RETURNED not in unmarked
 
 
 def test_returned_screen_explanation_does_not_declare_a_loop():
     """구조 서명은 label을 안 봐서 같은 목록의 다른 항목도 "구조가 같음"이 된다.
 
-    그래서 문장은 관측만 말하고 판단을 모델에게 남긴다 — `screen_changed=False`를 단정하지
-    않는 것과 같은 결이다.
+    그래서 문장은 관측만 말하고 판단을 모델에게 남긴다.
     """
 
     prompt = build_prompt(_back_on())
