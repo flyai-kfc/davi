@@ -732,8 +732,7 @@
                 android:ellipsize="end"
                 android:gravity="center"
                 android:text="@string/conversation_confirm_reject"
-                android:textColor="@color/davi_button_on_primary"
-                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice.OnFill" />
 
             <ImageView
                 android:layout_width="@dimen/davi_shortcut_icon_size"

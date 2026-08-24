@@ -105,8 +105,16 @@ internal class ConfirmShortcutBackground(context: Context) : Drawable() {
     }
 
     /**
-     * **그림자가 버튼 모양을 따르게 한다.** 안 주면 `elevation`이 사각형 그림자를 던져
-     * 뾰족한 끝 밖에 그늘이 남는다. 이 모양은 볼록해서 `setConvexPath`로 충분하다.
+     * **안 주면 이 버튼만 그림자가 사라진다.** `Drawable.getOutline`의 기본 구현은
+     * `setRect(bounds)` 뒤에 **`setAlpha(0)`**이고, alpha 0은 「그림자를 그리지 말라」는
+     * 뜻이다 — 사각 그림자가 지는 게 아니라 아예 안 진다. ①③은 XML 드로어블이라
+     * 아웃라인이 자동으로 서는데 ②만 빠져 셋이 어긋난다.
+     *
+     * **넘기는 것은 [backplatePath], 즉 뾰족하지 않은 라운드렉트다** — 그림자는 뾰족한
+     * 끝을 따라가지 않는다. **그게 맞다**: 바깥 겹이 뒤판이라 ①③과 같은 r16 모서리로
+     * 져야 셋이 같은 꼴이다. **[bodyPath]로 바꾸지 말 것** — 뒤판 그림자가 사라진다.
+     *
+     * 이 모양은 볼록해서 `setConvexPath`로 충분하다.
      */
     override fun getOutline(outline: Outline) {
         @Suppress("DEPRECATION")
