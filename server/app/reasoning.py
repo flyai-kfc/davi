@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from typing import NamedTuple
 
 from .config import settings
 from .errors import LlmError
@@ -44,9 +45,23 @@ _APP_DRAWER_FALLBACK_PACKAGES = {"com.sec.android.app.launcher"}
 _EVIDENCE_NOISE = re.compile(r"[^\w]+", re.UNICODE)
 _EVIDENCE_WORD = re.compile(r"\w+", re.UNICODE)
 
+# **한 값을 이어 붙이는 구두점**(PR #406 리뷰). 어절 토큰화(`_EVIDENCE_WORD`)는 구두점을
+# 경계로 삼는데, 그 경계가 **원문에는 없던 것**일 때가 있다 — `010-1234-5678`은 사람이 읽기에
+# 값 하나지만 토큰은 셋이라, 잘린 `010-1234`가 두 어절의 경계에 정확히 맞아떨어져 "인용됨"으로
+# 통과했다(리뷰 재현). 그래서 **이 문자들로만 이어진 자리는 어절 경계로 보지 않는다.**
+#
+# 괄호·쉼표는 **넣지 않는다.** 저것들은 값을 잇는 것이 아니라 묶거나 나열하는 자리라, 넣으면
+# `설정(Settings)`의 `설정`이나 `사과,배`의 `사과` 같은 **정당한 인용이 막힌다** — 완료 근거
+# 대조가 같은 함수를 쓰므로 그 손해가 먼저 온다.
+_VALUE_CONNECTORS = frozenset("-./:")
+
 # 한 글자 label(아이콘·숫자)은 우연 일치가 잦고, 숫자 키패드에서는 거의 모든 문장에 걸린다.
 # 대조할 긴 label이 없더라도 한 글자로 폴백하지 않는다(#71 fixture 평가).
 _MIN_EVIDENCE_LABEL_CHARS = 2
+
+# 복사 문구의 하한. 근거는 매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는
+# 버튼은 사용자가 지우고 다시 치는 것보다 낫지 않다(`_goal_quotes_input_text`).
+_MIN_INPUT_TEXT_CHARS = 2
 
 # label 뒤에 붙어도 **같은 어절을 인용한 것**으로 볼 수 있는 한국어 조사·서술격 어미.
 # 이 목록 밖의 글자까지 부분 일치로 받으면 `사용 중`과 `사용 중지`처럼 상태가 뒤집힌다.
@@ -131,8 +146,15 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 연쇄하지 않는다 — 통과하거나 실패로 닫거나 둘뿐이다.
     _reject_obscured_target(action, req.screen)
 
-    # 1. 복사 신호는 확인받은 목표 문장에서 온 말만 남긴다(C21). **아래 교정들과 연쇄하지
-    #    않는다** — 건드리는 필드가 `input_text` 하나뿐이고, 아래 어느 가드도 그 값을 읽지 않는다.
+    # 1. 복사 신호는 확인받은 목표 문장에서 온 말만 남긴다(C21).
+    #    **이 자리여야 한다** — 아래 tap 분기가 `return action`으로 끝나므로, 뒤로 내리면
+    #    `type`이 아닌 action의 `input_text`를 비우는 일이 tap에서 통째로 건너뛰어진다(PR #406
+    #    리뷰가 "왜 1번인지 설명이 없다"고 짚은 자리다. 두 가드가 `action_type`으로 배타적이라
+    #    **결과가 같아 보이지만**, 그건 지금 tap 가드가 값을 안 읽는다는 것이지 이 가드가
+    #    tap 경로에서 도는 것까지 보장하지는 않는다).
+    #    아래 교정들과 **연쇄하지는 않는다** — 건드리는 필드가 `input_text` 하나뿐이고
+    #    어느 가드도 그 값을 읽지 않는다. 새 가드를 넣는 사람은 두 가지를 함께 본다:
+    #    early return 앞이어야 하는가(도달성), 그리고 다른 가드가 그 필드를 읽는가(연쇄).
     action = _keep_input_text_from_goal(action, req.goal)
 
     # 2. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
@@ -196,9 +218,12 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
     제안이 뜨는 경로가 된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`),
     필드 순서상 `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
 
-    **최소 길이 임계값은 두지 않는다.** 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`는 짧은 label이
-    아무 문장에나 우연히 걸려 **검증이 헐거워지는** 것을 막지만, 여기서 짧은 값은 헐거움이 아니라
-    복사할 것이 별로 없다는 뜻일 뿐이다. 근거 없이 임계값을 정하지 않는다(SPEC §4).
+    **하한은 한 글자를 거르는 데까지만 둔다**(`_MIN_INPUT_TEXT_CHARS`, PR #406 리뷰). 근거는
+    매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는 버튼은 사용자가 지우고
+    다시 치는 것보다 낫지 않다. 어절 경계에 우연히 걸린 관형사(`그 집으로 가자`의 `그`)가 여기서
+    걸린다. 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **같은 값이지만 다른 이유로 서 있다**:
+    저쪽은 짧은 label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다. 그 위로는 임계값을
+    올리지 않는다 — 두 글자와 세 글자를 가를 근거가 없다(SPEC §4).
     """
     if action.input_text is None:
         return action
@@ -578,11 +603,9 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     허용한다(`카카오톡` vs `카카오톡이`). 임의의 접두 일치는 허용하지 않는다: label `사용 중`을
     근거 `사용 중지했습니다`에서 찾으면 정반대 상태가 통과한다(#71).
     """
-    evidence_words = _evidence_words(evidence)
-    if not evidence_words:
+    phrases = _phrase_offsets(evidence)
+    if not phrases.compact:
         return False
-
-    compact_evidence, starts, ends = _phrase_offsets(evidence_words)
 
     # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
     # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
@@ -599,9 +622,7 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
         # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
         return False
 
-    return any(
-        _contains_quoted_phrase(compact_evidence, starts, ends, label) for label in comparable
-    )
+    return any(_contains_quoted_phrase(phrases, label) for label in comparable)
 
 
 def _goal_quotes_input_text(input_text: str, goal: str) -> bool:
@@ -615,35 +636,55 @@ def _goal_quotes_input_text(input_text: str, goal: str) -> bool:
     바뀌어도 이 판정은 흔들리지 않는다 — 마스킹된 label과 대조하는 근거 검사와 다른 점이다.
     """
     normalized = _normalize_for_evidence(input_text)
-    if not normalized:
+    # **한 글자는 받지 않는다.** 매칭이 헐거워서가 아니라 **아낄 타이핑이 없어서**다 — 버튼이
+    # 하는 일이 한 글자 대신 쳐 주는 것이면 사용자는 지우고 다시 치는 쪽이 빠르다. 어절 경계에
+    # 우연히 걸린 조사·관형사(`그 집으로 가자`의 `그`)가 여기로 온다(PR #406 리뷰).
+    # 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **다른 이유로 서 있는 값**이다: 저쪽은 짧은
+    # label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다.
+    if len(normalized) < _MIN_INPUT_TEXT_CHARS:
         return False
-    compact_goal, starts, ends = _phrase_offsets(_evidence_words(goal))
-    return _contains_quoted_phrase(compact_goal, starts, ends, normalized)
+    return _contains_quoted_phrase(_phrase_offsets(goal), normalized)
 
 
-def _phrase_offsets(words: list[str]) -> tuple[str, list[int], list[int]]:
-    """어절 목록을 붙인 문자열과 각 어절의 시작·끝 오프셋.
+class _Phrases(NamedTuple):
+    """어절 토큰화 결과. [_contains_quoted_phrase]가 경계를 판정하는 데 필요한 전부다.
 
-    [_contains_quoted_phrase]가 어절 경계를 보려면 이 세 값이 필요하다. 대조 대상이 여럿인
-    호출자는 한 번만 만들어 재사용한다.
+    대조 대상이 여럿인 호출자는 한 번만 만들어 재사용한다.
     """
-    compact = "".join(words)
+
+    compact: str
+    """어절만 이어 붙인 문자열. 구두점·공백이 빠져 `Wi-Fi`와 `WiFi`가 같은 값이 된다."""
+
+    starts: list[int]
+    ends: list[int]
+    """[compact] 안에서 각 어절이 시작·끝나는 자리."""
+
+    glued: list[bool]
+    """이 어절이 **다음 어절과 한 값인가**([_VALUE_CONNECTORS]로만 이어졌는가). 마지막은 False.
+
+    참이면 그 자리는 원문에 없던 경계이므로 인용의 시작·끝이 될 수 없다.
+    """
+
+
+def _phrase_offsets(text: str) -> _Phrases:
+    """문장 하나를 어절로 끊어 [_Phrases]로 만든다."""
+    folded = text.casefold()
+    matches = list(_EVIDENCE_WORD.finditer(folded))
     starts: list[int] = []
     ends: list[int] = []
+    glued: list[bool] = []
     cursor = 0
-    for word in words:
+    for index, match in enumerate(matches):
         starts.append(cursor)
-        cursor += len(word)
+        cursor += match.end() - match.start()
         ends.append(cursor)
-    return compact, starts, ends
+        following = matches[index + 1] if index + 1 < len(matches) else None
+        separator = folded[match.end() : following.start()] if following else ""
+        glued.append(bool(separator) and all(char in _VALUE_CONNECTORS for char in separator))
+    return _Phrases("".join(m.group() for m in matches), starts, ends, glued)
 
 
-def _contains_quoted_phrase(
-    compact_text: str,
-    starts: list[int],
-    ends: list[int],
-    normalized_phrase: str,
-) -> bool:
+def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
     """미리 토큰화한 문장에 정규화한 문구의 어절 연속이 있는지 판정한다.
 
     구두점·공백을 접은 문자열은 비교하되 시작은 어절 경계여야 하고, 끝은 어절 경계이거나 정해 둔
@@ -654,16 +695,32 @@ def _contains_quoted_phrase(
     (`_evidence_quotes_screen`)와 복사 문구가 목표 문장에 있는 말인지(`_goal_quotes_input_text`)다.
     이름에 evidence·label이 없는 이유가 그것이고, 경계를 이렇게 정한 근거는 #71 fixture 평가다.
     """
-    for start in starts:
-        if not compact_text.startswith(normalized_phrase, start):
+    for index, start in enumerate(phrases.starts):
+        # 앞 어절과 한 값이면 그 자리는 원문에 없던 경계다 — `010-1234-5678`의 `1234`에서
+        # 시작하는 인용은 값의 조각이지 인용이 아니다.
+        if index > 0 and phrases.glued[index - 1]:
+            continue
+        if not phrases.compact.startswith(normalized_phrase, start):
             continue
         match_end = start + len(normalized_phrase)
-        if match_end in ends:
-            return True
-        word_end = next(end for end in ends if end > match_end)
-        if _is_allowed_korean_evidence_suffix(compact_text[match_end:word_end]):
+        last = _index_of_end(phrases.ends, match_end)
+        if last is not None:
+            # 끝나는 어절이 다음 어절과 한 값이면 **뒤가 잘린 것**이다.
+            if not phrases.glued[last]:
+                return True
+            continue
+        word_end = next(end for end in phrases.ends if end > match_end)
+        if not _is_allowed_korean_evidence_suffix(phrases.compact[match_end:word_end]):
+            continue
+        # 조사까지 먹었으면 그 어절은 통째로 소비된 것이라, 끝 판정은 위와 같다.
+        if not phrases.glued[phrases.ends.index(word_end)]:
             return True
     return False
+
+
+def _index_of_end(ends: list[int], offset: int) -> int | None:
+    """[offset]에서 끝나는 어절의 번호. 어절 경계가 아니면 None."""
+    return ends.index(offset) if offset in ends else None
 
 
 def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:

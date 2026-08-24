@@ -558,7 +558,9 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{IME_VISIBLE if ime_visible else IME_NOT_VISIBLE}\n"
     # 요소 줄과 같은 목록을 본다 — 검색창에 포커스가 남은 채 시트가 올라오면 포커스는 뒤에
     # 남으므로, 전체를 보면 목록에 없는 입력칸을 두고 입력 안내가 나간다(PR #336 리뷰).
-    input_ready = any(element.editable and element.focused for element in _visible_elements(req))
+    # **한 번만 훑는다**(`_state_context`와 같은 모양) — 이 함수는 조건 둘이 같은 목록을 본다.
+    elements = _visible_elements(req)
+    input_ready = any(element.editable and element.focused for element in elements)
     if input_ready and ime_visible is not False:
         context += f"{FOCUSED_INPUT_INSTRUCTION}\n"
     elif input_ready:
@@ -568,7 +570,7 @@ def _input_context(req: NextStepRequest) -> str:
     # 입력칸이 하나라도 보이면 붙인다 — 포커스도 키보드도 보지 않는다. 위 문장들과 조건이 다른
     # 이유는 주제가 달라서다: 저것들은 "지금 입력 단계인가"를 말하고, 이 문장은 type을 고를 때의
     # 필드 작성 규칙이라 아직 아무 칸도 포커스되지 않은 화면에서도 필요하다.
-    if any(element.editable for element in _visible_elements(req)):
+    if any(element.editable for element in elements):
         context += f"{INPUT_TEXT_INSTRUCTION}\n"
     return context
 

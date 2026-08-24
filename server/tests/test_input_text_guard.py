@@ -12,9 +12,8 @@
 from __future__ import annotations
 
 import pytest
-from app.llm import LlmClient
 from app.prompt import INPUT_TEXT_INSTRUCTION, build_prompt
-from app.reasoning import next_step
+from app.reasoning import _goal_quotes_input_text, next_step
 from app.schemas import (
     ActionType,
     GuideAction,
@@ -23,17 +22,9 @@ from app.schemas import (
     UiElement,
 )
 
+from tests.conftest import FixedLlmClient
+
 GOAL = "교촌치킨에서 후라이드 시켜줘"
-
-
-class _FixedLlmClient(LlmClient):
-    """모델이 내놓은 행동을 그대로 돌려주는 fake. 가드레일만 관측한다."""
-
-    def __init__(self, action: GuideAction) -> None:
-        self._action = action
-
-    def reason(self, req: NextStepRequest) -> GuideAction:
-        return self._action
 
 
 def _search_screen() -> Screen:
@@ -76,7 +67,7 @@ def _action(action_type: ActionType, input_text: str | None) -> GuideAction:
 
 def _guide(action: GuideAction, goal: str = GOAL, screen: Screen | None = None) -> GuideAction:
     request = NextStepRequest(goal=goal, screen=screen or _search_screen())
-    return next_step(request, _FixedLlmClient(action)).action
+    return next_step(request, FixedLlmClient(action)).action
 
 
 # ── 목표 문장에서 온 값만 남는다 ────────────────────────────────────────
@@ -143,3 +134,50 @@ def test_prompt_omits_the_rule_without_an_input():
     """입력칸이 없으면 type을 고를 자리가 아니다 — 없는 상황을 설명하지 않는다."""
     prompt = build_prompt(NextStepRequest(goal=GOAL, screen=_list_screen()))
     assert INPUT_TEXT_INSTRUCTION not in prompt
+
+
+# ── 어절 경계가 만든 오탐(PR #406 리뷰) ──────────────────────────────
+
+
+# 토큰화(`\w+`)는 구두점을 경계로 삼는데 그 경계가 **원문에는 없던 것**일 수 있다.
+# 잘린 복합값이 두 어절의 경계에 정확히 맞아떨어져 "인용됨"으로 통과했다 — 리뷰 재현 그대로.
+@pytest.mark.parametrize(
+    ("input_text", "goal"),
+    [
+        ("010-1234", "전화번호는 010-1234-5678 입니다"),
+        ("1234-5678", "전화번호는 010-1234-5678 입니다"),
+        ("naver", "naver.com에 접속해줘"),
+        ("2026-08", "2026-08-24에 알람 맞춰줘"),
+    ],
+)
+def test_truncated_connected_value_is_not_quoted(input_text: str, goal: str) -> None:
+    """값 연결자로 이어진 복합값의 **조각**은 인용이 아니다."""
+
+    assert not _goal_quotes_input_text(input_text, goal)
+
+
+def test_whole_connected_value_is_quoted() -> None:
+    """조각이 아니라 통째면 그대로 통과한다 — 좁힌 것이 값 전체까지 막으면 안 된다."""
+
+    assert _goal_quotes_input_text("010-1234-5678", "전화번호는 010-1234-5678 입니다")
+
+
+@pytest.mark.parametrize(
+    ("input_text", "goal"),
+    [
+        # 괄호·쉼표는 값을 잇는 자리가 아니라 묶거나 나열하는 자리다. 연결자로 넣으면 이
+        # 인용들이 막히고, 같은 함수를 쓰는 완료 근거 대조가 먼저 손해를 본다.
+        ("설정", "설정(Settings)을 열어줘"),
+        ("사과", "사과,배를 사줘"),
+        # 구두점 차이를 흡수하는 원래 성질은 그대로다.
+        ("WiFi", "와이파이 Wi-Fi 설정을 켜줘"),
+    ],
+)
+def test_grouping_punctuation_still_allows_quoting(input_text: str, goal: str) -> None:
+    assert _goal_quotes_input_text(input_text, goal)
+
+
+def test_single_character_is_not_copied() -> None:
+    """어절 경계에 우연히 걸린 한 글자. 아낄 타이핑이 없어 버튼을 띄울 값이 아니다."""
+
+    assert not _goal_quotes_input_text("그", "그 집으로 가자")
