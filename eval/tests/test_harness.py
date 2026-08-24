@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,6 @@ from harness import (
     FIXTURES,
     FixtureDocument,
     FixtureError,
-    _date_paths,
     _validation_locations,
     find_sensitive_paths,
     load_fixture,
@@ -88,31 +86,34 @@ def test_schema_date_field_allows_exact_iso_date(tmp_path: Path):
     assert fixture.document.source.captured_at.isoformat() == "2026-07-27"
 
 
-def test_iso_date_in_plain_string_field_is_not_exempt(tmp_path: Path):
+def test_iso_date_in_plain_string_field_is_not_flagged(tmp_path: Path):
+    """날짜는 더 이상 민감으로 잡히지 않는다(#361).
+
+    예전에는 계좌번호 정규식이 `YYYY-MM-DD`를 잡아서, 스키마가 `date`로 검증한 필드만 골라
+    면제하는 장치가 하니스에 있었다. 이제 패턴 쪽에서 날짜를 거부하므로 일반 문자열 필드의
+    날짜도 그냥 통과한다 — **면제 장치가 없어도 같은 결과**라는 것을 여기서 고정한다.
+
+    패턴이 다시 날짜를 잡게 되면 이 테스트가 빨개진다. 그때 되짚을 곳은 하니스가 아니라
+    `server/app/masking.py`의 계좌 패턴이다.
+    """
     payload = _fixture_payload()
     payload["description"] = "2026-07-27"
     path = _write_fixture(tmp_path, "date-shaped-text.json", payload)
 
+    fixture = load_fixture(path)
+
+    assert fixture.document.description == "2026-07-27"
+
+    # 이 테스트가 **`input` 밖의 평범한 문자열 필드도 검사 대상**이라는 유일한 증거였다.
+    # 날짜 쪽으로 뒤집으면서 그 증거까지 잃지 않도록 계좌 케이스를 같은 필드에 남긴다.
+    payload["description"] = "123456-01-123456"
+    path = _write_fixture(tmp_path, "account-in-description.json", payload)
+
     with pytest.raises(FixtureError) as raised:
         load_fixture(path)
 
-    message = str(raised.value)
-    assert "2026-07-27" not in message
-    assert "$.description" in message
-    assert "민감 데이터" in message
-
-
-def test_date_paths_follow_validated_date_types_in_new_nested_fields():
-    typed_fixture = {
-        "source": {"captured_at": date(2026, 7, 27)},
-        "metadata": {"reviewed_at": date(2026, 7, 31)},
-        "description": "2026-07-31",
-    }
-
-    assert _date_paths(typed_fixture) == {
-        "$.source.captured_at",
-        "$.metadata.reviewed_at",
-    }
+    assert "$.description" in str(raised.value)
+    assert "123456-01-123456" not in str(raised.value)
 
 
 def test_observed_action_requires_explicit_review_state(tmp_path: Path):

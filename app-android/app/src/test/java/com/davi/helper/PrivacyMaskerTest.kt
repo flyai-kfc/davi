@@ -37,6 +37,97 @@ class PrivacyMaskerTest {
         assertEquals("•••으로 보내기", PrivacyMasker.maskText("hong@example.com으로 보내기"))
     }
 
+    /**
+     * 국내 계좌 표기 형태(숫자는 합성). 날짜를 피하려고 좁히면서 **이것들이 계속 걸리는지**가
+     * 이 변경의 관문이다(#361). 서버 `test_masking.py`와 같은 목록이다.
+     */
+    @Test
+    fun masksAccountLikeNumbers() {
+        assertEquals("•••", PrivacyMasker.maskText("110-123-456789"))
+        assertEquals("•••", PrivacyMasker.maskText("1002-123-456789"))
+        assertEquals("•••", PrivacyMasker.maskText("1234-56-789012"))
+        assertEquals("•••", PrivacyMasker.maskText("333-01-234567"))
+        assertEquals("계좌 •••로 송금", PrivacyMasker.maskText("계좌 123-456-789012로 송금"))
+        // 첫 덩어리가 6자리인 형태(국민은행·우체국)는 이번에 새로 걸린다 — 옛 `\d{2,4}`에
+        // 안 맞아 통째로 새고 있었다.
+        assertEquals("•••", PrivacyMasker.maskText("123456-01-123456"))
+        assertEquals("•••", PrivacyMasker.maskText("012345-01-123456"))
+        // 날짜가 아닌 세 덩어리는 계속 걸린다 — 달·일 범위를 보기 때문이다.
+        assertEquals("•••", PrivacyMasker.maskText("12-34-56"))
+        assertEquals("•••", PrivacyMasker.maskText("02-123-4567"))
+    }
+
+    /**
+     * 날짜가 계좌 패턴에 걸려 가려졌다(#361).
+     *
+     * 개인정보가 새는 문제가 아니라 **안내 품질이 조용히 깎이는** 문제였다 — 알람·캘린더처럼
+     * 날짜가 label의 핵심인 화면에서 모델이 그 날짜를 가리킬 수 없게 된다.
+     */
+    @Test
+    fun leavesDatesUntouched() {
+        listOf(
+            "2026-08-18",
+            "26-08-18",
+            "1999-12-31",
+            "2026 08 18",
+            "2026-01-01",
+            "2026-12-31",
+            "일정 2026-08-20 회의",
+        ).forEach { assertEquals(it, PrivacyMasker.maskText(it)) }
+    }
+
+    /**
+     * **날짜 모양이면 계좌처럼 생겨도 가려지지 않는다** — 4-2-2(8자리)와 2-2-2(6자리) 둘 다.
+     *
+     * 국내 계좌는 둘 다보다 길어 겹치지 않는다고 보고 택한 맞바꿈이다. 이 줄이 빨개지면
+     * 맞바꿈을 되짚는 것이므로, 패턴을 바꾸기 전에 `PrivacyMasker`의 근거 주석부터 읽는다.
+     */
+    @Test
+    fun dateShapedShortNumberIsAKnownTradeoff() {
+        assertEquals("1234-05-06", PrivacyMasker.maskText("1234-05-06"))
+        assertEquals("12-05-06", PrivacyMasker.maskText("12-05-06"))
+    }
+
+    /**
+     * 날짜와 계좌가 공백 하나로 붙은 형태(PR #377 리뷰). 서버 테스트와 같은 목록이다.
+     *
+     * 날짜를 lookahead로 건너뛰기만 하면 엔진이 월 덩어리에서 다시 시작해 계좌 앞자리를
+     * 삼키고 **뒷자리를 평문으로 남긴다.** 거래내역·이체 화면 label이 이 모양이다.
+     */
+    @Test
+    fun dateNextToAccountMasksOnlyTheAccount() {
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 110-123-456789"))
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 123456-01-123456"))
+        assertEquals("2026-08-18 •••", PrivacyMasker.maskText("2026-08-18 352 1234 5678"))
+        assertEquals("2026-08-18 신한 •••", PrivacyMasker.maskText("2026-08-18 신한 110-123-456789"))
+        // 날짜 뒤에 숫자가 바로 붙는 형태 — 날짜를 소비하므로 날짜도 살아난다.
+        assertEquals("주문번호 2026-08-18-000123", PrivacyMasker.maskText("주문번호 2026-08-18-000123"))
+        assertEquals("2026-08-18-1234", PrivacyMasker.maskText("2026-08-18-1234"))
+        // 실기기 재현에 쓴 형태(#361).
+        assertEquals(
+            "2026-08-20-team-meeting.txt",
+            PrivacyMasker.maskText("2026-08-20-team-meeting.txt"),
+        )
+    }
+
+    /**
+     * `\d`·`\s`가 유니코드로 해석되는지 고정한다(#361).
+     *
+     * 자바는 기본이 ASCII라 전각 숫자·NBSP를 놓쳤고, 파이썬 `re`는 유니코드가 기본이라 서버만
+     * 잡았다. **앱이 놓치면 원본이 그대로 기기를 떠난다**(`SPEC.md` §2). `PrivacyMasker`가
+     * 본문 앞에 `(?U)`를 붙여 넓은 쪽으로 맞췄고, 이 줄들이 그 결정을 고정한다.
+     */
+    @Test
+    fun masksUnicodeDigitAndSpaceVariants() {
+        val nbsp = "\u00a0"
+        assertEquals("•••", PrivacyMasker.maskText("123456${nbsp}01${nbsp}123456"))
+        assertEquals(
+            "•••",
+            PrivacyMasker.maskText("\uff11\uff12\uff13\uff14\uff15\uff16-01-123456"),
+        )
+        assertEquals("•••", PrivacyMasker.maskText("010${nbsp}1234${nbsp}5678"))
+    }
+
     /** 블루투스 기기 목록의 MAC 주소가 그대로 서버에 도달했다(#312 ②). */
     @Test
     fun masksMacAddresses() {

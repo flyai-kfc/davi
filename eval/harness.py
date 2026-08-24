@@ -42,7 +42,6 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _MASK_TOKEN = "•••"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SAFE_PATH_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _REDACTED_KEY = "<redacted-key>"
 _SECRET_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
@@ -171,19 +170,18 @@ def run_fixture(payload: dict[str, Any]) -> dict[str, Any]:
     return resp.model_dump(mode="json")
 
 
-def find_sensitive_paths(
-    value: Any,
-    *,
-    allowed_iso_date_paths: set[str] | None = None,
-) -> list[str]:
+def find_sensitive_paths(value: Any) -> list[str]:
     """fixture JSON 전체에서 민감한 key와 값의 안전한 경로만 찾는다.
 
-    ISO 날짜는 호출자가 스키마 검증 결과로 확인한 날짜 필드에서만 예외로 허용한다.
     반환값과 예외에는 실제 값을 절대 포함하지 않는다.
+
+    **날짜 예외 장치가 있었다가 없어졌다**(#361). 계좌번호 정규식이 `YYYY-MM-DD`도 잡던 시절,
+    스키마가 `date`로 검증한 필드만 골라 면제해 주는 경로 수집기가 여기 붙어 있었다. 이제
+    `mask_text`가 날짜를 잡지 않으므로 면제할 것이 없다. 패턴이 다시 날짜를 잡게 되면 이 검사가
+    fixture 전체에서 빨개진다 — 그때는 패턴 쪽을 되짚는 게 맞다.
     """
 
     findings: list[str] = []
-    allowed_dates = allowed_iso_date_paths or set()
 
     def visit(current: Any, path: str) -> None:
         if isinstance(current, dict):
@@ -199,10 +197,6 @@ def find_sensitive_paths(
             return
         if not isinstance(current, str):
             return
-        # 계좌번호 정규식은 YYYY-MM-DD도 잡는다. 경로 이름이 아니라 실제 스키마의 date 타입으로
-        # 확인된 필드만 예외로 둬서 일반 문자열 필드의 날짜 모양 PII를 놓치지 않는다.
-        if path in allowed_dates and _ISO_DATE.fullmatch(current):
-            return
         if _is_sensitive_text(current):
             findings.append(path)
 
@@ -210,22 +204,10 @@ def find_sensitive_paths(
     return findings
 
 
-def assert_no_sensitive_data(
-    value: Any,
-    *,
-    filename: str,
-    allowed_iso_date_paths: set[str] | None = None,
-) -> None:
+def assert_no_sensitive_data(value: Any, *, filename: str) -> None:
     """민감한 원문을 숨긴 채 PII 검사 실패를 보고한다."""
 
-    paths = sorted(
-        set(
-            find_sensitive_paths(
-                value,
-                allowed_iso_date_paths=allowed_iso_date_paths,
-            )
-        )
-    )
+    paths = sorted(set(find_sensitive_paths(value)))
     if not paths:
         return
     joined = ", ".join(paths)
@@ -258,15 +240,7 @@ def load_fixture(path: Path) -> LoadedFixture:
             f"{path.name}: NextStepRequest 스키마 오류: {locations} (입력값 생략)"
         ) from error
 
-    # PII 스캔은 원본 JSON을 대상으로 하되, 날짜 예외는 검증된 모델의 실제 date 값에서 도출한다.
-    # FixtureDocument.input은 raw dict이므로 최신 요청 모델의 typed dump로 바꿔 함께 순회한다.
-    typed_fixture = document.model_dump(mode="python")
-    typed_fixture["input"] = request.model_dump(mode="python")
-    assert_no_sensitive_data(
-        raw,
-        filename=path.name,
-        allowed_iso_date_paths=_date_paths(typed_fixture),
-    )
+    assert_no_sensitive_data(raw, filename=path.name)
 
     # Pydantic의 기본 동작은 알 수 없는 필드를 무시하고 일부 타입을 coercion한다. fixture가 조용히
     # 손실되지 않도록, 사용자가 실제로 적은 필드만 JSON 모드로 왕복해 바이트 타입까지 비교한다.
@@ -434,29 +408,6 @@ def _child_path(path: str, key: str) -> str:
     if not _SAFE_PATH_KEY.fullmatch(key) or _is_sensitive_text(key):
         return f"{path}.{_REDACTED_KEY}"
     return f"{path}.{key}"
-
-
-def _date_paths(value: Any) -> set[str]:
-    """검증된 Python 값에서 date 타입인 JSON 경로만 모은다."""
-
-    paths: set[str] = set()
-
-    def visit(current: Any, path: str) -> None:
-        # datetime도 date의 하위 타입이지만 시간부가 붙은 ISO 값은 날짜 전용 fullmatch 예외를
-        # 통과하지 않으므로 민감 데이터 검사 범위가 넓어지지 않는다.
-        if isinstance(current, date):
-            paths.add(path)
-            return
-        if isinstance(current, dict):
-            for key, child in current.items():
-                visit(child, _child_path(path, key))
-            return
-        if isinstance(current, list):
-            for index, child in enumerate(current):
-                visit(child, f"{path}[{index}]")
-
-    visit(value, "$")
-    return paths
 
 
 def _is_sensitive_text(value: str) -> bool:
