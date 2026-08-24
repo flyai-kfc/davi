@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -180,10 +179,6 @@ class SlotFillApiClient(
         const val MAX_QUESTION_PROMPT_LENGTH = 200
         const val MAX_OPTION_LENGTH = 80
 
-        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            // 서버 Gemini budget(20초)보다 먼저 끊지 않는다. #82의 공용 timeout 정렬과는 독립이다.
-            .readTimeout(25, TimeUnit.SECONDS)
-            .build()
+        fun defaultHttpClient(): OkHttpClient = InferenceHttpClient.create()
     }
 }

@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -163,11 +162,6 @@ internal class AppResolutionApiClient(
         val CANDIDATE_ID = Regex("candidate-[1-5]")
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+")
 
-        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            // 후보 생성은 계약 교정으로 provider를 최대 두 번 호출할 수 있다. 서버 작업이 끝나기
-            // 전에 앱만 끊겨 같은 음성 턴이 실패하고 Gemini 쿼터만 소비되지 않게 전체 상한을 둔다.
-            .readTimeout(45, TimeUnit.SECONDS)
-            .build()
+        fun defaultHttpClient(): OkHttpClient = InferenceHttpClient.create()
     }
 }

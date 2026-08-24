@@ -170,7 +170,7 @@ class ScreenStabilityTracker(
     private var sentAtMs = 0L
     private var stuckReported = false
     private var failures = 0
-    private var lastAttemptMs = 0L
+    private var retryNotBeforeMs = 0L
     private var requestOutstanding = false
     private var minRetryAfterMs = 0L
     private var unreadableSinceMs: Long? = null
@@ -282,7 +282,7 @@ class ScreenStabilityTracker(
             if (requestOutstanding) return Decision.IDLE
             // 실패한 화면을 폴링 주기마다 다시 때리면 서버가 죽어 있을 때 초당 한 번씩 두드린다.
             // 무료 티어는 15 RPM이다(HANDOFF §10). 실기기에서 실제로 이 루프를 만들어 봤다.
-            if (failures > 0 && nowMs - lastAttemptMs < backoffMs()) return Decision.IDLE
+            if (failures > 0 && nowMs < retryNotBeforeMs) return Decision.IDLE
             return Decision.SEND
         }
 
@@ -320,7 +320,6 @@ class ScreenStabilityTracker(
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
         sentAtMs = nowMs
-        lastAttemptMs = nowMs
         stuckReported = false
         requestOutstanding = true
     }
@@ -348,6 +347,7 @@ class ScreenStabilityTracker(
     fun markSucceeded() {
         failures = 0
         minRetryAfterMs = 0L
+        retryNotBeforeMs = 0L
     }
 
     /**
@@ -440,16 +440,25 @@ class ScreenStabilityTracker(
      *
      * 대신 재시도는 점점 뜸해진다. [backoffMs] 참고.
      *
+     * [failedAtMs]는 요청을 시작한 때가 아니라 실패 응답·timeout이 **끝난 때**다. 오래 기다린
+     * 시간을 백오프가 이미 지난 것으로 치면 timeout 직후 같은 요청이 즉시 겹친다(#82).
+     *
      * [retryAfterMs]는 서버가 안 값(QUOTA의 `retry_after_seconds`)이다 — 원인을 모르는 일반
      * 실패는 추측(지수 백오프)만 할 수 있지만, 이건 Gemini가 준 실제 재시도 가능 시각이라
      * 있으면 [backoffMs]가 그 값을 우선한다. 없으면(네트워크·완료검증 재질의 등) 기존 로직 그대로다.
      */
-    fun markFailed(retryAfterMs: Long? = null) {
+    fun markFailed(failedAtMs: Long, retryAfterMs: Long? = null) {
         failures++
         sentSignature = null
         sentAtMs = 0L
         stuckReported = false
         minRetryAfterMs = retryAfterMs?.coerceAtLeast(0L) ?: 0L
+        val delayMs = backoffMs()
+        retryNotBeforeMs = if (failedAtMs > Long.MAX_VALUE - delayMs) {
+            Long.MAX_VALUE
+        } else {
+            failedAtMs + delayMs
+        }
     }
 
     /**
@@ -530,7 +539,7 @@ class ScreenStabilityTracker(
         sentAtMs = 0L
         stuckReported = false
         failures = 0
-        lastAttemptMs = 0L
+        retryNotBeforeMs = 0L
         requestOutstanding = false
         minRetryAfterMs = 0L
         unreadableSinceMs = null

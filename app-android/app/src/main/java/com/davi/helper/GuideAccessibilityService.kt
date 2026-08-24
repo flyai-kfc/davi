@@ -251,7 +251,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 draw(restored)
                             } else {
                                 overlay?.clear()
-                                stability.markFailed()
+                                stability.markFailed(SystemClock.elapsedRealtime())
                             }
                         }
 
@@ -270,7 +270,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetStructure = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
-                            stability.markFailed()
+                            stability.markFailed(SystemClock.elapsedRealtime())
                         }
                     }
                     updateReading()
@@ -1077,7 +1077,7 @@ class GuideAccessibilityService : AccessibilityService() {
             val retryAfterMs = (result as? NextStepResult.ApiFailure)
                 ?.error?.retryAfterSeconds
                 ?.let { it * 1_000L }
-            stability.markFailed(retryAfterMs)
+            stability.markFailed(SystemClock.elapsedRealtime(), retryAfterMs)
             val notify = errorNotice.record(result)
             Log.i(
                 TAG,
@@ -1214,7 +1214,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
                     // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
                     // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
-                    stability.markFailed()
+                    stability.markFailed(SystemClock.elapsedRealtime())
                     Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }
 

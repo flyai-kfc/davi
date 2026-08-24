@@ -104,8 +104,8 @@ class ErrorNoticeGateTest {
     @Test
     fun `백오프 카운터가 올라가도 게이트는 열리지 않는다`() {
         val tracker = ScreenStabilityTracker()
-        tracker.markFailed() // onConfirmReject 경로 — 요청은 아직 한 번도 실패하지 않았다
-        tracker.markFailed() // done 불신 RETRY 경로
+        tracker.markFailed(0) // onConfirmReject 경로 — 요청은 아직 한 번도 실패하지 않았다
+        tracker.markFailed(0) // done 불신 RETRY 경로
 
         assertFalse(gate.record(networkFailure())) // 요청 실패 1회째 — 아직 알리지 않는다
     }
