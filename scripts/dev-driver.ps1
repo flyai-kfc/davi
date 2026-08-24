@@ -2,11 +2,11 @@
 davi 실기기 검증 드라이버 — 서버·앱·기기를 한 진입점에서 다룬다.
 사용법과 측정값은 같은 폴더의 README.md. 여기 담긴 명령은 전부 실기기에서 검증된 것이다.
 
-**Windows 전용이다** (Windows PowerShell 5.1). 맥에서는 안 돈다 — 손으로 치는 절차가
-app-android/README.md에 그대로 남아 있고, 이식은 #72다.
+**Windows 전용이다** (Windows PowerShell 5.1). 맥에서는 안 돈다 — 설치·접근성 복구는
+app-android/scripts/dev-install.sh가 맡고(#72), 세션 오케스트레이션은 README의 수동 절차를 쓴다.
 
 기기·권한 판정은 여기서 다시 만들지 않고 app-android/scripts/dev-install.ps1 -Status에
-위임한다. 사람·맥(#72)과 같은 근거를 쓰기 위해서다.
+위임한다. Bash판도 같은 목록·바인딩·전역 스위치 근거를 쓴다.
 #>
 [CmdletBinding()]
 param(

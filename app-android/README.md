@@ -13,15 +13,32 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ## 빌드·설치 (CLI 한 줄)
 
+Windows PowerShell:
+
 ```powershell
 ./scripts/dev-install.ps1
+```
+
+macOS Bash:
+
+```bash
+./scripts/dev-install.sh
 ```
 
 빌드 → 기기 설치 → **접근성 서비스 재활성화**까지 한 번에 한다.
 재설치하면 접근성 권한이 꺼지는 문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에
 들어갈 필요가 없다.
 
-이후 로그: `adb logcat -s GuideSvc`
+macOS에서는 다음을 준비한다.
+
+- Android Studio 설치본의 JBR 또는 실행 가능한 Java가 있는 `JAVA_HOME`
+- Android SDK. `ANDROID_HOME`/`ANDROID_SDK_ROOT` → `local.properties`의 `sdk.dir` →
+  `~/Library/Android/sdk` → `PATH`의 `adb` 순서로 찾는다.
+- `adb devices`에서 `device` 상태로 보이는 승인된 기기 한 대. 여러 대면 `--serial`로 고른다.
+
+스크립트 실패는 0이 아닌 exit code로 돌아오므로 다른 Bash 실행기는 `set -e`나 `$?`로 받는다.
+실기기 로그는 `adb -s <serial> logcat -s GuideSvc`로 본다. `-t N`은 태그 필터 전에 버퍼를
+잘라 필요한 로그가 0줄이 될 수 있으므로 구간이 필요하면 `-T '<MM-DD HH:MM:SS.mmm>'`를 쓴다.
 
 ### 지금 상태만 보고 싶다면
 
@@ -31,17 +48,21 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 ./scripts/dev-install.ps1 -Status
 ```
 
+```bash
+./scripts/dev-install.sh --status
+```
+
 ```
 기기      : SM-S921N [R3CX...] 
 패키지    : com.davi.helper.debug 0.2.0-debug 설치됨
-접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
+접근성    : 목록엔 있으나 바인딩 없음 — --a11y-only로 복구
 ```
 
 오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
-있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
-둘을 구분해서 보여준다.
+있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. 두 스크립트의
+상태 명령은 목록·바인딩·전역 `accessibility_enabled`를 구분해서 보여준다.
 
 ### Android Studio로 빌드했다면 권한만 되살린다
 
@@ -52,22 +73,33 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 ./scripts/dev-install.ps1 -A11yOnly
 ```
 
+```bash
+./scripts/dev-install.sh --a11y-only
+```
+
+Bash판이 자동 복구 뒤에도 `bound`를 확인하지 못하면 접근성 설정 화면을 연다. 기기에서
+`설정 → 접근성 → 설치된 앱 → 다비(개발)`을 직접 켠 뒤 `--status`로 다시 확인한다. 토글 사이클은
+기존 TalkBack 등 다른 서비스 목록을 보존하며, 중간에 실패·중단되면 진입 시점 목록을 복원하고
+전역 접근성을 켠다.
+
 옵션 정리
 
-| 옵션 | 뜻 |
-|---|---|
-| `-Status` | 아무것도 바꾸지 않고 상태만 출력. 다른 옵션은 무시 |
-| `-A11yOnly` (= `-SkipBuild`) | 빌드·설치 없이 권한만 복구 |
-| `-ClearLog` | 끝나고 logcat 버퍼 비우기 |
-| `-SkipAccessibility` | 접근성 권한을 건드리지 않음 |
-| `-Serial <serial>` | 기기가 여러 대일 때 대상 지정 (`ANDROID_SERIAL`도 됨) |
-| `-PackageName <pkg>` | debug 패키지명을 직접 지정 |
+| PowerShell | macOS Bash | 뜻 |
+|---|---|---|
+| `-Status` | `--status` | 아무것도 바꾸지 않고 상태만 출력. 다른 옵션은 무시 |
+| `-A11yOnly` (= `-SkipBuild`) | `--a11y-only` (= `--skip-build`) | 빌드·설치 없이 권한만 복구 |
+| `-ClearLog` | `--clear-log` | 끝나고 logcat 버퍼 비우기 |
+| `-SkipAccessibility` | `--skip-accessibility` | 접근성 권한을 건드리지 않음 |
+| `-Serial <serial>` | `--serial <serial>` | 기기가 여러 대일 때 대상 지정 (`ANDROID_SERIAL`도 됨) |
+| `-PackageName <pkg>` | `--package-name <pkg>` | debug 패키지명을 직접 지정 |
 
-기기가 **없거나 여러 대**면 설치하지 않고 멈춘다. 여러 대일 때는 `-Serial`로 대상을 지정한다.
+기기가 **없거나 여러 대**면 설치하지 않고 멈춘다. 단 상태 명령은 아무것도 바꾸지 않고 원인을
+한 줄로 출력한다.
 
 패키지명은 `app/build/outputs/apk/debug/output-metadata.json`의 `applicationId`에서 읽는다.
 debug 앱 ID에 접미어가 붙어도 올바른 접근성 서비스를 켜기 위해서다. 산출물이 없으면
 `com.davi.helper.debug`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
+macOS에서는 같은 값을 `--package-name`으로 넘긴다.
 
 ### 특수 권한은 접근성 하나뿐이다
 
@@ -118,8 +150,9 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 닫힌 루프를 처음부터 끝까지 한 번 돌리는 절차다. **USB로 붙은 기기는 터널이 필요 없다.**
 
 > **Windows라면 `scripts/dev-driver.ps1`이 아래 절차를 감싼다** — `env`로 전제조건을 한 번에
-> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 안 돌므로
-> **아래 수동 절차가 그대로 유효하다**(이식은 #72). `scripts/README.md` 참고.
+> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 설치·접근성
+> 복구만 `dev-install.sh`가 맡고 세션 오케스트레이션은 제공하지 않으므로 **아래 수동 절차가
+> 그대로 유효하다**. `scripts/README.md` 참고.
 
 ```powershell
 # 1) 서버 (스텁으로 먼저)
@@ -130,6 +163,12 @@ adb reverse tcp:8000 tcp:8000
 
 # 3) local.properties 에 DAVI_DEBUG_SERVER_URL=http://127.0.0.1:8000 을 넣고 설치
 cd app-android; ./scripts/dev-install.ps1 -ClearLog
+```
+
+macOS의 3번은 다음과 같다.
+
+```bash
+cd app-android && ./scripts/dev-install.sh --clear-log
 ```
 
 앱에서 목표를 입력(또는 **말로 입력**) → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.

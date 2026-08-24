@@ -461,7 +461,7 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). Gradle CLI가 loopback 오류로 죽는 PC가 있으나 스크립트가 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 Windows `app-android/scripts/dev-install.ps1`, macOS `app-android/scripts/dev-install.sh`(CLI). Windows Gradle CLI의 AF_UNIX 오류는 PowerShell판이 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** (debug는 `.debug` 접미어) | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). Play 내부 테스트 시작(2026-08-19)으로 release ID는 영구 확정됐다. debug 접미어는 두 빌드를 한 기기에 함께 깔기 위한 것(#58). |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정. 원래 근거는 litellm(3.11+)이었으나 그건 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`(3.11+)를 쓴다. |
