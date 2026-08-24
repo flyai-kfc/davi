@@ -1171,4 +1171,45 @@
     <dimen name="davi_type_onboarding_title">20sp</dimen>
     <dimen name="davi_type_onboarding_button">18sp</dimen>
     <dimen name="davi_type_onboarding_body">17sp</dimen>
+
+    <!--
+      ON-1.5 개인정보 동의 (#389). 시안 담당 핸드오프(2026-08-24) 실측값 — 카드 폭은
+      환산하지 않는다(match_parent + 24dp 여백, 시안 252px @ 300px 프레임과 같은 규칙).
+      **카드 내부 간격은 1차 추정이다** — 핸드오프가 준 것은 카드 전체 높이(라벨·요약문
+      줄수별 216~259dp)뿐이고, 내부 요소 사이 개별 간격은 실기기로 다시 맞춘다.
+      높이는 어디도 고정하지 않는다(wrap_content) — 고정하면 라벨이 길어질 때 잘린다(MA-4
+      §7의 같은 함정).
+    -->
+    <dimen name="davi_consent_card_margin_h">24dp</dimen>
+    <dimen name="davi_consent_card_radius">16dp</dimen>
+    <dimen name="davi_consent_card_padding_h">20dp</dimen>
+    <dimen name="davi_consent_card_padding_top">16dp</dimen>
+    <dimen name="davi_consent_card_padding_bottom">22dp</dimen>
+    <dimen name="davi_consent_card_gap">12dp</dimen>
+    <dimen name="davi_consent_notice_gap">20dp</dimen>
+    <dimen name="davi_consent_badge_margin_bottom">8dp</dimen>
+    <!-- 체크박스 28(raw) x1.2 — 객체 자기 크기라 스케일한다(다른 터치 대상과 같은 규칙). -->
+    <dimen name="davi_consent_checkbox_size">34dp</dimen>
+    <dimen name="davi_consent_checkbox_label_gap">12dp</dimen>
+    <dimen name="davi_consent_label_summary_gap">8dp</dimen>
+    <dimen name="davi_consent_summary_detail_gap">12dp</dimen>
+    <!-- 「보기」 캡슐 60x48(raw) x1.2 -> 72x58, 반지름은 1:1(24). -->
+    <dimen name="davi_consent_view_button_width">72dp</dimen>
+    <dimen name="davi_consent_view_button_min_height">48dp</dimen>
+    <dimen name="davi_consent_view_button_radius">24dp</dimen>
+
+    <dimen name="davi_consent_header_margin_top">32dp</dimen>
+    <dimen name="davi_consent_subtitle_margin_top">12dp</dimen>
+    <dimen name="davi_consent_list_margin_top">28dp</dimen>
+    <dimen name="davi_consent_agree_all_margin_top">20dp</dimen>
+    <dimen name="davi_consent_next_margin_top">24dp</dimen>
+    <dimen name="davi_consent_decline_margin_top">16dp</dimen>
+    <dimen name="davi_consent_footer_margin_top">24dp</dimen>
+    <dimen name="davi_consent_bottom_margin">40dp</dimen>
+
+    <dimen name="davi_type_consent_title">28sp</dimen>
+    <dimen name="davi_type_consent_badge">14sp</dimen>
+    <dimen name="davi_type_consent_label">17sp</dimen>
+    <dimen name="davi_type_consent_summary">14sp</dimen>
+    <dimen name="davi_type_consent_view_button">14sp</dimen>
 </resources>

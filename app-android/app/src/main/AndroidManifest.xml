@@ -61,6 +61,15 @@
             </intent-filter>
         </activity>
 
+        <!--
+          ON-1.5 개인정보 동의(#389). ON-1과 ON-2 사이. 진입은 LoginActivity가
+          ConsentStore로 판정해 거친다 — 이미 지금 문안에 동의했으면 건너뛴다.
+        -->
+        <activity
+            android:name=".ConsentActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- 온보딩(권한 안내, #123). 진입은 LoginActivity를 거친다. -->
         <activity
             android:name=".OnboardingActivity"

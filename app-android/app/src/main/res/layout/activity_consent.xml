@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-1.5 개인정보 동의(#389). 시안 SSoT — 항목 넷 구성은 시안 담당 핸드오프(2026-08-24)로
+  Figma에 이미 그려져 있는 값과 일치 확인됨. 동작은 이 파일이 정하지 않는다(ConsentActivity).
+
+  **폼형 화면이라 루트 스크롤을 유지한다**(activity_onboarding.xml·activity_login.xml과
+  같은 결정) — 카드 넷 + 고지 셋을 다 더하면 세로가 화면 콘텐츠 높이(SM-S921N 732dp)를
+  훌쩍 넘는데(958dp는 카드 넷만의 합), 하단 버튼을 고정 영역에 두면 배율 2.0에서 그 영역이
+  못 늘어나 MA-4 §7과 같은 잘림이 난다. 그래서 CTA(다음으로·그만두기)도 스크롤 안에 둔다.
+
+  **항목 순서**: 필수①②③ → 제3자 고지(strings.xml 주석 "필수 항목 셋 아래, 선택 항목
+  위에 둔다") → 선택①카카오 → 수집하지 않는 것 → 제외 불가 → 모두 동의 → 다음으로/그만두기
+  → 처리방침 링크 → 철회 안내. 선택②개선 기록은 화면에 서지 않는다(#375 대기, strings.xml
+  주석 "화면에 안 서는 것이 하나 있다").
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/consent_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.davi.helper.MeshBackgroundView
+        android:id="@+id/mesh_background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no" />
+
+    <FrameLayout
+        android:id="@+id/consent_insets"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:clipToPadding="false">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="@dimen/davi_consent_bottom_margin">
+
+                <TextView
+                    android:id="@+id/consent_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_header_margin_top"
+                    android:text="@string/consent_title"
+                    android:textAppearance="@style/TextAppearance.Davi.Title.Davi"
+                    android:fontFamily="@font/cafe24_ssurround"
+                    app:fontFamily="@font/cafe24_ssurround" />
+
+                <TextView
+                    android:id="@+id/consent_subtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_subtitle_margin_top"
+                    android:text="@string/consent_subtitle"
+                    android:textAppearance="@style/TextAppearance.Davi.OnboardingBody"
+                    android:fontFamily="@font/cafe24_ssurround"
+                    app:fontFamily="@font/cafe24_ssurround" />
+
+                <include
+                    android:id="@+id/consent_item_screen"
+                    layout="@layout/view_davi_consent_item"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_list_margin_top" />
+
+                <include
+                    android:id="@+id/consent_item_voice"
+                    layout="@layout/view_davi_consent_item"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_card_gap" />
+
+                <include
+                    android:id="@+id/consent_item_usage"
+                    layout="@layout/view_davi_consent_item"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_card_gap" />
+
+                <include
+                    android:id="@+id/consent_notice_third_party"
+                    layout="@layout/view_davi_consent_notice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_notice_gap" />
+
+                <include
+                    android:id="@+id/consent_item_kakao"
+                    layout="@layout/view_davi_consent_item"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_notice_gap" />
+
+                <include
+                    android:id="@+id/consent_notice_never_collect"
+                    layout="@layout/view_davi_consent_notice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_notice_gap" />
+
+                <include
+                    android:id="@+id/consent_notice_no_exclusion"
+                    layout="@layout/view_davi_consent_notice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_card_gap" />
+
+                <!--
+                  모두 동의 — 목록 맨 아래(strings.xml 주석). 별도 카드 컴포넌트를 안 쓴다 —
+                  체크박스+라벨 한 줄뿐이라 항목 카드 전체를 재사용하면 배지·요약문·「보기」
+                  자리가 전부 gone으로 남는 낭비다.
+                -->
+                <LinearLayout
+                    android:id="@+id/consent_agree_all_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_agree_all_margin_top"
+                    android:background="@drawable/bg_davi_consent_card"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:orientation="horizontal"
+                    android:paddingStart="@dimen/davi_consent_card_padding_h"
+                    android:paddingEnd="@dimen/davi_consent_card_padding_h"
+                    android:paddingTop="@dimen/davi_consent_card_padding_top"
+                    android:paddingBottom="@dimen/davi_consent_card_padding_bottom">
+
+                    <ImageView
+                        android:id="@+id/consent_agree_all_checkbox"
+                        android:layout_width="@dimen/davi_consent_checkbox_size"
+                        android:layout_height="@dimen/davi_consent_checkbox_size"
+                        android:layout_marginTop="2dp"
+                        android:clickable="false"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_davi_consent_check_unchecked" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/consent_agree_all_label"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:importantForAccessibility="no"
+                            android:text="@string/consent_agree_all"
+                            android:textAppearance="@style/TextAppearance.Davi.ConsentItemLabel" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/davi_consent_label_summary_gap"
+                            android:importantForAccessibility="no"
+                            android:text="@string/consent_agree_all_note"
+                            android:textAppearance="@style/TextAppearance.Davi.Caption" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/consent_required_missing"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_label_summary_gap"
+                    android:gravity="center"
+                    android:text="@string/consent_required_missing"
+                    android:textAppearance="@style/TextAppearance.Davi.Caption"
+                    android:textColor="@color/davi_danger"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btn_consent_next"
+                    style="@style/Widget.Davi.OnboardingButton"
+                    android:layout_width="@dimen/davi_onboarding_button_width"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="@dimen/davi_consent_next_margin_top"
+                    android:minHeight="@dimen/davi_onboarding_button_min_height"
+                    android:text="@string/btn_consent_next" />
+
+                <Button
+                    android:id="@+id/btn_consent_decline"
+                    style="@style/Widget.Davi.OnboardingButton.Skip"
+                    android:layout_width="@dimen/davi_onboarding_button_width"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="@dimen/davi_consent_decline_margin_top"
+                    android:minHeight="@dimen/davi_onboarding_button_min_height"
+                    android:text="@string/btn_consent_decline" />
+
+                <!-- consent_policy_url이 비어 있으면 ConsentActivity가 gone 처리한다. -->
+                <TextView
+                    android:id="@+id/consent_privacy_policy_link"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="@dimen/davi_consent_footer_margin_top"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:minHeight="@dimen/davi_consent_view_button_min_height"
+                    android:gravity="center"
+                    android:text="@string/consent_privacy_policy_link"
+                    android:textAppearance="@style/TextAppearance.Davi.Caption"
+                    android:textColor="@color/davi_button_primary" />
+
+                <TextView
+                    android:id="@+id/consent_withdraw_notice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginEnd="@dimen/davi_consent_card_margin_h"
+                    android:layout_marginTop="@dimen/davi_consent_label_summary_gap"
+                    android:gravity="center"
+                    android:lineSpacingMultiplier="1.3"
+                    android:text="@string/consent_withdraw_notice"
+                    android:textAppearance="@style/TextAppearance.Davi.Caption" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+
+    <!--
+      그만두기 확인. **인셋 층 바깥에 둔다** — 스크림이 시스템 바 뒤까지 덮어야 한다
+      (대화 화면 `stop_confirm_scrim`과 같은 구조).
+
+      **시스템 AlertDialog를 쓰지 않는다**(2026-08-24 실기기에서 되돌렸다) — 기본 스타일이
+      버튼을 빨간 글씨 두 줄로 그려 **버튼으로 보이지 않았고**, 배율 2.0에서 세로로 쌓이면서
+      **파괴적인 쪽이 위에** 왔다. 이 저장소에 AlertDialog를 쓴 자리가 한 곳도 없다.
+
+      **여기서는 안전한 쪽이 주 버튼이다** — `view_davi_stacked_pair`(메인 9)와 반대다.
+      그쪽은 "끝내기"가 사용자가 실제로 하려던 일이라 주 버튼이지만, 동의 화면에서 그만두면
+      앱을 아예 쓸 수 없어 되돌릴 길이 없다. 파괴적인 쪽은 아래 보조로 내린다.
+    -->
+    <FrameLayout
+        android:id="@+id/consent_decline_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/davi_dialog_scrim"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginLeft="@dimen/davi_spacing_xl"
+            android:layout_marginRight="@dimen/davi_spacing_xl"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:background="@drawable/bg_davi_dialog"
+            android:paddingLeft="@dimen/davi_spacing_xl"
+            android:paddingRight="@dimen/davi_spacing_xl"
+            android:paddingTop="@dimen/davi_dialog_padding_top"
+            android:paddingBottom="@dimen/davi_dialog_padding_top">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:text="@string/consent_decline_confirm"
+                android:textAppearance="@style/TextAppearance.Davi.Dialog"
+                android:fontFamily="@font/cafe24_ssurround"
+                app:fontFamily="@font/cafe24_ssurround" />
+
+            <Button
+                android:id="@+id/btn_consent_decline_cancel"
+                style="@style/Widget.Davi.Stacked.Primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/davi_dialog_pair_margin_top"
+                android:text="@string/consent_decline_confirm_cancel" />
+
+            <Button
+                android:id="@+id/btn_consent_decline_accept"
+                style="@style/Widget.Davi.Stacked.Secondary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/davi_stacked_button_gap"
+                android:text="@string/consent_decline_confirm_accept" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

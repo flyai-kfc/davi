@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ON-1.5 필수/선택 항목 카드(#389). activity_consent.xml이 이 레이아웃을 넷(필수 셋 +
+  선택 하나) `<include>`로 반복한다 — 이 앱에 RecyclerView가 없어(다른 화면도 전부
+  ViewBinding 직접 참조) 어댑터 대신 인클루드 각각을 고유 id로 접근한다
+  (activity_conversation.xml의 view_davi_confirm_pair와 같은 패턴).
+
+  **카드 전체가 체크 토글이다** — 안쪽 체크박스(34dp)만으로는 D1(56dp)에 못 미쳐, 카드
+  전체를 클릭 대상으로 넓히는 것으로 풀었다(핸드오프 결정). ConsentActivity가 root에
+  OnClickListener를 달고, 체크박스 ImageView는 장식이라 클릭을 받지 않는다
+  (clickable=false, importantForAccessibility=no — 카드 root 하나가 상태를 말한다).
+
+  높이는 **어디도 고정하지 않는다**(wrap_content 전부) — 라벨·요약문 줄수가 배율·항목마다
+  갈린다(핸드오프 실측: ① 1줄 vs ② 21자 2줄). 고정하면 MA-4 §7과 같은 잘림이 난다.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_davi_consent_card"
+    android:clickable="true"
+    android:focusable="true"
+    android:paddingStart="@dimen/davi_consent_card_padding_h"
+    android:paddingEnd="@dimen/davi_consent_card_padding_h"
+    android:paddingTop="@dimen/davi_consent_card_padding_top"
+    android:paddingBottom="@dimen/davi_consent_card_padding_bottom">
+
+    <TextView
+        android:id="@+id/consent_item_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="@dimen/davi_consent_badge_margin_bottom"
+        android:importantForAccessibility="no"
+        android:textAppearance="@style/TextAppearance.Davi.ConsentBadge.Required" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/consent_item_checkbox"
+            android:layout_width="@dimen/davi_consent_checkbox_size"
+            android:layout_height="@dimen/davi_consent_checkbox_size"
+            android:layout_marginTop="2dp"
+            android:clickable="false"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_davi_consent_check_unchecked" />
+
+        <TextView
+            android:id="@+id/consent_item_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"
+            android:importantForAccessibility="no"
+            android:textAppearance="@style/TextAppearance.Davi.ConsentItemLabel" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/consent_item_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"
+        android:layout_marginTop="@dimen/davi_consent_label_summary_gap"
+        android:importantForAccessibility="no"
+        android:lineSpacingMultiplier="1.2"
+        android:textAppearance="@style/TextAppearance.Davi.Caption" />
+
+    <!-- 전문. 열지 않아도 체크는 된다(consent_view_detail_desc) — 아래 버튼과 독립. -->
+    <TextView
+        android:id="@+id/consent_item_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"
+        android:layout_marginTop="@dimen/davi_consent_summary_detail_gap"
+        android:lineSpacingMultiplier="1.3"
+        android:textAppearance="@style/TextAppearance.Davi.Caption"
+        android:textColor="@color/davi_text_primary"
+        android:visibility="gone" />
+
+    <!--
+      textAppearance만으로는 Cafe24가 안 걸린다 — 테마 fontFamily(pretendard)가 이긴다
+      (Widget.Davi.OnboardingButton 주석 "한쪽만 주면 테마 글꼴이 이긴다", C1). 실기기
+      확인에서 실제로 걸렸다(2026-08-24) — android/app 두 fontFamily를 뷰에 직접 준다
+      (home_title이 쓰는 것과 같은 패턴, activity_conversation.xml).
+    -->
+    <TextView
+        android:id="@+id/consent_item_view_detail"
+        android:layout_width="@dimen/davi_consent_view_button_width"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"
+        android:layout_marginTop="@dimen/davi_consent_summary_detail_gap"
+        android:background="@drawable/bg_davi_consent_view_button"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:minHeight="@dimen/davi_consent_view_button_min_height"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:text="@string/consent_view_detail"
+        android:contentDescription="@string/consent_view_detail_desc"
+        android:textAppearance="@style/TextAppearance.Davi.ConsentViewButton"
+        android:fontFamily="@font/cafe24_ssurround"
+        app:fontFamily="@font/cafe24_ssurround" />
+</LinearLayout>
