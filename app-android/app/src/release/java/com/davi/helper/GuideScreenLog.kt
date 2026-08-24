@@ -24,7 +24,15 @@ object GuideScreenLog {
 
     /** 위와 같다. */
     @Suppress("UNUSED_PARAMETER")
-    fun sample(decision: String, elementCount: Int, signature: String, serializeMs: Long) = Unit
+    fun sample(
+        decision: String,
+        elementCount: Int,
+        signature: ScreenSig,
+        serializeMs: Long,
+        gateOpen: Boolean,
+        anchorMoved: Boolean,
+        anchorSpent: Boolean,
+    ) = Unit
 
     /**
      * 좌표 없이 어느 요소를 골랐는지만 남긴다. node_id는 직렬화가 붙인 일련 식별자(n1, n2…)라
