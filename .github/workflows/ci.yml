@@ -169,13 +169,21 @@ jobs:
       - name: Gradle 셋업
         uses: gradle/actions/setup-gradle@v4
 
-      # 실기기/Gemini 시나리오는 opt-in이지만 androidTest 소스와 APK는 키 없이 항상 컴파일한다.
+      # 실기기/Gemini 시나리오는 opt-in이다. 여기서는 제품 APK와 e2e-driver test APK, 단위 테스트를
+      # 먼저 만들고, :app의 androidTest는 아래 별도 스텝에서 비용을 드러내며 컴파일한다(#385).
       # assembleRelease는 preReleaseBuild를 거쳐 verifyReleaseConfiguration을 문다(#248) —
       # DAVI_RELEASE_ACCESS_TOKEN이 없으면 여기서 항상 실패하므로 CI 전용 더미값을 준다.
-      - name: debug/release/test APK 빌드 + 단위 테스트
+      - name: debug/release/e2e test APK 빌드 + 단위 테스트
         env:
           DAVI_RELEASE_ACCESS_TOKEN: ci-only-not-a-secret-release-token-0001
         run: ./gradlew :app:assembleDebug :e2e-driver:assembleDebugAndroidTest :app:assembleRelease test
+
+      # 리소스 id가 삭제됐는데 app/src/androidTest가 옛 R.id를 계속 참조한 회귀를 컴파일에서 잡는다.
+      # connectedDebugAndroidTest는 일반 CI에서 돌리지 않는다 — 현재 계측 테스트에는 삼성 카메라
+      # package를 전제로 한 항목이 있어 범용 에뮬레이터 관문이 아니며, 실기기 동작 검증은 위 opt-in
+      # E2E 경계를 유지한다. 별도 스텝인 이유는 추가 비용을 Actions UI에서 초 단위로 읽기 위해서다.
+      - name: 앱 계측 테스트 APK 컴파일
+        run: ./gradlew :app:assembleDebugAndroidTest
 
       # debug/release 산출물의 제품 경계를 산출물에서 직접 확인한다(#58). build.gradle.kts를
       # 읽어 확인하면 "설정이 있다"만 보이고 **패키징까지 실제로 갔는지**는 못 본다 —
