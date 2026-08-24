@@ -83,6 +83,27 @@ def test_common_korean_particle_and_copula_pairs_are_verified(label, evidence):
     assert _verified(evidence, _screen(label))
 
 
+@pytest.mark.parametrize(
+    ("label", "evidence"),
+    [
+        ("카메라", "'카메라'라는 앱이 열렸습니다"),
+        ("설정", "'설정'에만 값이 보입니다"),
+        ("설정", "'설정'에서도 확인했습니다"),
+        ("설정", "'설정'까지는 확인했습니다"),
+        ("설정", "'설정'이지만 다른 화면은 아닙니다"),
+    ],
+)
+def test_quoted_label_accepts_particles_outside_the_quote(label, evidence):
+    """프롬프트가 요구하는 따옴표가 checker의 어절 경계를 명확하게 만든다."""
+    assert _verified(evidence, _screen(label))
+
+
+def test_verbal_connective_is_not_mistaken_for_a_particle():
+    """`하고`는 조사일 수도 있지만 동사 활용도 되어 저장 전 버튼 오탐을 만든다."""
+    assert not _verified("저장하고 목록으로 돌아왔습니다", _screen("저장"))
+    assert _verified("'저장'하고 목록으로 돌아왔습니다", _screen("저장"))
+
+
 def test_punctuation_and_spacing_differences_are_absorbed():
     """실측된 좋은 근거는 쉼표만 다르고 label과 같은 문자열이다(HANDOFF §9)."""
 

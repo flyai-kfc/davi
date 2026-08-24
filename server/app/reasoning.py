@@ -97,7 +97,6 @@ _KOREAN_EVIDENCE_SUFFIXES = frozenset(
         "입니다",
         "인",
         "처럼",
-        "하고",
     }
 )
 

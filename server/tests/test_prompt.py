@@ -95,16 +95,15 @@ def test_prompt_serializes_state_without_omitting_page_or_scroll_direction():
 def test_prompt_asks_for_evidence_that_the_verifier_can_check():
     """이 한 줄이 `verified` 정확도를 떠받친다. 프롬프트를 손보다 빠뜨리면 여기서 걸린다.
 
-    완료 판정은 label의 어절 경계를 보는데(SPEC §4), 프롬프트가 그걸 요구하지 않으면 모델이
-    지시를 그대로 따라도 거짓 실패한다. 반대로 "설명하지 말라"고 하면 한 단어 근거를 요구한다.
+    완료 판정은 label의 어절 경계를 보는데(SPEC §4), 작은따옴표로 label 경계를 직접 만들게 하면
+    뒤에 어떤 자연스러운 조사가 와도 검사와 어긋나지 않는다. "설명하지 말라"고 하지는 않는다.
     """
 
     prompt = build_prompt(_request())
 
     assert EVIDENCE_INSTRUCTION in prompt
-    assert "독립된 어절의 시작에 그대로 인용" in EVIDENCE_INSTRUCTION
-    assert "조사" in EVIDENCE_INSTRUCTION
-    assert "서술격 어미" in EVIDENCE_INSTRUCTION
+    assert "작은따옴표로 감싸 글자 그대로 인용" in EVIDENCE_INSTRUCTION
+    assert "닫는 따옴표 뒤" in EVIDENCE_INSTRUCTION
     assert "이어서 쓰세요" in EVIDENCE_INSTRUCTION
 
 
@@ -117,9 +116,8 @@ def test_schema_description_of_evidence_agrees_with_the_prompt():
 
     described = GuideAction.model_fields["evidence"].description or ""
 
-    assert "독립된 어절의 시작에 그대로 인용" in described
-    assert "조사" in described
-    assert "서술격 어미" in described
+    assert "작은따옴표로 감싸 글자 그대로 인용" in described
+    assert "닫는 따옴표 뒤" in described
     assert "이어" in described
     assert "짧" not in described
 
