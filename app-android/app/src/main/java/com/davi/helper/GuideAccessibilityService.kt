@@ -618,6 +618,7 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionGateOpen(now),
             targetSlotChanged,
             stability.anchorRequerySpent(),
+            result.cost,
         )
         lastDecision = decision
         updateReading()

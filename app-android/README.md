@@ -453,5 +453,5 @@ release Container App의 준비·수동 승격 절차는
 - 정상 왕복: 같은 `logical_request_id`의 `request_started` → `request_finished outcome=success`.
 - 서버가 꺼짐: `request_finished outcome=network_error`만 남고 서비스는 계속 실행된다.
 - 속성 확인: `adb shell uiautomator dump` (UTF-8로 읽기). **우리 서비스가 보는 트리의 대용은 아니다** —
-  덤프는 `visibleToUser=false`에서 서브트리를 끊는다(`CLAUDE.md` 도구 함정).
+  덤프는 `visibleToUser=false` 노드 하나에서 바로 서브트리를 끊는다(`CLAUDE.md` 도구 함정).
 - adb 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server`.

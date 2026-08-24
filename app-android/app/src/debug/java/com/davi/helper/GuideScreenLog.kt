@@ -92,6 +92,16 @@ object GuideScreenLog {
      * `anchor=`는 다른 쪽 문이다 — 내용만의 변화가 새 상황이 되는 길은 인과 게이트와 타깃
      * 앵커 **둘**이라, 게이트만 찍으면 스스로 갱신되는 목록(새 메시지가 계속 오는 대화 목록)이
      * 앵커만으로 재질의를 계속 내는 것이 로그에서 안 보인다.
+     *
+     * `v=`는 순회가 들어간 노드 수, `cut=`은 [UiTreeSerializer]의 사슬 상한이 끊은 서브트리
+     * 수다(#367). **`n=`은 `ms=`의 분모가 못 된다** — `MAX_ELEMENTS`에서 포화하고, 비용이 방출이
+     * 아니라 방문을 따른다. **`v=`도 `getChild()` 총 호출 수는 아니다** — 가림 판정과 라벨 병합이
+     * 내는 IPC는 그 밖이라, 셋의 비율을 알아야 하면 보정 계측을 다시 붙여야 한다.
+     *
+     * **`cut=`은 0일 때만 강한 신호다.** 0이면 그 화면의 결과가 상한과 무관하다는 뜻이고, 0이 아닌
+     * 것은 "봐야 할 수도 있다"까지다 — 잎은 빼지만 아무것도 방출 안 하는 서브트리는 여전히 세므로,
+     * 오프스크린 ViewPager가 있는 화면에서는 0이 아닌 것이 정상이다. 자세한 것은
+     * [UiTreeSerializer.WalkCost].
      */
     fun sample(
         decision: String,
@@ -101,6 +111,7 @@ object GuideScreenLog {
         gateOpen: Boolean,
         anchorMoved: Boolean,
         anchorSpent: Boolean,
+        cost: UiTreeSerializer.WalkCost,
     ) {
         // `capped`는 **앵커가 열려던 것을 상한이 막았다**는 뜻이다. 게이트가 열려 있으면
         // 재질의는 어차피 나갔으므로 막힌 것이 아니다 — 그때까지 `capped`로 찍으면 오독한다.
@@ -115,7 +126,8 @@ object GuideScreenLog {
                 "s=${Integer.toHexString(signature.structure.hashCode())} " +
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
-                "anchor=$anchor",
+                "anchor=$anchor " +
+                "v=${cost.visits} cut=${cost.cuts}",
         )
     }
 
