@@ -31,7 +31,7 @@
         android:theme="@style/Theme.Davi"
         android:usesCleartextTraffic="false">
 
-        <!-- 릴리스 진입점: 로그인(스킵 가능) → 온보딩 → 대화 화면. ON-1, docs/SCREENS.md. -->
+        <!-- 릴리스 진입점: 로그인(스킵 가능) → 개인정보 동의 → 온보딩 → 대화 화면. ON-1, docs/SCREENS.md. -->
         <activity
             android:name=".LoginActivity"
             android:exported="true"
@@ -60,6 +60,15 @@
                     android:scheme="${kakaoOauthScheme}" />
             </intent-filter>
         </activity>
+
+        <!--
+          ON-1.5 개인정보 동의(#389). ON-1과 ON-2 사이. 진입은 LoginActivity가
+          ConsentStore로 판정해 거친다 — 이미 지금 문안에 동의했으면 건너뛴다.
+        -->
+        <activity
+            android:name=".ConsentActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!-- 온보딩(권한 안내, #123). 진입은 LoginActivity를 거친다. -->
         <activity

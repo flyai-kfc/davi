@@ -327,4 +327,30 @@
         <item name="android:background">@drawable/bg_davi_button_pair_secondary</item>
         <item name="android:textColor">@color/davi_button_primary</item>
     </style>
+
+    <!--
+      ON-1.5 개인정보 동의 (#389). 제목·부제·항목 요약은 기존 스타일을 그대로 재사용한다
+      (제목=Title 28sp, 부제=OnboardingBody 17sp, 요약=Caption 14sp) — 새로 만들면 값이
+      같은데 이름만 다른 토큰이 하나 더 생긴다.
+    -->
+    <style name="TextAppearance.Davi.ConsentBadge.Required" parent="TextAppearance.Davi.Caption">
+        <item name="android:textSize">@dimen/davi_type_consent_badge</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/davi_highlight</item>
+    </style>
+    <style name="TextAppearance.Davi.ConsentBadge.Optional" parent="TextAppearance.Davi.ConsentBadge.Required">
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <style name="TextAppearance.Davi.ConsentItemLabel" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_consent_label</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <!-- 「보기」/「닫기」 캡슐 라벨. 다비의 말이 아니라 조작 버튼이지만, 시안이 Cafe24를 쓴다. -->
+    <style name="TextAppearance.Davi.ConsentViewButton" parent="TextAppearance.Davi.Caption">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+        <item name="android:textSize">@dimen/davi_type_consent_view_button</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/davi_button_primary</item>
+    </style>
 </resources>
