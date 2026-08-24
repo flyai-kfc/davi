@@ -134,8 +134,9 @@ def test_leaves_dates_untouched(label):
 def test_masks_unicode_digit_and_space_variants(label):
     """`\\d`·`\\s`가 유니코드로 해석되는지 고정한다(#361).
 
-    앱은 같은 문자열을 `(?U)`로 컴파일해 여기에 맞춘다. **앱이 놓치면 원본이 그대로 기기를
-    떠나므로**(`SPEC.md` §2) 두 쪽이 갈리면 안 된다. 여기서 `re.ASCII`를 켜면 이 줄이 빨개진다.
+    앱은 같은 문자열에 유니코드 플래그를 얹어 컴파일해 여기에 맞춘다. **앱이 놓치면 원본이
+    그대로 기기를 떠나므로**(`SPEC.md` §2) 두 쪽이 갈리면 안 된다. 여기서 `re.ASCII`를 켜면
+    이 줄이 빨개진다.
 
     앱 쪽 `masksUnicodeDigitAndSpaceVariants`와 **같은 세 입력·같은 기대값**이다. "가려지기만
     하면 통과"로 두면 부분 치환(`•••01•••`)도 통과해 두 쪽의 결과가 갈려도 모른다.
