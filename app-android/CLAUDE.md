@@ -168,7 +168,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   **클래스 FQN은 namespace 기준이라 접미어가 붙지 않는다** — 접근성 서비스를 컴포넌트
   (`<applicationId>/com.davi.helper.GuideAccessibilityService`)로 지목하는 자리에서
   앞뒤 접두어가 어긋나 보이는 건 정상이다.
-- `minSdk` 26 (Android 8.0) / `targetSdk` · `compileSdk` 36 (Android 16, 검증 기기 기준).
+- `minSdk` 26 (Android 8.0) / `targetSdk` · `compileSdk` 36 (Android 16 SDK 계약 기준).
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)

@@ -212,7 +212,12 @@ resolve_serial() {
 }
 
 adb_capture() {
-    "${ADB_DEVICE[@]}" "$@" | tr -d '\r'
+    local what="$1" output
+    shift
+    if ! output="$("${ADB_DEVICE[@]}" "$@")"; then
+        die "$what 실패"
+    fi
+    printf '%s\n' "$output" | tr -d '\r'
 }
 
 adb_checked() {
@@ -224,8 +229,10 @@ adb_checked() {
 }
 
 installed_service_packages() {
+    local state
     [[ -n "$TARGET_SERIAL" ]] || return 0
-    adb_capture shell dumpsys accessibility 2>/dev/null | awk -v service_class="$SERVICE_CLASS" '
+    state="$(adb_capture '접근성 서비스 패키지 조회' shell dumpsys accessibility)" || return
+    printf '%s\n' "$state" | awk -v service_class="$SERVICE_CLASS" '
         {
             line = $0
             while (match(line, /[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+\/[A-Za-z0-9_.]+/)) {
@@ -249,18 +256,19 @@ metadata_package_name() {
 }
 
 resolve_package_name() {
-    local installed="" count=0 item metadata
+    local installed="" installed_output count=0 item metadata
     if [[ -n "$PACKAGE_NAME" ]]; then
         PACKAGE="$PACKAGE_NAME"
         SERVICE="$PACKAGE/$SERVICE_CLASS"
         return
     fi
 
+    installed_output="$(installed_service_packages)" || return
     while IFS= read -r item; do
         [[ -n "$item" ]] || continue
         installed="${installed:+$installed$'\n'}$item"
         count=$((count + 1))
-    done < <(installed_service_packages)
+    done < <(printf '%s\n' "$installed_output")
     if [[ "$count" -eq 1 ]]; then
         PACKAGE="$installed"
         SERVICE="$PACKAGE/$SERVICE_CLASS"
@@ -277,13 +285,16 @@ resolve_package_name() {
 
 enabled_services() {
     local raw
-    raw="$(adb_capture shell settings get secure enabled_accessibility_services | trim)"
+    raw="$(adb_capture '접근성 목록 조회' shell settings get secure enabled_accessibility_services)" || return
+    raw="$(printf '%s\n' "$raw" | trim)"
     [[ "$raw" == "null" ]] && raw=""
     printf '%s\n' "$raw"
 }
 
 accessibility_global() {
-    adb_capture shell settings get secure accessibility_enabled | trim
+    local raw
+    raw="$(adb_capture '접근성 전역 상태 조회' shell settings get secure accessibility_enabled)" || return
+    printf '%s\n' "$raw" | trim
 }
 
 section_has_service() {
@@ -300,7 +311,7 @@ section_has_service() {
 
 service_bound_state() {
     local state crashed bound
-    state="$(adb_capture shell dumpsys accessibility)"
+    state="$(adb_capture '접근성 바인딩 상태 조회' shell dumpsys accessibility)" || return
     crashed="$(printf '%s\n' "$state" | dumpsys_section 'Crashed services')"
     bound="$(printf '%s\n' "$state" | dumpsys_section 'Bound services')"
     if section_has_service "$crashed" "$PACKAGE" "$SERVICE_CLASS"; then
@@ -320,7 +331,7 @@ service_is_listed() {
 
 package_is_installed() {
     local lines line
-    lines="$(adb_capture shell pm list packages "$PACKAGE")"
+    lines="$(adb_capture '설치 패키지 조회' shell pm list packages "$PACKAGE")" || return 2
     while IFS= read -r line; do
         line="${line#package:}"
         [[ "$(printf '%s' "$line" | trim)" == "$PACKAGE" ]] && return 0
@@ -329,12 +340,14 @@ package_is_installed() {
 }
 
 installed_version_name() {
-    adb_capture shell dumpsys package "$PACKAGE" |
+    local state
+    state="$(adb_capture '앱 버전 조회' shell dumpsys package "$PACKAGE")" || return
+    printf '%s\n' "$state" |
         sed -n 's/^[[:space:]]*versionName=\([^[:space:]]*\).*/\1/p' | head -n 1
 }
 
 print_status() {
-    local model extra version services global_on bound
+    local model extra version services global_on bound package_status
     if [[ -z "$TARGET_SERIAL" ]]; then
         if [[ -n "${SERIAL_PROBLEM:-}" ]]; then
             printf '기기      : %s\n' "$SERIAL_PROBLEM"
@@ -346,22 +359,27 @@ print_status() {
         return
     fi
 
-    model="$(adb_capture shell getprop ro.product.model | trim)"
+    model="$(adb_capture '기기 모델 조회' shell getprop ro.product.model)" || return
+    model="$(printf '%s\n' "$model" | trim)"
     extra=""
     [[ "${#CONNECTED_SERIALS[@]}" -gt 1 ]] && extra=" (연결 ${#CONNECTED_SERIALS[@]}대 중 대상)"
     printf '기기      : %s [%s]%s\n' "$model" "$TARGET_SERIAL" "$extra"
 
-    if ! package_is_installed; then
+    if package_is_installed; then
+        :
+    else
+        package_status="$?"
+        [[ "$package_status" -eq 2 ]] && return 2
         printf '패키지    : %s 설치되지 않음 — dev-install.sh로 설치하세요\n' "$PACKAGE"
         printf '접근성    : 확인 생략(미설치)\n'
         return
     fi
-    version="$(installed_version_name)"
+    version="$(installed_version_name)" || return
     printf '패키지    : %s %s 설치됨\n' "$PACKAGE" "${version:-(버전 확인 불가)}"
 
-    services="$(enabled_services)"
-    global_on="$(accessibility_global)"
-    bound="$(service_bound_state)"
+    services="$(enabled_services)" || return
+    global_on="$(accessibility_global)" || return
+    bound="$(service_bound_state)" || return
     case "$bound" in
         bound)
             if [[ "$global_on" != "1" ]]; then
@@ -421,11 +439,11 @@ put_or_restore() {
 }
 
 enable_accessibility() {
-    local current without="" item next bound
-    current="$(enabled_services)"
-    if service_is_listed "$current" &&
-        [[ "$(service_bound_state)" == "bound" ]] &&
-        [[ "$(accessibility_global)" == "1" ]]; then
+    local current without="" item next bound global_on
+    current="$(enabled_services)" || return
+    bound="$(service_bound_state)" || return
+    global_on="$(accessibility_global)" || return
+    if service_is_listed "$current" && [[ "$bound" == "bound" ]] && [[ "$global_on" == "1" ]]; then
         printf '  이미 켜져 있음\n'
         return
     fi
@@ -450,7 +468,7 @@ enable_accessibility() {
     ACCESSIBILITY_RESTORE_NEEDED=false
 
     sleep 0.8
-    bound="$(service_bound_state)"
+    bound="$(service_bound_state)" || return
     if [[ "$bound" == "bound" ]]; then
         printf '  켬: %s\n' "$SERVICE"
     else

@@ -236,7 +236,7 @@ loopback 또는 RFC1918 사설 IPv4 host 하나에만 `domain-config` 평문 예
 Container Apps HTTPS endpoint를 쓰면 이 예외 자체를 만들지 않고 일반 TLS로 연결한다.
 **릴리스 빌드는 개발 endpoint 설정을 거부하며 평문도 계속 막혀 있다.**
 
-### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
+### 관통 로그 (2026-07-27, SM-S921N / Android 15 / One UI 7.0)
 
 ```
 GuideSvc: event=screen_stable package=com.sec.android.app.launcher element_count=8 clickable_count=8
@@ -401,7 +401,7 @@ Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 
 ## 지금 무엇이 진짜인가
 
-> **닫힌 루프가 실기기에서 한 번 관통됐다** (2026-07-27, SM-S921N / Android 16 / One UI 8.5).
+> **닫힌 루프가 실기기에서 한 번 관통됐다** (2026-07-27, SM-S921N / Android 15 / One UI 7.0).
 > 목표 입력 → 안내 → 사용자가 따라 함 → 화면 변화 감지 → `done`까지. 스텁 1회, Gemini 실호출 1회.
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 

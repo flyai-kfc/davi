@@ -84,7 +84,7 @@ jobs:
               - '.github/workflows/azure-dev-deploy.yml'
               - '.github/workflows/ci.yml'
 
-      - name: 실기기 결과 문서 렌더러 테스트
+      - name: 실기기 실행기 구문·회귀 테스트
         working-directory: app-android
         run: |
           for script in scripts/dev-install.sh scripts/lib/accessibility.sh scripts/run-device-e2e.sh; do
@@ -145,6 +145,31 @@ jobs:
       # 한쪽만 바뀐 PR에서 안 도는 관문이 되면 없는 것과 같다. 항상 도는 이 잡이 맞는 자리다.
       - name: 앱·서버 마스킹 정규식 본문 대조
         run: python3 .github/scripts/check_masking_parity.py
+
+  # dev-install.sh의 유일한 제품 환경이 macOS 기본 Bash 3.2다. 빈 배열 `[@]`와 커맨드 치환
+  # 안의 errexit 동작이 Bash 4.4+와 달라 Ubuntu 검사만으로는 회귀를 재현할 수 없다.
+  # main push에서는 같은 커밋을 다시 돌리지 않는다(#363 비용 절감 결정).
+  bash32:
+    name: macOS Bash 3.2 설치 스크립트
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.android == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: app-android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash 3.2 구문·회귀 테스트
+        run: |
+          case "$(/bin/bash -c 'printf %s "$BASH_VERSION"')" in
+            3.2*) ;;
+            *) echo '/bin/bash가 3.2가 아닙니다.' >&2; exit 1 ;;
+          esac
+          for script in scripts/dev-install.sh scripts/lib/accessibility.sh scripts/run-device-e2e.sh; do
+            /bin/bash -n "$script"
+          done
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
   android:
     name: Android (debug/release APK + test)

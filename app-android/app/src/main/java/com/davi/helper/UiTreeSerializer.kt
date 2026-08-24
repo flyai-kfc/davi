@@ -536,7 +536,7 @@ object UiTreeSerializer {
      * 나가지 못하는 clickable 노드**는 아무도 그 상태를 가져가지 않는다 — 건너뛰면 켬/끔이
      * 화면에서 통째로 사라진다.
      *
-     * 실측(#288 리뷰, SM-S921N / One UI 8.5 개발자 옵션): 표준 `SwitchPreference` 행이
+     * 실측(#288 리뷰, SM-S921N / One UI 7.0 개발자 옵션): 표준 `SwitchPreference` 행이
      * `LinearLayout(clickable) → [RelativeLayout → TextView 둘, LinearLayout → Switch]` 모양이고
      * 그 `Switch`는 `clickable=true checkable=true`인데 text·content-desc가 **둘 다 없다.**
      * 라벨은 TextView에서 행으로 합쳐지는데 상태만 갈 곳이 없었다.

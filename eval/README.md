@@ -42,8 +42,8 @@ python3.12 harness.py --fixtures-dir /path/to/fixtures
     "captured_at": "2026-07-27",
     "issue": 28,
     "device_model": "SM-S921N",
-    "os_version": "Android 16",
-    "ui_version": "One UI 8.5",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
     "anonymization": [
       "식별 가능한 커스텀 앱 이름을 일반적인 label로 치환"
     ],
@@ -128,7 +128,7 @@ fixture는 저장하기 전에 사람이 먼저 익명화하고, 하니스가 �
 
 ## 삼성 런처 구성 fixture
 
-SM-S921N / Android 16 / One UI 8.5에서 런처 구성에 따라 달라지는 관측값을 별도 fixture로
+SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 관측값을 별도 fixture로
 보존한다(#47).
 
 | fixture | page | `has_scrollable_element` | 구분 근거 |

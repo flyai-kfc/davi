@@ -222,6 +222,33 @@ class DevInstallShTest(unittest.TestCase):
         self.assertEqual((self.state / "global").read_text(encoding="utf-8"), "1")
         self.assertIn("진입 시점으로 되돌리고 전역 스위치를 켰습니다", result.stderr)
 
+    def test_a11y_read_failure_stops_before_removing_other_services(self):
+        """Bash 3.2는 커맨드 치환 안에서 `set -e`를 상속하지 않으므로 실패를 직접 전파해야 한다."""
+        self.write_metadata()
+        env = {
+            **self.env,
+            "FAKE_FAIL_ONCE": "settings get secure enabled_accessibility_services",
+        }
+
+        result = self.run_script("--a11y-only", env=env)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("접근성 목록 조회 실패", result.stderr)
+        self.assertEqual((self.state / "enabled").read_text(encoding="utf-8"), TALKBACK)
+        self.assertEqual((self.state / "global").read_text(encoding="utf-8"), "1")
+        calls = self.adb_log.read_text(encoding="utf-8")
+        self.assertNotIn("settings put", calls)
+        self.assertNotIn("settings delete", calls)
+
+    def test_status_read_failure_names_the_failed_operation(self):
+        result = self.run_script(
+            "--status",
+            env={**self.env, "FAKE_FAIL_ONCE": "getprop ro.product.model"},
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("기기 모델 조회 실패", result.stderr)
+
     def test_build_uses_local_sdk_metadata_package_jbr_and_selected_serial(self):
         self.write_metadata()
         jdk = self.root / "jdk"

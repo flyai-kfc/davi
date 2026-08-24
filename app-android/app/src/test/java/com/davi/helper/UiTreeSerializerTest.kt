@@ -184,7 +184,7 @@ class UiTreeSerializerTest {
 
     @Test
     fun `이름 없는 클릭 노드는 상태를 조상에 맡긴다`() {
-        // 실측(One UI 8.5 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
+        // 실측(SM-S921N / One UI 7.0 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
         // 자기 요소로 못 나간다. 조상이 안 올리면 켬/끔이 화면에서 사라진다(#288 리뷰).
         assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "", editable = false))
         assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "   ", editable = false))

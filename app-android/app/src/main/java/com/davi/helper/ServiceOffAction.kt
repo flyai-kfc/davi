@@ -11,7 +11,7 @@ package com.davi.helper
  * 안내 중 접근성이 꺼지면 서비스가 `startActivity`로 온보딩을 앞으로 가져왔다. 그건 Android
  * 10+의 백그라운드 activity 실행 금지에서 **`SYSTEM_ALERT_WINDOW`가 주는 면제**로만 성립했다.
  *
- * **2026-08-18 실측(SM-S921N / One UI 8.5)** — 그 권한을 `deny`로 두고 재니 복귀가 조용히
+ * **2026-08-18 실측(SM-S921N / One UI 7.0)** — 그 권한을 `deny`로 두고 재니 복귀가 조용히
  * 막혔다. 로그(`service unbound during session, returning to app`)는 나가는데
  * `topResumedActivity`는 `com.android.settings/.SubSettings` 그대로였고 BAL 차단 로그도 안 남았다.
  * **unbind 시점에 접근성 오버레이 창이 아직 붙어 있는데도** 막혔으므로,
