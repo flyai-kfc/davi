@@ -994,16 +994,27 @@ class ScreenStabilityTrackerTest {
         assertFalse(tracker.lastSendWasContentOnly())
     }
 
-    @Test
-    fun `앵커가 여는 재질의는 안내 하나당 한 번이다`() {
-        // 앵커는 인과 게이트를 우회하는데 시간 상한이 없다. 안내 대상이 스스로 갱신되는
-        // 영역 안에 있으면 응답이 올 때마다 슬롯이 또 어긋나 왕복당 한 번씩 재질의가 돈다.
-        val before = ScreenSig("rooms", "A;B;C")
-        tracker.onSample(before, 0, hasLabeledElement = true)
-        tracker.onSample(before, 700, hasLabeledElement = true)
-        tracker.markSent(before, 700)
+    /** 회전하는 목록의 안내 대상 슬롯. 두 샘플로 홀드를 채우고 전송까지 마친 상태를 만든다. */
+    private fun sendRooms(content: String, at: Long) {
+        val sig = ScreenSig("rooms", content)
+        tracker.onSample(sig, at, hasLabeledElement = true, guidedTargetChanged = true)
+        tracker.onSample(sig, at + 700, hasLabeledElement = true, guidedTargetChanged = true)
+        tracker.markSent(sig, at + 700)
         tracker.markFinished()
+    }
 
+    @Test
+    fun `같은 슬롯을 다시 가리키는 안내는 앵커 상한을 열지 않는다`() {
+        // 막으려는 루프의 주기가 "응답 하나 = 안내 하나"다. 안내마다 무조건 열면 상한이 매
+        // 왕복 초기화돼 아무것도 막지 못한다 — 왕복당 1회는 in-flight 가드가 이미 하던 일이다.
+        val base = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+        tracker.armAnchor("n3@rooms")
+
+        // 슬롯이 밀려 앵커가 재질의를 한 번 연다.
         val moved = ScreenSig("rooms", "B;A;C")
         tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
         assertEquals(
@@ -1013,7 +1024,9 @@ class ScreenStabilityTrackerTest {
         tracker.markSent(moved, 2_100)
         tracker.markFinished()
 
-        // 상한이 소진됐다. 슬롯이 또 밀려도 앵커만으로는 새 상황이 아니다.
+        // 응답이 **같은 슬롯**을 다시 가리킨다. 상한은 그대로 닫혀 있어야 한다.
+        tracker.armAnchor("n3@rooms")
+
         val movedAgain = ScreenSig("rooms", "C;B;A")
         tracker.onSample(movedAgain, 2_800, hasLabeledElement = true, guidedTargetChanged = true)
         assertEquals(
@@ -1023,20 +1036,17 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
-    fun `새 안내가 나가면 앵커 상한이 다시 열린다`() {
-        val before = ScreenSig("rooms", "A;B;C")
-        tracker.onSample(before, 0, hasLabeledElement = true)
-        tracker.onSample(before, 700, hasLabeledElement = true)
-        tracker.markSent(before, 700)
-        tracker.markFinished()
+    fun `다른 슬롯을 가리키는 안내는 앵커 상한을 다시 연다`() {
+        tracker.armAnchor("n3@rooms")
+        sendRooms("A;B;C", 0)
         val moved = ScreenSig("rooms", "B;A;C")
         tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
         tracker.onSample(moved, 2_100, hasLabeledElement = true, guidedTargetChanged = true)
         tracker.markSent(moved, 2_100)
         tracker.markFinished()
 
-        // 응답이 반영돼 새 안내가 나갔다.
-        tracker.armAnchor()
+        // 응답이 **다른 슬롯**을 가리킨다 — 진행이 있었다는 뜻이라 다시 연다.
+        tracker.armAnchor("n7@rooms")
 
         val movedAgain = ScreenSig("rooms", "C;B;A")
         tracker.onSample(movedAgain, 2_800, hasLabeledElement = true, guidedTargetChanged = true)
@@ -1047,21 +1057,25 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
-    fun `나가지 못한 앵커 재질의는 상한을 쓰지 않는다`() {
-        // in-flight 가드에 막힌 샘플이 상한을 소진하면 그 안내의 재질의가 나가지도 못한 채 끝난다.
-        val before = ScreenSig("rooms", "A;B;C")
-        tracker.onSample(before, 0, hasLabeledElement = true)
-        tracker.onSample(before, 700, hasLabeledElement = true)
-        tracker.markSent(before, 700)
+    fun `요청이 실제로 나가지 않으면 앵커 상한을 쓰지 않는다`() {
+        // `SEND`는 "요청이 나갔다"가 아니다 — 호출자가 확인 대기(GD-4)나 in-flight CAS에 막혀
+        // 요청 없이 돌아설 수 있다. 그때 소진하면 그 안내의 재질의가 나가지도 못한 채 끝난다.
+        val base = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+        tracker.armAnchor("n3@rooms")
 
         val moved = ScreenSig("rooms", "B;A;C")
         tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
+        // SEND가 났지만 호출자가 요청을 시작하지 못해 markSent를 부르지 않았다.
         assertEquals(
-            Decision.IDLE,
+            Decision.SEND,
             tracker.onSample(moved, 2_100, hasLabeledElement = true, guidedTargetChanged = true),
         )
 
-        tracker.markFinished()
+        // 상한이 그대로라 다음 샘플이 다시 보낸다.
         assertEquals(
             Decision.SEND,
             tracker.onSample(moved, 2_800, hasLabeledElement = true, guidedTargetChanged = true),
@@ -1084,8 +1098,8 @@ class ScreenStabilityTrackerTest {
 
         val page2 = ScreenSig("list", "2페이지")
         val late = 800 + ScreenStabilityTracker.INTERACTION_WINDOW_MS + 1_000
-        tracker.onSample(page2, late, hasLabeledElement = true)
-        assertEquals(Decision.SEND, tracker.onSample(page2, late + 700, hasLabeledElement = true))
+        // 구조가 오래 안정이라 승격이 홀드를 면제한다 — 첫 샘플부터 나간다.
+        assertEquals(Decision.SEND, tracker.onSample(page2, late, hasLabeledElement = true))
     }
 
     @Test

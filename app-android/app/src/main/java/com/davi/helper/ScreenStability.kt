@@ -177,6 +177,8 @@ class ScreenStabilityTracker(
     private var lastInteractionMs: Long? = null
     private var sendWasContentOnly = false
     private var anchorRequeryUsed = false
+    private var anchorId: String? = null
+    private var sendWasAnchorOpened = false
 
     fun onSample(
         signature: ScreenSig,
@@ -246,6 +248,10 @@ class ScreenStabilityTracker(
         // `performed=true` + `screen_changed=true`라는 모순된 이력을 만든다 — 재질의의
         // 존재 이유("눌렀는데 그대로")가 페이로드에서 지워진다.
         sendWasContentOnly = novel && contentOnly
+        // 상한은 **요청이 실제로 나갔을 때만** 쓴다([markSent]). `SEND`는 그 보장이 아니다 —
+        // 호출자가 확인 대기(GD-4)나 in-flight CAS에 막혀 요청 없이 돌아설 수 있고, 그때
+        // 소진하면 그 안내의 앵커 재질의가 나가지도 못한 채 끝난다.
+        sendWasAnchorOpened = novel && anchorOpened
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -254,9 +260,6 @@ class ScreenStabilityTracker(
             // 실패한 화면을 폴링 주기마다 다시 때리면 서버가 죽어 있을 때 초당 한 번씩 두드린다.
             // 무료 티어는 15 RPM이다(HANDOFF §10). 실기기에서 실제로 이 루프를 만들어 봤다.
             if (failures > 0 && nowMs - lastAttemptMs < backoffMs()) return Decision.IDLE
-            // 상한은 **요청이 실제로 나갈 때만** 쓴다. 위 두 가드에 막힌 샘플에서 쓰면
-            // 그 안내의 앵커 재질의가 나가지도 못한 채 소진된다.
-            if (anchorOpened) anchorRequeryUsed = true
             return Decision.SEND
         }
 
@@ -275,6 +278,7 @@ class ScreenStabilityTracker(
 
     /** **요청이 실제로 나갔을 때만** 부른다. 보낸 셈 치면 그 화면의 안내가 영영 오지 않는다. */
     fun markSent(signature: ScreenSig, nowMs: Long) {
+        if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
         sentAtMs = nowMs
         lastAttemptMs = nowMs
@@ -318,7 +322,7 @@ class ScreenStabilityTracker(
     fun currentSignature(): ScreenSig? = lastSample
 
     /**
-     * 새 안내가 나갔다 — 그 안내의 **앵커 재질의 상한을 연다**(#380 리뷰).
+     * 새 안내가 나갔다 — [id]가 **직전과 다를 때만** 앵커 재질의 상한을 연다(#380 리뷰).
      *
      * 앵커(안내 대상 슬롯의 label 변화)는 인과 게이트를 우회하는데, 게이트의
      * [INTERACTION_WINDOW_MS] 같은 시간 상한이 없다. 안내 대상이 스스로 갱신되는 영역
@@ -327,11 +331,20 @@ class ScreenStabilityTracker(
      * 된다 — 이 이슈가 배너에 대해 닫은 것과 같은 폭주다.
      *
      * 한 번으로 끊는 근거는 앵커가 답하는 질문 자체다 — "강조가 엉뚱한 줄을 가리킨다"의
-     * 해법은 새 안내 하나이고, 그래도 또 어긋나면 다시 물어서 나아지지 않는다. 상한을
-     * 넘으면 강조를 내리고(호출자) 정체 문구로 떨어진다. 눌림 확인 재질의가 눌림당
+     * 해법은 새 안내 하나이고, **그래도 같은 슬롯을 가리키면 다시 물어서 나아지지 않는다.**
+     *
+     * 그래서 무조건 열지 않는다. 무조건 열면 상한이 매 왕복 초기화돼 **아무것도 막지 못한다** —
+     * 막으려는 루프의 주기가 바로 "응답 하나 = 안내 하나"이고, 왕복당 1회는
+     * [requestOutstanding] 가드가 이미 하던 일이다. [id]는 안내 대상의 **정체성**
+     * (node id + 구조 축)이고 label은 넣지 않는다 — label이 곧 회전하는 값이라 넣으면
+     * 매 회전마다 다시 열린다.
+     *
+     * 상한을 넘으면 강조를 내리고(호출자) 정체 문구로 떨어진다. 눌림 확인 재질의가 눌림당
      * 1회인 것과 같은 결(#319).
      */
-    fun armAnchor() {
+    fun armAnchor(id: String?) {
+        if (id == anchorId) return
+        anchorId = id
         anchorRequeryUsed = false
     }
 
@@ -503,6 +516,8 @@ class ScreenStabilityTracker(
         lastInteractionMs = null
         sendWasContentOnly = false
         anchorRequeryUsed = false
+        anchorId = null
+        sendWasAnchorOpened = false
     }
 
     companion object {

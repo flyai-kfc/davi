@@ -74,10 +74,6 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private var guidedTargetStructure: String? = null
 
-    /** 앵커 어긋남 로그를 전이에서만 찍기 위한 표시. 판정에는 쓰지 않는다(#380). */
-    private var targetSlotMovedLogged = false
-
-
     /**
      * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
      * 클릭만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
@@ -272,7 +268,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetNodeId = null
                             guidedTargetStableLabel = null
                             guidedTargetStructure = null
-                                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
+                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
                             stability.markFailed()
                         }
@@ -640,7 +636,6 @@ class GuideAccessibilityService : AccessibilityService() {
         // 문구는 남겼다가, 같은 화면으로 안정되면 되돌린다. 위 redisplay는 오버레이가 통째로
         // 지워진 경우를 맡고 여기는 그 안쪽 — 안내는 떠 있는데 강조만 틀린 경우다.
         if (decision == ScreenStabilityTracker.Decision.WAIT) {
-            targetSlotMovedLogged = false
             display.hideTarget()?.let {
                 Log.i(TAG, "hide target")
                 draw(it)
@@ -652,15 +647,13 @@ class GuideAccessibilityService : AccessibilityService() {
             // 문구는 남긴다, #225). 눌림 재무장도 함께 막힌다(`restoreTarget`이 푸는 것을
             // 안 부르므로), 그 자리를 누른 사용자가 `performed=true`로 오귀속되지 않는다.
             //
-            // **전이에서만 찍는다.** 앵커가 어긋난 동안 폴링 주기마다 같은 줄이 나가면
-            // 계측이 로그를 못 읽게 만든다.
-            display.hideTarget()?.let { draw(it) }
-            if (!targetSlotMovedLogged) {
-                targetSlotMovedLogged = true
+            // [GuideDisplayState.hideTarget]이 이미 내려간 강조에는 null을 돌려주므로
+            // 로그도 전이에서만 나간다 — 따로 래치를 둘 필요가 없다.
+            display.hideTarget()?.let {
                 Log.i(TAG, "target slot moved, hide target")
+                draw(it)
             }
         } else {
-            targetSlotMovedLogged = false
             display.restoreTarget(signature.structure)?.let {
                 Log.i(TAG, "restore target")
                 draw(it)
@@ -1244,8 +1237,9 @@ class GuideAccessibilityService : AccessibilityService() {
         guidedTargetNodeId = target?.nodeId
         guidedTargetStableLabel = target?.let { ScreenSignature.stableLabelOf(it) }
         guidedTargetStructure = if (target != null) requestSignature.structure else null
-        // 새 안내가 나갔으니 앵커 재질의 상한이 다시 열린다(#380 리뷰).
-        stability.armAnchor()
+        // 앵커 재질의 상한은 **가리키는 대상이 달라졌을 때만** 다시 열린다(#380 리뷰).
+        // label은 넣지 않는다 — 그게 회전하는 값이다.
+        stability.armAnchor(guidedTargetNodeId?.let { "$it@${requestSignature.structure}" })
         // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
         // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
         guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }
