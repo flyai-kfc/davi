@@ -260,6 +260,69 @@ class ScreenSignatureTest {
     }
 }
 
+/**
+ * 내용 축 해시(#410).
+ *
+ * **전각 숫자 표본을 넣지 말 것.** `ScreenSignature.DIGITS`의 `\d`가 기기(ICU, 유니코드
+ * 기본)와 JVM(OpenJDK, ASCII 기본)에서 다른 것을 잡아, JVM에서 통과하는 기대값이 기기에서는
+ * 거짓이 된다(#402가 `PrivacyMasker`에서 실측). 여기서 해시하는 값은 이미 정규화를 마친
+ * 내용 축이라 그 갈림이 개입하지 않지만, 표본으로 끌어들이면 그때부터 개입한다.
+ */
+class ContentSignatureTest {
+
+    private val salt = ByteArray(16) { it.toByte() }
+    private val otherSalt = ByteArray(16) { (it + 1).toByte() }
+
+    @Test
+    fun `같은 내용이면 같은 해시다`() {
+        // 세션 안에서 "같은 화면인가"를 서버가 판정할 수 있는 근거가 이 동일성뿐이다.
+        assertEquals(
+            ContentSignature.of(salt, "제목|장바구니;결제하기;"),
+            ContentSignature.of(salt, "제목|장바구니;결제하기;"),
+        )
+    }
+
+    @Test
+    fun `내용이 다르면 다른 해시다`() {
+        // 구조가 같고 내용만 바뀐 화면(다른 상품 상세)을 가르는 자리다.
+        assertNotEquals(
+            ContentSignature.of(salt, "제목|사과;담기;"),
+            ContentSignature.of(salt, "제목|배;담기;"),
+        )
+    }
+
+    @Test
+    fun `salt가 다르면 같은 내용이라도 다른 해시다`() {
+        // 세션 밖 비교를 막는 것이 salt의 목적이다. 이게 깨지면 해시 하나가 세션을 넘어 산다.
+        assertNotEquals(
+            ContentSignature.of(salt, "제목|장바구니;"),
+            ContentSignature.of(otherSalt, "제목|장바구니;"),
+        )
+    }
+
+    @Test
+    fun `형식은 hex 64자다`() {
+        // 서버 `structure_signature`의 `^[0-9a-f]{64}$`와 같은 형식이어야 한 레코드에 나란히 선다.
+        val signature = ContentSignature.of(salt, "제목|장바구니;")
+
+        assertTrue(signature.matches(Regex("^[0-9a-f]{64}$")))
+    }
+
+    @Test
+    fun `빈 내용도 값을 낸다`() {
+        // 값을 안 낼지 말지는 [GuideSession]이 정한다. 해시 자체는 입력을 가리지 않는다.
+        assertTrue(ContentSignature.of(salt, "").matches(Regex("^[0-9a-f]{64}$")))
+    }
+
+    @Test
+    fun `salt는 만들 때마다 다르다`() {
+        assertNotEquals(
+            ContentSignature.newSalt().toList(),
+            ContentSignature.newSalt().toList(),
+        )
+    }
+}
+
 class InputStateEventTest {
 
     @Test
