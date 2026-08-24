@@ -10,6 +10,7 @@ from app.prompt import (
     PAGE_ONLY_ONE,
     PERFORMED_STEP_INSTRUCTION,
     PRESSED_UNCHANGED_INSTRUCTION,
+    RETURNED_SCREEN_INSTRUCTION,
     SCROLL_DIRECTION_INSTRUCTION,
     SCROLL_END_INSTRUCTION,
     SCROLLABLE_NOT_OBSERVED,
@@ -18,8 +19,10 @@ from app.prompt import (
     STEP_HISTORY_HEADER,
     STEP_PRESSED,
     STEP_PRESSED_ELSEWHERE,
+    STEP_SCREEN_RETURNED,
     STEP_UNCHANGED,
     SWIPE_DIRECTION_LEGEND,
+    TRIED_COUNT_INSTRUCTION,
     UNCHANGED_STEP_INSTRUCTION,
     build_prompt,
     fallback_prompt,
@@ -34,6 +37,7 @@ from app.schemas import (
     SwipeDirection,
     UiElement,
 )
+from app.signature import screen_signature
 
 _SIGNATURE = "0" * 64
 
@@ -772,3 +776,275 @@ def test_step_history_escapes_a_value_that_carries_both_quote_marks():
     prompt = build_prompt(_with_steps(_step(target_label='"확인"과 김철수\'s 폰')))
 
     assert "(대상 '\"확인\"과 김철수\\'s 폰')" in prompt
+
+
+def _back_on(**overrides) -> NextStepRequest:
+    """A(지금 화면) → B(다른 화면) → 지금 다시 A인 요청.
+
+    **떠난 적이 있어야 회귀다.** 첫 스텝이 현재 서명이고 그 뒤에 다른 서명의 스텝이 있으므로,
+    그 사이에 다른 화면으로 갔다가 돌아온 것이 이력으로 드러난다.
+    """
+
+    screen = Screen(package_name="com.example.app")
+    here = screen_signature(screen)
+    return NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(**({"structure_signature": here} | overrides)),
+            _step(instruction="다른 화면의 안내", structure_signature="e" * 64),
+        ],
+    )
+
+
+def test_step_history_marks_the_step_whose_screen_we_are_back_on():
+    prompt = build_prompt(_back_on())
+
+    assert f"{STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
+
+
+def test_step_history_is_silent_when_the_screen_never_came_back():
+    """서명이 다르면 아무 말도 하지 않는다 — 대부분의 스텝이 이 경우다."""
+
+    prompt = build_prompt(_with_steps(_step()))
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_needs_evidence_that_we_ever_left():
+    """그 화면에 **계속 머무는 중**이면 회귀가 아니다.
+
+    서명이 같은 스텝만 이어지면 떠난 적이 없다. 그걸 회귀로 적으면 진전이 없었던 것과
+    돌고 온 것이 한 문장으로 뭉개진다.
+    """
+
+    screen = Screen(package_name="com.example.app")
+    here = screen_signature(screen)
+    staying = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here),
+            _step(instruction="같은 화면의 다음 안내", structure_signature=here),
+        ],
+    )
+
+    prompt = build_prompt(staying)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def test_returned_screen_does_not_read_screen_changed():
+    """`screen_changed`는 "구조 변화 ∨ 인과 있는 내용 변화"로 넓어졌다(#380).
+
+    그 값에 기대면 내용만 바뀐 화면에 머무는 동안에도 회귀로 적힌다. 판정은 서명만 본다.
+    """
+
+    marked = build_prompt(_back_on(screen_changed=None))
+    unmarked = build_prompt(
+        NextStepRequest(
+            goal="다음 항목 보기",
+            screen=Screen(package_name="com.example.app"),
+            steps=[
+                _step(
+                    structure_signature=screen_signature(Screen(package_name="com.example.app")),
+                    screen_changed=True,
+                )
+            ],
+        )
+    )
+
+    assert STEP_SCREEN_RETURNED in marked
+    assert STEP_SCREEN_RETURNED not in unmarked
+
+
+def test_returned_screen_explanation_does_not_declare_a_loop():
+    """구조 서명은 label을 안 봐서 같은 목록의 다른 항목도 같은 서명이 된다.
+
+    그래서 문장은 관측과 조건부 권고까지만이고 "루프다"라고 단정하지 않는다.
+    """
+
+    prompt = build_prompt(_back_on())
+
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+    # 한계를 함께 말한다 — 이 문장이 빠지면 오탐이 확정으로 읽힌다.
+    assert "내용이 다른 화면일 수도" in RETURNED_SCREEN_INSTRUCTION
+    # 권고는 조건부다("…왔다면"). 단정하는 표현이 들어가면 C17 · #109를 재현한다.
+    for asserting in ("루프입니다", "반복되고 있습니다", "잘못된 안내입니다"):
+        assert asserting not in RETURNED_SCREEN_INSTRUCTION
+
+
+def test_returned_screen_marker_sits_after_the_moment_observations():
+    """꼬리 순서는 그 시점의 관측(누름 → 변화) 다음에 지금 화면과의 대조다."""
+
+    prompt = build_prompt(_back_on(performed=True))
+
+    assert f"{STEP_PRESSED} · {STEP_CHANGED} · {STEP_SCREEN_RETURNED}" in prompt
+
+
+def test_returned_screen_survives_a_blank_step_on_the_way():
+    """경유한 화면의 스텝이 빈 안내문이어도 떠난 증거는 남는다.
+
+    "한 번 떠났다"는 화면 서명의 흐름이지 그 스텝이 줄을 만들었는지와 무관하다. 걸러진 목록으로
+    판정하면 있어야 할 신호가 조용히 사라진다(#388 리뷰에서 재현).
+    """
+
+    screen = Screen(package_name="com.example.app")
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here),
+            _step(instruction="   ", structure_signature="e" * 64),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED in prompt
+    assert RETURNED_SCREEN_INSTRUCTION in prompt
+
+
+def test_tried_count_shares_the_signature_limit_in_its_wording():
+    """`tried=`도 회귀 표시와 같은 구조 서명 하나에 기댄다 — 한계를 함께 말한다.
+
+    회귀 문구만 유보하고 이쪽이 단정하면, 더 센 주장을 하는 쪽이 근거를 덜 밝히는 꼴이 된다.
+    """
+
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1"),
+    )
+
+    assert "구조로만 가르므로" in TRIED_COUNT_INSTRUCTION
+    assert TRIED_COUNT_INSTRUCTION in build_prompt(request)
+
+
+def test_returned_screen_ignores_steps_that_never_became_a_line():
+    """빈 안내문 스텝은 줄을 안 만드므로 그 관측을 설명하지도 않는다."""
+
+    prompt = build_prompt(_back_on(instruction="   "))
+
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+
+
+def _on_screen(*elements: UiElement) -> Screen:
+    return Screen(package_name="com.example.app", elements=list(elements))
+
+
+def _tried_request(screen: Screen, *steps: GuideStep) -> NextStepRequest:
+    """그 화면에서 낸 안내들. 스텝의 서명을 현재 화면 서명으로 맞춘다."""
+
+    sig = screen_signature(screen)
+    return NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[s.model_copy(update={"structure_signature": sig}) for s in steps],
+    )
+
+
+def test_element_line_carries_how_many_times_it_was_guided():
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1"),
+        _step(target_node_id="n1", instruction="다시 눌러 주세요."),
+    )
+
+    prompt = build_prompt(request)
+
+    assert "tried=2" in prompt
+    assert TRIED_COUNT_INSTRUCTION in prompt
+
+
+def test_element_line_is_silent_when_it_was_never_guided():
+    """0은 적지 않는다 — 요소가 최대 200개라 기본값 줄이 붙으면 토큰이 그만큼 불어난다."""
+
+    prompt = build_prompt(_tried_request(_on_screen(UiElement(node_id="n1", label="카메라"))))
+
+    assert "tried=" not in prompt
+    assert TRIED_COUNT_INSTRUCTION not in prompt
+
+
+def test_tried_count_separates_elements_that_share_a_label():
+    """한 화면에 같은 label이 여럿인 것은 흔하다(목록마다 붙는 '삭제').
+
+    label로 세면 첫 번째를 누른 횟수가 나머지 전부에 붙는다.
+    """
+
+    request = _tried_request(
+        _on_screen(
+            UiElement(node_id="n1", label="삭제", clickable=True),
+            UiElement(node_id="n2", label="삭제", clickable=True),
+        ),
+        _step(target_node_id="n1", target_label="삭제"),
+    )
+
+    lines = [ln for ln in build_prompt(request).splitlines() if ln.startswith("- id=")]
+
+    assert "tried=1" in lines[0]
+    assert "tried=" not in lines[1]
+
+
+def test_tried_count_survives_a_label_change_on_the_same_row():
+    """부제목이 값이라 같은 행의 label이 바뀐다 — 실측: '화면 모드 자연스러운 화면' →
+    누른 뒤 '화면 모드 선명한 화면'. label로 세면 카운트가 거기서 끊긴다."""
+
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="화면 모드 선명한 화면", clickable=True)),
+        _step(target_node_id="n1", target_label="화면 모드 자연스러운 화면"),
+    )
+
+    assert "tried=1" in build_prompt(request)
+
+
+def test_tried_count_reaches_a_scroll_target_without_a_label():
+    """scroll 안내에는 `target_label`이 없다 — label로 세면 스크롤 왕복이 안 보인다."""
+
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="목록", can_scroll_forward=True)),
+        _step(
+            action_type=ActionType.SCROLL,
+            direction=SwipeDirection.DOWN,
+            target_label=None,
+            target_node_id="n1",
+        ),
+    )
+
+    assert "tried=1" in build_prompt(request)
+
+
+def test_tried_count_ignores_steps_from_another_screen():
+    """`node_id`는 화면마다 다시 매겨진다. 서명이 다른 스텝의 id를 그대로 믿으면
+    시도한 적 없는 요소에 카운트가 붙는다."""
+
+    screen = _on_screen(UiElement(node_id="n1", label="카메라", clickable=True))
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[_step(target_node_id="n1", structure_signature="f" * 64)],
+    )
+
+    assert "tried=" not in build_prompt(request)
+
+
+def test_tried_count_ignores_steps_that_never_became_a_line():
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1", instruction="   "),
+    )
+
+    assert "tried=" not in build_prompt(request)
+
+
+def test_tried_count_names_no_element_to_press():
+    """관측과 배제 방향까지만 말하고 **무엇을 누르라고는 하지 않는다**(C17).
+
+    문구 규칙이 값을 끌어당겨 원래 맞던 값을 틀리게 만든 전례가 있다(#109). 여기서 주는 것은
+    "몇 번 시도했나"라는 상태이고, 다음 대상은 모델이 고른다.
+    """
+
+    for prescribing in ("누르세요", "탭하세요", "선택하세요"):
+        assert prescribing not in TRIED_COUNT_INSTRUCTION
