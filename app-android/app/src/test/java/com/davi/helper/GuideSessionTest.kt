@@ -145,7 +145,8 @@ class GuideSessionTest {
         assertEquals("카카오톡", step.targetLabel)
         assertEquals("런처 홈 화면", step.screenHint)
         assertEquals("a".repeat(64), step.structureSignature)
-        // 아직 관측하지 않은 셋. `performed`·`content_signature`는 후속 서브이슈다(#270).
+        // 스텝을 만드는 시점에는 아직 없는 셋이다. `screen_changed`는 다음 샘플이,
+        // `performed`는 클릭 이벤트가, `content_signature`는 요청을 보내는 자리가 채운다.
         assertNull(step.screenChanged)
         assertNull(step.performed)
         assertNull(step.contentSignature)
@@ -939,6 +940,91 @@ class GuideSessionTest {
         GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
 
         assertFalse(GuideSession.awaitQuitConfirm())
+    }
+
+    // ---- 내용 서명(#410) ----
+
+    private fun sig(content: String) = ScreenSig(structure = "구조", content = content)
+
+    private fun contentSignature(
+        content: String = "제목|장바구니;결제하기;",
+        generation: Long = currentGeneration(),
+        hasLabeledElement: Boolean = true,
+    ) = GuideSession.contentSignature(generation, sig(content), hasLabeledElement)
+
+    @Test
+    fun `같은 세션 같은 내용이면 같은 서명이다`() {
+        GuideSession.start("장바구니 열기")
+
+        assertEquals(contentSignature(), contentSignature())
+    }
+
+    @Test
+    fun `구조가 달라도 내용이 같으면 같은 서명이다`() {
+        // 축을 재정의하지 않는다는 전제(#380)를 고정한다. 구조까지 해시에 섞으면 서버가 구조
+        // 축으로 이미 내린 판정을 내용 축이 겹쳐 내리고, "구조는 같고 내용만 다른 화면"을
+        // 가르려던 값이 정작 그 구분을 잃는다.
+        GuideSession.start("장바구니 열기")
+        val generation = currentGeneration()
+
+        assertEquals(
+            GuideSession.contentSignature(
+                generation,
+                ScreenSig(structure = "구조-A", content = "제목|장바구니;"),
+                hasLabeledElement = true,
+            ),
+            GuideSession.contentSignature(
+                generation,
+                ScreenSig(structure = "구조-B", content = "제목|장바구니;"),
+                hasLabeledElement = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `내용이 다르면 서명이 다르다`() {
+        GuideSession.start("장바구니 열기")
+
+        assertNotEquals(contentSignature("제목|사과;"), contentSignature("제목|배;"))
+    }
+
+    @Test
+    fun `세션이 바뀌면 같은 내용도 다른 서명이다`() {
+        // salt가 generation에 매여 있다는 뜻이다. 남으면 이전 세션의 이력과 해시가 맞아
+        // 서버가 세션을 넘어 같은 화면으로 읽는다.
+        GuideSession.start("장바구니 열기")
+        val before = contentSignature()
+
+        GuideSession.stop()
+        GuideSession.start("장바구니 열기")
+
+        assertNotEquals(before, contentSignature())
+    }
+
+    @Test
+    fun `형식은 hex 64자다`() {
+        GuideSession.start("장바구니 열기")
+
+        assertTrue(contentSignature()!!.matches(Regex("^[0-9a-f]{64}$")))
+    }
+
+    @Test
+    fun `label 없는 화면은 서명을 내지 않는다`() {
+        // 내용이 없는 화면의 "내용 동일성"은 의미가 없다 — 빈 화면끼리 같은 값이 나오면
+        // 서버가 서로 다른 스플래시를 같은 화면으로 읽는다(#350이 뺀 그 화면들이다).
+        GuideSession.start("장바구니 열기")
+
+        assertNull(contentSignature(content = "-|;;", hasLabeledElement = false))
+    }
+
+    @Test
+    fun `지난 세대의 요청에는 서명을 내지 않는다`() {
+        GuideSession.start("장바구니 열기")
+        val stale = currentGeneration()
+        GuideSession.stop()
+        GuideSession.start("장바구니 열기")
+
+        assertNull(contentSignature(generation = stale))
     }
 
     @Test

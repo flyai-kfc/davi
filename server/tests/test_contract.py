@@ -172,8 +172,8 @@ def test_step_carries_the_whole_guidance_record():
     req = NextStepRequest(goal="x", screen=Screen(), steps=[step])
 
     assert req.steps == [step]
-    # 앱이 아직 채우지 않는 content_signature는 없는 값으로 온다(#270 서브이슈 4).
-    # performed도 귀속 미확인이면 같은 규칙이다(#319) — None을 "안 누름"으로 읽지 않는다.
+    # 관측이 없으면 없는 값으로 온다 — performed는 귀속 미확인(#319, None을 "안 누름"으로 읽지
+    # 않는다), content_signature는 label 없는 화면이거나 이 값을 안 채우는 낡은 앱(#410)이다.
     assert step.performed is None
     assert step.content_signature is None
 
@@ -189,6 +189,30 @@ def test_step_rejects_non_digest_structure_signature():
         assert "structure_signature" in str(error)
     else:
         raise AssertionError("화면 원문으로 쓸 수 있는 서명이 통과됐다")
+
+
+def test_content_signature_rejects_a_non_digest_value():
+    """형식은 `structure_signature`와 같다(#410). 어긋나면 앱이 다른 규칙으로 만들고 있는 것이다.
+
+    같은 레코드에 나란히 서는 두 값이라 한쪽만 원문을 받아들이면 그 자리로 label이 샌다.
+    """
+
+    for bad in ("a" * 63, "A" * 64, "화면 원문"):
+        for build in (
+            lambda value: Screen(content_signature=value),
+            lambda value: GuideStep(
+                instruction="누르세요.",
+                action_type=ActionType.TAP,
+                structure_signature="a" * 64,
+                content_signature=value,
+            ),
+        ):
+            try:
+                build(bad)
+            except ValueError as error:
+                assert "content_signature" in str(error)
+            else:
+                raise AssertionError(f"{bad!r}가 통과됐다")
 
 
 def test_scroll_step_requires_a_direction():

@@ -906,6 +906,16 @@ class GuideAccessibilityService : AccessibilityService() {
         // 논리 요청의 "같은 화면" 판정도 구조 축이다(#380) — 내용까지 넣으면 배너 로테이션이
         // network 재전송을 새 논리 요청으로 쪼개 재시도 추적(#81)이 끊긴다.
         val logicalRequest = logicalRequests.next(signature.structure, session.generation)
+        // 내용 서명은 **여기서 한 번만** 만든다(#410). 이 요청이 싣는 두 자리 — 현재 화면
+        // (`Screen`)과 그 화면에서 나간 안내(`steps[]`) — 가 같은 값을 써야 서버의 이력 간
+        // 대조가 성립한다. 스텝 쪽은 [applyAction]이 `request.screen`에서 도로 읽는다.
+        val requestScreen = screen.copy(
+            contentSignature = GuideSession.contentSignature(
+                session.generation,
+                signature,
+                screen.hasLabeledElement(),
+            ),
+        )
 
         apiExecutor.execute {
             val startedAt = SystemClock.elapsedRealtime()
@@ -913,7 +923,7 @@ class GuideAccessibilityService : AccessibilityService() {
             try {
                 val request = NextStepRequest(
                     goal = session.goal,
-                    screen = screen,
+                    screen = requestScreen,
                     // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
                     deviceId = dogfoodDeviceId,
                     // 직전에 무엇을 안내했고 그래서 화면이 바뀌었는지 모르면 모델이 같은 말을
@@ -1265,6 +1275,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 targetNodeId = target?.nodeId,
                 screenHint = action.screenSummary.takeIf { it.isNotBlank() },
                 structureSignature = response.screenSignature,
+                // 이 안내가 나간 화면의 내용 축(#410). 요청을 만들 때 계산한 값을 도로 읽어
+                // 현재 화면과 스텝이 같은 값을 들게 한다 — 여기서 다시 만들면 그사이 화면이
+                // 흔들린 경우 두 자리가 갈린다.
+                contentSignature = screen.contentSignature,
             ),
         )
 

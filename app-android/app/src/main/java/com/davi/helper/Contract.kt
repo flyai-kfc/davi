@@ -89,6 +89,17 @@ data class Screen(
     @SerialName("has_scrollable_element") val hasScrollableElement: Boolean? = null,
     /** `true` 표시 / `false` 미표시 / `null` 낡은 앱 또는 빈 window 목록으로 관측하지 못함. */
     @SerialName("ime_visible") val imeVisible: Boolean? = null,
+    /**
+     * 지금 이 화면의 내용 축 서명(#410). 기기 시그니처의 내용 축을 **세션 salt로 해시한** 값이라
+     * 원문 label은 여기로 나가지 않는다([ContentSignature]).
+     *
+     * 서버가 이력의 [GuideStep.contentSignature]와 대조해 "구조는 같고 내용만 다른 화면"과
+     * A→B→A 회귀를 가른다. **서버가 스스로 계산할 수 없어 앱이 싣는다** — salt가 기기 안에만
+     * 있다.
+     *
+     * `null`은 label 없는 화면이거나 이 값을 아직 안 채우는 낡은 앱이다.
+     */
+    @SerialName("content_signature") val contentSignature: String? = null,
 )
 
 @Serializable
@@ -152,8 +163,8 @@ data class GuideAction(
  * 둘만은 응답의 `target_node_id`로 **현재 화면에서 찾은 결과**이고, 강조를 그리려고 어차피
  * 하는 조회라 새 해석이 아니다 — 대상이 안 잡히면 둘 다 비어 있다.
  *
- * [contentSignature]는 **아직 채우지 않는다**(#270 서브이슈 4). 필드를 먼저 두는 것은
- * 앱·서버 관통 계약 변경을 한 번으로 묶기 위해서다.
+ * [contentSignature]는 그 안내가 나간 화면의 [Screen.contentSignature]를 그대로 옮긴 값이다
+ * (#410) — 요청 하나에서 두 자리가 같은 값을 쓰도록 보내는 자리에서 한 번만 계산한다.
  */
 @Serializable
 data class GuideStep(
@@ -180,6 +191,7 @@ data class GuideStep(
      * source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다.
      */
     val performed: Boolean? = null,
+    /** 그 안내가 나간 화면의 내용 축 서명. 출처는 [Screen.contentSignature]다. */
     @SerialName("content_signature") val contentSignature: String? = null,
 )
 
