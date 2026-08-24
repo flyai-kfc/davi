@@ -77,6 +77,7 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 앵커 어긋남 로그를 전이에서만 찍기 위한 표시. 판정에는 쓰지 않는다(#380). */
     private var targetSlotMovedLogged = false
 
+
     /**
      * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
      * 클릭만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
@@ -271,7 +272,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetNodeId = null
                             guidedTargetStableLabel = null
                             guidedTargetStructure = null
-                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
+                                            // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
                             stability.markFailed()
                         }
@@ -388,9 +389,8 @@ class GuideAccessibilityService : AccessibilityService() {
             if (pkg != null && pkg == currentScreenPackage) {
                 stability.markInteraction(SystemClock.uptimeMillis())
             }
+            onTargetPressed(event)
         }
-
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
         scheduleSample(SETTLE_MS)
     }
 
@@ -640,22 +640,24 @@ class GuideAccessibilityService : AccessibilityService() {
         // 문구는 남겼다가, 같은 화면으로 안정되면 되돌린다. 위 redisplay는 오버레이가 통째로
         // 지워진 경우를 맡고 여기는 그 안쪽 — 안내는 떠 있는데 강조만 틀린 경우다.
         if (decision == ScreenStabilityTracker.Decision.WAIT) {
+            targetSlotMovedLogged = false
             display.hideTarget()?.let {
                 Log.i(TAG, "hide target")
                 draw(it)
             }
         } else if (targetSlotChanged) {
             // 구조가 같은 채 목록만 밀린 화면이다(#380). 소속 판정이 구조 축이라 여기까지
-            // 오는데, 옛 bounds를 되돌리면 강조가 **다른 줄**을 가리키고 눌림까지 재무장돼
-            // (`restoreTarget`) 그 자리를 누른 사용자가 `performed=true`로 오귀속된다.
-            // 새 안내가 올 때까지 문구만 남기는 편이 낫다 — `hideTarget`의 계약과 같다.
+            // 오는데, 강조는 **다른 줄**을 가리키고 있다. 되돌리는 것만 막으면 이미 떠 있는
+            // 강조가 그대로 남으므로 **내린다** — `hideTarget`의 계약 그대로(자리만 내리고
+            // 문구는 남긴다, #225). 눌림 재무장도 함께 막힌다(`restoreTarget`이 푸는 것을
+            // 안 부르므로), 그 자리를 누른 사용자가 `performed=true`로 오귀속되지 않는다.
             //
-            // **전이에서만 찍는다.** 이 분기는 숨긴 것이 있든 없든 걸려서, 그대로 두면
-            // 앵커가 어긋난 동안 폴링 주기마다 같은 줄이 나간다(응답이 안 오는 확인 대기
-            // 구간에서는 사용자가 답할 때까지). 계측이 로그를 못 읽게 만들면 안 된다.
+            // **전이에서만 찍는다.** 앵커가 어긋난 동안 폴링 주기마다 같은 줄이 나가면
+            // 계측이 로그를 못 읽게 만든다.
+            display.hideTarget()?.let { draw(it) }
             if (!targetSlotMovedLogged) {
                 targetSlotMovedLogged = true
-                Log.i(TAG, "target slot moved, keep hidden")
+                Log.i(TAG, "target slot moved, hide target")
             }
         } else {
             targetSlotMovedLogged = false
@@ -1165,6 +1167,9 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionAfter(requestSentAtMs)
         ) {
             GuideTelemetry.responseDropped(logicalRequest, "content_changed_after_interaction")
+            // 옮겨 간 그 화면을 다시 묻게 한다. 버리기만 하면 인과 창이 닫힌 뒤라 다음 샘플이
+            // 새 상황이 못 되고, 사용자는 7초 뒤 정체 문구만 본다(#380 리뷰).
+            stability.markResponseDiscarded()
             return
         }
 
@@ -1238,7 +1243,9 @@ class GuideAccessibilityService : AccessibilityService() {
         // label이 달라지면(구조 보존 재정렬) 조작 이벤트 없이도 재질의를 연다.
         guidedTargetNodeId = target?.nodeId
         guidedTargetStableLabel = target?.let { ScreenSignature.stableLabelOf(it) }
-        guidedTargetStructure = target?.let { requestSignature.structure }
+        guidedTargetStructure = if (target != null) requestSignature.structure else null
+        // 새 안내가 나갔으니 앵커 재질의 상한이 다시 열린다(#380 리뷰).
+        stability.armAnchor()
         // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
         // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
         guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }

@@ -176,6 +176,7 @@ class ScreenStabilityTracker(
     private var unreadableSinceMs: Long? = null
     private var lastInteractionMs: Long? = null
     private var sendWasContentOnly = false
+    private var anchorRequeryUsed = false
 
     fun onSample(
         signature: ScreenSig,
@@ -231,11 +232,14 @@ class ScreenStabilityTracker(
         val contentOnly = sent != null &&
             signature.structure == sent.structure &&
             signature.content != sent.content
+        // 앵커는 인과 게이트를 우회하지만 게이트와 달리 시간 상한이 없다. 안내 하나가
+        // 앵커로 여는 재질의를 **한 번으로 끊는다**([armAnchor]).
+        val anchorOpened = contentOnly && guidedTargetChanged && !anchorRequeryUsed
         val novel = when {
             sent == null -> true
             signature.structure != sent.structure -> true
             !contentOnly -> false
-            else -> guidedTargetChanged || interactedRecently(nowMs)
+            else -> anchorOpened || interactedRecently(nowMs)
         }
         // **조건부로 적지 않는다.** `if (novel)`로 두면 STUCK 샘플(정의상 novel=false)이
         // 갱신을 건너뛰어 직전 SEND의 값이 남고, 눌림 확인 재질의가 그 옛 값을 실어
@@ -250,6 +254,9 @@ class ScreenStabilityTracker(
             // 실패한 화면을 폴링 주기마다 다시 때리면 서버가 죽어 있을 때 초당 한 번씩 두드린다.
             // 무료 티어는 15 RPM이다(HANDOFF §10). 실기기에서 실제로 이 루프를 만들어 봤다.
             if (failures > 0 && nowMs - lastAttemptMs < backoffMs()) return Decision.IDLE
+            // 상한은 **요청이 실제로 나갈 때만** 쓴다. 위 두 가드에 막힌 샘플에서 쓰면
+            // 그 안내의 앵커 재질의가 나가지도 못한 채 소진된다.
+            if (anchorOpened) anchorRequeryUsed = true
             return Decision.SEND
         }
 
@@ -275,6 +282,20 @@ class ScreenStabilityTracker(
         requestOutstanding = true
     }
 
+    /**
+     * 늦은 응답을 **내용 축 근거로** 버렸다(#380). 그 화면을 보낸 적 없는 것으로 되돌린다.
+     *
+     * 구조 축 폐기(`screen_changed`)에는 이 처리가 필요 없다 — 구조가 달라 다음 샘플이 무조건
+     * 새 상황이다. 내용 축 폐기는 다르다: 버린 근거가 "요청~응답 사이 조작"인데 그 응답이
+     * 인과 창(5초)의 끝에 도착하면, 다음 샘플에서 창이 이미 닫혀 `novel`이 서지 않는다.
+     * **다른 화면으로 옮겼다고 판정해 버려 놓고 그 새 화면을 안 묻는** 구멍이 된다.
+     * 화면 꺼짐 폐기가 [markResumed]의 `requery`로 같은 처리를 하는 것과 같은 결이고,
+     * 실패가 아니므로 백오프는 건드리지 않는다.
+     */
+    fun markResponseDiscarded() {
+        sentSignature = null
+    }
+
     /** 성공·실패·폐기와 무관하게 요청이 끝나면 부른다. 다음 화면이 다시 나갈 수 있게 연다. */
     fun markFinished() {
         requestOutstanding = false
@@ -295,6 +316,24 @@ class ScreenStabilityTracker(
      * 같은 구조의 **다른** 화면으로 이동한 경우는 [interactionAfter]가 마저 거른다.
      */
     fun currentSignature(): ScreenSig? = lastSample
+
+    /**
+     * 새 안내가 나갔다 — 그 안내의 **앵커 재질의 상한을 연다**(#380 리뷰).
+     *
+     * 앵커(안내 대상 슬롯의 label 변화)는 인과 게이트를 우회하는데, 게이트의
+     * [INTERACTION_WINDOW_MS] 같은 시간 상한이 없다. 안내 대상이 스스로 갱신되는 영역
+     * 안에 있으면(회전하는 인기 검색어의 "N위를 누르세요", 새 메시지가 계속 오는 대화방
+     * 목록) 응답이 도착할 때마다 슬롯이 또 어긋나 **왕복당 한 번씩 재질의가 도는 루프**가
+     * 된다 — 이 이슈가 배너에 대해 닫은 것과 같은 폭주다.
+     *
+     * 한 번으로 끊는 근거는 앵커가 답하는 질문 자체다 — "강조가 엉뚱한 줄을 가리킨다"의
+     * 해법은 새 안내 하나이고, 그래도 또 어긋나면 다시 물어서 나아지지 않는다. 상한을
+     * 넘으면 강조를 내리고(호출자) 정체 문구로 떨어진다. 눌림 확인 재질의가 눌림당
+     * 1회인 것과 같은 결(#319).
+     */
+    fun armAnchor() {
+        anchorRequeryUsed = false
+    }
 
     /**
      * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
@@ -347,9 +386,9 @@ class ScreenStabilityTracker(
     /**
      * 직전 판정이 **구조는 그대로이고 내용만 바뀐** 화면의 SEND였는가(#380).
      *
-     * **SEND·STUCK 판정에서만 확정된다.** 대입이 홀드 단계의 조기 반환보다 뒤라
+     * **홀드를 통과한 샘플에서만 확정된다.** 대입이 홀드 단계의 조기 반환보다 뒤라
      * WAIT·UNREADABLE 샘플에서는 갱신되지 않는다 — 그 시점에 읽지 말 것. 지금 읽는 자리는
-     * `sendStableScreen` 하나뿐이고 그것은 두 분기에서만 불린다.
+     * `sendStableScreen` 하나뿐이고 그것은 SEND·STUCK 분기에서만 불린다.
      * 스텝 이력의 `screen_changed`가 이 값을 쓴다 — 구조 축만 보면 균일 목록 스크롤이
      * "화면 안 바뀜"으로 적혀, 서버가 안내가 안 먹혔다고 읽는다.
      */
@@ -463,6 +502,7 @@ class ScreenStabilityTracker(
         unreadableSinceMs = null
         lastInteractionMs = null
         sendWasContentOnly = false
+        anchorRequeryUsed = false
     }
 
     companion object {

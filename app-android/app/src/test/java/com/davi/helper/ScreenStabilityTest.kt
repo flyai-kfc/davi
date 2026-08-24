@@ -995,6 +995,100 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `앵커가 여는 재질의는 안내 하나당 한 번이다`() {
+        // 앵커는 인과 게이트를 우회하는데 시간 상한이 없다. 안내 대상이 스스로 갱신되는
+        // 영역 안에 있으면 응답이 올 때마다 슬롯이 또 어긋나 왕복당 한 번씩 재질의가 돈다.
+        val before = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(before, 0, hasLabeledElement = true)
+        tracker.onSample(before, 700, hasLabeledElement = true)
+        tracker.markSent(before, 700)
+        tracker.markFinished()
+
+        val moved = ScreenSig("rooms", "B;A;C")
+        tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
+        assertEquals(
+            Decision.SEND,
+            tracker.onSample(moved, 2_100, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+        tracker.markSent(moved, 2_100)
+        tracker.markFinished()
+
+        // 상한이 소진됐다. 슬롯이 또 밀려도 앵커만으로는 새 상황이 아니다.
+        val movedAgain = ScreenSig("rooms", "C;B;A")
+        tracker.onSample(movedAgain, 2_800, hasLabeledElement = true, guidedTargetChanged = true)
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(movedAgain, 3_500, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+    }
+
+    @Test
+    fun `새 안내가 나가면 앵커 상한이 다시 열린다`() {
+        val before = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(before, 0, hasLabeledElement = true)
+        tracker.onSample(before, 700, hasLabeledElement = true)
+        tracker.markSent(before, 700)
+        tracker.markFinished()
+        val moved = ScreenSig("rooms", "B;A;C")
+        tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
+        tracker.onSample(moved, 2_100, hasLabeledElement = true, guidedTargetChanged = true)
+        tracker.markSent(moved, 2_100)
+        tracker.markFinished()
+
+        // 응답이 반영돼 새 안내가 나갔다.
+        tracker.armAnchor()
+
+        val movedAgain = ScreenSig("rooms", "C;B;A")
+        tracker.onSample(movedAgain, 2_800, hasLabeledElement = true, guidedTargetChanged = true)
+        assertEquals(
+            Decision.SEND,
+            tracker.onSample(movedAgain, 3_500, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+    }
+
+    @Test
+    fun `나가지 못한 앵커 재질의는 상한을 쓰지 않는다`() {
+        // in-flight 가드에 막힌 샘플이 상한을 소진하면 그 안내의 재질의가 나가지도 못한 채 끝난다.
+        val before = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(before, 0, hasLabeledElement = true)
+        tracker.onSample(before, 700, hasLabeledElement = true)
+        tracker.markSent(before, 700)
+
+        val moved = ScreenSig("rooms", "B;A;C")
+        tracker.onSample(moved, 1_400, hasLabeledElement = true, guidedTargetChanged = true)
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(moved, 2_100, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+
+        tracker.markFinished()
+        assertEquals(
+            Decision.SEND,
+            tracker.onSample(moved, 2_800, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+    }
+
+    @Test
+    fun `내용 축으로 버린 응답은 그 화면을 다시 묻게 한다`() {
+        // 버린 근거가 "요청~응답 사이 조작"인데 그 응답이 인과 창 끝에 도착하면, 버리기만 해서는
+        // 다음 샘플이 새 상황이 못 된다 — 옮겨 간 화면을 영영 안 묻는다(#380 리뷰).
+        val page1 = ScreenSig("list", "1페이지")
+        tracker.onSample(page1, 0, hasLabeledElement = true)
+        tracker.onSample(page1, 700, hasLabeledElement = true)
+        tracker.markSent(page1, 700)
+        tracker.markInteraction(800)
+        tracker.markFinished()
+
+        // 응답이 인과 창(5초)이 닫힌 뒤에 도착해 폐기됐다.
+        tracker.markResponseDiscarded()
+
+        val page2 = ScreenSig("list", "2페이지")
+        val late = 800 + ScreenStabilityTracker.INTERACTION_WINDOW_MS + 1_000
+        tracker.onSample(page2, late, hasLabeledElement = true)
+        assertEquals(Decision.SEND, tracker.onSample(page2, late + 700, hasLabeledElement = true))
+    }
+
+    @Test
     fun `정체 시점에는 내용만 바뀐 전송이라고 적지 않는다`() {
         // 눌림 확인 재질의가 이 값을 실어 `screen_changed`를 적는다. 직전 SEND의 값이 남으면
         // `performed=true` + `screen_changed=true`라는 모순된 이력이 나가, 재질의의 존재
