@@ -40,6 +40,11 @@ class GuideDisplayState {
      * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      *
+     * [inputText]는 「바로 입력」 버튼이 입력칸에 채울 글자다(C21 · #405). 값이 있으면
+     * 안내창 컨트롤 행에 버튼이 뜬다. **type 안내에서만 남긴다** — 서버 가드가 이미 비우지만
+     * (`_keep_input_text_from_goal`), 이 값으로 창에 버튼이 생기므로 앱도 [show]에서 한 번 더
+     * 좁힌다. 값이 곧 예외 조작의 범위라서다(`SPEC.md` §2).
+     *
      * [targetSuppressed]는 **강조·손 시연을 그리지 말라는 명시 신호**다(PR #343 리뷰 P1).
      * 예전에는 `copy(bounds = null, direction = null)`이 그 뜻을 겸했는데, 가장자리 제스처
      * (#222)의 강조 선·손은 [actionType]에서 파생돼 그 규약을 조용히 비껴갔다 — 지우는 쪽
@@ -52,6 +57,7 @@ class GuideDisplayState {
         val text: String,
         val actionType: ActionType? = null,
         val direction: SwipeDirection? = null,
+        val inputText: String? = null,
         val confirm: ConfirmKind? = null,
         val targetSuppressed: Boolean = false,
     )
@@ -124,9 +130,16 @@ class GuideDisplayState {
         text: String,
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
+        inputText: String? = null,
     ): Content {
         clearUnreadableState()
-        val content = Content(bounds, text, actionType, direction)
+        val content = Content(
+            bounds,
+            text,
+            actionType,
+            direction,
+            inputText = inputText?.takeIf { it.isNotBlank() && actionType == ActionType.TYPE },
+        )
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = true

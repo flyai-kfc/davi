@@ -61,6 +61,34 @@
         android:visibility="gone" />
 
     <!--
+      「바로 입력」 버튼(C21 · #405) — SPEC §2 「대신 해주지 않는다」의 유일한 예외.
+      서버가 목표 문장과 대조해 내려준 input_text가 있을 때만 ControlOverlay가 켠다.
+      확인쌍과 같은 자리(창 바닥 컨트롤 행)·같은 캡슐 치수를 쓰고, 확인쌍·점 셋이 있는 동안은
+      숨는다 — 셋이 배타라 겹칠 일이 없다(ControlOverlay.applyInputFill).
+
+      android.widget.Button을 온전한 이름으로 쓴다 — 짧은 이름은 Material 인플레이터가
+      MaterialButton으로 바꿔치기하고 backgroundTint가 커스텀 배경을 덮는다(#123 실측).
+      stateListAnimator를 끊는 이유도 같은 결이다 — 기본 elevation 그림자가 배경에 이미
+      그려 둔 근사 그림자 위에 한 겹 더 얹힌다.
+    -->
+    <android.widget.Button
+        android:id="@+id/btn_input_fill"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/davi_overlay_confirm_height"
+        android:layout_marginStart="@dimen/davi_overlay_confirm_inset"
+        android:layout_marginEnd="@dimen/davi_overlay_confirm_inset"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/overlay_instruction_padding"
+        android:background="@drawable/bg_davi_overlay_input_fill"
+        android:stateListAnimator="@null"
+        android:paddingBottom="@dimen/davi_overlay_confirm_shadow_y"
+        android:text="@string/overlay_input_fill"
+        android:textColor="@color/davi_button_on_primary"
+        android:textSize="@dimen/davi_type_body_lg"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!--
       읽는 중 점 셋(GD-1·GD-2r). 대화 화면 "잠시만요"와 **같은 뷰·같은 리듬**이다 — 두 곳이
       따로 뛰면 같은 기다림이 다른 일처럼 보인다. 문구 아래에 놓는 것도 메인 6 시안과 같다.
 

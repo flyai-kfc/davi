@@ -140,6 +140,12 @@ data class GuideAction(
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
     @SerialName("target_node_id") val targetNodeId: String? = null,
+    /**
+     * `type`일 때 입력칸에 넣을 글자(C21). 서버 가드가 **사용자가 확인 화면에서 승인한
+     * 목표 문장에 있는 말**만 남긴다 — 값이 있으면 안내창에 「바로 입력」 버튼이 뜨고,
+     * 누르면 `ACTION_SET_TEXT`로 대상 입력칸에 채운다(#405, `SPEC.md` §2의 유일한 예외).
+     */
+    @SerialName("input_text") val inputText: String? = null,
     val instruction: String,
 )
 

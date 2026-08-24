@@ -261,6 +261,12 @@ class HighlightOverlayView(context: Context) : View(context) {
     private var readingWindow = false
 
     /**
+     * 「바로 입력」 버튼이 컨트롤 행에 앉아 있는가(C21 · #405). 이 뷰는 자리만 비운다 —
+     * 버튼 자체와 눌림 처리는 조작 오버레이([ControlOverlay])에 있다. 확인쌍과 같은 분업이다.
+     */
+    private var inputFill = false
+
+    /**
      * 읽는 중이 덮기 전의 안내. 읽는 중이 끝났는데 **새 안내가 아직 안 왔을 때** 되돌린다.
      *
      * 읽는 중을 "창이 비어 있을 때만"으로 막았던 #229의 제약을 #295가 뒤집었다. 그때 근거는
@@ -462,8 +468,12 @@ class HighlightOverlayView(context: Context) : View(context) {
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
         targetSuppressed: Boolean = false,
+        inputText: String? = null,
     ) {
         hasTarget = bounds != null && !targetSuppressed
+        // 버튼 자리는 [targetSuppressed]와 무관하다 — 저 신호는 강조·손 시연만 억제하고(#343),
+        // 정체로 문구만 남은 화면에서도 입력을 채워 주는 것이 막힘을 푸는 쪽이다.
+        inputFill = inputText != null
         // 방향 제스처만 시연한다(#152). 판정은 GestureMotion이 하고 여기서는 결과만 든다.
         //
         // **가장자리 제스처는 서버 값을 거치지 않는다**(#222). 방향이 액션 종류로 정해져 있어
@@ -510,6 +520,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun clearTarget() {
         hasTarget = false
         readingWindow = false
+        inputFill = false
         // 창을 통째로 걷을 때는 되돌릴 것도 없다. 남기면 다음 읽는 중이 끝날 때 이전
         // 세션의 안내가 되살아난다(#295).
         stashed = null
@@ -961,6 +972,9 @@ class HighlightOverlayView(context: Context) : View(context) {
     private fun reservedHeight(): Float = when {
         confirmKind != null -> controlRow
         readingWindow -> dotsRow
+        // 「바로 입력」 버튼(C21 · #405). 확인쌍과 같은 행 높이를 쓴다 — 새 치수를 만들면
+        // 계산과 그리기의 값이 셋으로 는다(위 KDoc의 이유 그대로).
+        inputFill -> controlRow
         else -> 0f
     }
 

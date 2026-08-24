@@ -318,4 +318,21 @@ class GuideApiClientTest {
         const val TRACE_ID = "123e4567-e89b-12d3-a456-426614174000"
         const val SERVER_REQUEST_ID = "0123456789abcdef0123456789abcdef"
     }
+    /** C21(#405): type 안내의 input_text를 파싱한다. 필드가 없는 응답은 기본값 null이다. */
+    @Test
+    fun `parses input_text on a type action`() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """{"action":{"expected_result":"검색어가 입력돼 있다","evidence":"검색","action_type":"type","target_node_id":"n1","input_text":"근처 약국","instruction":"여기에 입력하세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+                ),
+        )
+
+        val result = GuideApiClient(server.url("/").toString()).nextStep(sampleRequest(), trace(1))
+
+        result as NextStepResult.Success
+        assertEquals("근처 약국", result.response.action.inputText)
+    }
+
 }

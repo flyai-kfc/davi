@@ -8,12 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Rect
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -231,6 +233,10 @@ class GuideAccessibilityService : AccessibilityService() {
                     // "스스로 해냈다"는 경험에 맞다(2026-08-14 결정). 종료 확인의 ○도 같은 자리다.
                     Log.i(TAG, "confirm accepted ($kind), session done")
                     GuideSession.confirmAccepted()
+                }
+
+                override fun onInputFillRequested() {
+                    performInputFill()
                 }
 
                 override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
@@ -833,6 +839,10 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
+        // 「바로 입력」의 채울 값·대상 자리를 표시와 같은 깔때기에서 갱신한다 — 버튼이 보이는
+        // 화면과 눌렀을 때 채워지는 값이 어긋날 수 없다. 값이 없으면 버튼도 없으니 함께 비운다.
+        pendingInputText = content.inputText
+        pendingInputBounds = if (content.inputText != null) rect else null
         overlay?.showGuide(
             rect,
             content.text,
@@ -841,7 +851,78 @@ class GuideAccessibilityService : AccessibilityService() {
             content.direction,
             content.confirm,
             content.targetSuppressed,
+            content.inputText,
         )
+    }
+
+    /**
+     * 「바로 입력」이 채울 글자와 그 안내의 대상 bounds. [draw]만 쓴다 — 버튼이 떠 있는 동안의
+     * 값이고, 버튼이 없으면(null) 콜백도 올 수 없다.
+     */
+    private var pendingInputText: String? = null
+    private var pendingInputBounds: Rect? = null
+
+    /**
+     * 「바로 입력」 버튼(C21 · #405) — `SPEC.md` §2 「대신 해주지 않는다」의 **유일한 예외**를
+     * 실행하는 자리다. 예외의 세 경계가 다 여기 걸려 있다: ① 개시는 사용자의 버튼 탭이다(이
+     * 함수는 그 콜백에서만 불린다). ② 값은 서버 가드가 사용자 승인 목표 문장과 대조해 내려준
+     * `input_text`다. ③ 채우기만 한다 — IME 액션(검색 실행)은 부르지 않는다.
+     *
+     * 대상은 **누르는 시점에 다시 찾는다.** 응답 시점의 노드를 들고 있으면 화면이 조금만
+     * 움직여도 stale이고, 시니어가 버튼을 누르기까지의 간격은 길다. 안내가 가리킨 bounds와
+     * 같은 자리의 입력칸을 먼저 찾고, 없으면 입력 포커스를 쓴다 — 타이핑 안내는 키보드가
+     * 열린 화면에서 나가므로(#38 5번) 포커스가 곧 "지금 글자가 들어갈 곳"이다.
+     *
+     * 채운 뒤 아무것도 하지 않는다 — 대상 앱이 내는 텍스트 변경 이벤트가 손 타이핑과 같은
+     * 경로로 샘플을 깨우고, 다음 안내는 그 화면 변화가 부른다.
+     */
+    private fun performInputFill() {
+        val text = pendingInputText ?: return
+        val root = rootInActiveWindow ?: run {
+            Log.w(TAG, "input fill: no root")
+            return
+        }
+        val node = findEditableNode(root, pendingInputBounds)
+            ?: root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+        if (node == null) {
+            Log.w(TAG, "input fill: no editable target")
+            return
+        }
+        val args = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                text,
+            )
+        }
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        // 값 자체는 목표 문장의 일부라 로그에 남기지 않는다 — 운영 로그의 비식별 원칙 그대로.
+        Log.i(TAG, "input fill performed ok=$ok chars=${text.length}")
+    }
+
+    /**
+     * [bounds] 자리의 입력칸을 지금 트리에서 찾는다. 자리가 없거나 못 찾으면 null —
+     * 호출자가 입력 포커스로 폴백한다.
+     *
+     * 순회 상한은 직렬화와 같은 결이다([UiTreeSerializer]) — 병적인 트리에서 클릭 디스패치를
+     * 붙잡지 않는다.
+     */
+    private fun findEditableNode(root: AccessibilityNodeInfo, bounds: Rect?): AccessibilityNodeInfo? {
+        if (bounds == null) return null
+        val queue = ArrayDeque(listOf(root))
+        val nodeBounds = Rect()
+        var visited = 0
+        while (queue.isNotEmpty() && visited < INPUT_FILL_MAX_NODES) {
+            val node = queue.removeFirst()
+            visited++
+            if (node.isEditable) {
+                node.getBoundsInScreen(nodeBounds)
+                if (nodeBounds == bounds) return node
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::addLast)
+            }
+        }
+        return null
     }
 
     /**
@@ -1280,7 +1361,16 @@ class GuideAccessibilityService : AccessibilityService() {
         val fingerDirection = action.direction?.let { GestureMotion.fingerDirectionFor(it) }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
         // 소속도 구조 축이다(#380) — 내용까지 묶으면 배너가 도는 화면에서 재표시·복원이 죽는다.
-        draw(display.show(requestSignature.structure, bounds, action.instruction, action.actionType, fingerDirection))
+        draw(
+            display.show(
+                requestSignature.structure,
+                bounds,
+                action.instruction,
+                action.actionType,
+                fingerDirection,
+                action.inputText,
+            ),
+        )
         e2ePublisher?.displayed(
             generation = session.generation,
             requestSignature = requestSignature.structure,
@@ -1366,6 +1456,13 @@ class GuideAccessibilityService : AccessibilityService() {
 
     companion object {
         const val TAG = "GuideSvc"
+
+        /**
+         * [findEditableNode]의 순회 상한. 직렬화의 요소 상한과 같은 정신이다 — 클릭 디스패치
+         * 안에서 도는 탐색이라 병적인 트리에 붙잡히면 안 된다. 폴백(입력 포커스)이 있어
+         * 놓쳐도 실패가 아니다.
+         */
+        private const val INPUT_FILL_MAX_NODES = 500
 
         /**
          * 이벤트가 몰아친 뒤 이만큼 조용해야 화면을 뜬다. 전환 애니메이션 중에는 샘플이 계속
