@@ -60,7 +60,7 @@ _VALUE_CONNECTORS = frozenset("-./:")
 _MIN_EVIDENCE_LABEL_CHARS = 2
 
 # 복사 문구의 하한. 근거는 매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는
-# 버튼은 사용자가 지우고 다시 치는 것보다 낫지 않다(`_goal_quotes_input_text`).
+# 버튼은 사용자가 지우고 다시 치는 것보다 낫지 않다(`_instruction_quotes_input_text`).
 _MIN_INPUT_TEXT_CHARS = 2
 
 # label 뒤에 붙어도 **같은 어절을 인용한 것**으로 볼 수 있는 한국어 조사·서술격 어미.
@@ -155,7 +155,7 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     #    아래 교정들과 **연쇄하지는 않는다** — 건드리는 필드가 `input_text` 하나뿐이고
     #    어느 가드도 그 값을 읽지 않는다. 새 가드를 넣는 사람은 두 가지를 함께 본다:
     #    early return 앞이어야 하는가(도달성), 그리고 다른 가드가 그 필드를 읽는가(연쇄).
-    action = _keep_input_text_from_goal(action, req.goal)
+    action = _keep_input_text_named_by_instruction(action)
 
     # 2. tap 대상은 눌렀을 때 반응하는 요소여야 한다(C20 · #311).
     if action.action_type is ActionType.TAP:
@@ -201,40 +201,38 @@ def _reject_obscured_target(action: GuideAction, screen: Screen) -> None:
     )
 
 
-def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
-    """`input_text`는 **사용자가 확인한 목표 문장에 있는 말**일 때만 남긴다(C21).
+def _keep_input_text_named_by_instruction(action: GuideAction) -> GuideAction:
+    """`input_text`는 **안내문이 집어 말한 말**일 때만 남긴다(C21, 2026-08-24 개정).
 
-    타이핑은 사용자가 화면을 보며 한 글자씩 치므로 틀린 값이 손에서 걸린다. 이 필드를 소비하는
-    경로에는 그 단계가 없어서, 값의 출처를 코드가 대신 좁힌다. 앱에서 오는 목표는 사용자가 최종
-    확인 화면에서 읽고 시작을 누른 문장이고(`docs/SCREENS.md` MA-4 — 세션을 켜는 두 경로가 모두
-    그 화면에서 출발한다), 거기 있는 말만 남기면 나가는 값은 이미 사용자가 승인한 값이다.
-    모델이 요약하거나 바꿔 쓴 값은 아무도 확인한 적이 없다.
+    **동의를 받는 면은 안내문이다.** 사용자는 「검색창에 '한국 미국 시차'라고 입력하세요」를
+    읽고 그 아래 버튼을 누른다 — 채워지는 값이 방금 읽은 그 말과 같으면, 버튼은 사용자가 눈으로
+    확인한 일만 한다. 타이핑이 안전한 이유(화면을 보며 한 글자씩 치니 틀린 값이 손에서 걸린다)를
+    버튼이 그대로 물려받는 자리다.
+
+    **목표 문장과 대조하지 않는다**(개정 전 규칙). 검색어는 목표에 그대로 있지 않은 것이 정상이라
+    — 목표 `한국이랑 미국의 시차를 알고 싶어`에 사람이 실제로 칠 말은 `한국 미국 시차`다 —
+    출처를 목표로 좁히면 **모델이 어색한 검색어를 쓰도록 강요하거나**(실측: 프롬프트가 강제하니
+    `한국이랑 미국의 시차`라고 썼다) 정상 안내에서 버튼이 사라진다. 승인의 근거를 목표에서
+    안내문으로 옮긴 것이지 없앤 것이 아니다.
 
     **실패로 닫지 않고 비운다.** 안내 문장 자체는 여전히 맞을 수 있고, 값이 없으면 사용자는
     지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이라 실패의 방향이 안전한 쪽이다.
     부수 필드가 주 기능을 죽이지 않는다는 `GuideAction.screen_summary`의 공백 검증 결정과 같은 결.
 
-    **안내문이 집어 말하지 않는 값도 비운다**([_instruction_quotes_input_text]). 출처 판정과
-    축이 다르다 — 그쪽은 "승인된 말인가", 이쪽은 "지금 읽는 문장이 시키는 말인가"다. 둘 다 서야
-    버튼이 **사용자가 읽은 그대로**를 채운다.
-
-    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, 소비자가 생겼을 때 tap 화면에 복사
-    제안이 뜨는 경로가 된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`),
-    필드 순서상 `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
+    **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, tap 화면에 입력 제안이 뜨는 경로가 된다.
+    프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`), 필드 순서상 `action_type`이
+    앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
 
     **하한은 한 글자를 거르는 데까지만 둔다**(`_MIN_INPUT_TEXT_CHARS`, PR #406 리뷰). 근거는
     매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는 버튼은 사용자가 지우고
-    다시 치는 것보다 낫지 않다. 어절 경계에 우연히 걸린 관형사(`그 집으로 가자`의 `그`)가 여기서
-    걸린다. 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **같은 값이지만 다른 이유로 서 있다**:
-    저쪽은 짧은 label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다. 그 위로는 임계값을
-    올리지 않는다 — 두 글자와 세 글자를 가를 근거가 없다(SPEC §4).
+    다시 치는 것보다 낫지 않다. 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **같은 값이지만 다른
+    이유로 서 있다**: 저쪽은 짧은 label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다.
+    그 위로는 올리지 않는다 — 두 글자와 세 글자를 가를 근거가 없다(SPEC §4).
     """
     if action.input_text is None:
         return action
-    if (
-        action.action_type is ActionType.TYPE
-        and _goal_quotes_input_text(action.input_text, goal)
-        and _instruction_quotes_input_text(action.input_text, action.instruction)
+    if action.action_type is ActionType.TYPE and _instruction_quotes_input_text(
+        action.input_text, action.instruction
     ):
         return action
     return action.model_copy(update={"input_text": None})
@@ -243,22 +241,19 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
 def _instruction_quotes_input_text(input_text: str, instruction: str) -> bool:
     """**사용자가 지금 읽는 문장이 그 말을 집어 말하는가.**
 
-    목표 대조(`_goal_quotes_input_text`)와 **축이 다르다.** 저쪽은 "사용자가 승인한 말인가"(출처)를
-    묻고, 이쪽은 "지금 화면에 뜬 안내가 시키는 말인가"(일치)를 묻는다. 출처만 보면 둘이 따로
-    놀 수 있고, 실제로 그랬다 — 목적어 없는 목표에서 안내문은 `검색어를 입력해 주세요`인데
-    `input_text`에는 목표 문장이 통째로 왔다(실모델 재현). 버튼이 채우는 값과 사용자가 읽는
-    문장이 어긋나면 **버튼은 사용자가 동의한 적 없는 일을 한다.**
+    「바로 입력」이 서는 유일한 근거다([_keep_input_text_named_by_instruction]) — 버튼이 채우는
+    값과 사용자가 방금 읽은 문장이 같아야 버튼이 눈으로 확인된 일만 한다.
 
     **따옴표를 파싱하지 않는다.** C21이 구조화 필드를 둔 이유가 "모델 문장이 조금만 달라져도
     조용히 깨진다"였고 그 판단은 그대로다 — 여기서는 문장을 해석하지 않고, 모델이 준 값이 문장
-    안에 있는지만 **완료 근거와 같은 매처**로 본다(`「종로 칼국수」를`·`'종로 칼국수'라고` 모두
-    조사 허용으로 걸린다). 파싱은 형태를 맞춰야 하지만 대조는 맞출 것이 없다.
+    안에 있는지만 **완료 근거와 같은 매처**로 본다(`'한국 미국 시차'를`·`한국 미국 시차라고`
+    모두 조사 허용으로 걸린다). 파싱은 형태를 맞춰야 하지만 대조는 맞출 것이 없다.
 
-    이 검사가 서면 「목표 전체가 왔는가」를 따로 볼 필요가 없다 — 그런 값은 안내문에 없다. 오히려
-    **목표가 검색어 자체인 짧은 경우**(`종로 칼국수`)를 전체 일치로 막으면 정상 경로가 죽는다.
+    같은 매처를 쓰므로 **값 연결자 경계 배제도 그대로 적용된다** — 안내문이
+    `010-1234-5678을 입력하세요`인데 값이 `010-1234`면 잘린 조각이라 걸러진다(PR #406 리뷰).
     """
     normalized = _normalize_for_evidence(input_text)
-    if not normalized:
+    if len(normalized) < _MIN_INPUT_TEXT_CHARS:
         return False
     return _contains_quoted_phrase(_phrase_offsets(instruction), normalized)
 
@@ -656,27 +651,6 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     return any(_contains_quoted_phrase(phrases, label) for label in comparable)
 
 
-def _goal_quotes_input_text(input_text: str, goal: str) -> bool:
-    """복사 문구가 목표 문장에 실제로 있는 말인가.
-
-    경계 규칙은 완료 근거와 **같은 것을 쓴다**(`_contains_quoted_phrase`) — 방향만 반대다. 근거
-    대조는 모델 문장에서 화면 label을 찾고, 여기서는 목표 문장에서 모델이 준 문구를 찾는다.
-    조사를 허용하는 이유도 같다: `'테헤란로 4번지'`는 목표에 `'테헤란로 4번지로'`로 적혀 있다.
-
-    **여기서는 원문끼리 비교한다.** 목표 문장은 마스킹을 거치지 않으므로(SPEC §4) 마스킹 정책이
-    바뀌어도 이 판정은 흔들리지 않는다 — 마스킹된 label과 대조하는 근거 검사와 다른 점이다.
-    """
-    normalized = _normalize_for_evidence(input_text)
-    # **한 글자는 받지 않는다.** 매칭이 헐거워서가 아니라 **아낄 타이핑이 없어서**다 — 버튼이
-    # 하는 일이 한 글자 대신 쳐 주는 것이면 사용자는 지우고 다시 치는 쪽이 빠르다. 어절 경계에
-    # 우연히 걸린 조사·관형사(`그 집으로 가자`의 `그`)가 여기로 온다(PR #406 리뷰).
-    # 근거 대조의 `_MIN_EVIDENCE_LABEL_CHARS`와 **다른 이유로 서 있는 값**이다: 저쪽은 짧은
-    # label이 아무 문장에나 걸려 **검증이 헐거워지는** 것을 막는다.
-    if len(normalized) < _MIN_INPUT_TEXT_CHARS:
-        return False
-    return _contains_quoted_phrase(_phrase_offsets(goal), normalized)
-
-
 class _Phrases(NamedTuple):
     """어절 토큰화 결과. [_contains_quoted_phrase]가 경계를 판정하는 데 필요한 전부다.
 
@@ -723,8 +697,9 @@ def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
     부분 문자열은 받지 않는다.
 
     **대조 둘이 이 규칙을 공유한다** — 완료 근거가 화면 label을 물었는지
-    (`_evidence_quotes_screen`)와 복사 문구가 목표 문장에 있는 말인지(`_goal_quotes_input_text`)다.
-    이름에 evidence·label이 없는 이유가 그것이고, 경계를 이렇게 정한 근거는 #71 fixture 평가다.
+    (`_evidence_quotes_screen`)와 복사 문구가 안내문에 있는 말인지
+    (`_instruction_quotes_input_text`)다. 이름에 evidence·label이 없는 이유가 그것이고,
+    경계를 이렇게 정한 근거는 #71 fixture 평가다.
     """
     for index, start in enumerate(phrases.starts):
         # 앞 어절과 한 값이면 그 자리는 원문에 없던 경계다 — `010-1234-5678`의 `1234`에서
