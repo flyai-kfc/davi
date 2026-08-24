@@ -31,7 +31,7 @@
         android:theme="@style/Theme.Davi"
         android:usesCleartextTraffic="false">
 
-        <!-- 릴리스 진입점: 로그인(스킵 가능) → 온보딩 → 대화 화면. ON-1, docs/SCREENS.md. -->
+        <!-- 릴리스 진입점: 로그인(스킵 가능) → 개인정보 동의 → 온보딩 → 대화 화면. ON-1, docs/SCREENS.md. -->
         <activity
             android:name=".LoginActivity"
             android:exported="true"
