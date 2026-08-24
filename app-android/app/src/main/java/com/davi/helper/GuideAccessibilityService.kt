@@ -897,8 +897,12 @@ class GuideAccessibilityService : AccessibilityService() {
             Log.w(TAG, "input fill: no root")
             return
         }
-        val node = findEditableNode(root, pendingInputBounds)
-            ?: root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+        // **어느 축으로 찾았는지 남긴다.** 두 축은 대개 같은 칸을 가리켜 결과가 구별되지 않는데,
+        // 갈리는 순간(포커스가 다른 칸에 있을 때)이 바로 안내하지 않은 칸을 채우는 경우다.
+        // 실기기 확인이 logcat 수동인 동안 이 표기가 그 축을 볼 유일한 창이다.
+        val matched = findEditableNode(root, pendingInputBounds)
+        val node = matched ?: root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+        val via = if (matched != null) "bounds" else "focus"
         if (node == null) {
             Log.w(TAG, "input fill: no editable target")
             return
@@ -911,7 +915,7 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         // 값 자체는 목표 문장의 일부라 로그에 남기지 않는다 — 운영 로그의 비식별 원칙 그대로.
-        Log.i(TAG, "input fill performed ok=$ok chars=${text.length}")
+        Log.i(TAG, "input fill performed ok=$ok via=$via chars=${text.length}")
     }
 
     /**
