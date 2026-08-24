@@ -237,6 +237,11 @@ class ConsentActivity : AppCompatActivity() {
      * 후자는 결정 자체를 비워 ON-1이 다시 뜬다 — 껐다가 마음이 바뀌어도 되돌릴 수 있다.
      */
     private fun disconnectKakaoIfDeselected() {
+        // **미리 켜기와 같은 조건을 건다**(3차 리뷰 P2). 카드를 감춘 빌드에서는 KAKAO가 영영
+        // `checkedKeys`에 없으므로, 이 조건이 없으면 **보지도 않은 항목 때문에 저장할 때마다
+        // 세션이 말없이 지워진다.** 미리 켜기에만 조건을 걸어 생긴 반대 방향의 구멍이다 —
+        // 켜는 쪽과 끄는 쪽이 같은 조건을 봐야 한다.
+        if (!BuildConfig.LOGIN_ENABLED) return
         if (ConsentItemKey.KAKAO in checkedKeys) return
         if (authStore.sessionToken(nowEpochSeconds()) == null) return
         authStore.clearAuthenticationDecision()
