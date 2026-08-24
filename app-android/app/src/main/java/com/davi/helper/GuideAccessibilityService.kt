@@ -374,7 +374,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 걷었다** — 그 플래그가 접근성 입력 필터를 세우고 터치가 아래 앱으로 내려가지 않아
         // 기기 조작이 통째로 막혔다(2026-08-24 SM-S921N 실측: `dumpsys input`의
         // `InputFilterEnabled: true`, 서비스는 down/move/up을 받는데 앱은 아무 반응 없음).
-        // 되살리려면 필터가 이벤트를 통과시키는 방법부터 확인해야 한다.
+        // 되살리려면 필터가 이벤트를 통과시키는 방법부터 확인해야 한다 — #394.
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
