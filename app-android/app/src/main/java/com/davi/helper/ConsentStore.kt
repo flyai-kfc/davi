@@ -33,9 +33,21 @@ class ConsentStore(private val prefs: SharedPreferences) {
         }
     }
 
-    /** 지금 문안(`currentVersion`)에 이미 동의했는가 — 다르면(또는 없으면) 화면을 다시 보여준다. */
-    fun hasAgreedCurrentVersion(currentVersion: String): Boolean =
-        !ConsentGate.needsConsent(prefs.getString(KEY_VERSION, null), currentVersion)
+    /**
+     * 지금 문안(`currentVersion`)에 이미 동의했는가 — 아니면 화면을 다시 보여준다.
+     *
+     * **버전만 보지 않는다**(PR #409 리뷰 P2). [ConsentGate.REQUIRED_KEYS]는 문안이 아니라
+     * **코드**라 「문구를 바꾸면 버전을 올린다」 규칙에 걸리지 않고 바뀔 수 있다 — #375가
+     * 풀려 개선 기록이 필수가 되거나, `strings.xml`의 카카오 블록이 스스로 예고한 대로
+     * ON-1의 「로그인 없이 시작하기」가 사라져 KAKAO가 필수가 되는 경우다. 그때 문구는
+     * 그대로라 버전을 안 올리면 **동의한 적 없는 필수 항목에 동의한 것으로 취급된다.**
+     * 이미 저장하고 있는 값이라 함께 보는 데 비용이 없다.
+     */
+    fun hasAgreedCurrentVersion(currentVersion: String): Boolean = ConsentGate.hasAgreed(
+        storedVersion = prefs.getString(KEY_VERSION, null),
+        storedItems = prefs.getStringSet(KEY_ITEMS, null).orEmpty(),
+        currentVersion = currentVersion,
+    )
 
     private companion object {
         const val PREFS_NAME = "davi_consent"

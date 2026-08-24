@@ -35,6 +35,7 @@
         android:importantForAccessibility="no"
         android:textAppearance="@style/TextAppearance.Davi.ConsentItemLabel" />
 
+    <!-- 전문. 위 항목 카드와 같은 이유로 토글에서 떼지는 않는다 — 고지 카드는 체크가 없다. -->
     <TextView
         android:id="@+id/consent_notice_body"
         android:layout_width="match_parent"

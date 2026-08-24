@@ -68,9 +68,18 @@
         android:lineSpacingMultiplier="1.2"
         android:textAppearance="@style/TextAppearance.Davi.Caption" />
 
-    <!-- 전문. 열지 않아도 체크는 된다(consent_view_detail_desc) — 아래 버튼과 독립. -->
+    <!--
+      전문. 열지 않아도 체크는 된다(consent_view_detail_desc) — 아래 버튼과 독립.
+
+      **`clickable`이 있는 이유는 토글에서 떼려는 것이다**(PR #409 리뷰 P3). 없으면 터치가
+      카드 root로 올라가 `toggleItem`이 돌아, **전문을 읽다가 줄을 짚으면 켜 둔 동의가
+      꺼진다.** 피드백은 카드 맨 위 34dp 아이콘뿐인데 그때 그 아이콘은 화면 밖일 수 있다.
+      「카드 전체가 체크 토글」은 그대로 두고 펼친 전문만 예외로 뺀다.
+    -->
     <TextView
         android:id="@+id/consent_item_detail"
+        android:clickable="true"
+        android:focusable="false"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/davi_consent_checkbox_label_gap"

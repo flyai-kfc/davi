@@ -52,11 +52,26 @@ class ConsentActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
+        // **재생성 전에 채운 것을 되살린다**(PR #409 리뷰 P1). 이 화면에는 configChanges가
+        // 없고 저장소가 재생성 경로를 의도적으로 열어 뒀다(매니페스트의 ConversationActivity
+        // 주석 「fontScale·uiMode는 일부러 넣지 않는다」). 전문을 읽다 글자 배율을 올리고
+        // 돌아오면 체크가 통째로 풀리는데 **왜 그런지는 아무 데도 안 나온다.**
+        savedInstanceState?.getStringArrayList(STATE_CHECKED)?.let { saved ->
+            saved.mapNotNullTo(checkedKeys) { name -> ConsentItemKey.entries.find { it.name == name } }
+        }
+
         bindItems()
         bindNotices()
         bindAgreeAll()
         bindFooter()
+        updateAgreeAllCheckbox()
         updateNextButtonAppearance()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 펼침·확인창 표시는 뷰 상태라 시스템이 id로 되살린다. 체크는 메모리에만 있어 여기서 든다.
+        outState.putStringArrayList(STATE_CHECKED, checkedKeys.mapTo(ArrayList()) { it.name })
     }
 
     private fun bindItems() {
@@ -84,14 +99,30 @@ class ConsentActivity : AppCompatActivity() {
             summaryRes = R.string.consent_usage_summary,
             detailRes = R.string.consent_usage_detail,
         )
-        bindItem(
-            binding.consentItemKakao,
-            ConsentItemKey.KAKAO,
-            required = false,
-            labelRes = R.string.consent_kakao_label,
-            summaryRes = R.string.consent_kakao_summary,
-            detailRes = R.string.consent_kakao_detail,
-        )
+        // **로그인이 안 되는 빌드에서는 카카오 카드를 감춘다**(PR #409 리뷰 P2).
+        // release 기본값은 LOGIN_ENABLED=false라 ON-1이 카카오 버튼을 숨기고 SDK도 init되지
+        // 않는데, 이 카드를 그대로 두면 **그 빌드에서 일어나지 않는 수집에 동의가 기록된다.**
+        // ON-1이 버튼을 숨기는 것과 같은 규칙이다.
+        binding.consentItemKakao.root.isVisible = BuildConfig.LOGIN_ENABLED
+        if (BuildConfig.LOGIN_ENABLED) {
+            bindItem(
+                binding.consentItemKakao,
+                ConsentItemKey.KAKAO,
+                required = false,
+                labelRes = R.string.consent_kakao_label,
+                summaryRes = R.string.consent_kakao_summary,
+                detailRes = R.string.consent_kakao_detail,
+            )
+        }
+    }
+
+    /**
+     * 「모두 동의」가 켜는 항목. **화면에 선 것만이다** — 감춘 카카오 카드까지 켜면 보이지도
+     * 않는 항목에 동의가 기록되고, `updateAgreeAllCheckbox`의 「다 켜졌나」 판정도 영원히
+     * 거짓이 되어 체크가 안 들어온다.
+     */
+    private fun visibleKeys(): List<ConsentItemKey> = ConsentItemKey.entries.filter {
+        it != ConsentItemKey.KAKAO || BuildConfig.LOGIN_ENABLED
     }
 
     private fun bindItem(
@@ -131,7 +162,7 @@ class ConsentActivity : AppCompatActivity() {
                 if (expanding) label else getString(R.string.consent_view_detail_desc)
         }
 
-        setItemChecked(item, checked = false)
+        setItemChecked(item, checked = key in checkedKeys)
     }
 
     private fun toggleItem(key: ConsentItemKey) {
@@ -190,6 +221,11 @@ class ConsentActivity : AppCompatActivity() {
 
     private fun bindNotice(notice: ViewDaviConsentNoticeBinding, titleRes: Int, openLabel: String, body: CharSequence) {
         notice.consentNoticeTitle.setText(titleRes)
+        // **root가 제목을 읽어야 한다**(PR #409 리뷰 P1). 제목은 importantForAccessibility=no,
+        // 본문은 접힌 상태에서 gone, 토글은 별도 포커스라 **읽을 내용이 하나도 없었다** —
+        // 제3자 고지는 법 제20조 통지 몫이라 특히 아픈 자리다. 항목 카드가 bindItem에서
+        // root에 라벨을 얹는 것과 같게 맞춘다.
+        notice.root.contentDescription = getString(titleRes)
         notice.consentNoticeBody.text = body
         notice.consentNoticeToggle.text = openLabel
 
@@ -224,20 +260,30 @@ class ConsentActivity : AppCompatActivity() {
     }
 
     private fun bindAgreeAll() {
+        // **행 자체가 무엇인지·켜졌는지 읽히지 않았다**(PR #409 리뷰 P2). 자식 둘이 모두
+        // importantForAccessibility=no라 라벨이 합산에서 빠지고, 상태는 ImageView 그림만
+        // 바뀌었다. 두 번 눌러 넷을 전부 **해제해 놓고** 모른 채 「다음으로」로 갈 수 있었다.
+        binding.consentAgreeAllRow.contentDescription =
+            getString(R.string.consent_agree_all) + ". " + getString(R.string.consent_agree_all_note)
         binding.consentAgreeAllRow.setOnClickListener {
-            val allChecked = checkedKeys.size == ConsentItemKey.entries.size
+            val keys = visibleKeys()
+            val allChecked = checkedKeys.size == keys.size
             checkedKeys.clear()
-            if (!allChecked) checkedKeys.addAll(ConsentItemKey.entries)
-            ConsentItemKey.entries.forEach { setItemChecked(itemBindingFor(it), it in checkedKeys) }
+            if (!allChecked) checkedKeys.addAll(keys)
+            keys.forEach { setItemChecked(itemBindingFor(it), it in checkedKeys) }
             updateAgreeAllCheckbox()
             updateNextButtonAppearance()
         }
     }
 
     private fun updateAgreeAllCheckbox() {
-        val allChecked = checkedKeys.size == ConsentItemKey.entries.size
+        val allChecked = checkedKeys.size == visibleKeys().size
         binding.consentAgreeAllCheckbox.setImageResource(
             if (allChecked) R.drawable.ic_davi_consent_check_checked else R.drawable.ic_davi_consent_check_unchecked,
+        )
+        ViewCompat.setStateDescription(
+            binding.consentAgreeAllRow,
+            getString(if (allChecked) R.string.consent_state_checked else R.string.consent_state_unchecked),
         )
     }
 
@@ -264,15 +310,13 @@ class ConsentActivity : AppCompatActivity() {
         binding.btnConsentDeclineCancel.setOnClickListener { binding.consentDeclineScrim.isVisible = false }
         binding.btnConsentDeclineAccept.setOnClickListener { finishAffinity() }
 
-        // 확인창이 떠 있으면 뒤로가기는 그것만 닫는다 — 화면째 빠져나가면 「그만두시겠어요?」에
-        // 답하지 않고 나간 것이 되고, 그 답이 곧 동의 여부다.
+        // **뒤로가기도 확인창을 거친다**(PR #409 리뷰 P2). 확인창을 둔 근거가 「한 번 나가면
+        // 앱을 아예 쓸 수 없어 되돌릴 길도 없다」인데, LoginActivity가 finish()하고 넘겨
+        // 백스택에 이 화면뿐이라 **뒤로가기 한 번이면 앱이 그대로 닫혔다** — 가장 흔한 이탈
+        // 경로에만 그 근거가 적용되지 않고 있었다. 제스처 내비에서 가장자리를 스치는 실수는
+        // 시니어에게 흔하다. 확인창이 떠 있을 때만 닫고, 아니면 띄운다.
         onBackPressedDispatcher.addCallback(this) {
-            if (binding.consentDeclineScrim.isVisible) {
-                binding.consentDeclineScrim.isVisible = false
-            } else {
-                isEnabled = false
-                onBackPressedDispatcher.onBackPressed()
-            }
+            binding.consentDeclineScrim.isVisible = !binding.consentDeclineScrim.isVisible
         }
     }
 
@@ -316,5 +360,6 @@ class ConsentActivity : AppCompatActivity() {
 
     private companion object {
         const val TAG = "GuideSvc"
+        const val STATE_CHECKED = "consent_checked_keys"
     }
 }

@@ -83,7 +83,11 @@
     <!-- 항목마다 붙는 전문 열기 버튼. **「자세히」가 아니라 「보기」다** — 짧을수록 눌린다. -->
     <string name="consent_view_detail">보기</string>
     <string name="consent_detail_close">닫기</string>
-    <!-- 전문 시트를 열지 않아도 체크는 가능하다. **열었는지 여부는 동의 이력에 함께 남긴다.** -->
+    <!-- 전문을 열지 않아도 체크는 가능하다.
+         ⚠ 이 주석은 「**열었는지 여부는 동의 이력에 함께 남긴다**」로 끝나고 있었는데
+         **사실이 아니었다**(PR #409 리뷰) — `ConsentStore.saveDecision`이 쓰는 것은
+         동의 시각·항목·문안 버전·앱 버전 넷뿐이고 열람 여부를 남기는 코드는 없다.
+         남기기로 정하면 그때 이 문장을 되살린다. -->
     <string name="consent_view_detail_desc">이 항목의 자세한 내용 보기</string>
 
 

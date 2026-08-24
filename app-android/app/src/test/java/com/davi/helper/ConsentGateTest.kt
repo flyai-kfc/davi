@@ -70,4 +70,40 @@ class ConsentGateTest {
     fun `rolled back version also needs consent`() {
         assertTrue(ConsentGate.needsConsent(storedVersion = "2", currentVersion = "1"))
     }
+
+    // hasAgreed — 버전과 저장된 항목을 함께 본다(PR #409 리뷰 P2).
+
+    @Test
+    fun `same version with all required stored has agreed`() {
+        assertTrue(ConsentGate.hasAgreed("1", REQUIRED_NAMES, "1"))
+    }
+
+    @Test
+    fun `nothing stored has not agreed`() {
+        assertFalse(ConsentGate.hasAgreed(null, emptySet(), "1"))
+    }
+
+    @Test
+    fun `bumped version has not agreed even with all items`() {
+        assertFalse(ConsentGate.hasAgreed("1", REQUIRED_NAMES, "2"))
+    }
+
+    /**
+     * **이 테스트가 리뷰가 짚은 구멍이다.** 필수 목록은 코드라 문안 버전과 따로 늘어난다 —
+     * 버전이 같아도 저장된 항목이 지금의 필수를 덮지 못하면 다시 받아야 한다.
+     */
+    @Test
+    fun `same version but a required item was never agreed to`() {
+        assertFalse(ConsentGate.hasAgreed("1", setOf("SCREEN", "VOICE"), "1"))
+    }
+
+    /** 선택까지 저장돼 있어도 통과 — 필수를 덮는지만 본다. */
+    @Test
+    fun `stored optional does not block`() {
+        assertTrue(ConsentGate.hasAgreed("1", REQUIRED_NAMES + "KAKAO", "1"))
+    }
+
+    private companion object {
+        val REQUIRED_NAMES = setOf("SCREEN", "VOICE", "USAGE")
+    }
 }

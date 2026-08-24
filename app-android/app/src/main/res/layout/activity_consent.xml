@@ -184,8 +184,15 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!--
+                  **`accessibilityLiveRegion`이 있어야 소리로 전달된다**(PR #409 리뷰 P2).
+                  이 화면이 진짜 `isEnabled=false`를 피한 이유가 「눌리면 이유를 말한다」인데,
+                  포커스는 버튼에 그대로 있고 `alpha=0.5`는 음성으로 안 나가서 **누른 뒤
+                  아무 일도 없는 것으로 인지된다.**
+                -->
                 <TextView
                     android:id="@+id/consent_required_missing"
+                    android:accessibilityLiveRegion="polite"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="@dimen/davi_consent_card_margin_h"

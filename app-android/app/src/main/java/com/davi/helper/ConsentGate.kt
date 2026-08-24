@@ -19,6 +19,15 @@ object ConsentGate {
      */
     fun needsConsent(storedVersion: String?, currentVersion: String): Boolean =
         storedVersion != currentVersion
+
+    /**
+     * 저장된 동의가 **지금 기준으로도** 유효한가. 버전이 같아도 **저장된 항목이 지금의
+     * [REQUIRED_KEYS]를 덮지 못하면 다시 받아야 한다** — 필수 목록은 코드라 문안 버전과
+     * 따로 움직인다(근거는 [ConsentStore.hasAgreedCurrentVersion]).
+     */
+    fun hasAgreed(storedVersion: String?, storedItems: Set<String>, currentVersion: String): Boolean =
+        !needsConsent(storedVersion, currentVersion) &&
+            storedItems.containsAll(REQUIRED_KEYS.map { it.name })
 }
 
 /** 화면에 서는 동의 항목 키. 저장 형식이라 이름을 바꾸면 기존 동의 이력의 `consent_items`가 깨진다. */
