@@ -168,12 +168,16 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   **클래스 FQN은 namespace 기준이라 접미어가 붙지 않는다** — 접근성 서비스를 컴포넌트
   (`<applicationId>/com.davi.helper.GuideAccessibilityService`)로 지목하는 자리에서
   앞뒤 접두어가 어긋나 보이는 건 정상이다.
-- `minSdk` 26 (Android 8.0) / `targetSdk` · `compileSdk` 36 (Android 16, 검증 기기 기준).
+- `minSdk` 26 (Android 8.0) / `targetSdk` · `compileSdk` 36 (Android 16 SDK 계약 기준).
 - 소스 경로: `app/src/main/java/com/davi/helper/`. 로그 태그: `GuideSvc`.
 
 ## 빌드·실행 (코드만 봐선 모르는 것)
-- **평소 검증 루프는 CLI로 돈다.** `./scripts/dev-install.ps1` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열 필요가 없다.
-- **상태만 볼 땐 `./scripts/dev-install.ps1 -Status`.** 기기·설치 패키지·접근성을 한 줄씩 판정해 준다. 아무것도 바꾸지 않는다. (오버레이 판정은 #212가 `SYSTEM_ALERT_WINDOW`를 걷어낼 때 함께 없앴다.)
+- **평소 검증 루프는 CLI로 돈다.** Windows는 `./scripts/dev-install.ps1`, macOS는
+  `./scripts/dev-install.sh` 하나로 빌드·설치·접근성 재활성화까지 끝난다. Android Studio를 열
+  필요가 없다.
+- **상태만 볼 땐 PowerShell `-Status` / Bash `--status`.** 기기·설치 패키지·접근성을 한 줄씩
+  판정해 주고 아무것도 바꾸지 않는다. 오버레이 판정은 #212가 `SYSTEM_ALERT_WINDOW`를 걷어낼 때
+  함께 없앴다.
 - **Gradle CLI가 `Unable to establish loopback connection`으로 죽는 PC가 있다.** 원인은 TCP 루프백이 아니라 AF_UNIX 소켓 임시 폴더이고, 스크립트가 흡수한다. 자세한 건 `README.md`.
 - **Android Studio는 디버거·Layout Inspector·프로파일러가 필요할 때만** 쓴다. 그건 CLI로 대체되지 않는다.
 - 다른 앱까지 포함한 실제 Gemini 안내 E2E는 `DEVICE-E2E.md`에서 문서 경로를 확인하고
@@ -190,7 +194,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `build/reports/device-e2e-private/`에 기본 생성되며 로컬 분석 전용이라 공유·커밋하지 않는다.
   기본 시나리오는 Davi 최신 화면 → Android 홈 → 여러 package를 같은 세션에서 잇는
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.
-- **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로 `./scripts/dev-install.ps1 -A11yOnly`로 권한만 복구한다(2초).
+- **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로
+  PowerShell `./scripts/dev-install.ps1 -A11yOnly` 또는 Bash
+  `./scripts/dev-install.sh --a11y-only`로 권한만 복구한다(2초).
 - **wrapper 파일을 건드렸다면** `git ls-files --stage app-android/gradlew`가 `100755`인지 확인한다. 실행 비트나 LF가 깨지면 리눅스 CI에서 안 돈다(`.gitattributes`가 강제하지만 Windows 편집 시 주의).
 - **API 키를 앱에 넣지 않는다.** 이전 PoC의 `BuildConfig.GEMINI_API_KEY` 경로는
   **되살리지 않는다**(HANDOFF §5-2). 서버 URL·접근 토큰은 **빌드 타입마다 따로** 주입한다 —
@@ -218,7 +224,8 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   드러난다(2026-08-19에 몇 시간 걸렸다). 접근성 서비스 id도 `com.davi.helper.debug/com.davi.helper.GuideAccessibilityService`로,
   **패키지만 접미어가 붙고 클래스명은 그대로**라 눈으로 대조하기 어렵다.
   `adb shell pm list packages | grep davi`로 어느 쪽을 만지는지 먼저 확인한다.
-- 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 확인: `./scripts/dev-install.ps1 -Status`.
+- 재설치하면 접근성 권한이 꺼질 수 있다. 테스트 전 PowerShell `-Status` 또는 Bash `--status`로
+  확인한다.
   목록(`settings get secure enabled_accessibility_services`)에 값이 있어도 바인딩이 죽어
   있을 수 있어(`dumpsys accessibility`의 `Bound services:{}`) 목록만 봐선 모른다.
 - adb 서버 버전 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server` → `adb devices`.
@@ -324,7 +331,7 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   경우는 `app-android/README.md` §Gradle.
 - **중지 버튼 좌표는 스크롤 위치에 따라 달라진다**(2026-07-28 실측). 좌표를 외워 탭하지 말고 직전 캡처로 확인한다. 빗나가면 세션이 계속 돌며 모델 쿼터를 쓴다(실제로 두 번 겪었다).
 
-## 기기 함정 (검증 기기 SM-S918N·SM-S921N / One UI 8.5 기준)
+## 기기 함정 (현재 SM-S921N Android 15 / One UI 7.0; SM-S918N·과거 실측은 각 기록 기준)
 - 설정 앱 위에서 숨겨지는 것은 `SYSTEM_ALERT_WINDOW` 계열 오버레이뿐이다. **접근성 서비스가
   띄우는 `TYPE_ACCESSIBILITY_OVERLAY`는 그려진다**(2026-08-18 SM-S921N 실측, #56) — 강조·안내창·
   칩이 모두 뜨고 표시 오버레이 아래로 터치도 통과한다. `HANDOFF.md` §3-1의 "우회 불가"는 이

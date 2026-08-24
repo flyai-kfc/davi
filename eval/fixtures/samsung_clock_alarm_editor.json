@@ -6,8 +6,8 @@
     "captured_at": "2026-08-18",
     "issue": 202,
     "device_model": "SM-S921N",
-    "os_version": "Android 16",
-    "ui_version": "One UI 8.0",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
     "anonymization": [
       "알람 이름·요일·메뉴 label을 순서 기반 일반 요소로 치환",
       "요소 수·클릭/편집/포커스 수·IME·스크롤 메타는 실측 로그 값이고 label 원문은 로그에 없어 넣지 않음",

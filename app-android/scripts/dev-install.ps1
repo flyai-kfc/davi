@@ -55,6 +55,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# 실패는 throw로 알린다. scripts/dev-driver.ps1 호출자가 예외 전파를 계약으로 쓰므로 exit를 넣지 않는다.
 
 # 한글 출력이 깨지지 않게.
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
@@ -239,7 +240,7 @@ function Get-EnabledServices {
 }
 
 # 전역 스위치. 이것이 0이면 목록·바인딩이 멀쩡해도 접근성이 꺼진 것으로 취급해야 한다.
-# One UI 8.5 실측: accessibility_enabled=0으로 내려도 이미 붙은 서비스의 바인딩은 남아 있어,
+# SM-S921N / One UI 7.0 실측: accessibility_enabled=0으로 내려도 이미 붙은 서비스의 바인딩은 남아 있어,
 # dumpsys만 보면 "살아 있음"으로 오독한다.
 function Get-AccessibilityGlobal {
     $raw = (Invoke-AdbCapture @('shell', 'settings', 'get', 'secure', 'accessibility_enabled') '접근성 전역 상태 조회') -join ''
@@ -417,7 +418,7 @@ if (-not $SkipAccessibility) {
 
     $current = Get-EnabledServices
     # 전역 스위치까지 봐야 한다. 0인 채로 바인딩만 남은 상태를 "이미 켜짐"으로 지나치면
-    # 사용자는 켰다고 믿는데 접근성은 꺼져 있다(One UI 8.5 실측).
+    # 사용자는 켰다고 믿는데 접근성은 꺼져 있다(SM-S921N / One UI 7.0 실측).
     if (($current -contains $service) -and ((Test-ServiceBound) -eq 'bound') -and ((Get-AccessibilityGlobal) -eq '1')) {
         Write-Host '  이미 켜져 있음'
     }

@@ -48,7 +48,12 @@
 | 기기 | 성격 | 용도 |
 |---|---|---|
 | **SM-S918N** (Galaxy S23 Ultra, One UI 8.5) | 개인 기기 | HANDOFF의 모든 실측이 이 기기 기준이다. **개인 데이터가 있으므로 로그·픽스처 취급에 주의.** |
-| **SM-S921N** (Galaxy S24, One UI 8.5) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+| **SM-S921N** (Galaxy S24, Android 15 / One UI 7.0) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+
+**SM-S921N 버전 정정(2026-08-24):** 같은 실기기에서 `getprop ro.build.version.release=15`,
+`ro.build.version.oneui=70000`을 다시 읽었다. 2026-08-13의 Android 15 실기기 결과와도 일치한다.
+기존 문서·fixture의 Android 16 / One UI 8.x 표기는 이를 뒷받침하는 속성 기록 없이 같은 기기에
+붙어 있어 Android 15 / One UI 7.0으로 정정했다. 동작 관측의 날짜·내용·기기 모델은 바꾸지 않았다.
 
 둘 다 삼성·One UI라 **제조사 차이는 여전히 검증되지 않는다.** 다기기 매트릭스는 비목표 그대로다(§5-6).
 
@@ -481,7 +486,7 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). Gradle CLI가 loopback 오류로 죽는 PC가 있으나 스크립트가 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 Windows `app-android/scripts/dev-install.ps1`, macOS `app-android/scripts/dev-install.sh`(CLI). Windows Gradle CLI의 AF_UNIX 오류는 PowerShell판이 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** (debug는 `.debug` 접미어) | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). Play 내부 테스트 시작(2026-08-19)으로 release ID는 영구 확정됐다. debug 접미어는 두 빌드를 한 기기에 함께 깔기 위한 것(#58). |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정. 원래 근거는 litellm(3.11+)이었으나 그건 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`(3.11+)를 쓴다. |
