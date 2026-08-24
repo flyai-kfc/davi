@@ -354,7 +354,8 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 `device_id`에서 파생하지 않고 프로세스 밖에 저장하지 않는다. 서버는 인증 범위+endpoint+UUID를
 key로 같은 검증 본문의 진행 중 작업을 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다.
 next-step 본문의 동일성은 앱 화면 구조 축과 맞추고 label·window title·node id·bounds·스크롤 위치
-메타는 제외한다. 내용·과도기 값만 달라진 정상 network retry를 본문 충돌로 오판하지 않기 위해서다.
+메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
+내용·과도기 값만 달라진 정상 network retry를 본문 충돌로 오판하지 않기 위해서다.
 같은 key의 다른 본문은 409로 닫고 실패 결과는 저장하지 않는다. 공급자 HTTP는 호출당 최대 20초,
 논리 작업은 복구 호출을 모두 합쳐 최대 40초이고 Android 추론 호출 전체 상한은 45초다. 연결이
 끊겨도 공유 작업은 즉시 취소하지 않고 hard deadline까지만 계속해 재전송이 합류하게 하며, deadline

@@ -33,6 +33,7 @@ INFERENCE_DEADLINE_SECONDS = 40.0
 SUCCESS_REPLAY_TTL_SECONDS = 120.0
 MAX_SUCCESS_REPLAYS = 256
 INFERENCE_MAX_WORKERS = 40
+_MUTABLE_LAST_STEP_FIELDS = frozenset({"screen_changed", "performed", "content_signature"})
 
 # schema·계약 복구까지 포함한 실제 공급자 HTTP 호출 상한이다. 호출부가 attempt 번호를 잘못
 # 재사용해도 아래 request-scope 카운터가 실제 호출 수를 따로 세어 상한을 지킨다.
@@ -146,8 +147,9 @@ def request_fingerprint(request: BaseModel) -> str:
     """원문을 보관하지 않고 논리 요청의 의미상 identity를 digest로 만든다.
 
     next-step의 재전송 identity는 Android ``ScreenSignature.structure``와 같은 축을 쓴다.
-    label·window title·node id·bounds·스크롤 위치 메타는 앱이 같은 logical ID에서 허용하는
-    내용/과도기 값이라 제외한다. 그 밖의 endpoint는 검증·기본값 적용 뒤 본문 전체가 identity다.
+    label·window title·node id·bounds·스크롤 위치 메타와 마지막 step의 앱 관측값은 앱이 같은
+    logical ID에서 허용하는 내용/과도기 값이라 제외한다. 그 밖의 endpoint는 검증·기본값 적용 뒤
+    본문 전체가 identity다.
     """
 
     canonical = json.dumps(
@@ -166,7 +168,7 @@ def _request_identity(request: BaseModel) -> dict:
     # 앱은 network/timeout retry에서 화면을 다시 직렬화한다. 구조가 같은 동안에도 시계·배지
     # label, 정착 중 bounds, 직렬화 node id는 달라질 수 있으므로 본문 전체를 비교하면 정상
     # 재전송을 409로 오판한다. 요소 순서·수와 아래 행동 상태는 Android 구조 서명과 같다.
-    identity = request.model_dump(mode="json", exclude={"screen"})
+    identity = request.model_dump(mode="json", exclude={"screen", "steps"})
     identity["screen"] = {
         "package_name": request.screen.package_name,
         "current_page": request.screen.current_page,
@@ -188,6 +190,14 @@ def _request_identity(request: BaseModel) -> dict:
             for element in request.screen.elements
         ],
     }
+    identity["steps"] = []
+    last_step_index = len(request.steps) - 1
+    for index, step in enumerate(request.steps):
+        step_identity = step.model_dump(mode="json")
+        if index == last_step_index:
+            for field in _MUTABLE_LAST_STEP_FIELDS:
+                step_identity.pop(field, None)
+        identity["steps"].append(step_identity)
     return identity
 
 

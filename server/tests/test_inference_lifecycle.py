@@ -7,6 +7,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 
+import anyio
 import app.main as main_module
 import pytest
 from app.errors import LlmError
@@ -212,7 +213,10 @@ def test_executor_queue_time_counts_toward_hard_deadline():
 def test_default_worker_capacity_matches_fastapi_sync_capacity():
     coordinator = InferenceCoordinator()
 
-    assert INFERENCE_MAX_WORKERS == 40
+    async def default_sync_capacity() -> float:
+        return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    assert anyio.run(default_sync_capacity) == INFERENCE_MAX_WORKERS
     assert coordinator._executor._max_workers == INFERENCE_MAX_WORKERS
 
 
@@ -237,10 +241,12 @@ def _payload(
     node_id: str = "n1",
     bounds: list[int] | None = None,
     window_title: str | None = None,
+    steps: list[dict] | None = None,
 ) -> dict:
     return {
         "goal": goal,
         "client_version": "0.1.0",
+        "steps": steps or [],
         "screen": {
             "package_name": "com.example.launcher",
             "window_title": window_title,
@@ -269,6 +275,47 @@ def test_next_step_fingerprint_matches_android_structure_axis():
 
     assert request_fingerprint(first) == request_fingerprint(volatile_retry)
     assert request_fingerprint(first) != request_fingerprint(structural_change)
+
+
+def test_next_step_fingerprint_ignores_mutable_last_step_observations():
+    immutable_step = {
+        "instruction": "카카오톡을 누르세요",
+        "action_type": "tap",
+        "target_label": "카카오톡",
+        "target_node_id": "n1",
+        "screen_hint": "홈 화면",
+        "structure_signature": "a" * 64,
+    }
+    first = NextStepRequest.model_validate(
+        _payload(
+            steps=[
+                {
+                    **immutable_step,
+                    "screen_changed": None,
+                    "performed": None,
+                    "content_signature": None,
+                }
+            ]
+        )
+    )
+    observed_retry = NextStepRequest.model_validate(
+        _payload(
+            steps=[
+                {
+                    **immutable_step,
+                    "screen_changed": False,
+                    "performed": True,
+                    "content_signature": "b" * 64,
+                }
+            ]
+        )
+    )
+    changed_instruction = NextStepRequest.model_validate(
+        _payload(steps=[{**immutable_step, "instruction": "다른 앱을 누르세요"}])
+    )
+
+    assert request_fingerprint(first) == request_fingerprint(observed_retry)
+    assert request_fingerprint(first) != request_fingerprint(changed_instruction)
 
 
 def _headers(logical_id: str, attempt: int) -> dict[str, str]:
