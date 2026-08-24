@@ -1070,8 +1070,33 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `버려진 과도기 트리는 앵커 상한을 열지 않는다`() {
+        // 자동 회전 UI가 전환 중간 트리를 한 샘플만 다른 구조로 내놓는다. 홀드(#32)가 그
+        // 샘플을 WAIT로 버리는데 상한만 열리면, 회전마다 앵커 재질의가 되살아나 무한
+        // 재질의가 이 문으로 돌아온다(#399 리뷰).
+        val base = ScreenSig("rooms", "A;B;C")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+        assertEquals(Decision.SEND, rotate("B;A;C", 1_400))
+        tracker.markSent(ScreenSig("rooms", "B;A;C"), 2_100)
+        tracker.markFinished()
+
+        // 과도기 트리 — 구조가 다른 샘플이 하나 끼었다가 원래 구조로 돌아온다(WAIT로 버려진다).
+        assertEquals(
+            Decision.WAIT,
+            tracker.onSample(ScreenSig("rooms-mid", "…"), 2_800, hasLabeledElement = true),
+        )
+
+        // 복귀 뒤 슬롯이 또 밀려도 상한은 닫힌 채여야 한다.
+        assertEquals(Decision.IDLE, rotate("C;B;A", 3_500))
+        assertEquals(Decision.IDLE, rotate("A;C;B", 4_900))
+    }
+
+    @Test
     fun `관측 재개와 빈 화면 샘플은 앵커 상한을 열지 않는다`() {
-        // 상한을 여는 자리는 구조 변화와 조작 둘뿐이다. 관측 공백 표식
+        // 상한을 여는 자리는 구조 전환 전송(markSent)과 조작 둘뿐이다. 관측 공백 표식
         // (`structureStableSinceMs == null`)에 얹으면 재개가 진행으로 둔갑한다.
         val base = ScreenSig("rooms", "A;B;C")
         tracker.onSample(base, 0, hasLabeledElement = true)

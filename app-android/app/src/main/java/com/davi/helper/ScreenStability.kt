@@ -189,7 +189,10 @@ class ScreenStabilityTracker(
      * **안내 대상의 정체성으로도 못 막는다.** node id는 직렬화 순서라 사실상 자리 번호이고,
      * 대상이 슬롯을 옮기면(새 메시지가 대화방 순서를 밀면) 그 자리가 매번 달라진다.
      *
-     * 그래서 **진행 신호**로 연다 — 구조 변화와 조작 관측 둘뿐이다. 앵커가 답하는 질문이
+     * 그래서 **진행 신호**로 연다 — 요청이 실제로 나간 구조 전환([markSent])과 조작 관측
+     * 둘뿐이다. raw 샘플의 구조 변화는 진행이 아니다 — 자동 회전의 과도기 트리가 한 샘플만
+     * 다른 구조로 잡히는 것을 홀드(#32)가 버리는데, 그것으로 열면 회전마다 되살아난다.
+     * 앵커가 답하는 질문이
      * "강조가 엉뚱한 줄을 가리킨다"이고 그 해법은 새 안내 하나인데, 진행 없이 또 어긋나는
      * 화면은 다시 물어서 나아지지 않는다. 막히면 강조를 내리고(호출자) 정체 문구로 떨어진다.
      * 눌림 확인 재질의가 눌림당 1회인 것과 같은 결(#319).
@@ -220,15 +223,9 @@ class ScreenStabilityTracker(
             }
         }
         unreadableSinceMs = null
-        val structureChanged = signature.structure != lastSample?.structure
-        if (structureChanged || structureStableSinceMs == null) {
+        if (signature.structure != lastSample?.structure || structureStableSinceMs == null) {
             structureStableSinceMs = nowMs
         }
-        // **구조가 실제로 바뀐 경우에만** 앵커 상한을 연다. 위 조건에 얹으면
-        // `structureStableSinceMs == null`(빈 화면 샘플·[markResumed])도 상한을 열어,
-        // 여는 자리가 관측 공백 표식에 딸려 들어간다 — 재개는 진행이 아니고, 나중에
-        // 다른 관측 공백이 그 필드를 비우면 상한이 조용히 열린다.
-        if (structureChanged) anchorRequeryUsed = false
         // 구조는 안정인데 내용만 계속 흔들리는 화면(광고·marquee)은 홀드가 영영 안 끝난다 —
         // 이 승격이 없으면 그런 화면에서 안내가 아예 못 나간다(#380).
         //
@@ -312,6 +309,14 @@ class ScreenStabilityTracker(
      * 뜨기 때문이다 — 안내 없이 매달리는 구간이 생기지 않는다.
      */
     fun markSent(signature: ScreenSig, nowMs: Long) {
+        // 구조가 다른 화면을 **실제로 물었다** — 진행이다. 앵커 상한을 다시 연다.
+        // raw 샘플의 구조 변화로 열면 안 된다(#399 리뷰): 자동 회전 UI의 전환 중간 트리가
+        // 한 샘플만 다른 구조로 관측되면, 그 샘플은 홀드가 WAIT로 버리는데 상한만 열려
+        // 회전마다 앵커 재질의가 되살아난다 — #32 때문에 버린 과도기 트리를 진행으로
+        // 인정하는 셈이다. 홀드를 통과하고 요청까지 나간 구조 전환이 여기다.
+        if (sentSignature != null && signature.structure != sentSignature?.structure) {
+            anchorRequeryUsed = false
+        }
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
         sentAtMs = nowMs
@@ -382,7 +387,7 @@ class ScreenStabilityTracker(
     fun markInteraction(nowMs: Long) {
         lastInteractionMs = nowMs
         // 조작은 진행 신호다 — 앵커 상한을 다시 연다(그 뒤의 슬롯 이동은 사용자가 만든 것일
-        // 수 있다). 상한이 열리는 자리는 여기와 구조 변화 둘뿐이다.
+        // 수 있다). 상한이 열리는 자리는 여기와 [markSent]의 구조 전환 둘뿐이다.
         anchorRequeryUsed = false
         // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
         // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
