@@ -52,6 +52,11 @@ internal class ConfirmShortcutBackground(context: Context) : Drawable() {
         color = ContextCompat.getColor(context, R.color.davi_choice_border)
     }
 
+    // **각 페인트의 기준 알파를 기억해 둔다.** [setAlpha]가 들어오면 이 값에 곱한다 —
+    // 그냥 대입하면 `davi_choice_border`의 52% 반투명이 불투명 빨강이 된다
+    // (`LayerDrawable.setAlpha`가 자식에 그대로 전파한다).
+    private val baseAlpha = listOf(backplatePaint, bodyPaint, borderPaint).map { it.alpha }
+
     private val backplatePath = Path()
     private val bodyPath = Path()
     private val borderPath = Path()
@@ -109,9 +114,9 @@ internal class ConfirmShortcutBackground(context: Context) : Drawable() {
     }
 
     override fun setAlpha(alpha: Int) {
-        backplatePaint.alpha = alpha
-        bodyPaint.alpha = alpha
-        borderPaint.alpha = alpha
+        listOf(backplatePaint, bodyPaint, borderPaint).forEachIndexed { i, paint ->
+            paint.alpha = baseAlpha[i] * alpha / 255
+        }
         invalidateSelf()
     }
 
@@ -122,6 +127,6 @@ internal class ConfirmShortcutBackground(context: Context) : Drawable() {
         invalidateSelf()
     }
 
-    @Deprecated("Drawable의 필수 오버라이드", ReplaceWith("PixelFormat.TRANSLUCENT"))
+    @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }

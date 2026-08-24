@@ -672,17 +672,14 @@ dp다 — 세로 리듬 16/12/12/16, r16, w1.5·w2, 13·20이 전부 그렇다.
 「쓰는 자리가 없는 토큰을 미리 만들지 않는다」고 적었으나 **사실과 반대**였다. 둘 다 #348 →
 #351에서 이미 들어왔고, 하나는 **이 화면과 무관한 곳 셋이 쓴다.**
 
-    davi_surface_raised   colors.xml:41   bg_davi_choice_option(MA-3 보기) ·
-                                          bg_davi_step_chip · bg_davi_choice_icon_slot ·
-                                          bg_davi_confirm_choice(MA-4)
-    davi_border_quiet     colors.xml:34   bg_davi_confirm_choice_quiet(MA-4 ③)
-                                          + colors.xml:202가 davi_choice_backplate 주석에서
-                                            「선례」로 인용
+    davi_surface_raised   bg_davi_choice_option(MA-3 보기) · bg_davi_step_chip ·
+                          bg_davi_choice_icon_slot · bg_davi_confirm_choice(MA-4)
+    davi_border_quiet     bg_davi_confirm_choice_quiet(MA-4 ③) 하나뿐이었다
 
-**`davi_surface_raised`는 남긴다** — MA-3 보기·단계 칩·아이콘 슬롯이 쓰므로, 08-22 값이 서도
-그 셋은 그대로다. **`davi_border_quiet`은 MA-4 ③ 전용**이라 08-22 값(테두리 없는 한 겹)이
-서면 `bg_davi_confirm_choice_quiet.xml`과 함께 **정리 대상**이 된다 — 다만 `colors.xml:202`가
-그것을 선례로 인용하고 있으니 지울 때 그 주석도 함께 본다.
+**`davi_surface_raised`는 남았다** — MA-3 보기·단계 칩·아이콘 슬롯이 쓰므로 08-22 값이
+서도 그 셋은 그대로다. **`davi_border_quiet`은 걷혔다**(#396, 2026-08-24) — ③이 테두리 없는
+한 겹이 되며 쓰던 drawable과 함께 사라졌고, `davi_choice_backplate` 주석이 그것을 「선례」로
+인용하던 자리도 같은 배치에서 정리했다.
 
 핑퐁 1(MA-3)은 `color/white`·`color/highlight`·`color/pink/400`·`color/red/700`만 쓰므로
 **신규 토큰이 없다.** 이 화면도 색이 정해질 때 **기존 토큰으로 덮이는지 먼저 본다.**
@@ -732,9 +729,13 @@ dp다 — 세로 리듬 16/12/12/16, r16, w1.5·w2, 13·20이 전부 그렇다.
 
 **셰브런은 뾰족한 끝으로 대체됐다**(2026-08-22 시안). 둘이 같은 말을 한다 — 「다음으로
 간다 · 이 앱을 떠난다」 — 므로 나란히 두면 같은 뜻이 두 번 서고, 뾰족한 끝은 본체 모양이라
-라벨 길이에 밀리지도 않는다. **구현에서 `ic_davi_chevron_right`와 `davi_shortcut_chevron_*`
-둘을 걷는다** — 지금은 `activity_conversation.xml`이 실제로 쓰고 있어, 표에서 사라진 것만
-보고 지우면 레이아웃이 깨진다.
+라벨 길이에 밀리지도 않는다. **`ic_davi_chevron_right`와 `davi_shortcut_chevron_*`은
+걷혔다**(#396, 2026-08-24) — 레이아웃에서 그 ImageView를 뺀 뒤에 지웠다. 표에서 사라진 것만
+보고 리소스부터 지우면 레이아웃이 깨지는 자리였다.
+
+**그 주석이 적어 두었던 함정은 `ic_davi_confirm_reject`로 옮겼다** — 「뷰포트를 실제 크기와
+다르게 두면 그리는 쪽이 확대하면서 **획까지 굵어진다**. 선 두께는 환산 규칙에서 1:1이라
+그러면 안 된다.」 지식이 파일과 함께 사라지지 않게 한다.
 
 **캡션·구분선은 걷혔다.** 「처음부터 안내해 드려요」는 버튼 ①의 글자로 흡수됐고
 (그래서 12sp가 C3 하한 아래였던 예외도 함께 사라졌다), 「어떤 방법으로 시작할까요?」

@@ -11,7 +11,7 @@
     android:viewportWidth="26"
     android:viewportHeight="26">
     <path
-        android:pathData="M13,2.1a10.9,10.9 0 1,0 0.01,0z"
+        android:pathData="M13,2.3a10.7,10.7 0 1,0 0.01,0z"
         android:strokeColor="@color/davi_success"
         android:strokeWidth="4.2"
         android:fillColor="@android:color/transparent" />

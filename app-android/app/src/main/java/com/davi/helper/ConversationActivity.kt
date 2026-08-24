@@ -439,6 +439,9 @@ class ConversationActivity : AppCompatActivity() {
         // 넘기는 데 포커스가 필요 없다. 이 카드는 입력란이 아니라 읽는 글이라 포커스를
         // 받을 이유가 없고, 스크린리더는 accessibilityLiveRegion으로 따로 읽는다.
         // **XML로는 못 막는다** — setMovementMethod가 나중에 덮으므로 여기서 꺼야 한다.
+        binding.cardQuestion.isFocusable = false
+        binding.cardQuestion.isFocusableInTouchMode = false
+
         // MA-4 (2)의 배경은 코드가 넣는다(#396) — 오른쪽 끝이 사선이라 XML 드로어블로
         // 그릴 수 없고, 높이가 변해도 r16·사선 17dp가 고정이어야 한다.
         // 이유와 대안 검토는 [ConfirmShortcutBackground] KDoc에 있다.
@@ -453,9 +456,6 @@ class ConversationActivity : AppCompatActivity() {
             ConfirmShortcutBackground(this),
             ConfirmShortcutBackground(this),
         )
-
-        binding.cardQuestion.isFocusable = false
-        binding.cardQuestion.isFocusableInTouchMode = false
 
         // MA-3·메인 8 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374·#263).
         // release에서는 무시된다.
