@@ -240,3 +240,35 @@ def test_instruction_is_omitted_without_an_input_field() -> None:
     """C18의 「정보가 있을 때만」 — 입력칸이 없는 화면에는 싣지 않는다."""
     prompt = build_prompt(NextStepRequest(goal=GOAL, screen=_list_screen()))
     assert INPUT_TEXT_INSTRUCTION not in prompt
+
+
+@pytest.mark.parametrize(
+    ("value", "goal"),
+    [
+        ("2026 수능 일정", "2026 수능 일정 알려줘"),
+        ("3호선 막차 시간", "3호선 막차 시간 알고 싶어"),
+        ("2026-08-24 날씨", "2026-08-24 날씨 알려줘"),
+    ],
+)
+def test_numeric_queries_are_not_treated_as_sensitive(value: str, goal: str) -> None:
+    """숫자가 들었다고 막지 않는다 — 과잉 차단은 **조용히** 기능을 죽인다.
+
+    `_looks_sensitive`가 쓰는 것은 2차 마스킹의 좁은 패턴(전화·계좌·카드·주민·이메일)이라
+    일반 검색어는 지나가야 한다. 그 패턴이 넓어지면 여기서 먼저 운다.
+    """
+    action = _guide(
+        _action(ActionType.TYPE, value, instruction=f"검색창에 '{value}'라고 입력해 주세요"),
+        goal=goal,
+    )
+    assert action.input_text == value
+
+
+def test_dropping_input_text_leaves_the_guidance_alone() -> None:
+    """비우는 것은 `input_text` 하나다 — 부수 필드가 주 기능을 죽이지 않는다는 계약."""
+    instruction = "연락처 입력칸에 '010-9999-8888'을 입력해 주세요"
+    action = _guide(_action(ActionType.TYPE, "010-9999-8888", instruction=instruction))
+
+    assert action.input_text is None
+    assert action.instruction == instruction
+    assert action.action_type is ActionType.TYPE
+    assert action.target_node_id == "n1"

@@ -740,6 +740,11 @@ def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
         match_end = start + len(normalized_phrase)
         # **한 번만 훑는다**(PR #406 재리뷰). `ends`가 단조증가라, 끝나는 어절을 한 번 찾으면
         # 정확 일치(`end == match_end`)와 조사 허용(`end > match_end`)이 같은 자리에서 갈린다.
+        #
+        # **없을 수 없다** — 위 `startswith`가 문구를 [_Phrases.compact] 안에 가뒀으므로
+        # `match_end <= ends[-1]`이다. 그래도 `next`가 던지지 않게 기본값을 두는 이유는,
+        # 이 함수가 안내 응답 경로 한복판이라 불변식이 깨졌을 때 500으로 죽는 것보다
+        # **그 문구를 인용으로 안 보는 쪽**이 안전해서다.
         last = next(
             (i for i, end in enumerate(phrases.ends) if end >= match_end),
             None,
