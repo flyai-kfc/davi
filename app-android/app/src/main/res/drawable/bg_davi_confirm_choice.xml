@@ -1,26 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MA-4 확인 버튼 (1)(2) 배경(#348). 흰 채움 + `color/button/primary` 테두리 w2 · r12.
+  MA-4 ① 「앱 찾기부터 시작하기」(#396 · 08-22 시안). **두 겹이다.**
 
-  **그림자가 없다**(2026-08-21 판정). 걷어낸 캡슐쌍에는 있었고 E2가 상시 elevation 2dp를
-  말하지만, 여기서는 테두리가 경계를 지고 채움이 배경과 갈린다 — 그림자까지 얹으면 셋이
-  나란히 떠 보여 「무엇을 눌러야 하나」가 흐려진다.
+  뒤판(분홍)이 본체(흰 면) 오른쪽으로 14dp 삐져나와 단단한 경계를 만든다.
+  **별도 View로 깔지 않는 것이 핵심이다** — 어르신은 삐져나온 분홍까지를 버튼 끝으로 보고,
+  거기를 눌렀는데 반응이 없으면 고장으로 읽는다. 한 View의 배경이면 터치 영역이 하나다.
+  구조는 MA-3 보기 버튼(bg_davi_choice_option)과 같다.
 
-  **채워진 주 버튼을 만들지 않는다.** 최종 확인은 우리가 권하는 자리가 아니라 사용자가
-  고르는 자리라, #A50014 채움(= 권하는 동작)을 쓰면 그쪽을 누르라는 화면이 된다.
+  **겹수가 뜻을 나른다**(SCREENS.md MA-4) — ①②는 두 겹으로 「진행한다」, ③은 한 겹으로
+  「그만둔다」다. **①을 한 겹으로 만들지 말 것.**
 
-  테두리는 시안 INSIDE 2인데 Android <stroke>는 경계선 중앙 정렬이라 1dp가 밖으로 나간다 —
-  보정 복잡도에 비해 얻는 게 작아 그대로 둔다(bg_davi_stacked_secondary와 같은 사정).
+  **그림자가 생겼다**(#000000@12 y7 b16 -> davi_choice_elevation). 2026-08-21에는 없었고
+  근거는 「테두리가 경계를 지는데 그림자까지 얹으면 셋이 나란히 떠 보인다」였는데,
+  **그 전제가 바뀌었다** — 이제 경계를 지는 것은 테두리가 아니라 겹수와 뒤판이고 ①②는
+  이미 두 겹으로 떠 있는 형태다. 우열은 겹수와 아이콘·글자가 가른다.
+
+  **테두리는 davi_choice_border(50.2%)를 쓴다** — 시안 #F2001C@52와 알파 1.8% 차이라
+  같은 토큰으로 둔다(colors.xml). 배경 대비 A2 미달이지만 **식별을 혼자 지지 않는다** —
+  뒤판 경계·아이콘·그림자가 함께 진다(SCREENS.md 「테두리·뒤판·아이콘·라벨」).
+
+  **눌림 반응을 준다** — 도형만 두면 누르는 동안 화면이 아무 말도 안 하는데, 이 버튼은
+  누른 뒤 세션이 시작되기까지 화면이 안 바뀐다. 위 「눌렀는데 반응이 없으면 고장으로
+  읽는다」와 같은 말이다.
 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="@color/davi_state_layer_pressed_on_light">
     <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@color/davi_surface_raised" />
-            <stroke
-                android:width="@dimen/davi_confirm_choice_stroke"
-                android:color="@color/davi_button_primary" />
-            <corners android:radius="@dimen/davi_confirm_choice_radius" />
-        </shape>
+    <layer-list>
+        <item>
+            <shape android:shape="rectangle">
+                <solid android:color="@color/davi_confirm_choice_backplate" />
+                <corners android:radius="@dimen/davi_confirm_choice_radius" />
+            </shape>
+        </item>
+        <item android:right="@dimen/davi_choice_backplate_reveal">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/davi_surface_raised" />
+                <stroke
+                    android:width="@dimen/davi_confirm_choice_stroke"
+                    android:color="@color/davi_choice_border" />
+                <corners android:radius="@dimen/davi_confirm_choice_radius" />
+            </shape>
+        </item>
+    </layer-list>
     </item>
 </ripple>

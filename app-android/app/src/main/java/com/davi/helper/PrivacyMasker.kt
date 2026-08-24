@@ -1,28 +1,41 @@
 package com.davi.helper
 
+import java.util.regex.Pattern
+
 /**
  * 기기에서 화면 텍스트를 서버로 보내기 전 치환하는 1차 개인정보 마스킹.
  *
  * 서버의 `server/app/masking.py`와 같은 순서·정규식을 유지한다. 규칙을 바꿀 때는
  * 반드시 양쪽을 함께 바꾸고 각각의 테스트를 갱신한다(SPEC §2, 이슈 #8).
  *
- * **정규식 본문은 서버와 글자까지 같게 두고, 컴파일할 때만 [UNICODE] 플래그를 얹는다**(#361).
+ * **정규식 본문은 서버와 글자까지 같게 두고, 유니코드 해석은 컴파일 플래그로만 맞춘다**(#361).
  * 자바의 `\d`·`\s`는 기본이 ASCII라 전각 숫자(`１２３`)나 NBSP로 구분한 번호를 놓치는데,
  * 파이썬 `re`는 유니코드가 기본이라 같은 문자열이 서버에서만 걸렸다. **모델이 보는 값은 서버
  * 2차가 막지만, 앱이 놓치는 순간 원본은 이미 기기를 떠난다** — `SPEC.md` §2가 1차로 보장하는
  * 약속이 거기서 좁게 깨진다. 그래서 **넓은 쪽(유니코드)으로 맞췄다.**
  *
- * 본문을 같게 두는 이유는 두 파일을 문자열로 대조할 수 있어야 해서다. 플래그를 본문에 섞으면
- * (`(?U)`를 문자열 안에 박으면) 그 대조가 깨진다 — 파이썬에는 `(?U)`가 없다.
+ * 본문을 같게 두는 이유는 두 파일을 문자열로 대조할 수 있어야 해서다(`check_masking_parity.py`).
+ * 플래그를 본문에 섞으면 그 대조가 깨지고, **인라인 플래그는 기기에서 아예 거부된다**
+ * ([unicodeClassFlags] 참고, #400).
  */
 object PrivacyMasker {
     const val TOKEN = "•••"
 
     /**
-     * 자바 정규식의 `UNICODE_CHARACTER_CLASS`. 코틀린 [RegexOption]에는 이 갈래가 없어
-     * 인라인 플래그로 준다 — 본문 문자열은 건드리지 않고 앞에만 붙인다.
+     * `\d`·`\s`를 유니코드로 해석시키는 데 필요한 [Pattern] 플래그. 필요 없으면 0이다.
+     *
+     * **런타임마다 켜는 방법이 반대라 상수로 박을 수 없다**(#400). OpenJDK 정규식(JVM 단위
+     * 테스트)은 기본이 ASCII라 [Pattern.UNICODE_CHARACTER_CLASS]가 있어야 전각 숫자·NBSP를
+     * 보는데, 기기의 ICU 정규식은 기본이 이미 유니코드인 대신 **그 플래그도 인라인 `(?U)`도
+     * 거부한다**(SM-S921N/SDK 36 실측 — `PrivacyMaskerDeviceTest`). `(?U)`를 앞에 붙이던
+     * 동안 `<clinit>`이 죽어 화면 직렬화가 통째로 멈췄다. **어느 SDK에서 갈리는지는 재지 않았다.**
+     *
+     * 그래서 버전이 아니라 **의존하는 성질을 직접 잰다** — 이 엔진의 `\d`가 전각 숫자를 잡는가.
+     * 프로퍼티가 아니라 함수인 것은 선언 순서 의존을 없애려는 것이다: 순서가 뒤집히면 `Int`
+     * 기본값 0으로 조용히 읽혀 마스킹만 좁아진다. 코틀린 [RegexOption]에는 이 갈래가 없다.
      */
-    private const val UNICODE = "(?U)"
+    private fun unicodeClassFlags(): Int =
+        if (Regex("\\d").matches("\uff11")) 0 else Pattern.UNICODE_CHARACTER_CLASS
 
     // 숫자 패턴의 경계를 `\b` 대신 **숫자 lookaround**로 본다(#312).
     //
@@ -60,7 +73,7 @@ object PrivacyMasker {
             "|(?<!\\d)\\d{2,6}[-\\s]\\d{2,6}[-\\s]\\d{2,7}(?!\\d)",
     )
 
-    private val patterns = patternBodies.map { Regex(UNICODE + it) }
+    private val patterns = patternBodies.map { Pattern.compile(it, unicodeClassFlags()).toRegex() }
 
     /**
      * 빈 문자열은 그대로 두고, 일치한 개인정보 문자열은 하나의 토큰으로 치환한다.
