@@ -627,7 +627,7 @@ def _make_run_dir(
 
 @pytest.mark.parametrize(
     ("field", "baseline_value", "candidate_value"),
-    [("seed", 1, 2), ("max_requests", 1, 2)],
+    [("seed", 1, 2), ("max_requests", 1, 2), ("seed", None, None)],
 )
 def test_compare는_실행_조건이_다르면_막는다(
     scenarios, tmp_path, capsys, field, baseline_value, candidate_value

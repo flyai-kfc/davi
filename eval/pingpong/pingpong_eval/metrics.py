@@ -201,8 +201,8 @@ def summarize(
             if judged
             else None,
             "보기_선택률": round(option_answers / answers, 3) if answers else None,
-            # 문구 길이를 비교하는 축에 안전 종료·중도 오류의 짧은 발화가
-            # 섞이면 실패가 "TTS 단축"으로 보인다. ready로 완료된 실행만 세다.
+            # 성공한 사용자 여정 1건의 총 청취 부담이다. 질문 수 감소도
+            # 의도한 개선으로 포함하되, 안전 종료·중도 오류는 실패 편향이라 뺀다.
             "ready_평균_TTS_문자수": round(mean(completed_tts), 1)
             if completed_tts
             else None,

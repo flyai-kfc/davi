@@ -370,10 +370,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
     ]:
         input_mismatches.append("실행한 시나리오 id·순서")
     for key in ("seed", "max_requests"):
+        baseline_value = baseline_meta.get(key)
+        candidate_value = candidate_meta.get(key)
         if (
-            key not in baseline_meta
-            or key not in candidate_meta
-            or baseline_meta[key] != candidate_meta[key]
+            baseline_value is None
+            or candidate_value is None
+            or baseline_value != candidate_value
         ):
             input_mismatches.append(key)
     if input_mismatches and not args.allow_scenario_drift:
