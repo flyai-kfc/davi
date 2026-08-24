@@ -86,8 +86,9 @@ _AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
 _DOCUMENTATION_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 # `/health`는 의도적으로 여기서 뺀다(#67). 공용 개발 서버의 배포·기기 진단이 토큰 없이
-# provider/model/stub 배선을 확인해야 하고, 비밀값·사용자 데이터는 응답에 없다. 추론 endpoint만
-# 이 집합을 통해 토큰·요청 제한 경계를 타며 production health는 status 하나로 좁힌다.
+# provider/model/stub 배선을 확인해야 하고, 비밀값·사용자 데이터는 응답에 없다. 이 집합의
+# 추론 endpoint는 development 토큰·요청 제한을 모두 거치고, 로그인은 토큰 검사 뒤 전용 로그인
+# 리미터만 거친다. production health는 status 하나로 좁힌다.
 _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )

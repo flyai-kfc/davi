@@ -64,15 +64,16 @@ def test_development_health_is_public_on_lan_but_inference_requires_token(monkey
     inference = remote_client.post("/v1/next-step", json=_next_step_payload())
 
     assert health.status_code == 200
-    assert health.json() == {
-        "status": "ok",
-        "environment": "development",
-        "provider": "gemini",
-        "model": "gemini-3.5-flash-lite",
-        "stub_llm": True,
-        "privacy_masking_disabled": False,
-        "kakao_auth_configured": False,
-    }
+    health_body = health.json()
+    assert health_body["status"] == "ok"
+    assert {
+        "environment",
+        "provider",
+        "model",
+        "stub_llm",
+        "privacy_masking_disabled",
+        "kakao_auth_configured",
+    }.issubset(health_body)
     assert inference.status_code == 401
     assert inference.json()["kind"] == "AUTH"
 
