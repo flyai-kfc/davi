@@ -3,6 +3,13 @@ name: Azure release deploy
 # development는 main 변경 때 자동 배포한다. release는 검증한 main commit을 사람이 승격한다.
 on:
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: 수동 배포 셸이 실행을 식별하는 비식별 요청 ID
+        required: false
+        type: string
+
+run-name: Azure release deploy ${{ inputs.request_id || github.run_id }}
 
 concurrency:
   group: azure-release-deploy
@@ -31,6 +38,7 @@ jobs:
       DAVI_AZURE_OPENAI_KEY_SECRET_NAME: ${{ vars.DAVI_AZURE_OPENAI_KEY_SECRET_NAME }}
       DAVI_AZURE_MODEL: ${{ vars.DAVI_AZURE_MODEL }}
       IMAGE_REPOSITORY: davi-server
+      EXPECTED_RELEASE_FQDN: davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io
 
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +71,10 @@ jobs:
 
           if [ "$DAVI_AZURE_CONTAINER_APP_NAME" != "davi-server-release" ]; then
             echo "::error::release 환경의 DAVI_AZURE_CONTAINER_APP_NAME은 davi-server-release여야 합니다."
+            exit 1
+          fi
+          if [ "$DAVI_AZURE_AUTH_JWT_SECRET_NAME" != "DAVI-RELEASE-AUTH-JWT-SECRET" ]; then
+            echo "::error::release JWT는 development와 분리한 DAVI-RELEASE-AUTH-JWT-SECRET을 사용하세요."
             exit 1
           fi
           if ! [[ "$DAVI_AZURE_KAKAO_APP_ID" =~ ^[1-9][0-9]*$ ]]; then
@@ -133,10 +145,20 @@ jobs:
               openAiApiKeySecretName="${DAVI_AZURE_OPENAI_KEY_SECRET_NAME:-}" \
               daviModel="${DAVI_AZURE_MODEL:-}")"
 
+          deployed_revision="$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
+          deployed_image="$(jq -er '.deployedImage.value' <<<"$deployment_outputs")"
+          container_app_fqdn="$(jq -er '.containerAppFqdn.value' <<<"$deployment_outputs")"
+          test -n "$deployed_revision"
+          test -n "$deployed_image"
+          test -n "$container_app_fqdn"
+          test "$container_app_fqdn" = "$EXPECTED_RELEASE_FQDN" || {
+            echo "::error::배포 FQDN이 release APK의 고정 endpoint와 다릅니다."
+            exit 1
+          }
           {
-            printf 'revision=%s\n' "$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
-            printf 'image=%s\n' "$(jq -er '.deployedImage.value' <<<"$deployment_outputs")"
-            printf 'fqdn=%s\n' "$(jq -er '.containerAppFqdn.value' <<<"$deployment_outputs")"
+            printf 'revision=%s\n' "$deployed_revision"
+            printf 'image=%s\n' "$deployed_image"
+            printf 'fqdn=%s\n' "$container_app_fqdn"
           } >> "$GITHUB_OUTPUT"
 
       - name: release revision과 HTTPS health 검증
@@ -166,6 +188,8 @@ jobs:
                     .name == "DAVI_ENV" and .value == "production")
                   and any(.properties.template.containers[0].env[];
                     .name == "DAVI_USE_STUB_LLM" and .value == "false")
+                  and any(.properties.template.containers[0].env[];
+                    .name == "DAVI_AUTH_SOURCE" and .value == "azure_container_apps")
                   and (all(.properties.template.containers[0].env[];
                     .name != "DAVI_DEV_ACCESS_TOKEN" and .name != "DAVI_TEST_ACCESS_TOKEN"))' \
                 /tmp/davi-release-revision >/dev/null \

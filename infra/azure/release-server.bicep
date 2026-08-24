@@ -152,6 +152,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: '0.0.0.0'
             }
             {
+              name: 'DAVI_AUTH_SOURCE'
+              value: 'azure_container_apps'
+            }
+            {
               name: 'DAVI_LLM_PROVIDER'
               value: llmProvider
             }

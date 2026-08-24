@@ -157,6 +157,7 @@ def test_release_container_app_reuses_foundation_with_production_profile() -> No
         assert "existing" in template[declaration : declaration + 160]
     assert "name: 'DAVI_ENV'\n              value: 'production'" in template
     assert "name: 'DAVI_USE_STUB_LLM'\n              value: 'false'" in template
+    assert "name: 'DAVI_AUTH_SOURCE'\n              value: 'azure_container_apps'" in template
     assert "name: 'DAVI_AUTH_JWT_SECRET'\n              secretRef: 'auth-jwt-secret'" in template
     assert "name: 'DAVI_KAKAO_APP_ID'\n              value: kakaoAppId" in template
     assert "DAVI_DEV_ACCESS_TOKEN" not in template
@@ -186,10 +187,23 @@ def test_release_deploy_is_manual_main_only_oidc_promotion() -> None:
     assert '.name != "DAVI_DEV_ACCESS_TOKEN"' in workflow
     assert '.name != "DAVI_TEST_ACCESS_TOKEN"' in workflow
     assert '.name == "DAVI_ENV" and .value == "production"' in workflow
+    assert '.name == "DAVI_AUTH_SOURCE" and .value == "azure_container_apps"' in workflow
     assert "az containerapp revision show" in workflow
     assert ".properties.template.containers[0].image == $expected_image" in workflow
     assert "https://$DEPLOYED_FQDN/health" in workflow
     assert '.status == "ok" and length == 1' in workflow
+    assert 'test "$container_app_fqdn" = "$EXPECTED_RELEASE_FQDN"' in workflow
+
+
+def test_release_manual_deployer_delegates_to_the_main_workflow() -> None:
+    script = _text("infra/azure/deploy-release.sh")
+
+    assert 'readonly workflow="azure-release-deploy.yml"' in script
+    assert 'gh workflow run "$workflow"' in script
+    assert "--ref main" in script
+    assert 'gh run watch "$run_id"' in script
+    assert "az deployment" not in script
+    assert "docker build" not in script
 
 
 def test_release_android_target_has_no_development_capability() -> None:

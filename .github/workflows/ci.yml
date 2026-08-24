@@ -652,6 +652,7 @@ jobs:
       - name: Bicep 템플릿 빌드
         if: needs.changes.outputs.infrastructure == 'true'
         run: |
+          bash -n infra/azure/deploy-release.sh
           az bicep install --version v0.46.1
           az bicep build --file infra/azure/dev-foundation.bicep --stdout >/dev/null
           az bicep build --file infra/azure/dev-server.bicep --stdout >/dev/null
