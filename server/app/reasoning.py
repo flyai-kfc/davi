@@ -775,6 +775,17 @@ def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
     )
 
 
+def _evidence_words(text: str) -> list[str]:
+    """문장을 어절로 끊는다.
+
+    **서버 안에서는 [_phrase_offsets]가 같은 일을 오프셋까지 함께 하지만, 이 함수를 지우면
+    안 된다** — `eval/tests/test_completion_verify.py`가 후보 정책 실험에서 직접 import한다
+    (루트 `CLAUDE.md`: eval 하니스는 서버 코드를 직접 import한다). PR #406 재리뷰에서 죽은
+    코드로 보고 지웠다가 CI가 잡았고, 그때 grep 범위가 `server/`뿐이었다.
+    """
+    return _EVIDENCE_WORD.findall(text.casefold())
+
+
 def _normalize_for_evidence(text: str) -> str:
     return _EVIDENCE_NOISE.sub("", text.casefold())
 
