@@ -161,6 +161,11 @@ data class GuideStep(
     val direction: SwipeDirection? = null,
     /** 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다. */
     @SerialName("target_label") val targetLabel: String? = null,
+    /**
+     * 안내 대상 요소의 node id. 응답 [GuideAction.targetNodeId]의 echo다.
+     * 화면마다 다시 매겨지는 값이라 서버가 [structureSignature]와 짝으로만 쓴다.
+     */
+    @SerialName("target_node_id") val targetNodeId: String? = null,
     /** 그 안내가 나간 화면이 무엇이었는지. 응답 [GuideAction.screenSummary]의 echo. */
     @SerialName("screen_hint") val screenHint: String? = null,
     /** 응답 [NextStepResponse.screenSignature]의 echo. 앱이 만들지 않는다. */

@@ -70,6 +70,7 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"screen_hint\":\"런처 홈 화면\""))
         assertTrue(body.contains("\"screen_changed\":true"))
         assertTrue(body.contains("\"performed\":true"))
+        assertTrue(body.contains("\"target_node_id\":\"n7\""))
         // null인 performed(귀속 미확인)는 explicitNulls=false라 키째 생략된다 — 서버 기본값
         // None과 맞물리는 침묵 규약이다. 두 번째 스텝이 그 생략을 고정한다(값이 있는 스텝은
         // 하나뿐이므로 키도 한 번만 나타나야 한다).
@@ -294,6 +295,7 @@ class GuideApiClientTest {
                 instruction = "'설정'을 눌러 주세요.",
                 actionType = ActionType.TAP,
                 targetLabel = "설정",
+                targetNodeId = "n7",
                 screenHint = "런처 홈 화면",
                 structureSignature = "b".repeat(64),
                 screenChanged = true,

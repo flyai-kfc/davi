@@ -1253,6 +1253,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 actionType = action.actionType,
                 direction = action.direction,
                 targetLabel = guidedTargetLabel,
+                targetNodeId = action.targetNodeId,
                 screenHint = action.screenSummary.takeIf { it.isNotBlank() },
                 structureSignature = response.screenSignature,
             ),

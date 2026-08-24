@@ -170,6 +170,13 @@ class GuideStep(BaseModel):
     direction: SwipeDirection | None = None
     # 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다.
     target_label: str | None = None
+    # 안내 대상 요소의 node id. 응답 `GuideAction.target_node_id`의 echo다.
+    #
+    # **화면마다 다시 매겨지는 값이라 `structure_signature`와 짝으로만 쓴다.** 서명이 그 id를
+    # 포함하므로(`signature.screen_signature`) 서명이 같으면 같은 요소를 가리킨다. 이 짝이
+    # 필요한 이유는 label이 요소 신원으로 못 쓰이기 때문이다 — 한 화면에 같은 label이 여럿이고
+    # (목록의 '삭제' 버튼들), 부제목이 값이라 같은 행의 label이 바뀌며, scroll 대상에는 아예 없다.
+    target_node_id: str | None = None
     # 그 안내가 나간 화면이 무엇이었는지. 응답 `GuideAction.screen_summary`의 echo다.
     screen_hint: str | None = None
     structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")

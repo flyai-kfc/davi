@@ -153,6 +153,7 @@ def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
         "action_type",
         "direction",
         "target_label",
+        "target_node_id",
         "screen_hint",
         "structure_signature",
         "screen_changed",

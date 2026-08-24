@@ -853,21 +853,29 @@ def test_returned_screen_ignores_steps_that_never_became_a_line():
     assert RETURNED_SCREEN_INSTRUCTION not in prompt
 
 
-def _with_target(label: str, *steps: GuideStep) -> NextStepRequest:
-    """그 label을 가진 요소가 지금 화면에 있는 요청."""
+def _on_screen(*elements: UiElement) -> Screen:
+    return Screen(package_name="com.example.app", elements=list(elements))
 
+
+def _tried_request(screen: Screen, *steps: GuideStep) -> NextStepRequest:
+    """그 화면에서 낸 안내들. 스텝의 서명을 현재 화면 서명으로 맞춘다."""
+
+    sig = screen_signature(screen)
     return NextStepRequest(
         goal="다음 항목 보기",
-        screen=Screen(
-            package_name="com.example.app",
-            elements=[UiElement(node_id="n1", label=label, clickable=True)],
-        ),
-        steps=list(steps),
+        screen=screen,
+        steps=[s.model_copy(update={"structure_signature": sig}) for s in steps],
     )
 
 
 def test_element_line_carries_how_many_times_it_was_guided():
-    prompt = build_prompt(_with_target("카메라", _step(), _step(instruction="다시 눌러 주세요.")))
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1"),
+        _step(target_node_id="n1", instruction="다시 눌러 주세요."),
+    )
+
+    prompt = build_prompt(request)
 
     assert "tried=2" in prompt
     assert TRIED_COUNT_INSTRUCTION in prompt
@@ -876,28 +884,81 @@ def test_element_line_carries_how_many_times_it_was_guided():
 def test_element_line_is_silent_when_it_was_never_guided():
     """0은 적지 않는다 — 요소가 최대 200개라 기본값 줄이 붙으면 토큰이 그만큼 불어난다."""
 
-    prompt = build_prompt(_with_target("카메라"))
+    prompt = build_prompt(_tried_request(_on_screen(UiElement(node_id="n1", label="카메라"))))
 
     assert "tried=" not in prompt
     assert TRIED_COUNT_INSTRUCTION not in prompt
 
 
-def test_tried_count_is_explained_only_when_it_reaches_an_element_on_screen():
-    """이력에 있어도 그 label이 지금 화면에 없으면 요소 줄에 안 붙는다.
+def test_tried_count_separates_elements_that_share_a_label():
+    """한 화면에 같은 label이 여럿인 것은 흔하다(목록마다 붙는 '삭제').
 
-    설명만 붙으면 프롬프트에 없는 표기를 설명하게 된다 — 조건부 문장들이 막으려는 그 경우다.
+    label로 세면 첫 번째를 누른 횟수가 나머지 전부에 붙는다.
     """
 
-    prompt = build_prompt(_with_target("설정", _step()))
+    request = _tried_request(
+        _on_screen(
+            UiElement(node_id="n1", label="삭제", clickable=True),
+            UiElement(node_id="n2", label="삭제", clickable=True),
+        ),
+        _step(target_node_id="n1", target_label="삭제"),
+    )
 
-    assert "tried=" not in prompt
-    assert TRIED_COUNT_INSTRUCTION not in prompt
+    lines = [ln for ln in build_prompt(request).splitlines() if ln.startswith("- id=")]
+
+    assert "tried=1" in lines[0]
+    assert "tried=" not in lines[1]
+
+
+def test_tried_count_survives_a_label_change_on_the_same_row():
+    """부제목이 값이라 같은 행의 label이 바뀐다 — 실측: '화면 모드 자연스러운 화면' →
+    누른 뒤 '화면 모드 선명한 화면'. label로 세면 카운트가 거기서 끊긴다."""
+
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="화면 모드 선명한 화면", clickable=True)),
+        _step(target_node_id="n1", target_label="화면 모드 자연스러운 화면"),
+    )
+
+    assert "tried=1" in build_prompt(request)
+
+
+def test_tried_count_reaches_a_scroll_target_without_a_label():
+    """scroll 안내에는 `target_label`이 없다 — label로 세면 스크롤 왕복이 안 보인다."""
+
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="목록", can_scroll_forward=True)),
+        _step(
+            action_type=ActionType.SCROLL,
+            direction=SwipeDirection.DOWN,
+            target_label=None,
+            target_node_id="n1",
+        ),
+    )
+
+    assert "tried=1" in build_prompt(request)
+
+
+def test_tried_count_ignores_steps_from_another_screen():
+    """`node_id`는 화면마다 다시 매겨진다. 서명이 다른 스텝의 id를 그대로 믿으면
+    시도한 적 없는 요소에 카운트가 붙는다."""
+
+    screen = _on_screen(UiElement(node_id="n1", label="카메라", clickable=True))
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[_step(target_node_id="n1", structure_signature="f" * 64)],
+    )
+
+    assert "tried=" not in build_prompt(request)
 
 
 def test_tried_count_ignores_steps_that_never_became_a_line():
-    prompt = build_prompt(_with_target("카메라", _step(instruction="   ")))
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1", instruction="   "),
+    )
 
-    assert "tried=" not in prompt
+    assert "tried=" not in build_prompt(request)
 
 
 def test_tried_count_states_the_observation_without_prescribing():
@@ -905,51 +966,3 @@ def test_tried_count_states_the_observation_without_prescribing():
 
     assert "이미 N번 안내했다" in TRIED_COUNT_INSTRUCTION
     assert "다른 요소를 고르세요" in TRIED_COUNT_INSTRUCTION
-
-
-def test_tried_count_skips_elements_that_cannot_be_a_target():
-    """label로 세므로 같은 이름의 제목·설명 텍스트에도 걸린다.
-
-    실측(2026-08-23): 목록 항목 '디스플레이'를 누른 뒤 들어간 화면의 **제목** TextView에
-    `tried=1`이 붙었다. 그 요소는 `target_node_id`로 지목된 적이 없다.
-    """
-
-    request = NextStepRequest(
-        goal="다음 항목 보기",
-        screen=Screen(
-            package_name="com.example.app",
-            elements=[
-                UiElement(node_id="n1", label="디스플레이", role="TextView"),
-                UiElement(node_id="n2", label="디스플레이", role="LinearLayout", clickable=True),
-            ],
-        ),
-        steps=[_step(target_label="디스플레이")],
-    )
-
-    lines = [ln for ln in build_prompt(request).splitlines() if ln.startswith("- id=")]
-
-    assert "tried=" not in lines[0]
-    assert "tried=1" in lines[1]
-
-
-def test_tried_count_reaches_a_scroll_target():
-    """scroll 대상은 clickable이 아닐 수 있다 — 스크롤 상태가 관측된 요소도 대상이 된다."""
-
-    request = NextStepRequest(
-        goal="다음 항목 보기",
-        screen=Screen(
-            package_name="com.example.app",
-            elements=[
-                UiElement(node_id="n1", label="목록", can_scroll_forward=True),
-            ],
-        ),
-        steps=[
-            _step(
-                action_type=ActionType.SCROLL,
-                direction=SwipeDirection.DOWN,
-                target_label="목록",
-            )
-        ],
-    )
-
-    assert "tried=1" in build_prompt(request)

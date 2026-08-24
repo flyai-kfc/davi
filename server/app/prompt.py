@@ -252,7 +252,7 @@ def build_prompt(req: NextStepRequest) -> str:
 {context}{STEP_HISTORY_HEADER}
 {_recent_step_lines(req, current)}
 {_history_instruction(req, current)}현재 화면 요소:
-{_screen_elements(req)}
+{_screen_elements(req, current)}
 
 현재 화면과 목표를 근거로 다음 한 걸음을 결정하세요."""
 
@@ -379,7 +379,7 @@ def _history_instruction(req: NextStepRequest, current: str) -> str:
         lines.append(RETURNED_SCREEN_INSTRUCTION)
     # 요소 줄에 `tried=`가 실제로 붙었을 때만 설명한다. 이력이 있어도 그 label이 지금 화면에
     # 없으면 요소 줄에 안 붙으므로, 이력이 아니라 **현재 화면 요소**를 기준으로 본다.
-    if _tried_counts(req).keys() & {e.label.strip() for e in _visible_elements(req)}:
+    if _tried_counts(req, current).keys() & {e.node_id for e in _visible_elements(req)}:
         lines.append(TRIED_COUNT_INSTRUCTION)
     # 단정은 **마지막 스텝**이 tap이고 눌림 확인 + 화면 그대로일 때만이다. 과거 스텝의 이
     # 조합은 그 뒤 진행으로 이미 해소됐을 수 있고(느린 화면 전환이 재질의 직후 일어난 경우),
@@ -617,33 +617,24 @@ def _visible_elements(req: NextStepRequest) -> list[UiElement]:
     return visible_elements(req.screen.elements)
 
 
-def _screen_elements(req: NextStepRequest) -> str:
-    tried = _tried_counts(req)
+def _screen_elements(req: NextStepRequest, current: str) -> str:
+    tried = _tried_counts(req, current)
     return (
         "\n".join(_format_element(element, tried) for element in _visible_elements(req))
         or "- 요소 없음"
     )
 
 
-def _can_be_target(element: UiElement) -> bool:
-    """안내 대상으로 지목될 수 있는 요소인가.
+def _tried_counts(req: NextStepRequest, current: str) -> dict[str, int]:
+    """**지금 이 화면에서** 각 요소가 몇 번 안내 대상이 됐는지. 키는 `node_id`다.
 
-    tap 대상은 clickable이어야 하고(C20 · #311), scroll 대상은 스크롤 상태가 관측된 요소다.
-    둘 다 아닌 요소(제목·설명 텍스트)는 `target_node_id`로 지목된 적이 없다.
-    """
+    **label은 요소 신원이 못 된다**(2026-08-23 실측). 한 화면에 같은 label이 여럿이고(목록의
+    '삭제' 버튼들), 부제목이 값이라 같은 행의 label이 바뀌며('화면 모드 자연스러운 화면' →
+    누른 뒤 '선명한 화면'), scroll 대상에는 아예 없다.
 
-    return (
-        element.clickable
-        or element.can_scroll_forward is not None
-        or element.can_scroll_backward is not None
-    )
-
-
-def _tried_counts(req: NextStepRequest) -> dict[str, int]:
-    """label별로 이 세션에서 몇 번 안내 대상이 됐는지.
-
-    **`target_label`로 센다.** `target_node_id`는 화면을 다시 읽을 때마다 새로 매겨지는 값이라
-    같은 요소를 가리키지 않는다. label은 1차 마스킹을 거친 값이고 이력에 이미 실려 있다.
+    **`node_id`는 서명이 같을 때만 의미가 있다.** 화면을 다시 읽을 때마다 새로 매겨지는 값인데,
+    서명이 그 id를 포함하므로(`signature.screen_signature`) 서명이 같으면 같은 요소를 가리킨다.
+    그래서 다른 화면의 스텝은 세지 않는다 — 정확도를 위해 카운트가 끊기는 쪽을 택한다.
 
     줄이 만들어지지 않은 스텝(빈 안내문)은 세지 않는다 — 이력에 없는 것을 요소 줄이 세면
     두 자리가 다른 말을 한다.
@@ -651,9 +642,11 @@ def _tried_counts(req: NextStepRequest) -> dict[str, int]:
 
     counts: dict[str, int] = {}
     for step in _history(req):
-        label = (step.target_label or "").strip()
-        if label:
-            counts[label] = counts.get(label, 0) + 1
+        if step.structure_signature != current:
+            continue
+        node_id = (step.target_node_id or "").strip()
+        if node_id:
+            counts[node_id] = counts.get(node_id, 0) + 1
     return counts
 
 
@@ -689,11 +682,7 @@ def _format_element(element: UiElement, tried: dict[str, int]) -> str:
     )
     details.extend(f"{name}={value}" for name, value in optional_fields if value is not None)
     # 시도한 적이 있을 때만 붙인다(C10의 침묵 규약 — 0은 적지 않는다).
-    # **대상이 될 수 있는 요소에만 붙인다.** label로 세므로 같은 이름의 제목·설명 텍스트에도
-    # 걸린다 — 실측에서 목록 항목 '디스플레이'를 누른 뒤 들어간 화면의 **제목** TextView에
-    # `tried=1`이 붙었다. 지금은 표시만 어긋나지만 이 값을 배제 근거로 쓰면 시도한 적 없는
-    # 요소를 지운다.
-    count = tried.get(element.label.strip())
-    if count and _can_be_target(element):
+    count = tried.get(element.node_id)
+    if count:
         details.append(f"tried={count}")
     return "- " + ", ".join(details)
