@@ -51,6 +51,7 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         f"- 사용자 LLM: {meta.get('사용자모델')} / 평가자 LLM: {meta.get('평가자모델')}"
         + (f" (경유: {meta['평가자경유']})" if meta.get("평가자경유") else ""),
         f"- 핑퐁: {meta.get('핑퐁')} (davi {meta.get('davi_sha', '?')})",
+        f"- 실행 조건: seed {meta.get('seed', '?')} / max_requests {meta.get('max_requests', '?')}",
         (
             f"- 채점 비용: 입력 {meta.get('평가자_입력토큰', 0)} · "
             f"출력 {meta.get('평가자_출력토큰', 0)} 토큰 "
@@ -91,6 +92,7 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
         "",
         "> #316 새 형식은 최대 2회 호출로 고정되므로 ready와 2호출 이내 ready가 같다. 새 형식 행에서 두 값이 같은 사실을 별도 개선 신호로 해석하지 않는다.",
         "> goal 유효·환각·선택 강요의 분모는 같은 배치로 채점된 건수다. 보기 선택은 답변 수, ready·2호출 ready는 전체 실행, TTS는 ready 실행 건수가 분모다.",
+        "> TTS는 성공한 사용자 여정 1건의 총 청취 부담이다. 발화당 문구 길이가 아니며, 불필요한 질문이 줄어 값이 낮아지는 효과를 포함한다.",
         "",
         "## 시나리오별",
         "",
@@ -126,22 +128,30 @@ def render_completion_comparison(
     baseline: dict,
     candidate_name: str,
     candidate: dict,
+    *,
+    input_mismatches: list[str] | None = None,
 ) -> str:
     """#316의 다섯 축만 같은 표에 놓는다. 채점 없는 축은 ``-``로 숨기지 않고 드러낸다."""
 
-    return "\n".join(
-        [
-            "# #316 목표 구체화 A/B",
-            "",
-            "| 대상 | ready | 2호출 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | ready 실행당 TTS 글자 |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|",
-            _completion_row(baseline_name, baseline),
-            _completion_row(candidate_name, candidate),
-            "",
-            "> #316 새 형식은 최대 2회 호출로 고정되어 ready와 2호출 이내 ready가 같다. goal 유효·환각·선택 강요는 같은 평가자·시나리오 배치로 채점된 결과만 비교한다.",
-            "",
-        ]
-    )
+    lines = [
+        "# #316 목표 구체화 A/B",
+        "",
+        "| 대상 | ready | 2호출 이내 ready | goal 유효 | 누락 정보 환각 | 선택 강요 | 보기 선택 | ready 실행당 TTS 글자 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        _completion_row(baseline_name, baseline),
+        _completion_row(candidate_name, candidate),
+        "",
+    ]
+    if input_mismatches:
+        lines.append(
+            f"> ⚠️ 입력 조건 불일치를 알고 비교했다: {', '.join(input_mismatches)}"
+        )
+    lines += [
+        "> #316 새 형식은 최대 2회 호출로 고정되어 ready와 2호출 이내 ready가 같다. goal 유효·환각·선택 강요는 같은 평가자·시나리오 배치로 채점된 결과만 비교한다.",
+        "> TTS는 ready 여정 1건의 총 청취 부담으로, 질문 수가 줄어 낮아지는 효과도 포함한다. 발화당 문구 길이로 읽지 않는다.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _table(headers: list[str]) -> str:

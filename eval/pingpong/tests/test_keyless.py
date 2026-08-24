@@ -537,6 +537,10 @@ def test_run_명령이_끝까지_배선돼_돈다(monkeypatch, tmp_path):
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     first_id = load_scenarios(ROOT / DEFAULT_SCENARIOS).scenarios[0].id
     assert meta["시나리오id"] == [first_id]
+    # 생략해도 실제로 쓴 시드는 복원 가능해야 한다.
+    assert isinstance(meta["seed"], int)
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert f"seed {meta['seed']}" in report
 
 
 def test_실행_실패는_현_지표_계약으로_남고_exit_code로_드러난다(monkeypatch, tmp_path):
@@ -604,7 +608,7 @@ def _make_run_dir(
     [("seed", 1, 2), ("max_requests", 1, 2)],
 )
 def test_compare는_실행_조건이_다르면_막는다(
-    scenarios, tmp_path, field, baseline_value, candidate_value
+    scenarios, tmp_path, capsys, field, baseline_value, candidate_value
 ):
     from pingpong_eval import cli
 
@@ -627,6 +631,7 @@ def test_compare는_실행_조건이_다르면_막는다(
     )
 
     assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    drift_report = tmp_path / "drift.md"
     assert (
         cli.main(
             [
@@ -634,10 +639,15 @@ def test_compare는_실행_조건이_다르면_막는다(
                 str(baseline),
                 str(candidate),
                 "--allow-scenario-drift",
+                "--out",
+                str(drift_report),
             ]
         )
         == 0
     )
+    warning = f"입력 조건 불일치를 알고 비교했다: {field}"
+    assert warning in capsys.readouterr().err
+    assert f"> ⚠️ {warning}" in drift_report.read_text(encoding="utf-8")
 
 
 def test_compare는_파일이_같아도_실행_id가_다르면_막는다(scenarios, tmp_path):

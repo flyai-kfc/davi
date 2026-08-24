@@ -226,7 +226,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"준비 실패: {error}", file=sys.stderr)
         return 1
 
-    user = UserSimulator(user_client, rng=random.Random(args.seed))
+    # Random(None)은 고정된 None 시드가 아니라 매번 새 시스템 엔트로피를 쓴다.
+    # None을 meta에 남기면 다른 난수열 두 실행이 같은 입력으로 비교되므로,
+    # 실제로 쓴 정수를 한 번 확정해 RNG와 기록에 같이 쓴다.
+    seed = (
+        args.seed
+        if args.seed is not None
+        else random.SystemRandom().randrange(0, 2**63)
+    )
+    user = UserSimulator(user_client, rng=random.Random(seed))
     results = []
     openings: list[str] = []
     digest = scenario_digest(args.scenarios)
@@ -306,7 +314,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         ),
         "핑퐁": args.base_url,
         "davi_sha": _davi_sha(args.davi_repo),
-        "seed": args.seed,
+        "seed": seed,
         "max_requests": args.max_requests,
     }
     out_dir = Path(args.out) / datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
@@ -376,6 +384,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    if input_mismatches:
+        print(
+            f"⚠️ A/B 입력 조건 불일치를 알고 비교했다: {', '.join(input_mismatches)}",
+            file=sys.stderr,
+        )
 
     baseline_batch = batch_of(baseline_meta)
     candidate_batch = batch_of(candidate_meta)
@@ -404,6 +417,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         baseline,
         args.candidate_name,
         candidate,
+        input_mismatches=input_mismatches,
     )
     if args.out:
         Path(args.out).write_text(report, encoding="utf-8")
