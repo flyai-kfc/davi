@@ -831,6 +831,10 @@ class ConversationActivity : AppCompatActivity() {
                     model.inClarificationFlow ->
                         R.dimen.davi_badge_margin_top_clarification_nochip
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
+                    // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
+                    // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
+                    // **이 화면에는 전역 ✕가 없어** 위를 내줘도 파고들 것이 없다.
+                    model.confirmVisible -> R.dimen.davi_badge_margin_top_confirm
                     else -> R.dimen.davi_badge_margin_top
                 },
             )
