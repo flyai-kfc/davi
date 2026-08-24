@@ -184,10 +184,7 @@ def test_step_wire_names_match_the_kotlin_serial_names(contract_source: str) -> 
 # **비워 두는 것이 정상이고, 채워 두는 것은 빚이다.** 소비자 PR이 Kotlin 필드를 넣으면서 함께
 # 지운다. 늘리려면 "왜 앱이 아직 못 받는가"를 이슈로 적을 것 — 조용히 늘면 이 테스트는 드리프트
 # 테스트가 아니라 드리프트 목록이 된다.
-_ACTION_FIELDS_APP_DOES_NOT_READ_YET = {
-    # C21 복사 신호(#404). 소비자는 「바로 입력」 버튼(#405)이고 그 PR이 이 줄을 지운다.
-    "input_text",
-}
+_ACTION_FIELDS_APP_DOES_NOT_READ_YET: set[str] = set()
 
 
 def test_action_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
