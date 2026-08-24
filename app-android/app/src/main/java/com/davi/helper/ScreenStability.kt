@@ -120,9 +120,19 @@ internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNot
  * 시계·개수가 앵커를 매 초 흔들어 게이트가 무의미해진다.
  *
  * 슬롯이 사라진 경우는 `false`다 — 그건 구조 변화라 구조 축이 맡는다.
+ *
+ * [capturedStructure]는 앵커를 잡은 화면의 구조 축이다. 지금 화면의 [currentStructure]와
+ * 다르면 **앵커를 아예 보지 않는다** — 다른 화면에서 우연히 같은 node id가 다른 label을 갖는
+ * 것만으로 참이 되면, 구조 축이 이미 맡은 자리를 앵커가 겹쳐 판정한다.
  */
-internal fun Screen.guidedSlotLabelChanged(nodeId: String?, expectedStableLabel: String?): Boolean {
+internal fun Screen.guidedSlotLabelChanged(
+    nodeId: String?,
+    expectedStableLabel: String?,
+    capturedStructure: String?,
+    currentStructure: String,
+): Boolean {
     if (nodeId == null || expectedStableLabel == null) return false
+    if (capturedStructure != currentStructure) return false
     val element = elements.firstOrNull { it.nodeId == nodeId } ?: return false
     return ScreenSignature.stableLabelOf(element) != expectedStableLabel
 }
@@ -287,15 +297,22 @@ class ScreenStabilityTracker(
     fun currentSignature(): ScreenSig? = lastSample
 
     /**
-     * 안내 대상 앱에서 클릭·스크롤 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
-     * 인정하는 유일한 근거다. 이벤트 미탐은 안전한 퇴화다 — 재질의가 한 박자 늦을 뿐이고
-     * 정체 알림(7초)이 받친다. `performed`의 null 강등과 같은 결(`../CLAUDE.md` 정체 감지).
+     * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
+     * 인정하는 유일한 근거다.
      *
-     * **오탐은 수용한다** — 자동으로 도는 캐러셀(ViewPager)은 사용자가 손대지 않아도
-     * `TYPE_VIEW_SCROLLED`를 낸다. 이벤트만으로 사용자 스크롤과 구분할 방법이 없고, 그
-     * 화면의 동작은 게이트가 없던 때와 같아질 뿐이라(in-flight 가드·백오프·왕복 지연이
-     * 상한을 잡는다) 더 나빠지지 않는다. 빈도는 [interactionGateOpen]이 `poll=` 줄에 찍는
-     * `gate=`로 실기기에서 재고, 값을 좁히는 것은 그 실측 뒤다.
+     * **스크롤은 근거가 아니다.** 자동으로 도는 목록이 사용자가 손대지 않아도
+     * `TYPE_VIEW_SCROLLED`를 내고, 이벤트만으로 사용자 스크롤과 구분할 방법이 없다.
+     * 2026-08-24 SM-S921N 실측 — 인기 검색어가 도는 검색 화면에서 무조작 50초에 92건
+     * (초당 1.8건)이 왔고, 게이트가 영구히 열려 로테이션마다 재질의가 나갔다(50초에 SEND
+     * 20회). 이 이슈가 막으려던 폭주 그대로다. **확실한 오탐보다 좁은 미탐이 낫다.**
+     *
+     * 그 미탐은 세 겹이 받는다 — 스크롤은 대개 구조를 바꿔 구조 축이 잡고, 구조가 그대로인
+     * 균일 목록은 타깃 앵커가 잡고, 둘 다 비껴가면 재질의가 한 박자 늦고 정체 알림(7초)이
+     * 받친다. `performed`의 null 강등과 같은 결(`../CLAUDE.md` 정체 감지).
+     *
+     * **클릭 축이 아예 죽은 앱도 있다** — 같은 실측에서 그 앱은 세션 전체에서
+     * `TYPE_VIEW_CLICKED`를 0건 냈다(실제로 눌렀는데도). 사용자 조작을 접근성 이벤트 밖에서
+     * 찾는 것은 #394에서 정한다.
      */
     fun markInteraction(nowMs: Long) {
         lastInteractionMs = nowMs
@@ -307,7 +324,8 @@ class ScreenStabilityTracker(
 
     /**
      * 인과 게이트가 지금 열려 있는가. **계측 전용이다** — 판정은 [onSample] 안에서 하고,
-     * 이 값은 로그가 위 오탐을 세기 위한 창이다(#380). 판정에 쓰지 말 것.
+     * 이 값은 게이트가 열린 구간을 실기기 로그(`poll=`의 `gate=`)에서 보기 위한 창이다
+     * (#380). 판정에 쓰지 말 것.
      */
     fun interactionGateOpen(nowMs: Long): Boolean = interactedRecently(nowMs)
 
@@ -328,7 +346,10 @@ class ScreenStabilityTracker(
 
     /**
      * 직전 판정이 **구조는 그대로이고 내용만 바뀐** 화면의 SEND였는가(#380).
-     * 매 샘플 확정한다 — SEND가 아닌 판정에서는 `false`다.
+     *
+     * **SEND·STUCK 판정에서만 확정된다.** 대입이 홀드 단계의 조기 반환보다 뒤라
+     * WAIT·UNREADABLE 샘플에서는 갱신되지 않는다 — 그 시점에 읽지 말 것. 지금 읽는 자리는
+     * `sendStableScreen` 하나뿐이고 그것은 두 분기에서만 불린다.
      * 스텝 이력의 `screen_changed`가 이 값을 쓴다 — 구조 축만 보면 균일 목록 스크롤이
      * "화면 안 바뀜"으로 적혀, 서버가 안내가 안 먹혔다고 읽는다.
      */
@@ -470,7 +491,7 @@ class ScreenStabilityTracker(
         const val CONTENT_SETTLE_MS = 3_000L
 
         /**
-         * 이 시간 안의 클릭·스크롤 이벤트가 있어야 내용만의 변화를 사용자 유발로 본다(#380).
+         * 이 시간 안의 클릭 이벤트가 있어야 내용만의 변화를 사용자 유발로 본다(#380).
          * 조작 → 화면 반영 → settle 샘플(350ms)의 한 사이클을 여유 있게 덮는 첫 추정치다.
          *
          * **[CONTENT_SETTLE_MS]보다 길어야 한다.** 조작은 승격 시계를 되감으므로, 이 창이 더

@@ -281,6 +281,9 @@ class InputStateEventTest {
 /** 타깃 앵커(#380) — 안내가 가리키는 슬롯이 구조 보존 재정렬로 밀렸는지 본다. */
 class GuidedSlotAnchorTest {
 
+    /** 앵커는 구조가 같은 동안만 유효하다. 그 전제를 만족시키는 값. */
+    private val SAME = "structure-a"
+
     private fun screen(vararg elements: UiElement) = Screen(
         packageName = "com.example.app",
         elements = elements.toList(),
@@ -291,14 +294,14 @@ class GuidedSlotAnchorTest {
         // 새 메시지가 대화방 순서를 밀면 같은 node id가 다른 줄을 뜻하게 된다.
         val after = screen(UiElement(nodeId = "n3", label = "김철수", role = "View"))
 
-        assertTrue(after.guidedSlotLabelChanged("n3", "이영희"))
+        assertTrue(after.guidedSlotLabelChanged("n3", "이영희", SAME, SAME))
     }
 
     @Test
     fun `같은 슬롯이면 밀린 것이 아니다`() {
         val after = screen(UiElement(nodeId = "n3", label = "이영희", role = "View"))
 
-        assertFalse(after.guidedSlotLabelChanged("n3", "이영희"))
+        assertFalse(after.guidedSlotLabelChanged("n3", "이영희", SAME, SAME))
     }
 
     @Test
@@ -306,22 +309,38 @@ class GuidedSlotAnchorTest {
         // 시그니처와 같은 정규화를 쓰지 않으면 대상에 붙은 시계·개수가 앵커를 매 초 흔든다.
         val after = screen(UiElement(nodeId = "n3", label = "안 읽음 12", role = "View"))
 
-        assertFalse(after.guidedSlotLabelChanged("n3", "안 읽음 #"))
+        assertFalse(after.guidedSlotLabelChanged("n3", "안 읽음 #", SAME, SAME))
     }
 
     @Test
     fun `슬롯이 사라졌으면 구조 축에 맡긴다`() {
         val after = screen(UiElement(nodeId = "n1", label = "이영희", role = "View"))
 
-        assertFalse(after.guidedSlotLabelChanged("n3", "이영희"))
+        assertFalse(after.guidedSlotLabelChanged("n3", "이영희", SAME, SAME))
     }
 
     @Test
     fun `안내 대상이 없으면 앵커도 없다`() {
         val after = screen(UiElement(nodeId = "n3", label = "이영희", role = "View"))
 
-        assertFalse(after.guidedSlotLabelChanged(null, "이영희"))
-        assertFalse(after.guidedSlotLabelChanged("n3", null))
+        assertFalse(after.guidedSlotLabelChanged(null, "이영희", SAME, SAME))
+        assertFalse(after.guidedSlotLabelChanged("n3", null, SAME, SAME))
+    }
+
+    @Test
+    fun `구조가 다르면 앵커를 보지 않는다`() {
+        // node id는 직렬화 순서 값이라 다른 화면의 같은 id는 다른 슬롯이다. 그 자리를
+        // 앵커가 판정하면 구조 축이 이미 맡은 일을 겹쳐 하고, 강조 복원 분기가 엉뚱하게 걸린다.
+        val other = screen(UiElement(nodeId = "n3", label = "전혀 다른 화면", role = "View"))
+
+        assertFalse(other.guidedSlotLabelChanged("n3", "이영희", SAME, "structure-b"))
+    }
+
+    @Test
+    fun `앵커를 잡은 적이 없으면 구조가 같아도 보지 않는다`() {
+        val after = screen(UiElement(nodeId = "n3", label = "김철수", role = "View"))
+
+        assertFalse(after.guidedSlotLabelChanged("n3", "이영희", null, SAME))
     }
 }
 
@@ -918,12 +937,12 @@ class ScreenStabilityTrackerTest {
         tracker.markSent(base, 700)
         tracker.markFinished()
 
-        // 사용자가 스크롤했고, 그 뒤로 샘플마다 내용이 달라 홀드가 영영 못 찬다.
-        val scrolledAt = 5_000L
-        tracker.markInteraction(scrolledAt)
-        var t = scrolledAt + 350
+        // 사용자가 조작했고, 그 뒤로 샘플마다 내용이 달라 홀드가 영영 못 찬다.
+        val interactedAt = 5_000L
+        tracker.markInteraction(interactedAt)
+        var t = interactedAt + 350
         var n = 2
-        while (t < scrolledAt + ScreenStabilityTracker.CONTENT_SETTLE_MS) {
+        while (t < interactedAt + ScreenStabilityTracker.CONTENT_SETTLE_MS) {
             assertEquals(
                 Decision.WAIT,
                 tracker.onSample(ScreenSig("news", "속보$n"), t, hasLabeledElement = true),
@@ -933,7 +952,7 @@ class ScreenStabilityTrackerTest {
         }
 
         // 억제가 풀렸고 인과 창은 아직 열려 있다.
-        val promotedAt = scrolledAt + ScreenStabilityTracker.CONTENT_SETTLE_MS
+        val promotedAt = interactedAt + ScreenStabilityTracker.CONTENT_SETTLE_MS
         assertEquals(
             Decision.SEND,
             tracker.onSample(ScreenSig("news", "속보$n"), promotedAt, hasLabeledElement = true),

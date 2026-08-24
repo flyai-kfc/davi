@@ -68,12 +68,18 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guidedTargetNodeId: String? = null
     private var guidedTargetStableLabel: String? = null
 
+    /**
+     * 앵커를 잡은 화면의 **구조 축**. node id는 구조가 같은 동안만 같은 슬롯을 뜻하므로
+     * (`Screen.guidedSlotLabelChanged`), 구조가 다르면 앵커를 아예 보지 않는다.
+     */
+    private var guidedTargetStructure: String? = null
+
     /** 앵커 어긋남 로그를 전이에서만 찍기 위한 표시. 판정에는 쓰지 않는다(#380). */
     private var targetSlotMovedLogged = false
 
     /**
      * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
-     * 클릭·스크롤만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
+     * 클릭만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
      * 중지 칩과 IME 키 클릭이 게이트를 여는 것을 막는다([guidedScreenPackage]와 같은 이유).
      * 응답이 아직 없는 화면에서도 게이트가 서도록 응답이 아니라 샘플에서 채운다.
      */
@@ -184,6 +190,7 @@ class GuideAccessibilityService : AccessibilityService() {
             guidedTargetClickable = false
             guidedTargetNodeId = null
             guidedTargetStableLabel = null
+            guidedTargetStructure = null
             currentScreenPackage = null
             errorNotice.reset()
             lastDecision = null
@@ -263,6 +270,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetClickable = false
                             guidedTargetNodeId = null
                             guidedTargetStableLabel = null
+                            guidedTargetStructure = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
                             stability.markFailed()
@@ -587,7 +595,7 @@ class GuideAccessibilityService : AccessibilityService() {
         val hasLabeledElement = result.screen.hasLabeledElement()
         currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
-        val targetSlotChanged = guidedTargetSlotChanged(result.screen)
+        val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
         val decision = stability.onSample(
             signature,
             now,
@@ -789,8 +797,13 @@ class GuideAccessibilityService : AccessibilityService() {
      * 목록 재정렬(새 메시지가 대화방 순서를 미는 경우)을 조작 이벤트 없이 잡는 트리거다.
      * 슬롯이 사라진 경우는 false다 — 그건 구조 변화라 구조 축이 이미 재질의를 연다.
      */
-    private fun guidedTargetSlotChanged(screen: Screen): Boolean =
-        screen.guidedSlotLabelChanged(guidedTargetNodeId, guidedTargetStableLabel)
+    private fun guidedTargetSlotChanged(screen: Screen, structure: String): Boolean =
+        screen.guidedSlotLabelChanged(
+            guidedTargetNodeId,
+            guidedTargetStableLabel,
+            guidedTargetStructure,
+            structure,
+        )
 
     /**
      * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1·GD-2r). 판정은 [ReadingBorder]에 있고 여기서는
@@ -1212,6 +1225,7 @@ class GuideAccessibilityService : AccessibilityService() {
             // 슬롯을 가리켜, 강조 복원을 엉뚱하게 막는다(#380).
             guidedTargetNodeId = null
             guidedTargetStableLabel = null
+            guidedTargetStructure = null
             return
         }
 
@@ -1224,6 +1238,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // label이 달라지면(구조 보존 재정렬) 조작 이벤트 없이도 재질의를 연다.
         guidedTargetNodeId = target?.nodeId
         guidedTargetStableLabel = target?.let { ScreenSignature.stableLabelOf(it) }
+        guidedTargetStructure = target?.let { requestSignature.structure }
         // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
         // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
         guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }
