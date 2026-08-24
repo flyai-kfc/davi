@@ -249,7 +249,7 @@ class GuideSessionTest {
         assertEquals(true, steps().single().screenChanged)
     }
 
-    /** A→B→A로 돌아와도 그 안내가 먹혔다는 사실은 그대로다. 회귀는 내용 서명의 몫(#270 서브 4). */
+    /** A→B→A로 돌아와도 그 안내가 먹혔다는 사실은 그대로다. 회귀 판정은 서버 몫이다(#410). */
     @Test
     fun `한 번 바뀐 스텝은 되돌아와도 true로 남는다`() {
         GuideSession.start("카카오톡 열기")
