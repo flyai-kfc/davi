@@ -64,12 +64,12 @@ from .gemini_response import (
     extract_candidate_text,
 )
 from .gemini_schema import build_response_schema
+from .inference_lifecycle import provider_call_timeout_seconds
 from .json_schema import build_json_schema
 from .observability import LLM_LOGGER_NAME, log_event
 from .schemas import ErrorKind
 
 _DEFAULT_RETRY_AFTER_SECONDS = 60
-_REQUEST_TIMEOUT_SECONDS = 20.0
 # 보이지 않는 추론에 얹는 여유분. reasoning·thinking 토큰도 출력 예산을 같이 소모하므로,
 # 다 써도 답 쓸 자리가 남게 한다(Gemini thinking 예산과 같은 이유).
 _REASONING_HEADROOM = 2048
@@ -166,9 +166,7 @@ class StructuredJsonProvider(ABC):
         self.operation = operation
         self.contract = contract
         self.max_output_tokens = max_output_tokens
-        self.http_client = http_client or httpx.Client(
-            timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
-        )
+        self.http_client = http_client or httpx.Client()
 
     @property
     def contract_schema(self) -> dict:
@@ -186,6 +184,9 @@ class StructuredJsonProvider(ABC):
         빼고 보내며, 계약은 호출부가 프롬프트에 실어 둔 상태다.
         """
 
+        # 호출부가 선언한 attempt와 request-scope 실제 호출 수를 함께 센다. schema·계약 복구가
+        # 분기되더라도 operation별 3/2/1회 상한을 넘을 수 없다(#82).
+        timeout_seconds = provider_call_timeout_seconds(self.operation, attempt)
         schema_mode = "schema" if with_schema else "fallback"
         started_at = time.perf_counter()
         log_event(
@@ -201,7 +202,10 @@ class StructuredJsonProvider(ABC):
         )
 
         try:
-            response = self.http_client.post(**self._request(prompt, with_schema=with_schema))
+            response = self.http_client.post(
+                **self._request(prompt, with_schema=with_schema),
+                timeout=httpx.Timeout(timeout_seconds),
+            )
         except httpx.TimeoutException as error:
             self._log_finished(
                 started_at,

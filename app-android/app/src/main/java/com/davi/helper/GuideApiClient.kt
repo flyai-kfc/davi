@@ -1,7 +1,6 @@
 package com.davi.helper
 
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -117,9 +116,6 @@ class GuideApiClient(
         const val DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
         val REQUEST_ID = Regex("[0-9a-f]{32}")
 
-        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build()
+        fun defaultHttpClient(): OkHttpClient = InferenceHttpClient.create()
     }
 }

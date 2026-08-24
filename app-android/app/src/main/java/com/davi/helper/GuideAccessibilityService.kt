@@ -98,6 +98,13 @@ class GuideAccessibilityService : AccessibilityService() {
     private var rootUnavailable = false
 
     /**
+     * [ScreenStabilityTracker]에 넣는 시각은 전부 같은 clock이어야 한다. uptime은 deep sleep을
+     * 제외하므로 화면 샘플·상호작용·실패 완료 사이의 "깨어 있는 동안" 간격을 일관되게 잰다.
+     * 요청 소요시간 telemetry만 deep sleep을 포함하는 elapsedRealtime을 별도로 쓴다.
+     */
+    private fun stabilityNowMs(): Long = SystemClock.uptimeMillis()
+
+    /**
      * 화면이 꺼져 있는가. **꺼진 동안 오버레이를 걷고 샘플러를 재운다. 세션은 유지한다**(#56).
      *
      * 창 타입을 접근성 오버레이로 바꾸면서 우리 창이 키가드보다 **위** 층으로 올라갔다
@@ -251,7 +258,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 draw(restored)
                             } else {
                                 overlay?.clear()
-                                stability.markFailed()
+                                stability.markFailed(stabilityNowMs())
                             }
                         }
 
@@ -270,7 +277,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetStructure = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
-                            stability.markFailed()
+                            stability.markFailed(stabilityNowMs())
                         }
                     }
                     updateReading()
@@ -383,7 +390,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
-                stability.markInteraction(SystemClock.uptimeMillis())
+                stability.markInteraction(stabilityNowMs())
             }
             onTargetPressed(event)
         }
@@ -415,7 +422,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun resumeAfterScreenOn() {
         if (!screenOff) return
         screenOff = false
-        stability.markResumed(SystemClock.uptimeMillis(), requery = droppedWhileScreenOff)
+        stability.markResumed(stabilityNowMs(), requery = droppedWhileScreenOff)
         val requeried = droppedWhileScreenOff
         droppedWhileScreenOff = false
         // 읽는 중 판정은 첫 샘플이 lastDecision을 채운 뒤에 한다. 여기서 먼저 부르면 null을
@@ -461,7 +468,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 GuideSession.active()?.generation?.let { generation ->
                     GuideSession.observePress(generation, onTarget = true)
                     // "안내 후 화면 그대로 7초"는 방금 조작한 시점부터 다시 센다.
-                    stability.markPressed(SystemClock.uptimeMillis())
+                    stability.markPressed(stabilityNowMs())
                 }
             }
 
@@ -561,7 +568,7 @@ class GuideAccessibilityService : AccessibilityService() {
             rootUnavailable = false
             // root가 없던 시간은 화면을 관측한 시간이 아니다. 정체·읽기 불가 타이머 양쪽에서
             // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
-            stability.markResumed(SystemClock.uptimeMillis(), requery = false)
+            stability.markResumed(stabilityNowMs(), requery = false)
             GuideTelemetry.rootState("recovered")
         }
 
@@ -587,7 +594,7 @@ class GuideAccessibilityService : AccessibilityService() {
         val serializeMs = SystemClock.uptimeMillis() - serializeStart
 
         val signature = ScreenSignature.of(result.screen)
-        val now = SystemClock.uptimeMillis()
+        val now = stabilityNowMs()
         val hasLabeledElement = result.screen.hasLabeledElement()
         currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
@@ -1077,7 +1084,7 @@ class GuideAccessibilityService : AccessibilityService() {
             val retryAfterMs = (result as? NextStepResult.ApiFailure)
                 ?.error?.retryAfterSeconds
                 ?.let { it * 1_000L }
-            stability.markFailed(retryAfterMs)
+            stability.markFailed(stabilityNowMs(), retryAfterMs)
             val notify = errorNotice.record(result)
             Log.i(
                 TAG,
@@ -1214,7 +1221,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
                     // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
                     // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
-                    stability.markFailed()
+                    stability.markFailed(stabilityNowMs())
                     Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }
 

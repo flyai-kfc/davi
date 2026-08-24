@@ -10,6 +10,7 @@ from app.main import (
     auth_rate_limiter,
     dev_rate_limiter,
     external_rate_limiter,
+    inference_coordinator,
 )
 from app.schemas import GuideAction, NextStepRequest
 
@@ -56,6 +57,7 @@ def isolate_runtime_state(monkeypatch):
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
     external_rate_limiter.reset()
+    inference_coordinator.reset()
     yield
     get_llm_client.cache_clear()
     get_intent_resolver.cache_clear()
@@ -63,6 +65,7 @@ def isolate_runtime_state(monkeypatch):
     dev_rate_limiter.reset()
     auth_rate_limiter.reset()
     external_rate_limiter.reset()
+    inference_coordinator.reset()
 
 
 @pytest.fixture

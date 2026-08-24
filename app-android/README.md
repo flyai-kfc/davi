@@ -138,6 +138,8 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 ### Gradle
 
 - **Gradle Wrapper가 있다.** `./gradlew test assembleDebug`로 단위 테스트와 디버그 APK를 함께 검증한다(CI도 이 기준을 쓴다). Gradle 9.5.0.
+- next-step·slot-fill·app-resolution은 공용 45초 call timeout을 쓴다. 서버의 40초 논리 작업
+  deadline보다 먼저 끊지 않으며, 실패 재시도 백오프는 요청 시작이 아니라 실패 완료부터 센다(#82).
 - `gradle/gradle-daemon-jvm.properties`가 데몬 JVM을 **Java 21 / JetBrains**로 고정한다.
   다른 JDK로 열면 Gradle이 해당 JDK를 자동으로 내려받는다.
 - `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
@@ -383,6 +385,7 @@ release Container App의 준비·수동 승격 절차는
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
 | `.../SlotFillApiClient.kt` | `/v1/intent/slot-fill` 계약·추적 header·오류 분류 |
 | `.../AppResolutionApiClient.kt` | `/v1/intent/app-resolution` 계약·추적 header·오류 분류 |
+| `.../InferenceHttpClient.kt` | 세 추론 endpoint의 공용 45초 call timeout |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
 | **경계가 되는 판정 단위** (여기 없는 것도 JVM 테스트가 있다 — `app/src/test/` 참고) | |

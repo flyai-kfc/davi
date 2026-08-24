@@ -38,8 +38,11 @@ Android는 `/v1/next-step`과 `/v1/auth/kakao` 요청에 무작위 UUID `X-Davi-
 JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
 
 같은 화면·세션의 network/timeout 및 retryable 429/502 재전송만 Logical Request ID를 유지한다.
-화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. #81은 검증·echo·로그 연결만 하며,
-같은 ID의 dedupe·결과 cache·timeout budget은 #82 범위다.
+화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. 추론 endpoint는 인증 범위+endpoint+ID가
+같은 검증 본문을 진행 중 작업 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다. 같은 key에
+다른 본문이 오면 `409 BAD_REQUEST`로 닫고 실패는 저장하지 않는다. 따라서 retryable 실패의 다음
+attempt는 같은 ID로 실제 실행된다. 이 인메모리 경계는 아래 worker 1개·replica 1개 불변식에
+의존한다.
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
 향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
@@ -232,6 +235,20 @@ beta·production은 바인딩 자체를 막지 않는 대신,
 초기화된다.** 영속적인 production 일일 상한이 필요하면 공유 저장소 기반 제한기로 교체해야 하며,
 그 전까지 공급자 자체 일일 쿼터가 최종 비용 경계다.
 키와 접근 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+
+### 추론 timeout·중복 처리
+
+공급자 HTTP 한 번은 최대 20초, schema·계약 복구를 포함한 논리 작업 전체는 최대 40초다.
+실제 공급자 호출은 next-step 3회, app-resolution 2회, slot-fill 1회가 상한이다. Android의 세
+추론 client는 연결·쓰기·읽기를 모두 포함한 45초 call timeout으로 서버보다 5초 늦게 끝난다.
+첫 HTTP 연결이 끊겨도 진행 중 작업은 즉시 취소하지 않는다. 같은 ID retry가 합류하거나 성공
+결과를 받을 수 있게 40초까지만 계속하고, 그 뒤 결과는 버린다. 동기식 공급자 호출을 Python에서
+강제로 종료할 수 없는 구간은 provider timeout이 닫는다. 내부 실행 pool은 FastAPI sync 기본
+수용량과 같은 40개라 기존 동시 처리량을 조용히 줄이지 않는다. dogfood raw 봉투는 공유 작업
+owner만 기록하고 replay 전송은 중복 저장하지 않는다.
+next-step retry는 화면의 label·window title·node id·bounds·스크롤 위치 메타와 마지막 step의
+`screen_changed`·`performed`·`content_signature`가 달라져도 같은 논리 작업에 합류한다. 과거
+step과 안내 내용은 계속 비교해 같은 ID의 다른 작업은 409로 닫는다.
 
 ### LLM 공급자 교체
 
@@ -493,6 +510,7 @@ pytest
 | 파일 | 역할 |
 |---|---|
 | `app/main.py` | FastAPI 라우터(얇게). 에러 분류만. |
+| `app/inference_lifecycle.py` | 추론 40초 deadline·3/2/1회 호출 상한·in-flight dedupe·성공 replay. |
 | `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
 | `app/kakao_auth.py` | 카카오 access token 검증과 세션 JWT 발급·검증. 토큰 원문 비로그. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
