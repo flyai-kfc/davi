@@ -39,7 +39,8 @@ for _ in $(seq 1 30); do
       --event workflow_dispatch \
       --limit 30 \
       --json databaseId,displayTitle \
-      --jq ".[] | select(.displayTitle == \"Azure release deploy $request_id\") | .databaseId"
+      --jq ".[] | select(.displayTitle == \"Azure release deploy $request_id\") | .databaseId" \
+      || true
   )"
   if [[ -n "$run_id" ]]; then
     break

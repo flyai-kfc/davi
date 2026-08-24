@@ -136,6 +136,20 @@ production health 응답은 진단 정보를 노출하지 않고 `{"status":"ok"
 `DAVI_AUTH_SOURCE=azure_container_apps`, 개발 토큰 미배선을 확인한다. ACA 모드의 로그인 제한은
 플랫폼이 보장하는 `X-Forwarded-For`의 가장 오른쪽 IP만 사용하고, 누락·오형식은 카카오 API 전에
 503으로 닫는다. IP는 인증·권한·로그에 쓰지 않는다.
+
+실기기 로그인 전에 비밀이 아닌 고정 더미 토큰으로 ingress의 XFF 형태를 확인한다. 정상 ACA
+ingress라면 출처 파싱을 통과해 카카오 검증의 `401 AUTH`가 오며, `503 SERVER`와
+`login request source unavailable`이 오면 배포를 release APK에 연결하지 말고 출처 배선을 먼저
+고친다.
+
+```bash
+curl --include --silent --show-error \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data '{"kakao_access_token":"deployment-probe-invalid-token"}' \
+  https://davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io/v1/auth/kakao
+```
+
 그 다음 서명된 release APK에서 카카오 로그인 → 세션 발급 → next-step 한 회를 실기기로 확인하면
 #214의 실제 release 경로가 닫힌다.
 

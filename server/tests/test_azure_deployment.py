@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -209,11 +210,14 @@ def test_release_manual_deployer_delegates_to_the_main_workflow() -> None:
 def test_release_android_target_has_no_development_capability() -> None:
     gradle = _text("app-android/app/build.gradle.kts")
     ci = _text(".github/workflows/ci.yml")
+    workflow = _text(".github/workflows/azure-release-deploy.yml")
 
-    assert (
-        "https://davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io"
-        in gradle
+    release_url = re.search(
+        r'val releaseServerUrl\s*=\s*"https://([\w.-]+\.azurecontainerapps\.io)"',
+        gradle,
     )
+    assert release_url is not None
+    assert f"EXPECTED_RELEASE_FQDN: {release_url.group(1)}" in workflow
     assert "val releaseAccessToken" not in gradle
     assert "DAVI_RELEASE_ACCESS_TOKEN" not in gradle
     release_block = gradle[gradle.index("        release {") : gradle.index("    compileOptions {")]
