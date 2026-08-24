@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import androidx.annotation.ChecksSdkIntAtLeast
+import androidx.annotation.RequiresApi
 
 /**
  * pfront에서 선택 이식한 `SpeechRecognizer` 경계.
@@ -87,16 +89,26 @@ class SpeechRecognizerHelper(
         }
         stop()
         fallbackAttempted = false
-        startRecognizer(onDeviceAvailable())
+        if (onDeviceAvailable()) {
+            startRecognizer(onDevice = true) { createOnDeviceRecognizer() }
+        } else {
+            startNetworkRecognizer()
+        }
     }
 
-    private fun startRecognizer(onDevice: Boolean) {
+    private fun startNetworkRecognizer() =
+        startRecognizer(onDevice = false) { SpeechRecognizer.createSpeechRecognizer(appContext) }
+
+    private fun startRecognizer(
+        onDevice: Boolean,
+        createRecognizer: () -> SpeechRecognizer,
+    ) {
         // 폴백 재시작도 이 함수를 타므로 "준비 중"이 그때마다 다시 나간다(#273).
         micReadySignalled = false
         listener.onMicPreparing()
         try {
             usingOnDevice = onDevice
-            val created = createRecognizer(onDevice)
+            val created = createRecognizer()
             // startListening이 던져도 catch의 stop()이 방금 만든 인스턴스를 회수할 수 있게 먼저 보관한다.
             recognizer = created
             created.setRecognitionListener(recognitionListener)
@@ -124,13 +136,11 @@ class SpeechRecognizerHelper(
         recognizer = null
     }
 
-    private fun createRecognizer(onDevice: Boolean): SpeechRecognizer =
-        if (onDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(appContext)
-        }
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun createOnDeviceRecognizer(): SpeechRecognizer =
+        SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
 
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
     private fun onDeviceAvailable(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
@@ -183,7 +193,7 @@ class SpeechRecognizerHelper(
             ) {
                 fallbackAttempted = true
                 destroyRecognizer()
-                startRecognizer(onDevice = false)
+                startNetworkRecognizer()
             } else {
                 listener.onError(error)
             }

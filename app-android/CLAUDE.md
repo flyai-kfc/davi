@@ -184,7 +184,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   opt-in 실기기 E2E가 맡는다. 따라서 일반 CI가 잡는 것은 소스·리소스 계약 파손까지이고,
   Activity 실행·클릭 뒤 상태 전이 같은 런타임 assertion은 포기한 커버리지다. 구버전 API 사용은
   별도 `lintDebug` 대신 `NewApi`를 fatal로 올려 기존 `assembleRelease`의 `lintVitalRelease`에서
-  막는다. 실행별 상세 요청·응답 보고서는
+  막는다. 이 검사는 **release 변형과 거기에 포함되는 `app/src/main`만** 본다 — 도그푸딩 debug APK의
+  제품 경로도 main 소스를 공유해 걸리지만, `app/src/debug`의 개발 전용 백업 화면과 androidTest
+  전용 소스는 포기한 범위다. 실행별 상세 요청·응답 보고서는
   `build/reports/device-e2e-private/`에 기본 생성되며 로컬 분석 전용이라 공유·커밋하지 않는다.
   기본 시나리오는 Davi 최신 화면 → Android 홈 → 여러 package를 같은 세션에서 잇는
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.

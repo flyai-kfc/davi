@@ -276,8 +276,9 @@ android {
     compileSdk = 36
 
     lint {
-        // assembleRelease가 이미 실행하는 lintVitalRelease에 구버전 API 경계를 태운다(#385).
-        // 별도 lintDebug(+94초 실측)를 추가하지 않고 API 26~35의 즉시 크래시를 막는다.
+        // assembleRelease가 이미 실행하는 lintVitalRelease에서 release 변형의 NewApi를 막는다(#385).
+        // app/src/main은 debug에도 공유되지만, debug·androidTest 전용 소스는 이 싼 관문 밖이다.
+        // 그 범위까지 보는 lintDebug(+94초 실측)는 일반 CI 비용 때문에 추가하지 않는다.
         fatal += "NewApi"
     }
 

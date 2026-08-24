@@ -18,7 +18,10 @@
         <item name="android:textColorPrimary">@color/davi_text_primary</item>
         <item name="android:textColorSecondary">@color/davi_text_secondary</item>
     </style>
-    <!-- API 29 전용 forceDarkAllowed는 values-v29의 같은 테마가 덧붙인다(#385). -->
+    <!--
+      API 29 전용 forceDarkAllowed는 values-v29의 같은 이름 테마가 덧붙인다(#385).
+      그 정의는 이 빈 Theme.Davi를 대체하므로 공통 item은 항상 Theme.Davi.Base에만 추가한다.
+    -->
     <style name="Theme.Davi" parent="Theme.Davi.Base" />
 
     <!--
