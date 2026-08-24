@@ -169,7 +169,13 @@ capture_connected_serials() {
 }
 
 joined_serials() {
-    local result="" item
+    local result="" item count="${#CONNECTED_SERIALS[@]}"
+    # macOS Bash 3.2 + `set -u`에서는 빈 배열의 `[@]` 전개가 unbound variable이다. 현재 호출부는
+    # 원소 수를 확인하지만, 함수 자체도 빈 배열을 안전하게 받아 새 호출부가 같은 함정을 밟지 않게 한다.
+    if [[ "$count" -eq 0 ]]; then
+        printf '\n'
+        return
+    fi
     for item in "${CONNECTED_SERIALS[@]}"; do
         result="${result:+$result, }$item"
     done
