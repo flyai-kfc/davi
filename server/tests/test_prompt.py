@@ -104,7 +104,8 @@ def test_prompt_asks_for_evidence_that_the_verifier_can_check():
     assert EVIDENCE_INSTRUCTION in prompt
     assert "작은따옴표로 감싸 글자 그대로 인용" in EVIDENCE_INSTRUCTION
     assert "닫는 따옴표 뒤" in EVIDENCE_INSTRUCTION
-    assert "이어서 쓰세요" in EVIDENCE_INSTRUCTION
+    assert EVIDENCE_INSTRUCTION.count("쓰세요") == 1
+    assert "판단 근거인 이유까지 쓰세요" in EVIDENCE_INSTRUCTION
 
 
 def test_schema_description_of_evidence_agrees_with_the_prompt():
@@ -118,7 +119,7 @@ def test_schema_description_of_evidence_agrees_with_the_prompt():
 
     assert "작은따옴표로 감싸 글자 그대로 인용" in described
     assert "닫는 따옴표 뒤" in described
-    assert "이어" in described
+    assert "판단 근거인 이유까지" in described
     assert "짧" not in described
 
 

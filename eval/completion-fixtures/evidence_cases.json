@@ -229,6 +229,42 @@
       "expected_verified": false
     },
     {
+      "id": "invalid-verbal-connective",
+      "axis": "verbal_suffix",
+      "source": "eval_case",
+      "request": {
+        "goal": "항목 저장",
+        "screen": {
+          "package_name": "com.example.form",
+          "elements": [
+            {"node_id": "n1", "label": "저장", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "항목이 저장되어 있다",
+      "evidence": "저장하고 목록으로 돌아왔습니다",
+      "evidence_label": "저장",
+      "expected_verified": false
+    },
+    {
+      "id": "invalid-negated-visible-label",
+      "axis": "negation",
+      "source": "eval_case",
+      "request": {
+        "goal": "연결 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "연결", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "연결되어 있다",
+      "evidence": "'연결'이 끊겼습니다",
+      "evidence_label": "연결",
+      "expected_verified": false
+    },
+    {
       "id": "invalid-single-character-keypad",
       "axis": "single_character",
       "source": "eval_case",

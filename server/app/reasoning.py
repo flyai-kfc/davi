@@ -63,7 +63,6 @@ _KOREAN_EVIDENCE_SUFFIXES = frozenset(
         "나",
         "는",
         "도",
-        "에도",
         "라",
         "라고",
         "랑",
@@ -77,7 +76,6 @@ _KOREAN_EVIDENCE_SUFFIXES = frozenset(
         "에",
         "에게",
         "에서",
-        "에서는",
         "예요",
         "였습니다",
         "와",
@@ -99,6 +97,28 @@ _KOREAN_EVIDENCE_SUFFIXES = frozenset(
         "처럼",
     }
 )
+
+# 격조사 뒤에 붙을 수 있는 보조사 한 개. `에서는`·`에도`를 완성형으로 하나씩 적으면
+# `에서도`·`에는`·`으로는`이 빠질 때마다 목록을 늘려야 한다. 결합 가능한 앞 조사와 뒤 보조사를
+# 따로 두어 같은 문법을 한 규칙으로 받되, 두 번 이상 이어 붙인 임의 문자열까지 넓히지는 않는다.
+_KOREAN_EVIDENCE_COMPOUND_BASES = frozenset(
+    {
+        "과",
+        "까지",
+        "께",
+        "께서",
+        "로",
+        "보다",
+        "부터",
+        "에",
+        "에게",
+        "에서",
+        "와",
+        "으로",
+        "처럼",
+    }
+)
+_KOREAN_EVIDENCE_AUXILIARY_SUFFIXES = frozenset({"는", "도", "만", "까지"})
 
 
 def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
@@ -526,41 +546,8 @@ def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
     허용한다(`카카오톡` vs `카카오톡이`). 임의의 접두 일치는 허용하지 않는다: label `사용 중`을
     근거 `사용 중지했습니다`에서 찾으면 정반대 상태가 통과한다(#71).
     """
-    if not _evidence_words(evidence):
-        return False
-
-    # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
-    # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
-    # 대조에 넣으면 지어낸 근거를 통과시키는 쪽으로만 작용한다 — 검증이 느슨해진다.
-    labels = [element.label for element in visible_elements(screen.elements)]
-    present = [label for label in labels if _normalize_for_evidence(label)]
-    if not present:
-        # 화면에 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로 돌리면
-        # 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
-        # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
-        return False
-
-    # 한 글자 label은 아이콘·숫자라 아무 문장에나 우연히 걸린다. 화면이 전부 한 글자여도
-    # 폴백하지 않는다 — 숫자 키패드 fixture에서는 우연 일치 false positive만 늘었다(#71).
-    comparable = [
-        label
-        for label in present
-        if len(_normalize_for_evidence(label)) >= _MIN_EVIDENCE_LABEL_CHARS
-    ]
-
-    return any(_evidence_contains_label(evidence, label) for label in comparable)
-
-
-def _evidence_contains_label(evidence: str, label: str) -> bool:
-    """evidence에 label의 어절 연속이 있는지 판정한다.
-
-    구두점·공백을 접은 문자열은 비교하되 시작은 evidence의 어절 경계여야 하고, 끝은 어절
-    경계이거나 정해 둔 한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는
-    받으면서도 어휘가 이어진 부분 문자열은 받지 않는다.
-    """
     evidence_words = _evidence_words(evidence)
-    normalized_label = _normalize_for_evidence(label)
-    if not evidence_words or not normalized_label:
+    if not evidence_words:
         return False
 
     compact_evidence = "".join(evidence_words)
@@ -572,6 +559,38 @@ def _evidence_contains_label(evidence: str, label: str) -> bool:
         cursor += len(word)
         ends.append(cursor)
 
+    # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
+    # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
+    # 대조에 넣으면 지어낸 근거를 통과시키는 쪽으로만 작용한다 — 검증이 느슨해진다.
+    comparable = [
+        normalized
+        for element in visible_elements(screen.elements)
+        if len(normalized := _normalize_for_evidence(element.label)) >= _MIN_EVIDENCE_LABEL_CHARS
+    ]
+    if not comparable:
+        # 화면에 비교 가능한 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로
+        # 돌리면 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
+        # 한 글자 label도 아이콘·숫자라 아무 문장에나 걸리므로 폴백하지 않는다(#71).
+        # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
+        return False
+
+    return any(
+        _evidence_contains_label(compact_evidence, starts, ends, label) for label in comparable
+    )
+
+
+def _evidence_contains_label(
+    compact_evidence: str,
+    starts: list[int],
+    ends: list[int],
+    normalized_label: str,
+) -> bool:
+    """미리 토큰화한 evidence에 정규화한 label의 어절 연속이 있는지 판정한다.
+
+    구두점·공백을 접은 문자열은 비교하되 시작은 evidence의 어절 경계여야 하고, 끝은 어절
+    경계이거나 정해 둔 한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는
+    받으면서도 어휘가 이어진 부분 문자열은 받지 않는다.
+    """
     for start in starts:
         if not compact_evidence.startswith(normalized_label, start):
             continue
@@ -587,15 +606,18 @@ def _evidence_contains_label(evidence: str, label: str) -> bool:
 def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
     """label 뒤의 조사·서술격 어미인가.
 
-    복수 접미사 `들`은 단독이거나 같은 조사 앞에 한 번 붙을 수 있다(`사진들`, `사진들이`,
-    `사진들에서는`). 임의의 동사 접미사는 여전히 받지 않는다.
+    복수 접미사 `들`은 한 번 붙을 수 있고, 격조사 뒤에는 보조사 한 개를 조합할 수 있다
+    (`사진들`, `사진들이`, `설정에서도`, `사진들에서는`). 임의의 동사 접미사나 보조사를 두 번
+    이어 붙인 문자열은 받지 않는다.
     """
-    if suffix in _KOREAN_EVIDENCE_SUFFIXES:
+    tail = suffix.removeprefix("들")
+    if not tail or tail in _KOREAN_EVIDENCE_SUFFIXES:
         return True
-    if not suffix.startswith("들"):
-        return False
-    plural_tail = suffix.removeprefix("들")
-    return not plural_tail or plural_tail in _KOREAN_EVIDENCE_SUFFIXES
+    return any(
+        base != auxiliary and tail == base + auxiliary
+        for base in _KOREAN_EVIDENCE_COMPOUND_BASES
+        for auxiliary in _KOREAN_EVIDENCE_AUXILIARY_SUFFIXES
+    )
 
 
 def _evidence_words(text: str) -> list[str]:

@@ -76,11 +76,22 @@ def test_korean_particles_do_not_break_the_match():
         ("시계", "시계며 일정 화면입니다"),
         ("시계", "시계였습니다"),
         ("설정", "설정에서는 확인했습니다"),
+        ("설정", "설정에서도 확인했습니다"),
+        ("설정", "설정에는 값이 있습니다"),
         ("설정", "설정에도 같은 값이 보입니다"),
+        ("설정", "설정으로는 확인했습니다"),
+        ("설정", "설정까지는 확인했습니다"),
+        ("사진", "사진들에서는 확인했습니다"),
     ],
 )
 def test_common_korean_particle_and_copula_pairs_are_verified(label, evidence):
     assert _verified(evidence, _screen(label))
+
+
+def test_compound_particle_does_not_accept_unbounded_auxiliary_chains():
+    assert not _verified("설정에서만도 확인했습니다", _screen("설정"))
+    assert not _verified("설정까지까지 확인했습니다", _screen("설정"))
+    assert not _verified("사진들들이 보입니다", _screen("사진"))
 
 
 @pytest.mark.parametrize(

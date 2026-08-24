@@ -241,8 +241,7 @@ class GuideAction(BaseModel):
     evidence: str = Field(
         description=(
             "현재 화면 요소의 label 하나를 작은따옴표로 감싸 글자 그대로 인용하고, "
-            "조사나 설명은 닫는 따옴표 뒤에 이어 쓴 뒤, "
-            "그것이 왜 근거인지 이어 쓴 문장"
+            "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장"
         )
     )
     action_type: ActionType = Field(description="다음에 할 동작")
