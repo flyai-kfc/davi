@@ -204,7 +204,9 @@ rate limit을 쓰는 `development`를 유지한다.
 | `/docs`·`/redoc`·`/openapi.json` | 로컬 개발 문서 노출 | 404(등록·노출 안 함) |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
-검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+프로필·키·음수 예산 같은 공통 검증은 설정을 import할 때 실행된다. operation마다 다른 출력 예산
+하한은 FastAPI startup에서 next-step·slot-fill·app-resolution 공급자를 모두 미리 만들며 검증한다.
+따라서 어느 경우든 잘못된 조합은 첫 요청의 부분적인 500이 아니라 Uvicorn 기동 전에 실패한다.
 beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`도 둘 다 필수다.
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도

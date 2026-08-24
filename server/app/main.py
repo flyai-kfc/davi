@@ -6,6 +6,8 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from ipaddress import ip_address
 
 from fastapi import FastAPI, Request, Response, status
@@ -13,7 +15,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .app_resolution import resolve_app_request
+from .app_resolution import get_app_candidate_resolver, resolve_app_request
 from .config import settings
 from .dev_access import (
     MultiWindowRateLimiter,
@@ -24,7 +26,7 @@ from .dev_access import (
     token_matches,
 )
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
-from .intent_resolution import resolve_intent
+from .intent_resolution import get_intent_resolver, resolve_intent
 from .kakao_auth import (
     AuthError,
     KakaoLoginRequest,
@@ -57,6 +59,28 @@ from .schemas import (
     SlotFillState,
 )
 
+
+def _initialize_llm_providers() -> None:
+    """실모델의 세 operation 공급자를 기동 중에 만들고 설정 오류를 요청 전에 드러낸다.
+
+    `DAVI_MAX_OUTPUT_TOKENS` 하한은 operation 계약마다 달라 Settings 하나만으로 검증할 수 없다.
+    첫 요청에서 지연 생성하면 next-step은 되고 slot-fill만 계속 500인 부분 고장이 되므로,
+    Uvicorn이 준비 완료를 알리기 전에 세 캐시를 모두 채운다. 네트워크 호출은 하지 않는다.
+    """
+
+    if settings.davi_use_stub_llm:
+        return
+    get_llm_client()
+    get_intent_resolver()
+    get_app_candidate_resolver()
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    _initialize_llm_providers()
+    yield
+
+
 # 외부 공개 프로필에서 FastAPI의 기본 문서·스키마 endpoint를 등록하지 않는다. 테스트는 모듈
 # import 뒤 프로필을 바꾸므로 아래 middleware에서도 같은 경계를 한 번 더 적용한다.
 _DEVELOPMENT_DOCS_ENABLED = settings.davi_env == "development"
@@ -66,6 +90,7 @@ app = FastAPI(
     docs_url="/docs" if _DEVELOPMENT_DOCS_ENABLED else None,
     redoc_url="/redoc" if _DEVELOPMENT_DOCS_ENABLED else None,
     openapi_url="/openapi.json" if _DEVELOPMENT_DOCS_ENABLED else None,
+    lifespan=_lifespan,
 )
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 

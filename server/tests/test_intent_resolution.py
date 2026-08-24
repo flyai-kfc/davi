@@ -20,7 +20,7 @@ from app.intent_resolution import (
     resolve_intent,
 )
 from app.llm_provider import _REASONING_HEADROOM
-from app.schemas import ErrorKind, SlotFillRequest, SlotFillState
+from app.schemas import ErrorKind, IntentDialogueStatus, SlotFillRequest, SlotFillState
 from pydantic import ValidationError
 
 from tests.factories import gemini_intent_resolver
@@ -182,10 +182,16 @@ def test_response_budget_is_derived_for_both_contract_shapes():
         )
         == _RESPONSE_HEADROOM_TOKENS
     )
-    # #316의 최대 2문항·문항별 3보기를 빼먹은 옛 ready 중심 계산으로 돌아가지 않게 한다.
-    assert (
-        INTENT_DIALOGUE_RESPONSE_BUDGETS.needs_clarification
-        > INTENT_DIALOGUE_RESPONSE_BUDGETS.ready
+    # ready와의 상대 크기는 필드 상한이 바뀌면 역전될 수 있다. 대신 #316의 최대 문항·보기가
+    # 실제 최대 응답 구성에 들어갔는지를 계약 스키마 자체와 대조한다.
+    clarification = _MAXIMUM_DECISIONS[IntentDialogueStatus.NEEDS_CLARIFICATION].clarification
+    question_schema = INTENT_DIALOGUE_SCHEMA["properties"]["clarification"]["properties"][
+        "questions"
+    ]
+    assert len(clarification.questions) == question_schema["maxItems"]
+    assert all(
+        len(question.options) == question_schema["items"]["properties"]["options"]["maxItems"]
+        for question in clarification.questions
     )
 
 
