@@ -225,12 +225,12 @@
   문제(선행 조건 처리 — "앱이 없으면 먼저 설치")는 이번 사이클 목표에 없다.
   `reasoning.py`의 `_plan` 스텁과 TODO는 **#251이 걷었다**(2026-08-19) — 규칙대로 그 파일을
   여는 사람이 함께 지웠다.
-- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 **debug·release APK가
-  함께 바라보는 개발 인프라**이며(#248), 이 비목표를 해제하지 않는다 — 서버는 development
-  프로필이고 접근 토큰으로 닫혀 있다(§7).
+- 제품용 계정 DB·계정 수명주기 인프라. #94의 Azure Container Apps development endpoint는
+  **debug APK용**으로 유지하고, release APK는 같은 resource group의 별도 Container App에서
+  `production` 프로필과 무상태 카카오 세션 JWT를 쓴다(#214). 별도 사용자 DB는 만들지 않는다.
   **카카오 로그인 자체는 §2 범위다**(ON-1) — 여기서 비목표인 것은 그것을 떠받치는 제품용
   호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 **빌드 검증 수단**이다(#279).
-  debug만이 아니라 release도 같은 서버로 로그인한다(#248·#219 — `releaseLoginEnabled`).
+  debug와 release는 각자의 서버에서 같은 무상태 로그인 계약을 쓴다(#219 — `releaseLoginEnabled`).
 
 ---
 
@@ -598,24 +598,17 @@ davi/
   채 pin만 남은 상태는 설정 검증도 `/health` 대조도 통과하고 실제 호출에서만 깨지므로, 배포
   전에 끊는다.
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
-  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
-  요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
-  통신은 그대로 거부한다. 사설 Wi-Fi 평문 URL과 debug 전용 토큰(`DAVI_DEBUG_*`)은 여전히 release에
-  들어가지 않는다.
+  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용한다. development
+  Container App은 개발 접근 토큰을, release Container App은 카카오 세션 JWT를 요구한다.
+  사설 Wi-Fi URL과 debug 전용 값(`DAVI_DEBUG_*`)은 release에 들어가지 않는다.
 - Azure 로그는 기존 비식별 JSON Lines만 Log Analytics에 30일 보존한다. 클라우드에서는
   `DAVI_DOGFOOD_DEVICE_IDS`를 비워 원본 도그푸딩 raw를 저장하지 않는다.
-- ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다. #94의
-  Azure endpoint는 **debug APK와 release APK가 함께 바라보는 개발 서버**다(#248). **release가 붙는
-  것이 이 서버를 제품 인프라로 만들지는 않는다** — 서버는 development 프로필이고 모든 원격 요청이
-  접근 토큰을 요구하며, 제품 사용자 인증을 대신하지 않는다. **여기에 붙는 주체는 셋이다** —
-  팀 debug APK · release APK · 외부 테스트 참가자(#257). 사설 Wi-Fi LAN 서버에는 debug만 붙는다.
-- **release에 실리는 접근 토큰은 비밀이 아니다.** APK에서 추출되므로 기밀이 아니라 **회전**으로
-  다룬다 — 기간 제한 임시 capability로 보고 내부 테스트 시작 직전에 적용, 종료 즉시 서버에서
-  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 공급자 쿼터에 물려
-  있다는 것이 그 이유다. beta·production의 세션 접근 통제·비용 상한·로그 정책은 위 #214
-  규칙으로 확정한다.
+- ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 쓰지 않는다. #94 development endpoint에는
+  팀 debug APK와 외부 테스트 참가자만 붙고(#257), release APK는 #214의 release endpoint에 붙는다.
+  release APK에는 개발 접근 토큰을 싣지 않으며 로그인으로 발급한 세션 JWT만 사용한다.
 - API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
-- 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
+- release Container App은 기존 ACR·Key Vault·managed environment·identity를 재사용하되 revision과
+  secrets 배선은 별도 Bicep/수동 승격 workflow로 관리한다. 사용자 DB 등 계정 인프라는 여전히 별도다.
 
 ---
 

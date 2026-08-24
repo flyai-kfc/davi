@@ -2,14 +2,14 @@
 
 이 문서는 #94의 **개발·도그푸딩 전용** Azure 서버를 최초 준비하고, 이후 `main` 서버 변경을
 GitHub Actions로 자동 배포하는 절차다. 제품 배포·**제품용 계정 인프라**가 아니다.
-**release APK도 이 endpoint를 바라본다**(2026-08-19, #248) — 그래도 서버는 development
-프로필이고 모든 원격 요청이 접근 토큰을 요구하므로, 제품 인프라가 된 것은 아니다(`SPEC.md` §7).
+release APK는 이 endpoint를 사용하지 않는다. 같은 resource group의 별도 release Container App과
+`production` 프로필을 사용하며, 준비·배포 절차는 `../deployment/azure-release-server.md`에 있다.
 
 **카카오 사용자 인증 자체는 이 서버가 수행한다**(#279 / PR #282) — `POST /v1/auth/kakao`가
 카카오 access token을 검증하고 Davi 세션 JWT를 발급한다(`kakao_auth.py`의 `issue_session_token`).
 그래서 "사용자 인증이 아니다"라고 적지 않는다. 비목표인 것은 그것을 떠받치는 **제품용 계정
-인프라**(사용자 DB·계정 수명주기)다. 로그인 흐름이 여기로 오는 것은 **Azure로 설정한 debug와
-release**다 — debug 기본값은 `10.0.2.2`라 Azure는 선택이다(`build.gradle.kts:91`).
+인프라**(사용자 DB·계정 수명주기)다. 로그인 흐름이 여기로 오는 것은 Azure로 설정한 debug다 —
+debug 기본값은 `10.0.2.2`라 Azure는 선택이다(`build.gradle.kts`).
 beta·production의 세션 접근 통제와 분·일 단위 비용 상한은 #214에 고정되어 있다. 현재 공유
 Azure 서버는 development 프로필이므로 아래 개발 토큰·전역 제한 경계를 그대로 사용한다.
 PR 검증과 배포는 서로 다른 workflow이며, 배포 workflow는 PR에서 실행되지 않는다.

@@ -139,6 +139,73 @@ def test_infrastructure_ci_runs_when_container_inputs_change() -> None:
 
     assert "- 'server/app/**'" in workflow
     assert "- 'server/requirements.lock.txt'" in workflow
+    assert "- '.github/workflows/azure-release-deploy.yml'" in workflow
+    assert "az bicep build --file infra/azure/release-server.bicep" in workflow
+
+
+def test_release_container_app_reuses_foundation_with_production_profile() -> None:
+    template = _text("infra/azure/release-server.bicep")
+
+    assert "param containerAppName string = 'davi-server-release'" in template
+    for resource_type in (
+        "Microsoft.App/managedEnvironments",
+        "Microsoft.ContainerRegistry/registries",
+        "Microsoft.KeyVault/vaults",
+        "Microsoft.ManagedIdentity/userAssignedIdentities",
+    ):
+        declaration = template.index(resource_type)
+        assert "existing" in template[declaration : declaration + 160]
+    assert "name: 'DAVI_ENV'\n              value: 'production'" in template
+    assert "name: 'DAVI_USE_STUB_LLM'\n              value: 'false'" in template
+    assert "name: 'DAVI_AUTH_JWT_SECRET'\n              secretRef: 'auth-jwt-secret'" in template
+    assert "name: 'DAVI_KAKAO_APP_ID'\n              value: kakaoAppId" in template
+    assert "DAVI_DEV_ACCESS_TOKEN" not in template
+    assert "DAVI_TEST_ACCESS_TOKEN" not in template
+    assert "external: true" in template
+    assert "allowInsecure: false" in template
+    assert "minReplicas: 1" in template
+    assert "maxReplicas: 1" in template
+
+
+def test_release_deploy_is_manual_main_only_oidc_promotion() -> None:
+    workflow = _text(".github/workflows/azure-release-deploy.yml")
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "pull_request:" not in workflow
+    assert "if: github.ref == 'refs/heads/main'" in workflow
+    assert "environment: davi-release" in workflow
+    assert "id-token: write" in workflow
+    assert "uses: azure/login@v2" in workflow
+    assert "client-secret:" not in workflow
+    assert "${{ secrets." not in workflow
+    assert "az acr build" not in workflow
+    assert "az containerapp up" not in workflow
+    assert "--template-file infra/azure/release-server.bicep" in workflow
+    assert "DAVI_DEV_ACCESS_TOKEN" in workflow  # revision에서 부재를 검증하는 문자열이다.
+    assert '.name != "DAVI_DEV_ACCESS_TOKEN"' in workflow
+    assert '.name != "DAVI_TEST_ACCESS_TOKEN"' in workflow
+    assert '.name == "DAVI_ENV" and .value == "production"' in workflow
+    assert "az containerapp revision show" in workflow
+    assert ".properties.template.containers[0].image == $expected_image" in workflow
+    assert "https://$DEPLOYED_FQDN/health" in workflow
+    assert '.status == "ok" and length == 1' in workflow
+
+
+def test_release_android_target_has_no_development_capability() -> None:
+    gradle = _text("app-android/app/build.gradle.kts")
+    ci = _text(".github/workflows/ci.yml")
+
+    assert (
+        "https://davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io"
+        in gradle
+    )
+    assert "val releaseAccessToken" not in gradle
+    assert "DAVI_RELEASE_ACCESS_TOKEN" not in gradle
+    release_block = gradle[gradle.index("        release {") : gradle.index("    compileOptions {")]
+    assert 'buildConfigField("String", "DEV_ACCESS_TOKEN", "\\"\\"")' in release_block
+    assert "DAVI_RELEASE_ACCESS_TOKEN" not in ci
+    assert "grep -q 'DEV_ACCESS_TOKEN = \"\"'" in ci
 
 
 def test_deploy_workflow_passes_the_test_token_secret_name() -> None:
