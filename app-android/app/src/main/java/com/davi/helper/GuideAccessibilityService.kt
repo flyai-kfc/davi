@@ -318,8 +318,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val interesting = isInteresting(event.eventType)
         // 계측. release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
-        // **필터 앞이라는 위치는 의도다** — 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다.
-        // 그 위치가 감당 가능한 이유는 이 호출이 더 이상 `event.source`를 읽지 않기 때문이다(#356).
+        // 위 필터 앞이라는 자리가 감당 가능한 이유는 이 호출이 `event.source`를 읽지 않기 때문이다(#356).
         GuideScreenLog.event(event, interesting)
         if (!interesting) return
 
@@ -491,12 +490,16 @@ class GuideAccessibilityService : AccessibilityService() {
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
         // 직렬화에 든 시간(#367). **`SystemClock.uptimeMillis`를 쓴다** — 벽시계는 시각 동기화로
-        // 뒤로 갈 수 있고, 이 값은 `POLL_MS`·`SETTLE_MS` 예산과 비교하는 용도다.
+        // 뒤로 갈 수 있고, 이 값은 `postDelayed`가 쓰는 시간축과 같아야 한다.
+        // 무엇이 이 구간 밖인지는 아래 로그 자리에 적었다.
         val serializeStart = SystemClock.uptimeMillis()
         val result = runCatching {
             UiTreeSerializer.serialize(root, windowTypes, windowTitle)
         }.getOrElse {
-            Log.e(TAG, "serialize failed", it)
+            // 실패한 순회에도 소요를 남긴다. 안 남기면 **오래 끌다 던진 폴링이 통째로 빠져**
+            // #367이 찾는 p90·최대가 낮은 쪽으로 치우친다.
+            // **키를 `ms=`로 맞춘다** — 아래 `poll=` 줄과 같은 이름이라야 한 번의 grep으로 집계된다.
+            Log.e(TAG, "serialize failed ms=${SystemClock.uptimeMillis() - serializeStart}", it)
             scheduleSample(POLL_MS)
             return
         }
@@ -507,8 +510,10 @@ class GuideAccessibilityService : AccessibilityService() {
         val hasLabeledElement = result.screen.hasLabeledElement()
         val decision = stability.onSample(signature, now, hasLabeledElement)
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
-        // `ms`는 #367이 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 직렬화 소요다 — 폴링마다 찍혀야
-        // p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
+        // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
+        // 밖에 남는 것: `ActiveWindowResolver.resolve()`의 창·root IPC, 직렬화 앞의 `windows.map`,
+        // 직렬화 뒤의 `ScreenSignature.of`. 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 때 이 값은 **하한**이다.
+        // 폴링마다 찍혀야 p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
         GuideScreenLog.sample(decision.name, result.screen.elements.size, signature, serializeMs)
         lastDecision = decision
         updateReading()
