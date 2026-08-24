@@ -53,7 +53,15 @@ def _list_screen() -> Screen:
     )
 
 
-def _action(action_type: ActionType, input_text: str | None) -> GuideAction:
+def _action(
+    action_type: ActionType,
+    input_text: str | None,
+    instruction: str | None = None,
+) -> GuideAction:
+    """기본 안내문은 **값을 집어 말한다** — 가드가 그것까지 요구하기 때문이다.
+
+    안내문이 값을 안 부르는 경우는 그 자체가 검사 대상이라 테스트가 직접 넘긴다.
+    """
     return GuideAction(
         expected_result="검색 결과가 보이는 상태",
         screen_summary="배달 앱의 검색 화면",
@@ -61,7 +69,12 @@ def _action(action_type: ActionType, input_text: str | None) -> GuideAction:
         action_type=action_type,
         target_node_id="n1",
         input_text=input_text,
-        instruction="검색창에 가게 이름을 넣어 주세요",
+        instruction=instruction
+        or (
+            f"검색창에 '{input_text}'를 입력해 주세요"
+            if input_text
+            else "검색창에 가게 이름을 넣어 주세요"
+        ),
     )
 
 
@@ -183,33 +196,60 @@ def test_single_character_is_not_copied() -> None:
     assert not _goal_quotes_input_text("그", "그 집으로 가자")
 
 
-# ── 목표 문장 그 자체는 인용이 아니다(#406 리뷰 후속, 실기기 제보) ─────
+# ── 안내문이 집어 말한 값만 채운다(#406 리뷰 후속, 실기기 제보) ─────
+
+# 제보: 목적어가 없는 목표면 안내는 「검색창에 입력하세요」만 나오는데 버튼을 누르면 목표가
+# 그대로 들어갔다. 출처(목표) 판정만으로는 못 막는다 — 목표는 자기 자신을 인용한다.
+# 그래서 **사용자가 지금 읽는 문장**이 그 말을 집어 말하는지도 함께 본다.
 
 
-# 목적어가 없는 목표에서 모델이 목표를 통째로 복사해, 「바로 입력」이 검색창에
-# `인터넷에 검색해 줘`를 넣었다(실모델 재현). 목표는 자기 자신을 인용하므로
-# 출처 판정(`_goal_quotes_input_text`)은 구조적으로 통과시킨다.
+def test_input_text_not_named_by_the_instruction_is_dropped() -> None:
+    action = _guide(
+        _action(ActionType.TYPE, GOAL, instruction="검색어를 입력해 주세요"),
+        goal=GOAL,
+    )
+    assert action.input_text is None
+
+
+def test_input_text_named_by_the_instruction_is_kept() -> None:
+    action = _guide(
+        _action(ActionType.TYPE, "교촌치킨", instruction="검색창에 '교촌치킨'을 입력해 주세요"),
+    )
+    assert action.input_text == "교촌치킨"
+
+
 @pytest.mark.parametrize(
-    "goal",
+    "instruction",
     [
-        "인터넷에 검색해 줘",
-        "교촌치킨에서 후라이드 시켜줘",
+        "검색창에 '교촌치킨'을 입력해 주세요",
+        "검색창에 「교촌치킨」을 입력해 주세요",
+        "검색창에 교촌치킨이라고 입력하세요",
+        "교촌치킨 을 입력해 주세요",
     ],
 )
-def test_input_text_equal_to_the_whole_goal_is_dropped(goal: str) -> None:
-    action = _guide(_action(ActionType.TYPE, goal), goal=goal)
-    assert action.input_text is None
+def test_instruction_check_does_not_parse_quote_marks(instruction: str) -> None:
+    """따옴표 모양을 맞추지 않는다 — 값이 문장 안에 있기만 하면 된다.
+
+    구조화 필드를 둔 이유(모델 문구가 조금만 달라져도 깨진다, C21)를 되살리지 않으려는 것이다.
+    """
+    action = _guide(_action(ActionType.TYPE, "교촌치킨", instruction=instruction))
+    assert action.input_text == "교촌치킨"
 
 
-def test_whole_goal_check_ignores_spacing_and_punctuation() -> None:
-    """띄어쓰기·구두점만 다른 재작성도 목표 그 자체다."""
-    action = _guide(_action(ActionType.TYPE, "인터넷에 검색해줘!"), goal="인터넷에 검색해 줘")
-    assert action.input_text is None
-
-
-def test_whole_goal_check_does_not_touch_a_real_quote() -> None:
-    """목표의 일부를 고른 값은 그대로 남는다 — 좁힌 것이 정상 경로를 먹으면 안 된다."""
+def test_goal_check_still_applies_when_the_instruction_names_it() -> None:
+    """안내문이 불러도 목표에 없는 말이면 비운다 — 두 축은 서로를 대신하지 않는다."""
     action = _guide(
-        _action(ActionType.TYPE, "종로 칼국수"), goal="네이버에서 종로 칼국수를 검색해 줘"
+        _action(ActionType.TYPE, "굽네치킨", instruction="검색창에 '굽네치킨'을 입력해 주세요"),
+    )
+    assert action.input_text is None
+
+
+def test_goal_that_is_only_the_search_term_is_kept() -> None:
+    """목표가 검색어 자체인 짧은 경우. 「목표 전체면 버린다」로 막았다면 죽었을 정상 경로다."""
+    action = _guide(
+        _action(
+            ActionType.TYPE, "종로 칼국수", instruction="검색창에 '종로 칼국수'를 입력해 주세요"
+        ),
+        goal="종로 칼국수",
     )
     assert action.input_text == "종로 칼국수"

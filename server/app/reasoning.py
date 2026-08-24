@@ -214,7 +214,9 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
     지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이라 실패의 방향이 안전한 쪽이다.
     부수 필드가 주 기능을 죽이지 않는다는 `GuideAction.screen_summary`의 공백 검증 결정과 같은 결.
 
-    **목표 문장 그 자체도 비운다**([_is_whole_goal]) — 출처 판정만으로는 못 거르는 자리다.
+    **안내문이 집어 말하지 않는 값도 비운다**([_instruction_quotes_input_text]). 출처 판정과
+    축이 다르다 — 그쪽은 "승인된 말인가", 이쪽은 "지금 읽는 문장이 시키는 말인가"다. 둘 다 서야
+    버튼이 **사용자가 읽은 그대로**를 채운다.
 
     **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, 소비자가 생겼을 때 tap 화면에 복사
     제안이 뜨는 경로가 된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`),
@@ -232,28 +234,33 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
     if (
         action.action_type is ActionType.TYPE
         and _goal_quotes_input_text(action.input_text, goal)
-        and not _is_whole_goal(action.input_text, goal)
+        and _instruction_quotes_input_text(action.input_text, action.instruction)
     ):
         return action
     return action.model_copy(update={"input_text": None})
 
 
-def _is_whole_goal(input_text: str, goal: str) -> bool:
-    """복사 문구가 **목표 문장 그 자체**인가(#406 리뷰 후속, 실모델 재현).
+def _instruction_quotes_input_text(input_text: str, instruction: str) -> bool:
+    """**사용자가 지금 읽는 문장이 그 말을 집어 말하는가.**
 
-    목표 문장은 자기 자신을 인용하므로 [_goal_quotes_input_text]가 구조적으로 통과시킨다 —
-    출처 판정이 할 수 있는 일이 아니다. 그런데 목표는 **부탁하는 말**이지 입력칸에 넣을 말이
-    아니라서, 그대로 채우면 `인터넷에 검색해 줘`가 검색창에 들어간다(실모델 재현:
-    목표 `'인터넷에 검색해 줘'` → `input_text` 같은 문자열).
+    목표 대조(`_goal_quotes_input_text`)와 **축이 다르다.** 저쪽은 "사용자가 승인한 말인가"(출처)를
+    묻고, 이쪽은 "지금 화면에 뜬 안내가 시키는 말인가"(일치)를 묻는다. 출처만 보면 둘이 따로
+    놀 수 있고, 실제로 그랬다 — 목적어 없는 목표에서 안내문은 `검색어를 입력해 주세요`인데
+    `input_text`에는 목표 문장이 통째로 왔다(실모델 재현). 버튼이 채우는 값과 사용자가 읽는
+    문장이 어긋나면 **버튼은 사용자가 동의한 적 없는 일을 한다.**
 
-    **임계값이 아니다.** "목표의 몇 %면 너무 길다"를 정하지 않는다(SPEC §4) — 여기서 막는 것은
-    비율이 아니라 **인용이 아닌 것**이다. 전체가 곧 인용이면 고른 것이 없다.
+    **따옴표를 파싱하지 않는다.** C21이 구조화 필드를 둔 이유가 "모델 문장이 조금만 달라져도
+    조용히 깨진다"였고 그 판단은 그대로다 — 여기서는 문장을 해석하지 않고, 모델이 준 값이 문장
+    안에 있는지만 **완료 근거와 같은 매처**로 본다(`「종로 칼국수」를`·`'종로 칼국수'라고` 모두
+    조사 허용으로 걸린다). 파싱은 형태를 맞춰야 하지만 대조는 맞출 것이 없다.
 
-    목표의 일부를 골랐지만 그것이 여전히 부탁하는 말인 경우(`검색하고 싶어`)는 **고르기 실패라
-    프롬프트가 맡는다**(`prompt.INPUT_TEXT_INSTRUCTION`) — 화면 자리 판정을 모델 재량으로 둔 것과
-    같은 결이다(C21).
+    이 검사가 서면 「목표 전체가 왔는가」를 따로 볼 필요가 없다 — 그런 값은 안내문에 없다. 오히려
+    **목표가 검색어 자체인 짧은 경우**(`종로 칼국수`)를 전체 일치로 막으면 정상 경로가 죽는다.
     """
-    return _normalize_for_evidence(input_text) == _normalize_for_evidence(goal)
+    normalized = _normalize_for_evidence(input_text)
+    if not normalized:
+        return False
+    return _contains_quoted_phrase(_phrase_offsets(instruction), normalized)
 
 
 def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:
