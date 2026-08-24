@@ -56,12 +56,13 @@ class UiTreeSerializerTest {
 
     @Test
     fun `상한은 안 보임이 연속된 길이에만 걸린다`() {
-        // 실측이 정한 상한은 2다. **1은 안 된다** — #358이 되찾은 요소가 깊이 1에 있어
+        // 실측이 정한 상한은 4다. **1은 안 된다** — #358이 되찾은 요소가 깊이 1에 있어
         // (배민 메뉴 상세 7개·가게 11개), 거기서 끊으면 그 요소들이 통째로 사라진다.
+        // 손실 0의 하한이 1이고 세 겹을 여유로 얹었다(근거는 `MAX_HIDDEN_RUN` KDoc).
         // **상한을 올리거나 내리면 이 세 줄도 함께 고친다.**
         assertFalse(UiTreeSerializer.exceedsHiddenChain(1))
-        assertFalse(UiTreeSerializer.exceedsHiddenChain(2))
-        assertTrue(UiTreeSerializer.exceedsHiddenChain(3))
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(4))
+        assertTrue(UiTreeSerializer.exceedsHiddenChain(5))
 
         // 경계가 `>=`로 밀리는 것을 막는다. cap을 받는 형태라 값과 규칙을 따로 고정할 수 있다.
         assertFalse(UiTreeSerializer.exceedsHiddenChain(run = 5, cap = 5))

@@ -43,23 +43,41 @@ object UiTreeSerializer {
      * [MAX_DEPTH]·[MAX_CONTENT_DEPTH]·[MAX_MERGE_DEPTH]에 이미 있으나, 그 셋은 **절대 깊이**이고
      * 이것은 **연속 길이**다 — 보이는 노드를 하나 만나면 0으로 되돌아간다([nextHiddenRun]).
      *
-     * 값은 실측이 정했다(2026-08-24 SM-S921N / One UI, 7개 화면 · 화면당 30여 폴링).
+     * 값은 실측이 정했다(2026-08-24 SM-S921N / One UI, 7개 화면 · 화면당 20~39 폴링).
      * 사슬 길이별 방출 요소 수를 재니 **깊이 1까지만 요소가 있었다** — 배민 가게 11개, 메뉴 상세
      * 7개(#358이 되찾은 `담기`·상단 바가 그것이다). 깊이 2 이상에서 방출된 요소는 7개 화면
-     * 어디에도 없었다. 그래서 비용 0의 하한이 1이고, **재지 않은 앱이 한 겹 더 깊을 수 있어 여유를
-     * 한 겹 산다.** 그 여유의 값은 네이버 앱 홈 이득의 2.6%(759 → 739회)뿐이다.
+     * 어디에도 없었다. 그래서 손실 0의 하한은 1이다.
      *
-     * 이득은 사슬이 긴 화면에 몰린다 — 네이버 앱 홈은 순회 822회 중 **739회가 이 상한 밖**이고,
-     * 그 사슬의 정체는 오프스크린 ViewPager 페이지다(최대 깊이 22). 사슬이 얕은 화면(캘린더·
-     * 앱서랍·배민)에서는 이득이 0에 가깝고 잃는 것도 없다.
+     * **하한에 붙이지 않고 세 겹 위로 올린 것은 두 방향의 값이 다르기 때문이다**(PR #416 리뷰).
+     * 짧아서 잃는 것은 #358이 되찾은 종류의 컨트롤이고 **조용하다** — 요소가 그냥 없고 서명은
+     * 폴링마다 일관되게 같아 홀드도 안 걸리므로, 재지 않은 앱에서 "안내가 엉뚱한 것을 가리킨다"로만
+     * 드러난다. 길어서 잃는 것은 **폴링당 방문 몇십 회**다 — 다만 **그 크기를 잰 것은 네이버 앱 홈
+     * 하나뿐이다**(방출 깊이는 7개 화면을 쟀지만 방문 분포는 한 화면이다). 다른 앱에서 질량이 얕은
+     * 층에 걸려 있으면 이 값이 커진다.
      *
-     * **측정이 못 본 것이 하나 있다.** 근거로 쓴 것은 사슬 길이별 **방출 요소 수**인데,
+     * 그 화면(변경 전 순회 822회)에서 상한별 잔여 방문은 `2 → 83` · `3 → 100` · `4 → 101` ·
+     * `9 → 109`이고, 질량 713회는 깊이 **10 이상**에 있다. **한계비용이 `2→3`에서 17회, 거기부터는
+     * 층당 1~3회**라 곡선은 3에서 꺾이고 4는 그 안쪽이다. 4는 관측 방출 깊이보다 세 겹 위이면서
+     * 상한이 여전히 병적 서브트리를 잡는 지점이다 — 더 올려도 몇 회를 더 쓸 뿐이지만 그만큼
+     * 상한이 무뎌진다. 이 숫자는 [WalkCost.visits]와 같은 축이라 **가림 스윕의 `getChild()`는 밖이다.**
+     *
+     * 이득은 사슬이 긴 화면에 몰린다 — 그 사슬의 정체는 오프스크린 ViewPager 페이지다(최대 깊이 22).
+     * 사슬이 얕은 화면(캘린더·앱서랍·배민)에서는 이 상한에 걸리는 노드가 없어 이득도 손실도 없다.
+     *
+     * **상한은 양쪽으로 관측을 바꾼다.** 짧으면 못 보고 지나가는 쪽만 생각하기 쉬운데, **올리면 더
+     * 들어간다.** 요소 방출과 [observeScrollable]이 `!isVisibleToUser` return **뒤**에 있어서,
+     * 상한을 올린 만큼 오프스크린 페이지 **안쪽으로** 더 들어가고 거기서 보이는 자손을 만나면
+     * 요소·`has_scrollable_element`가 늘 수 있다. [walk]가 스크롤 관측을 일부러 그 자리에 둔 이유가
+     * 바로 그 위험이다(오프스크린 페이지가 `scrollable=true`를 올려 런처 페이징 가드레일이 조용히
+     * 꺼진다). **그래서 이 값을 바꾸면 화면 서명을 다시 대조해야 한다** — 값이 4인 지금은 7개 화면에서
+     * 구조·내용 서명이 변경 전과 같은 것을 확인했다.
+     *
+     * 반대 방향으로 **측정이 못 본 것도 하나 있다.** 근거로 쓴 것은 사슬 길이별 **방출 요소 수**인데,
      * `isScrollable`만 있고 scroll action도 label도 없는 노드는 요소로 방출되지 않으면서
-     * `has_scrollable_element`는 올린다([observeScrollable]). 그런 노드가 상한 밖 사슬에 있으면
-     * 화면 단위 스크롤 관측이 뒤집힐 수 있고, 그 값은 화면 서명의 **구조 축**이다. 잰 7개 화면에서는
-     * 구조 서명이 전부 그대로였으나 재지 않은 앱에서는 열려 있다 — 의심되면 `cut=`부터 본다.
+     * `has_scrollable_element`는 올린다. 그런 노드가 상한 밖 사슬에 있으면 화면 단위 스크롤 관측이
+     * 뒤집힐 수 있고, 그 값은 화면 서명의 **구조 축**이다. 재지 않은 앱에서는 열려 있다.
      */
-    private const val MAX_HIDDEN_RUN = 2
+    private const val MAX_HIDDEN_RUN = 4
 
     /** 라벨을 만들 때 자손을 몇 단계까지 훑을지. */
     private const val MAX_MERGE_DEPTH = 4
@@ -101,10 +119,13 @@ object UiTreeSerializer {
      * @param visits [walk]가 들어간 노드 수. **`getChild()` 총 호출 수가 아니다** — 가림 판정
      *   ([hasPaintedContent])과 라벨 병합([collectDescendantText]·[descendantCheckedState])이
      *   내는 IPC는 이 값 밖이다. 그 셋의 비율을 알아야 하면 보정 계측을 다시 붙여야 한다.
-     * @param cuts [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수. **요소를 잃었을 때 되짚는
-     *   알람이다.** 0이면 이 화면의 결과는 상한과 무관하고, 0이 아닌데 안내 대상이 안 보이면
-     *   여기부터 의심한다. **상한을 얼마로 올려야 하는지는 이 값이 답하지 못한다** —
-     *   그건 사슬 길이 분포라 보정 계측의 몫이다.
+     * @param cuts [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수. **잎은 뺀다 — 잎만 뺀다.**
+     *   자식이 없으면 아무것도 안 버린다는 것은 확실하지만, 자식이 있는데 그 서브트리가 아무것도
+     *   방출 안 하는 경우는 여전히 센다. 오프스크린 ViewPager가 있는 화면에서는 그게 정상이다
+     *   (네이버 앱 홈이 그렇다). 방출 여부로 세려면 끊은 서브트리를 돌아야 해서 상한의 취지와
+     *   부딪친다. **그래서 `0`일 때만 강한 신호다** — 0이면 이 화면의 결과는 상한과 무관하고,
+     *   0이 아닌 것은 "봐야 할 수도 있다"까지다. **상한을 얼마로 올려야 하는지도 이 값은 답하지
+     *   못한다** — 그건 사슬 길이 분포라 보정 계측의 몫이다.
      */
     data class WalkCost(val visits: Int, val cuts: Int)
 
@@ -221,7 +242,11 @@ object UiTreeSerializer {
         if (!node.isVisibleToUser) {
             val run = nextHiddenRun(visibleToUser = false, previousRun = hiddenRun)
             if (exceedsHiddenChain(run)) {
-                ctx.cost.cuts++
+                // **자식이 있을 때만 센다** — 잎에서 끊는 것은 아무것도 안 버린다(PR #416 리뷰).
+                // `childCount`는 로컬 필드라 이 검사에 IPC가 없고, `getChild()`가 null을 줄 수
+                // 있으므로 "자식이 실제로 잡힌다"의 근사다. 이 가드가 걷는 것은 잎뿐이라는 점은
+                // [WalkCost.cuts]에 적었다.
+                if (node.childCount > 0) ctx.cost.cuts++
                 return
             }
             walkChildren(node, ctx, absorbed, depth, cover, hiddenRun = run)
@@ -330,7 +355,6 @@ object UiTreeSerializer {
     ) {
         if (!shouldInspectDescendants(node.isEditable)) return
         val kids = (0 until node.childCount).mapNotNull { node.getChild(it) }
-        val firstDrawingOrder = kids.firstOrNull()?.drawingOrder
         // **형제당 한 번만** 판정한다. 쌍마다 다시 부르면 자식 k개에 k*(k-1)번이 되고, 내용이
         // 없는 서브트리는 조기 반환이 없어 매번 깊이 끝까지 `getChild()`로 IPC가 나간다.
         // 직렬화는 폴링마다 돌고 안정·정체 판정이 그 시간 위에 얹혀 있다(PR #336 리뷰).
@@ -343,7 +367,8 @@ object UiTreeSerializer {
             kids.size < 2 -> emptyList()
             // 그리는 순서가 모두 같으면 아래 `>` 비교가 하나도 참이 안 된다 — 덮개 후보가 없으니
             // 스윕도 필요 없다(#367).
-            kids.all { it.drawingOrder == firstDrawingOrder } -> emptyList()
+            // `kids[0]`은 위 갈래가 크기를 보장한 뒤라 안전하고, 둘 다 `Int`라 박싱이 없다.
+            kids.all { it.drawingOrder == kids[0].drawingOrder } -> emptyList()
             // **화면과 안 겹치는 형제는 덮개가 될 수 없다.** [RectCover.isCovered]가 화면으로 자른
             // 뒤 빈 조각을 `continue`로 버리므로, 그런 형제의 판정 결과는 결과에 닿지 않는다.
             // 기하 판정을 앞에 두어 **가장 비싼 스윕을 가장 먼저 없앤다** — 안 보이는 노드만으로
