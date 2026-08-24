@@ -62,8 +62,8 @@ object GuideScreenLog {
      * no-op이 되는 것은 API 33부터인데 `minSdk`가 26이다.
      *
      * 나머지 필드는 그대로 둔다 — 타입·패키지·텍스트 개수·`contentDescription` 유무는 전부
-     * 이벤트 parcel에 이미 들어 있어 IPC가 없다. **필터 앞이라는 위치도 그대로다**: 걸러진
-     * 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다(#336).
+     * 이벤트 parcel에 이미 들어 있어 IPC가 없다. **필터 앞이라는 위치도 그대로다** — 그 이유는
+     * 호출부 [GuideAccessibilityService.onAccessibilityEvent]의 주석에 있다.
      *
      * `source`가 간헐적으로 `null`이라는 관측은 `PressMatch`가 텍스트 폴백으로 받고 있다(#238).
      * 이 로그로 더 얻을 것이 없다.

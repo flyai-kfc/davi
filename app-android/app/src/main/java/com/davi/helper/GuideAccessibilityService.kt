@@ -313,7 +313,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
         // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
-        // **필터보다 먼저 본다** — 계측이 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다.
+        // **필터보다 먼저 본다** — 계측이 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다(#336).
         if (GuideSession.active() == null) return
 
         val interesting = isInteresting(event.eventType)
@@ -424,6 +424,12 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun pressVerdict(event: AccessibilityEvent, bounds: List<Int>): PressMatch.Verdict {
         val clicked = Rect()
+        // **여기의 `event.source`는 남긴다.** #356이 계측에서 걷은 것은 `isInteresting` 앞에서
+        // 모든 이벤트에 붙던 호출이고, 이 자리는 게이트 다섯을 지난 `TYPE_VIEW_CLICKED`뿐이다.
+        // 텍스트 폴백은 `ON_TARGET`만 낼 수 있어 `OFF_TARGET`을 대체하지 못하고
+        // ([PressMatch.Verdict]), 좌표를 버리면 **매 판정이 위 KDoc이 피하는 원본 텍스트 경로로
+        // 내려간다.** 회수는 안 한다 — `recycle()`이 no-op이 되는 것은 API 33부터라 minSdk 26이
+        // 대상에 들지만, 이 빈도에서는 감수한다.
         event.source?.getBoundsInScreen(clicked)
         if (!clicked.isEmpty) {
             return PressMatch.judge(
