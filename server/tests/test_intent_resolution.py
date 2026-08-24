@@ -266,6 +266,7 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "0~3개" in prompt
     assert "빈 배열" in prompt
     assert "모르겠음·답변 거절을 보기로 만들지 마세요" in prompt
+    assert "message에는 첫 질문의 prompt를 그대로 써서" in prompt
 
 
 def test_prompt_treats_unknown_or_declined_details_as_unavailable_without_reasking():
@@ -544,6 +545,65 @@ def test_llm_normalizes_clarification_goal_without_another_call(caplog):
     assert len(requests) == 1
     assert any(
         event.get("reason") == "status_goal_mismatch" and event.get("action") == "normalize"
+        for event in _events(caplog)
+    )
+
+
+def test_llm_normalizes_clarification_message_without_another_call(caplog):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "몇 가지만 골라 주세요.",
+                    "clarification": _clarification("어느 앱을 말씀하시는 건가요?"),
+                }
+            ),
+        )
+
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"):
+        state = _resolver(handler).resolve(_request())
+
+    assert state.status == "needs_clarification"
+    assert state.message == "어느 앱을 말씀하시는 건가요?"
+    assert state.clarification is not None
+    assert state.message == state.clarification.questions[0].prompt
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "status_clarification_mismatch"
+        and event.get("action") == "normalize"
+        for event in _events(caplog)
+    )
+
+
+def test_llm_safe_ends_clarification_without_a_question_plan(caplog):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "어느 앱을 말씀하시는 건가요?",
+                }
+            ),
+        )
+
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"):
+        state = _resolver(handler).resolve(_request())
+
+    assert state.status == "unable_to_finalize"
+    assert state.goal is None
+    assert state.clarification is None
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "status_clarification_mismatch" and event.get("action") == "safe_end"
         for event in _events(caplog)
     )
 

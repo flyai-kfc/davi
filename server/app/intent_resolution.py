@@ -282,8 +282,9 @@ class RemoteIntentResolver(IntentResolver):
         try:
             return self._parse_state(response_text, finalizing=finalizing)
         except _IntentContractViolation as error:
-            self._log_contract_recovery(error.reason, action="safe_end" if finalizing else "fail")
-            if finalizing:
+            safe_end = finalizing or error.reason == "status_clarification_mismatch"
+            self._log_contract_recovery(error.reason, action="safe_end" if safe_end else "fail")
+            if safe_end:
                 return self._safe_end_state()
             raise LlmError(
                 ErrorKind.PARSE,
@@ -303,24 +304,13 @@ class RemoteIntentResolver(IntentResolver):
         if not isinstance(payload, dict):
             self._raise_parse_error("invalid_shape", TypeError("응답이 객체가 아님"))
 
-        normalized = dict(payload)
-        if (
-            normalized.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
-            and normalized.get("goal") is not None
-        ):
-            normalized["goal"] = None
-            try:
-                decision = _IntentDialogueDecision.model_validate(normalized)
-            except ValidationError as error:
-                self._raise_or_recover(normalized, error)
-            self._log_contract_recovery("status_goal_mismatch", action="normalize")
-            state = decision.to_wire_state()
-            return self._finalize_or_return(state, finalizing=finalizing)
-
+        normalized, normalization_reasons = _normalize_clarification_decision(payload)
         try:
             decision = _IntentDialogueDecision.model_validate(normalized)
         except ValidationError as error:
             self._raise_or_recover(normalized, error)
+        for reason in normalization_reasons:
+            self._log_contract_recovery(reason, action="normalize")
         state = decision.to_wire_state()
         return self._finalize_or_return(state, finalizing=finalizing)
 
@@ -376,6 +366,35 @@ class RemoteIntentResolver(IntentResolver):
             reason=reason,
             action=action,
         )
+
+
+def _normalize_clarification_decision(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """유효한 질문 계획에서 추측 없이 복구 가능한 교차 필드만 맞춘다."""
+
+    normalized = dict(payload)
+    if normalized.get("status") != IntentDialogueStatus.NEEDS_CLARIFICATION:
+        return normalized, ()
+
+    reasons: list[str] = []
+    if normalized.get("goal") is not None:
+        normalized["goal"] = None
+        reasons.append("status_goal_mismatch")
+
+    clarification = normalized.get("clarification")
+    questions = clarification.get("questions") if isinstance(clarification, dict) else None
+    first_prompt = (
+        questions[0].get("prompt") if questions and isinstance(questions[0], dict) else None
+    )
+    if isinstance(first_prompt, str) and first_prompt.strip():
+        first_prompt = first_prompt.strip()
+        message = normalized.get("message")
+        if not isinstance(message, str) or message.strip() != first_prompt:
+            normalized["message"] = first_prompt
+            reasons.append("status_clarification_mismatch")
+
+    return normalized, tuple(reasons)
 
 
 def _contract_violation_reason(
