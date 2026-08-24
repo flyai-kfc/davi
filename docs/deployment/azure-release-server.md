@@ -50,7 +50,7 @@ LLM 키는 같은 공급자를 쓴다면 기존 `GEMINI-API-KEY`를 재사용할
 development와 분리해 새 이름으로 만든다. 값은 저장소·GitHub·명령 출력에 남기지 않는다.
 
 ```bash
-read -s "DAVI_RELEASE_JWT_SECRET?release JWT secret(32자 이상): "
+read -rsp "release JWT secret(32자 이상): " DAVI_RELEASE_JWT_SECRET
 echo
 az keyvault secret set \
   --vault-name davi-dev-kv-kfc001 \
@@ -107,8 +107,16 @@ Repository **Settings → Environments → New environment**에서 `davi-release
 
 ## 5. 최초 배포와 검증
 
-GitHub **Actions → Azure release deploy → Run workflow**에서 `main`을 선택한다. workflow가 최초
-Container App 생성까지 수행하므로 Azure Portal에서 빈 앱을 미리 만들 필요는 없다.
+저장소를 받은 macOS/Linux 개발자는 아래 실행기로 `main` workflow를 시작하고 결과까지 기다린다.
+이 셸은 Azure 배포 명령을 복제하지 않고 GitHub Actions를 호출하므로, 배포·검증 원본은 workflow
+한 곳에만 남는다.
+
+```bash
+infra/azure/deploy-release.sh
+```
+
+또는 GitHub **Actions → Azure release deploy → Run workflow**에서 `main`을 선택한다. workflow가
+최초 Container App 생성까지 수행하므로 Azure Portal에서 빈 앱을 미리 만들 필요는 없다.
 
 성공 후 아래를 확인한다.
 
@@ -124,7 +132,10 @@ curl --fail --silent --show-error \
 ```
 
 production health 응답은 진단 정보를 노출하지 않고 `{"status":"ok"}`만 반환한다. workflow는 이에
-더해 정확한 revision/image, `DAVI_ENV=production`, stub 비활성, 개발 토큰 미배선을 확인한다.
+더해 release APK 고정 FQDN, 정확한 revision/image, `DAVI_ENV=production`, stub 비활성,
+`DAVI_AUTH_SOURCE=azure_container_apps`, 개발 토큰 미배선을 확인한다. ACA 모드의 로그인 제한은
+플랫폼이 보장하는 `X-Forwarded-For`의 가장 오른쪽 IP만 사용하고, 누락·오형식은 카카오 API 전에
+503으로 닫는다. IP는 인증·권한·로그에 쓰지 않는다.
 그 다음 서명된 release APK에서 카카오 로그인 → 세션 발급 → next-step 한 회를 실기기로 확인하면
 #214의 실제 release 경로가 닫힌다.
 

@@ -555,12 +555,18 @@ davi/
   팀용 `DAVI_DEV_ACCESS_TOKEN`과 외부 테스트 참가자용 `DAVI_TEST_ACCESS_TOKEN`이 같은
   `X-Davi-Dev-Token` 헤더를 쓰고 **둘 중 하나만 맞으면 통과**한다(둘 다 32자 이상). 저녁에는
   PID 기반 스크립트로 명시 종료한다.
-- Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
+- Azure 공유 개발 Container App은 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
   digest 고정 base와 Docker 전용 의존성 lock으로 build한다. commit SHA와 Actions run ID/attempt로
   식별되는 불변 image/revision을 배포하고, 정확한 revision/image가 active·healthy·traffic 100%인지
   대조한 뒤 `/health`를 검사한다. PR은 공유 서버를 바꾸지 않는다. 최소/최대 replica와 Uvicorn
   worker는 각각 1이다.
-- Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
+- release APK는 같은 resource group의 별도 `davi-server-release` Container App을 사용하고
+  `DAVI_ENV=production`으로 수동 승격한다(#214). release에는 개발·테스트 토큰을 배선하지 않고,
+  카카오 로그인과 세션 JWT로 공개 추론 endpoint를 보호한다. 로그인 레이트리밋 출처는
+  `DAVI_AUTH_SOURCE=azure_container_apps`일 때 ACA가 보장하는 `X-Forwarded-For`의 가장 오른쪽
+  IP만 사용한다. 이 값은 인증·권한·로그에 쓰지 않으며, 누락·오형식이면 카카오 API 호출 전에
+  닫는다. `beta`는 아래와 같이 코드 수준 경계로만 남고 이 release 배포의 별칭이 아니다.
+- 공유 개발 Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
   토큰과 기존 전역 rate limit으로 보호한다. 공급자 API 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
   넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 배포 설정(카카오 앱 ID,
