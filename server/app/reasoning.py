@@ -214,6 +214,8 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
     지금과 똑같이 직접 입력한다 — 잃는 것은 부수 기능 하나뿐이라 실패의 방향이 안전한 쪽이다.
     부수 필드가 주 기능을 죽이지 않는다는 `GuideAction.screen_summary`의 공백 검증 결정과 같은 결.
 
+    **목표 문장 그 자체도 비운다**([_is_whole_goal]) — 출처 판정만으로는 못 거르는 자리다.
+
     **`type`이 아니면 비운다.** 계약상 뜻이 없는 값이고, 소비자가 생겼을 때 tap 화면에 복사
     제안이 뜨는 경로가 된다. 프롬프트도 같은 말을 하지만(`prompt.INPUT_TEXT_INSTRUCTION`),
     필드 순서상 `action_type`이 앞이라 이미 고른 동작과 어긋난 값이 뒤따라 나올 수 있다.
@@ -227,9 +229,31 @@ def _keep_input_text_from_goal(action: GuideAction, goal: str) -> GuideAction:
     """
     if action.input_text is None:
         return action
-    if action.action_type is ActionType.TYPE and _goal_quotes_input_text(action.input_text, goal):
+    if (
+        action.action_type is ActionType.TYPE
+        and _goal_quotes_input_text(action.input_text, goal)
+        and not _is_whole_goal(action.input_text, goal)
+    ):
         return action
     return action.model_copy(update={"input_text": None})
+
+
+def _is_whole_goal(input_text: str, goal: str) -> bool:
+    """복사 문구가 **목표 문장 그 자체**인가(#406 리뷰 후속, 실모델 재현).
+
+    목표 문장은 자기 자신을 인용하므로 [_goal_quotes_input_text]가 구조적으로 통과시킨다 —
+    출처 판정이 할 수 있는 일이 아니다. 그런데 목표는 **부탁하는 말**이지 입력칸에 넣을 말이
+    아니라서, 그대로 채우면 `인터넷에 검색해 줘`가 검색창에 들어간다(실모델 재현:
+    목표 `'인터넷에 검색해 줘'` → `input_text` 같은 문자열).
+
+    **임계값이 아니다.** "목표의 몇 %면 너무 길다"를 정하지 않는다(SPEC §4) — 여기서 막는 것은
+    비율이 아니라 **인용이 아닌 것**이다. 전체가 곧 인용이면 고른 것이 없다.
+
+    목표의 일부를 골랐지만 그것이 여전히 부탁하는 말인 경우(`검색하고 싶어`)는 **고르기 실패라
+    프롬프트가 맡는다**(`prompt.INPUT_TEXT_INSTRUCTION`) — 화면 자리 판정을 모델 재량으로 둔 것과
+    같은 결이다(C21).
+    """
+    return _normalize_for_evidence(input_text) == _normalize_for_evidence(goal)
 
 
 def _reject_unclickable_tap(action: GuideAction, screen: Screen) -> None:

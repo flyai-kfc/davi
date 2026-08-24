@@ -181,3 +181,35 @@ def test_single_character_is_not_copied() -> None:
     """어절 경계에 우연히 걸린 한 글자. 아낄 타이핑이 없어 버튼을 띄울 값이 아니다."""
 
     assert not _goal_quotes_input_text("그", "그 집으로 가자")
+
+
+# ── 목표 문장 그 자체는 인용이 아니다(#406 리뷰 후속, 실기기 제보) ─────
+
+
+# 목적어가 없는 목표에서 모델이 목표를 통째로 복사해, 「바로 입력」이 검색창에
+# `인터넷에 검색해 줘`를 넣었다(실모델 재현). 목표는 자기 자신을 인용하므로
+# 출처 판정(`_goal_quotes_input_text`)은 구조적으로 통과시킨다.
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "인터넷에 검색해 줘",
+        "교촌치킨에서 후라이드 시켜줘",
+    ],
+)
+def test_input_text_equal_to_the_whole_goal_is_dropped(goal: str) -> None:
+    action = _guide(_action(ActionType.TYPE, goal), goal=goal)
+    assert action.input_text is None
+
+
+def test_whole_goal_check_ignores_spacing_and_punctuation() -> None:
+    """띄어쓰기·구두점만 다른 재작성도 목표 그 자체다."""
+    action = _guide(_action(ActionType.TYPE, "인터넷에 검색해줘!"), goal="인터넷에 검색해 줘")
+    assert action.input_text is None
+
+
+def test_whole_goal_check_does_not_touch_a_real_quote() -> None:
+    """목표의 일부를 고른 값은 그대로 남는다 — 좁힌 것이 정상 경로를 먹으면 안 된다."""
+    action = _guide(
+        _action(ActionType.TYPE, "종로 칼국수"), goal="네이버에서 종로 칼국수를 검색해 줘"
+    )
+    assert action.input_text == "종로 칼국수"
