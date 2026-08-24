@@ -396,10 +396,12 @@ def _history_instruction(req: NextStepRequest, current: str, tried: dict[str, in
     """꼬리에 실제로 실린 관측에만 그것을 어떻게 읽을지 한 줄씩 덧붙인다.
 
     조건을 다는 이유는 [_end_instruction]과 같다 — 관측된 것이 없으면 없는 상태를 설명하는
-    문장이 된다. 줄이 만들어지지 않은 스텝을 세지 않으려고 [_history]를 함께 쓴다.
-    순서는 일반 유보([UNCHANGED_STEP_INSTRUCTION]) → 눌림 표시의 뜻 → 그 둘이 겹친 확정
-    ([PRESSED_UNCHANGED_INSTRUCTION]) → 회귀 표시 → 시도 횟수다 — 넓은 규칙 뒤에 좁은 예외가
-    와야 겹칠 때 모순으로 읽히지 않는다. 뒤의 둘은 앞 셋과 다른 관측이라 순서를 다투지 않는다.
+    문장이 된다. 줄이 만들어진 스텝만 세려고 [_history]를 쓰되, **회귀 판정만 [_recent]를
+    본다**(아래 주석 참고).
+
+    순서는 이력 관측 셋(일반 유보 → 눌림 표시 → 회귀 표시) → 요소 줄 관측(시도 횟수) →
+    **겹침 확정**([PRESSED_UNCHANGED_INSTRUCTION])이다. 확정을 맨 뒤에 두는 것은 넓은 규칙을
+    다 말한 뒤 좁은 예외가 와야 겹칠 때 모순으로 읽히지 않기 때문이다.
     """
 
     steps = _history(req)
@@ -677,6 +679,10 @@ def _tried_counts(req: NextStepRequest, current: str) -> dict[str, int]:
 
     줄이 만들어지지 않은 스텝(빈 안내문)은 세지 않는다 — 이력에 없는 것을 요소 줄이 세면
     두 자리가 다른 말을 한다.
+
+    **[_returned_to]와 규칙이 다른 것은 의도다.** 그쪽은 "어느 화면을 거쳤나"라 줄과 무관한
+    사실을 보지만, 이쪽은 "이력에 몇 번 적혀 있나"를 요소 줄이 되받는 자리다. 빈 안내문
+    스텝의 대상은 강조가 그려졌어도 이력에 줄이 없으므로 여기서도 세지 않는다.
     """
 
     counts: dict[str, int] = {}

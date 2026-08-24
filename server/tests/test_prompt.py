@@ -914,7 +914,13 @@ def test_tried_count_shares_the_signature_limit_in_its_wording():
     회귀 문구만 유보하고 이쪽이 단정하면, 더 센 주장을 하는 쪽이 근거를 덜 밝히는 꼴이 된다.
     """
 
+    request = _tried_request(
+        _on_screen(UiElement(node_id="n1", label="카메라", clickable=True)),
+        _step(target_node_id="n1"),
+    )
+
     assert "구조로만 가르므로" in TRIED_COUNT_INSTRUCTION
+    assert TRIED_COUNT_INSTRUCTION in build_prompt(request)
 
 
 def test_returned_screen_ignores_steps_that_never_became_a_line():
