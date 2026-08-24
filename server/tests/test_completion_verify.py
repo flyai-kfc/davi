@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import pytest
 from app.llm import LlmClient
 from app.reasoning import next_step
 from app.schemas import (
@@ -63,6 +64,23 @@ def test_korean_particles_do_not_break_the_match():
     """`카카오톡` label과 `카카오톡이`는 조사만 다르다. 토큰 일치로는 깨진다."""
 
     assert _verified("카카오톡이 열렸습니다", _screen("카카오톡", "전화"))
+
+
+@pytest.mark.parametrize(
+    ("label", "evidence"),
+    [
+        ("사진", "사진들이 보입니다"),
+        ("카메라", "카메라라고 표시되어 있습니다"),
+        ("바다", "바다라 판단했습니다"),
+        ("지도", "지도고 다른 화면은 아닙니다"),
+        ("시계", "시계며 일정 화면입니다"),
+        ("시계", "시계였습니다"),
+        ("설정", "설정에서는 확인했습니다"),
+        ("설정", "설정에도 같은 값이 보입니다"),
+    ],
+)
+def test_common_korean_particle_and_copula_pairs_are_verified(label, evidence):
+    assert _verified(evidence, _screen(label))
 
 
 def test_punctuation_and_spacing_differences_are_absorbed():

@@ -86,6 +86,78 @@
       "expected_verified": true
     },
     {
+      "id": "valid-plural-particle",
+      "axis": "korean_suffix",
+      "source": "eval_case",
+      "request": {
+        "goal": "사진 목록 확인",
+        "screen": {
+          "package_name": "com.example.gallery",
+          "elements": [
+            {"node_id": "n1", "label": "사진", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "사진 목록이 보인다",
+      "evidence": "사진들이 보입니다",
+      "evidence_label": "사진",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-vowel-copula-quotation",
+      "axis": "korean_suffix",
+      "source": "eval_case",
+      "request": {
+        "goal": "카메라 화면 확인",
+        "screen": {
+          "package_name": "com.example.camera",
+          "elements": [
+            {"node_id": "n1", "label": "카메라", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "카메라 화면이 보인다",
+      "evidence": "카메라라고 표시되어 있습니다",
+      "evidence_label": "카메라",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-vowel-past-copula",
+      "axis": "korean_suffix",
+      "source": "eval_case",
+      "request": {
+        "goal": "시계 화면 확인",
+        "screen": {
+          "package_name": "com.example.clock",
+          "elements": [
+            {"node_id": "n1", "label": "시계", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "시계 화면이 보인다",
+      "evidence": "직전 화면은 시계였습니다",
+      "evidence_label": "시계",
+      "expected_verified": true
+    },
+    {
+      "id": "valid-compound-particle",
+      "axis": "korean_suffix",
+      "source": "eval_case",
+      "request": {
+        "goal": "설정 화면에서 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "설정", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "설정 화면에 상태가 보인다",
+      "evidence": "설정에서는 상태를 확인했습니다",
+      "evidence_label": "설정",
+      "expected_verified": true
+    },
+    {
       "id": "valid-paraphrase-without-exact-label",
       "axis": "false_negative",
       "source": "eval_case",

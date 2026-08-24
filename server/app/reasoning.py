@@ -55,6 +55,7 @@ _MIN_EVIDENCE_LABEL_CHARS = 2
 _KOREAN_EVIDENCE_SUFFIXES = frozenset(
     {
         "가",
+        "고",
         "과",
         "까지",
         "께",
@@ -62,17 +63,23 @@ _KOREAN_EVIDENCE_SUFFIXES = frozenset(
         "나",
         "는",
         "도",
+        "에도",
+        "라",
+        "라고",
         "랑",
         "로",
         "를",
         "마다",
         "만",
+        "며",
         "보다",
         "부터",
         "에",
         "에게",
         "에서",
+        "에서는",
         "예요",
+        "였습니다",
         "와",
         "으로",
         "은",
@@ -573,9 +580,23 @@ def _evidence_contains_label(evidence: str, label: str) -> bool:
         if match_end in ends:
             return True
         word_end = next(end for end in ends if end > match_end)
-        if compact_evidence[match_end:word_end] in _KOREAN_EVIDENCE_SUFFIXES:
+        if _is_allowed_korean_evidence_suffix(compact_evidence[match_end:word_end]):
             return True
     return False
+
+
+def _is_allowed_korean_evidence_suffix(suffix: str) -> bool:
+    """label 뒤의 조사·서술격 어미인가.
+
+    복수 접미사 `들`은 단독이거나 같은 조사 앞에 한 번 붙을 수 있다(`사진들`, `사진들이`,
+    `사진들에서는`). 임의의 동사 접미사는 여전히 받지 않는다.
+    """
+    if suffix in _KOREAN_EVIDENCE_SUFFIXES:
+        return True
+    if not suffix.startswith("들"):
+        return False
+    plural_tail = suffix.removeprefix("들")
+    return not plural_tail or plural_tail in _KOREAN_EVIDENCE_SUFFIXES
 
 
 def _evidence_words(text: str) -> list[str]:

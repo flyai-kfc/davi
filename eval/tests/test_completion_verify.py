@@ -233,10 +233,10 @@ def test_completion_policy_fixture_is_valid_and_measures_candidates():
     FP를 없애지만 정상 버튼·스위치 두 건까지 막아 FN이 셋으로 늘고, 목표 문자열 겹침은 앱 내부
     label이 목표 문장에 없는 정상 사례를 넷이나 막는다. 따라서 둘은 적용하지 않는다.
     """
-    assert _confusion_matrix(_legacy_policy) == Counter(tp=5, tn=2, fp=4, fn=1)
-    assert _confusion_matrix(_new_policy) == Counter(tp=5, tn=4, fp=2, fn=1)
-    assert _confusion_matrix(_non_clickable_policy) == Counter(tp=3, tn=6, fp=0, fn=3)
-    assert _confusion_matrix(_goal_overlap_policy) == Counter(tp=2, tn=6, fp=0, fn=4)
+    assert _confusion_matrix(_legacy_policy) == Counter(tp=9, tn=2, fp=4, fn=1)
+    assert _confusion_matrix(_new_policy) == Counter(tp=9, tn=4, fp=2, fn=1)
+    assert _confusion_matrix(_non_clickable_policy) == Counter(tp=7, tn=6, fp=0, fn=3)
+    assert _confusion_matrix(_goal_overlap_policy) == Counter(tp=6, tn=6, fp=0, fn=4)
 
 
 def test_remaining_false_results_are_named_instead_of_hidden():
