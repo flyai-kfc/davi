@@ -30,6 +30,7 @@ from app.prompt import (
     fallback_prompt,
 )
 from app.schemas import (
+    MAX_STEPS,
     ActionType,
     GuideAction,
     GuideStep,
@@ -554,6 +555,31 @@ def test_step_history_keeps_the_order_the_app_sent():
     )
 
     assert prompt.index("첫 번째 안내") < prompt.index("두 번째 안내")
+
+
+def test_step_history_carries_every_step_the_contract_allows():
+    """프롬프트가 싣는 개수는 **계약이 나르는 전부**다(#308).
+
+    막는 회귀는 하나다 — **토큰을 아끼려고 프롬프트에서 다시 자르는 것.** 그러면 앱이 이미 보낸
+    스텝을 버리게 되고, 스텝이 새 상한을 넘는 요청마다 회귀 표시와 요소 줄 `tried=`가 깎인다
+    (깎이는 방식은 신호마다 다르다 — `prompt.MAX_HISTORY` 주석). 실측으로 그러지 않기로 정했으니
+    결정을 실행 가능한 자리에 둔다.
+
+    상수를 직접 대조하지 않고 **줄 수를 세는** 이유는 자르는 자리가 상수만이 아니어서다 —
+    [prompt._recent]가 어떻게 잘라도 여기서 걸린다. 반대로 **줄의 서식은 보지 않는다** — 그건
+    이미 다른 테스트들이 고정하고 있고, 여기서 또 고정하면 서식을 바꾸는 변경이 개수 테스트를
+    무관한 이유로 깨뜨린다.
+    """
+
+    steps = [_step(instruction=f"{index}번째 안내") for index in range(MAX_STEPS)]
+
+    prompt = build_prompt(_with_steps(*steps))
+
+    block = prompt.split(STEP_HISTORY_HEADER, 1)[1].split("현재 화면 요소:", 1)[0]
+    lines = [line for line in block.splitlines() if line.startswith("- ")]
+    assert len(lines) == MAX_STEPS
+    for index, line in enumerate(lines):
+        assert f"{index}번째 안내" in line
 
 
 def test_step_history_omits_the_screen_clause_when_the_summary_is_missing():

@@ -219,8 +219,9 @@ class NextStepRequest(BaseModel):
     screen: Screen
     device_id: str | None = None
     # 이 세션에서 실제로 표시한 안내들. 오래된 것이 앞에 온다(HANDOFF §3-10).
-    # 서버 상태 대신 활성 앱 세션이 보관하고, 앱과 서버 모두 MAX_STEPS개로 제한해 요청 크기와
-    # 세션 메모리에 상한을 둔다(C11).
+    # 서버 상태 대신 활성 앱 세션이 보관한다(C11). **공유 상수가 있는 것이 아니다** — 앱은 자기
+    # 상한만큼 보관해 보내고 서버는 `MAX_STEPS` 초과를 거부해, 세션 메모리와 요청 크기 양쪽에
+    # 각각 상한이 선다.
     steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
