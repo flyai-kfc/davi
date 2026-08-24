@@ -88,11 +88,14 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 - **`propertyOrdering`이 곧 생성 순서 = 추론 순서.** 근거 필드를 앞에: `expected_result` → `evidence` → `action`. action을 먼저 두면 근거를 대충 채운다.
 - 스키마 없이 프롬프트로만 요구하면 선택적 필드를 그냥 비운다(항상 `null`). **필수 필드는 스키마 `required`로 강제.**
 - **스키마가 거부되면 모든 호출이 실패해 앱이 통째로 멈춘다 → 무스키마 재시도 폴백 필수.**
-- 출력 상한은 **`정상 응답 여유분 + 공급자 추론 몫`으로 자동 계산한다**(#259). 호출별 여유분은
-  안내 1024 · 의도 해석 512 · 앱 후보 1024이고, 여기에 공급자의 thinking 예산이 더해진다
-  (Gemini 기본 800 → 1824/1312/1824). 손으로 상한을 박지 않는다 — 값 조정은
-  `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다(`README.md`). schema 400 무스키마 폴백과 복구
-  재시도에도 같은 상한을 쓴다.
+- 출력 상한은 **`정상 응답 최소선 + 공급자 추론 몫`으로 자동 계산한다**(#259·#103).
+  next-step·앱 후보는 장문 폭주를 자르는 1024를 쓰고, 의도 해석은 `ready`와 최대 2문항·문항별
+  3보기를 담는 `needs_clarification` 각각의 최대 유효 compact JSON 문자 수를 **현재 Pydantic
+  `maxLength`·`maxItems`에서 파생**해 더 큰 쪽을 쓴다. 이는 실제 공급자 토크나이저의 정확한
+  토큰 수를 가장하는 값이 아니라, 옛 512처럼 계약 최대보다 명백히 작은 설정을 막는 최소선이다.
+  여기에 Gemini thinking budget 또는 OpenAI·Anthropic reasoning 여유분을 더한다.
+  `DAVI_MAX_OUTPUT_TOKENS`는 이 합 이상으로만 덮을 수 있고 더 작으면 설정 오류다(`README.md`).
+  schema 400 무스키마 폴백에도 같은 상한을 쓴다.
   후보가 `finishReason=MAX_TOKENS`로 끝나면 잘린 JSON을 일반 `invalid_json`으로 뭉개지 않고
   `max_output_tokens` 진단의 PARSE 실패로 분류한다. 로그에는 후보 텍스트를 남기지 않는다.
 - 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON fence 제거는 `gemini_response.py`의 순수 함수로

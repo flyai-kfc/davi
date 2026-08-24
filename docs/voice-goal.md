@@ -384,17 +384,20 @@ evidence를 화면 label과 축자 대조하는 현 방식은 이 기능의 출�
 ### 파도 0 — 지금 즉시. 3명 동시 착수
 
 **W1. `server: 의도 해석 경계를 견고화한다`** · `task, server` · 계약 변경 X
-W5가 들어오기 전에 깔아 두는 안전망이다. **셋의 성격이 다르다 — 1번은 예방책이고 2·3번은 이미 있는 결함이다.** 근거를 섞어 쓰지 말 것.
+W5가 들어오기 전에 깔아 두는 안전망이다. 초기 초안은 #259(공급자 공통화)·#316(최대 2문항
+구체화) 이전 구조를 기준으로 했으므로, 구현 기준은 최신 이슈 #103과 현재 main이다.
 
-- **(예방) `_REPAIR_GUIDANCE` 방어 + 집합 단언 테스트.** `intent_prompt.py`가 `_REPAIR_GUIDANCE[reason]`으로 직접 인덱싱한다. **오늘은 KeyError가 나지 않는다** — 생성 가능한 reason 7개(`{decision_basis,message,goal}` × `{_blank,_too_long}` + `status_goal_mismatch`)와 사전 키 7개가 정확히 같은 집합이라 도달 불가다. 문제는 W5가 `done_signal`을 넣는 순간이고, 그때 터지는 자리가 **정상 경로가 아니라 모델이 계약을 어겼을 때만이라 CI 초록으로 통과한다.**
-  `.get()` + 기본 문구만으로는 약하다 — 새 reason이 생겨도 일반 문구로 교정을 시도하고 조용히 넘어간다. **"생성 가능한 reason 집합 ⊆ 사전 키 집합"을 단언하는 테스트를 함께 넣는다.** 그러면 W5에서 필드를 추가하는 순간 테스트가 먼저 터져 사전 갱신을 강제한다.
-
-- **(현존 결함) `_MAX_OUTPUT_TOKENS` 512 → 계약 최대를 담는 값.** 계약이 허용하는 최대 응답이 이미 상한을 넘는다:
-  `decision_basis` 300 + `message` 300(`MAX_INTENT_MESSAGE_LENGTH`) + `goal` 500(`MAX_VOICE_TEXT_LENGTH`) = **1,100자 + JSON 봉투.** 한국어 글자당 1토큰으로 보수적으로 잡으면 하한이 **1,228이라 1024로도 부족하다.** 잘리면 `max_output_tokens` PARSE 실패이고 **공급자 호출은 요청당 2회 상한**(schema 400 폴백 + 교정 1회)이라 만회할 여유가 없다.
-  **next-step의 1024는 근거가 다르다** — `GuideAction`에는 필드 상한이 하나도 없어(`expected_result`·`evidence`·`instruction` 전부 `max_length` 없음) 담아야 할 "계약 최대"가 존재하지 않고, 그 값은 장문 폭주를 자르려고 고른 것이다. **요구가 다른 두 값을 맞추지 않는다.**
-  완료: 하한을 **필드 상한에서 파생시키고** 상한을 그 이상으로 둔다 + **하한과 대조하는 테스트**(필드 상한이 바뀌면 함께 터진다) + 상한 근처 길이의 유효 응답이 그대로 통과하는지 확인. 숫자만 바꾸면 왜 그 값인지가 코드에서 사라져 나중에 되돌려진다 — 상수를 두 벌 유지하지 않는다는 점에서 위 `_REPAIR_GUIDANCE` 항목과 같은 설계다.
-
-- **(현존 결함) `test_contract_drift.py` 확장.** 지금 `ActionType`·`SwipeDirection`·`ScrollAxis`·`ErrorKind` 4개만 본다. `IntentDialogueStatus`가 **이미** 감시 밖이고, W5의 `completion_type`도 같은 자리에 들어온다. **kotlinx는 모르는 값에 예외를 던진다** — 그 테스트 docstring이 설명하는 #17이 정확히 이 사고이며 당시 양쪽 테스트가 다 초록이었다.
+- **옛 `_REPAIR_GUIDANCE` 항목은 더 이상 해당하지 않는다.** 직접 인덱싱과 교정 사전이 사라졌고,
+  첫 판단 계약 위반은 고정 reason code PARSE, 최종화 계약 위반은 재호출 없는 안전 종료로 닫힌다.
+- **slot-fill 응답 최소선은 현재 계약에서 파생한다.** `ready`뿐 아니라 최대 2문항·문항별 3보기를
+  담는 `needs_clarification`도 각각 최대 유효 compact JSON을 만들고, Pydantic의 `maxLength`·
+  `maxItems`에서 더 큰 쪽을 계산한다. 이는 실제 공급자 토크나이저의 정확한 토큰 수를 가장하지
+  않는다. Gemini thinking budget과 OpenAI·Anthropic reasoning 여유분은 그 위에 따로 더하며,
+  `DAVI_MAX_OUTPUT_TOKENS`가 합보다 작으면 설정 오류로 막는다.
+- **wire enum 드리프트 검사를 완전하게 한다.** `IntentDialogueStatus`·`ConversationRole`·
+  `ClarificationAnswerSource`를 값 대조에 넣고, Kotlin `Contract.kt` 또는 Python `schemas.py` 어느
+  쪽에든 새 enum이 생겼는데 검사 목록에서 빠지면 CI가 실패하게 한다. kotlinx가 모르는 enum
+  값에 예외를 던진 #17의 양방향 재발을 막는 경계다.
 
 **W2. `app: 음성 인식 실패와 무응답에서 대화를 잇는다`** · `task, app` · 계약 변경 X
 - 최초 목표의 `ERROR_NO_MATCH`/`ERROR_SPEECH_TIMEOUT`만 같은 턴 재요청(최대 2회), 나머지는
