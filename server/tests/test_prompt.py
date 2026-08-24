@@ -1031,6 +1031,38 @@ def test_returned_screen_hedges_when_any_marked_step_is_unconfirmed():
     assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
 
 
+def test_content_repeat_across_structures_is_not_leaving():
+    """경유한 화면이 **내용으로** 같으면 떠난 것이 아니다 — 표시가 빠지는 유일한 경로(#419 리뷰).
+
+    현재 `(S1, C1)`, 이력 `[A:(S1, C1), B:(S2, C1)]`. 구조 축만 보던 때는 B의 구조가 달라
+    A에 표시가 붙었다. 여기서는 B가 내용으로 같은 화면이라 "떠났다"가 성립하지 않는다.
+
+    **그게 맞다** — B가 구조만 흔들린 같은 화면(요소 수가 오가는 상세)이면 사용자는 떠난 적이
+    없다. 이 판정이 새로 잡는 회귀와 같은 기계의 반대편이라, 한쪽만 뒤집는 리팩터를 여기서 막는다.
+    """
+
+    screen = Screen(package_name="com.example.app", content_signature=_HERE_CONTENT)
+    here = screen_signature(screen)
+    request = NextStepRequest(
+        goal="다음 항목 보기",
+        screen=screen,
+        steps=[
+            _step(structure_signature=here, content_signature=_HERE_CONTENT),
+            _step(
+                instruction="구조만 흔들린 같은 화면의 안내",
+                structure_signature="d" * 64,
+                content_signature=_HERE_CONTENT,
+            ),
+        ],
+    )
+
+    prompt = build_prompt(request)
+
+    assert STEP_SCREEN_RETURNED not in prompt
+    assert RETURNED_SCREEN_INSTRUCTION not in prompt
+    assert RETURNED_SCREEN_CONFIRMED_INSTRUCTION not in prompt
+
+
 def test_content_only_cycle_on_one_screen_is_not_a_return():
     """**"떠났다"의 근거는 구조 축뿐이다.**
 

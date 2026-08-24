@@ -63,9 +63,14 @@ object ScreenSignature {
         }
         val content = buildString {
             // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
-            // 이 시그니처에는 포함한다 — **기기를 떠나지 않는 값이라서다.** 서버 서명은 label처럼
+            // 이 시그니처에는 포함한다 — 원문이 기기를 떠나지 않아서다. 서버 서명은 label처럼
             // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
             // label과 같은 취급이므로 축도 내용이다(#380).
+            //
+            // **이 축의 salt 해시는 기기를 떠난다**(#410). 원문이 아니라 해시이고 salt가
+            // 세션마다 새로 생겨 세션 밖 대조가 성립하지 않으므로 지금은 안전하다. 다만
+            // "내용 축은 어차피 기기 안"으로 읽고 여기에 무언가를 더 넣으면 그때부터 그
+            // 값이 해시로 나간다 — 넣기 전에 그것이 나가도 되는 값인지 본다.
             append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
             screen.elements.forEach { element ->
                 append(stableLabel(element))
