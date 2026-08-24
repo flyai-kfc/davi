@@ -876,8 +876,9 @@ class GuideAccessibilityService : AccessibilityService() {
     /**
      * 「바로 입력」 버튼(C21 · #405) — `SPEC.md` §2 「대신 해주지 않는다」의 **유일한 예외**를
      * 실행하는 자리다. 예외의 세 경계가 다 여기 걸려 있다: ① 개시는 사용자의 버튼 탭이다(이
-     * 함수는 그 콜백에서만 불린다). ② 값은 서버 가드가 사용자 승인 목표 문장과 대조해 내려준
-     * `input_text`다. ③ 채우기만 한다 — IME 액션(검색 실행)은 부르지 않는다.
+     * 함수는 그 콜백에서만 불린다). ② 값은 서버 가드가 **안내문과 대조해** 내려준 `input_text`라,
+     * 사용자가 방금 읽은 문장이 집어 말한 말이다. ③ 채우기만 한다 — IME 액션(검색 실행)은
+     * 부르지 않는다.
      *
      * 대상은 **누르는 시점에 다시 찾는다.** 응답 시점의 노드를 들고 있으면 화면이 조금만
      * 움직여도 stale이고, 시니어가 버튼을 누르기까지의 간격은 길다. 안내가 가리킨 자리의
@@ -901,7 +902,8 @@ class GuideAccessibilityService : AccessibilityService() {
         // 갈리는 순간(포커스가 다른 칸에 있을 때)이 바로 안내하지 않은 칸을 채우는 경우다.
         // 실기기 확인이 logcat 수동인 동안 이 표기가 그 축을 볼 유일한 창이다.
         val matched = findEditableNode(root, pendingInputBounds)
-        val node = matched ?: root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+        val node = matched
+            ?: root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
         val via = if (matched != null) "bounds" else "focus"
         if (node == null) {
             Log.w(TAG, "input fill: no editable target")
@@ -914,7 +916,8 @@ class GuideAccessibilityService : AccessibilityService() {
             )
         }
         val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        // 값 자체는 목표 문장의 일부라 로그에 남기지 않는다 — 운영 로그의 비식별 원칙 그대로.
+        // 값 자체는 남기지 않는다 — 모델이 쓴 문장에서 온 말이라 무엇이 들었는지 서버도 앱도
+        // 보장하지 못한다(C21의 잔여 위험, `SPEC.md` §2). 운영 로그의 비식별 원칙 그대로다.
         Log.i(TAG, "input fill performed ok=$ok via=$via chars=${text.length}")
     }
 
