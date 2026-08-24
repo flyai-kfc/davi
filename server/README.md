@@ -463,6 +463,32 @@ Key Vault의 versionless secret으로만 보관하며 Container App의 user-assi
 화면 데이터를 저장하지 않는다. 최초 권한·GitHub OIDC 연결과 장애 확인은
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
+## Azure Container Apps release 수동 배포
+
+release 서버는 `main`의 서버 변경에 자동 배포되지 않는다. 검증한 `main`을 release로 승격할 때는
+저장소 루트에서 아래 실행기를 사용한다.
+
+```bash
+infra/azure/deploy-release.sh
+```
+
+실행 전 GitHub CLI(`gh`)를 설치하고 저장소의 Actions workflow를 실행할 수 있는 계정으로 로그인해야
+한다. 실행기는 현재 로컬 브랜치나 커밋을 직접 배포하지 않고, 항상 원격 `main`의
+`azure-release-deploy.yml`을 고유한 request ID로 시작한다. 이후 해당 workflow run을 찾아 완료까지
+기다리며, 배포 또는 검증 실패 시 0이 아닌 종료 코드로 끝난다. 로컬에서 Docker image를 만들거나
+Azure 배포 명령을 직접 실행하지 않는다.
+
+Windows처럼 Bash 실행기를 사용하지 않는 환경에서는 GitHub의
+**Actions → Azure release deploy → Run workflow**에서 `main`을 선택해 같은 workflow를 실행한다.
+GitHub environment 승인 대기 상태라면 Actions에서 승인한 뒤 실행이 끝날 때까지 기다린다.
+
+workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, release 인증 출처,
+개발·테스트 토큰 미배선 및 `/health`를 검증한다. 실행기가 workflow를 찾지 못했다고 끝난 경우에는
+곧바로 재실행하지 말고 출력된 request ID로 Actions run을 먼저 확인해 중복 배포를 피한다. 성공 후에는
+더미 로그인 probe와 release APK의 로그인·next-step 실기기 확인까지 수행한다. 최초 Azure/GitHub
+설정, 실행 결과 확인 명령, probe 및 장애 대응은
+[`../docs/deployment/azure-release-server.md`](../docs/deployment/azure-release-server.md)를 따른다.
+
 ## 도그푸딩 raw 보존 (#41)
 
 `DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만
