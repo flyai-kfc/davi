@@ -32,6 +32,7 @@ object GuideScreenLog {
         gateOpen: Boolean,
         anchorMoved: Boolean,
         anchorSpent: Boolean,
+        stats: UiTreeSerializer.WalkStats,
     ) = Unit
 
     /**

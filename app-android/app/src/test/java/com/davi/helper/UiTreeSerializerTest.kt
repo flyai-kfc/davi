@@ -55,6 +55,25 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `화면과 겹치는지로 기하 사슬을 끊는다`() {
+        val screen = RectCover.Box(0, 0, 1080, 2340)
+
+        // #358의 배민 메뉴 상세 하단 바. **안 보인다고 보고하면서 화면 안에 면적을 갖는다** —
+        // 되찾은 `담기` 버튼이 이 아래에 있으므로 기하 사슬은 여기서 끊겨야 한다.
+        assertTrue(UiTreeSerializer.boxIntersects(0, 1928, 1080, 2178, screen))
+
+        // 오프스크린 ViewPager 페이지의 두 얼굴: 폭 0과 화면 오른쪽 밖(실측, #359 표본).
+        assertFalse(UiTreeSerializer.boxIntersects(540, 0, 540, 2340, screen))
+        assertFalse(UiTreeSerializer.boxIntersects(1080, 0, 2160, 2340, screen))
+
+        // 화면 안이어도 빈 사각형은 겹치는 것이 아니다 — 덮개가 될 수 없고 그리는 것도 없다.
+        assertFalse(UiTreeSerializer.boxIntersects(100, 200, 100, 400, screen))
+
+        // 목록의 첫 행처럼 화면 위로 걸친 요소는 살아 있다.
+        assertTrue(UiTreeSerializer.boxIntersects(0, -80, 1080, 40, screen))
+    }
+
+    @Test
     fun `방향 액션이 있으면 그것으로 축을 정한다`() {
         // 모양과 반대여도 액션이 이긴다. 가로로 넓은 세로 스크롤러가 실제로 있다.
         assertEquals(

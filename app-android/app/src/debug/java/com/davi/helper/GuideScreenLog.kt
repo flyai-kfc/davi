@@ -101,6 +101,7 @@ object GuideScreenLog {
         gateOpen: Boolean,
         anchorMoved: Boolean,
         anchorSpent: Boolean,
+        stats: UiTreeSerializer.WalkStats,
     ) {
         // `capped`는 **앵커가 열려던 것을 상한이 막았다**는 뜻이다. 게이트가 열려 있으면
         // 재질의는 어차피 나갔으므로 막힌 것이 아니다 — 그때까지 `capped`로 찍으면 오독한다.
@@ -115,9 +116,28 @@ object GuideScreenLog {
                 "s=${Integer.toHexString(signature.structure.hashCode())} " +
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
-                "anchor=$anchor",
+                "anchor=$anchor " +
+                walkCost(stats),
         )
     }
+
+    /**
+     * 순회 비용의 계측(#367). **보정용이라 K가 정해지면 `w=`·`cut=`만 남기고 걷는다.**
+     *
+     * `n=`은 정규화 인자가 못 된다 — `MAX_ELEMENTS`에서 포화한다. 그래서 `ms=`를 나눠 볼 분모가
+     * 필요하고 그것이 `w=`다. `ms/w`가 폴링마다 안정적이어야 "비용은 방문 수를 따른다"가 서고,
+     * 꼬리에서만 치솟으면 그 꼬리는 노드 수가 아니라 메인 스레드 경합이 만든 것이다.
+     *
+     * `hv=`·`he=`는 **안 보임 사슬** 길이별 방문·방출이고 `gv=`·`ge=`는 **(안 보임 ∧ 화면 밖)**
+     * 사슬 기준이다. 상한 K를 고르면 `이득 = Σ v[k>K]`, `비용 = Σ e[k>K]`가 된다.
+     */
+    private fun walkCost(stats: UiTreeSerializer.WalkStats): String =
+        "w=${stats.walkFetch} p=${stats.paintFetch} l=${stats.labelFetch} " +
+            "hid=${stats.hiddenFetch} run=${stats.maxRun} cut=${stats.cuts} " +
+            "hv=${stats.visitsByRun.joinToString(",")} " +
+            "he=${stats.emitsByRun.joinToString(",")} " +
+            "gv=${stats.visitsByGeoRun.joinToString(",")} " +
+            "ge=${stats.emitsByGeoRun.joinToString(",")}"
 
     private fun eventName(type: Int): String = when (type) {
         AccessibilityEvent.TYPE_VIEW_CLICKED -> "VIEW_CLICKED"
