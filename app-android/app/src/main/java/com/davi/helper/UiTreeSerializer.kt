@@ -195,12 +195,11 @@ object UiTreeSerializer {
         // 그래서 **이 노드 하나의 보고로는 끊지 않는다** — 자기만 건너뛰고 자식은 계속 훑는다.
         // 화면 밖 목록 항목은 **자기 자신이** false라 그대로 걸러지므로, 이 규칙이 원래 막으려던
         // 것은 그대로 막힌다.
-        // **끊는 자리는 하나 있고 근거가 다르다**([MAX_HIDDEN_RUN], #367) — 노드 하나의 자기
-        // 보고가 아니라 **안 보인다는 관측이 연속으로 이어진 길이**다. 실측한 7개 화면에서
-        // 요소가 나온 사슬은 깊이 1까지였고 상한은 그보다 한 겹 위다.
-        // **아직 끊는 자리가 셋 남아 있다**(가림 판정 [hasPaintedContent]는 이 PR에서 맞췄다).
-        // 라벨 병합·상태 hoist([collectDescendantText]·[descendantCheckedState])는 고치면 화면
-        // 전반의 label이 함께 바뀌어 별도 측정이 필요하다.
+        // **끊는 자리는 하나이고 근거가 다르다** — 아래 [exceedsHiddenChain]은 노드의 자기 보고가
+        // 아니라 **안 보임이 연속된 길이**를 본다. 값의 근거는 [MAX_HIDDEN_RUN]에 있다.
+        // **한 노드에서 바로 끊는 자리가 아직 둘 남아 있다** — 라벨 병합·상태 hoist
+        // ([collectDescendantText]·[descendantCheckedState]). 고치면 화면 전반의 label이 함께
+        // 바뀌어 별도 측정이 필요하다(#382). 가림 판정 [hasPaintedContent]는 #359가 맞췄다.
         // **스크롤 관측은 일부러 둔다.** 아래 `observeScrollable`이 이 return 뒤에 있어, 스크롤
         // 컨테이너 자신이 `visibleToUser=false`면 `has_scrollable_element`도 스크롤 대상도 안 나간다.
         // 여기서도 관측하면 **오프스크린 페이지가 `scrollable=true`를 올려 런처 페이징 가드레일이
