@@ -78,7 +78,7 @@ class AppAvailabilityPreflightDeviceTest {
         // 아이콘 전용이던 시절엔 contentDescription으로만 갈렸지만 이제 보이는 글자다(#196).
         assertEquals(
             current.getString(R.string.conversation_confirm_accept),
-            current.findViewById<TextView>(R.id.confirm_accept).text.toString(),
+            current.findViewById<TextView>(R.id.confirm_accept_label).text.toString(),
         )
 
         instrumentation.runOnMainSync {

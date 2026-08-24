@@ -3,8 +3,10 @@ package com.davi.helper
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -440,6 +442,21 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestion.isFocusable = false
         binding.cardQuestion.isFocusableInTouchMode = false
 
+        // MA-4 (2)의 배경은 코드가 넣는다(#396) — 오른쪽 끝이 사선이라 XML 드로어블로
+        // 그릴 수 없고, 높이가 변해도 r16·사선 17dp가 고정이어야 한다.
+        // 이유와 대안 검토는 [ConfirmShortcutBackground] KDoc에 있다.
+        //
+        // **ripple로 감싼다** — (1)(3)은 XML에서 ripple이라 (2)만 도형이면 누르는 동안
+        // 이 행만 아무 말도 안 한다. mask에는 같은 모양의 **다른 인스턴스**를 준다
+        // (한 Drawable을 content와 mask로 함께 쓰면 그리기 상태가 엉킨다).
+        binding.shortcutRow.background = RippleDrawable(
+            ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.davi_state_layer_pressed_on_light),
+            ),
+            ConfirmShortcutBackground(this),
+            ConfirmShortcutBackground(this),
+        )
+
         // MA-3·메인 8 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374·#263).
         // release에서는 무시된다.
         debugInjectedState()?.let { setState(it) }
@@ -814,6 +831,10 @@ class ConversationActivity : AppCompatActivity() {
                     model.inClarificationFlow ->
                         R.dimen.davi_badge_margin_top_clarification_nochip
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
+                    // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
+                    // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
+                    // **이 화면에는 전역 ✕가 없어** 위를 내줘도 파고들 것이 없다.
+                    model.confirmVisible -> R.dimen.davi_badge_margin_top_confirm
                     else -> R.dimen.davi_badge_margin_top
                 },
             )
@@ -873,7 +894,7 @@ class ConversationActivity : AppCompatActivity() {
         // 확인 화면이 둘이라 (1)의 글자가 화면마다 다르다(#185/#194 + #196).
         // **contentDescription이 아니라 보이는 글자다** — #194는 버튼이 아이콘 전용이라
         // 스크린 리더에게만 구분을 줄 수 있었는데, 이제 글자가 있어 눈으로도 갈린다.
-        binding.confirmAccept.setText(model.confirmAcceptTextRes)
+        binding.confirmAcceptLabel.setText(model.confirmAcceptTextRes)
         renderShortcutRow(model)
         binding.btnClose.isVisible(model.closeVisible)
 

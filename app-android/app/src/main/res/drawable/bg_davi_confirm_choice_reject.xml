@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-4 ③ 「아니요」(#396 · 08-22 시안). **한 겹이다 — 뒤판도 테두리도 없다.**
+
+  **겹수가 뜻을 나른다**(SCREENS.md MA-4) — ①②의 두 겹이 「진행한다」이고 이 한 겹이
+  「그만둔다」다. **③을 두 겹으로 만들지 말 것.**
+
+  **채움이 반투명이라 실효색을 여기 적지 않는다**(colors.xml의 davi_confirm_choice_reject_fill).
+  뒤가 배경 베일이라 버튼 하나 안에서도 뒷색이 변한다.
+
+  **테두리가 없어도 A2는 선다** — 채움 실효색이 배경 대비 3.10~3.24:1로 조작 요소 3:1을
+  채움 혼자 넘는다(계산값 · 실측 아님, 여유가 얇으니 구현 뒤 픽셀로 잰다).
+
+  ⚠ **라벨 색은 미결이다** — 흰 라벨이 AA도 못 넘어(3.24~3.40) A1 예외 절에 등록돼 있고
+  2026-08-24 팀 합의 대상이다. 지금은 시안대로 흰색이다.
+
+  **③을 ①②보다 진하게 만들지 않는다** — 최종 확인은 우리가 권하는 자리가 아니라 사용자가
+  고르는 자리다. 대비를 올리려고 채움을 진하게 하는 길이 막혀 있는 이유가 이것이다.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed_on_dark">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/davi_confirm_choice_reject_fill" />
+            <corners android:radius="@dimen/davi_confirm_choice_radius" />
+        </shape>
+    </item>
+</ripple>

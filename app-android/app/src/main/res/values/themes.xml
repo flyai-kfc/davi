@@ -276,6 +276,18 @@
         <item name="android:textColor">@color/davi_button_on_primary</item>
     </style>
     <!--
+      MA-4 (3)「아니요」의 흰 라벨(#396). **위 「직접 말하기」와 같은 사안이다** — 둘 다
+      반투명 채움 위 흰 라벨이고, `DESIGN-CONVENTIONS.md`의
+      「A1 예외 — 반투명 채움 위 흰 라벨 둘」에 **함께 등록돼 있다.**
+
+      **인라인 textColor로 두지 않는 이유가 그것이다** — 대비를 손볼 사람이 스타일을 grep하면
+      한쪽만 걸려, A1 예외라는 사실과의 연결이 끊긴 채 남는다. 잰 값과 결정 근거는
+      `colors.xml`의 `davi_confirm_choice_reject_fill`에 있다. **여기 수치를 적지 않는다.**
+    -->
+    <style name="TextAppearance.Davi.ConfirmChoice.OnFill">
+        <item name="android:textColor">@color/davi_button_on_primary</item>
+    </style>
+    <!--
       질문 칩 `v2/chip/step`(#374). 13 Pretendard/ExtraBold `button/primary`.
       **ExtraBold는 서체 패밀리에 없으면 bold로 떨어진다** — 크기가 작아 굵기가 곧 가독성이다.
     -->
