@@ -147,6 +147,19 @@ class Screen(BaseModel):
     content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
+# 한 요청에 실을 수 있는 스텝 수의 상한(C11). C11은 앱 보관 개수도 같은 10으로 정했지만
+# **코드에 공유 상수는 없다** — 서버는 앱의 `GuideSession.MAX_HISTORY`를 볼 수 없고 두 값이
+# 어긋나도 잡아 줄 검사가 없다. 그 일치를 지키는 것은 문서다.
+#
+# **내리는 쪽이 특히 위험하다.** 앱은 보관분을 통째로 실어 보내므로, 이 값이 이미 설치된 앱의
+# 보관 개수보다 작아지면 **세션이 새 상한을 넘는 순간부터 그 세션의 남은 요청이 422**가 되고
+# 재시작해도 같은 지점에서 다시 막힌다 — 낡은 앱은 자기 상한을 줄일 수 없다. 아래
+# `client_version`이 말하는 C7 비대칭이 그대로 걸리는 자리다.
+#
+# **올리면 프롬프트에 싣는 개수도 함께 오른다** — `prompt.MAX_HISTORY`가 이 값에서 파생된다
+# (#308). 이력 줄은 스텝당 **매 호출 선형으로** 들고 늘려서 얻는 이득은 관측되지 않았다.
+# 실측은 그 상수 옆 주석 한 곳에 있으니 올리기 전에 읽을 것. 레이트리밋의 짧은 창도 이 값을
+# 근거로 산정했다(`config.davi_external_rate_limit_per_source_requests` 주석).
 MAX_STEPS = 10
 
 
@@ -219,8 +232,9 @@ class NextStepRequest(BaseModel):
     screen: Screen
     device_id: str | None = None
     # 이 세션에서 실제로 표시한 안내들. 오래된 것이 앞에 온다(HANDOFF §3-10).
-    # 서버 상태 대신 활성 앱 세션이 보관하고, 앱과 서버 모두 MAX_STEPS개로 제한해 요청 크기와
-    # 세션 메모리에 상한을 둔다(C11).
+    # 서버 상태 대신 활성 앱 세션이 보관한다(C11). **공유 상수가 있는 것이 아니다** — 앱은 자기
+    # 상한만큼 보관해 보내고 서버는 `MAX_STEPS` 초과를 거부해, 세션 메모리와 요청 크기 양쪽에
+    # 각각 상한이 선다.
     steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
