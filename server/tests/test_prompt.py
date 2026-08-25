@@ -19,6 +19,7 @@ from app.prompt import (
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     STEP_CHANGED,
+    STEP_HISTORY_EARLIER,
     STEP_HISTORY_HEADER,
     STEP_PRESSED,
     STEP_PRESSED_ELSEWHERE,
@@ -56,11 +57,12 @@ def _request(**screen_fields) -> NextStepRequest:
     return NextStepRequest(goal="다음 항목 보기", screen=Screen(**screen_fields))
 
 
-def _with_steps(*steps: GuideStep) -> NextStepRequest:
+def _with_steps(*steps: GuideStep, earlier: int = 0) -> NextStepRequest:
     return NextStepRequest(
         goal="다음 항목 보기",
         screen=Screen(package_name="com.example.app"),
         steps=list(steps),
+        earlier_steps=earlier,
     )
 
 
@@ -644,6 +646,36 @@ def test_step_history_carries_every_step_the_contract_allows():
     assert len(lines) == MAX_STEPS
     for index, line in enumerate(lines):
         assert f"{index}번째 안내" in line
+
+
+def test_step_history_says_how_many_guides_fell_out_of_the_window():
+    """창이 꽉 찬 이유를 개수로 말한다(#418).
+
+    `steps` 열 개만 보면 세션이 이제 열 걸음짜리인지 마흔 걸음째인지 구분되지 않는다.
+    **목록 앞**에 붙는 이유는 그 안내들이 시간상 앞서기 때문이고, 접두어가 `- `가 아닌 이유는
+    모델이 안내 하나로 세면 요소 줄의 `tried=`·회귀 표시와 어긋나기 때문이다.
+    """
+
+    prompt = build_prompt(_with_steps(_step(instruction="마지막 안내"), earlier=23))
+
+    block = prompt.split(STEP_HISTORY_HEADER, 1)[1].split("현재 화면 요소:", 1)[0]
+    first = block.strip().splitlines()[0]
+    assert first == "(이 목록 앞에 안내 23번이 더 있었지만 오래되어 빠졌습니다.)"
+    assert not first.startswith("- ")
+    assert prompt.index(first) < prompt.index("마지막 안내")
+
+
+def test_step_history_stays_silent_when_nothing_fell_out():
+    """0은 적지 않는다 — 미관측·해당없음에 침묵하는 C10 규약과 같다.
+
+    이 값을 아직 안 채우는 낡은 앱도 0으로 오므로, 침묵이 곧 호환이다.
+    """
+
+    prompt = build_prompt(_with_steps(_step()))
+
+    # 문구에서 파생한 조각으로 본다 — 리터럴을 적으면 문구를 고쳤을 때 이 검사가 **통과한 채로**
+    # 아무것도 안 보게 되고, 커버리지가 사라진 것이 드러나지 않는다.
+    assert STEP_HISTORY_EARLIER.split("{")[0] not in prompt
 
 
 def test_step_history_omits_the_screen_clause_when_the_summary_is_missing():

@@ -302,6 +302,16 @@ class NextStepRequest(BaseModel):
     # 상한만큼 보관해 보내고 서버는 `MAX_STEPS` 초과를 거부해, 세션 메모리와 요청 크기 양쪽에
     # 각각 상한이 선다.
     steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
+    # `steps` **앞에** 있었지만 상한에 밀려 빠진 안내 수(C24 · #418). 0은 "밀려난 것이 없다"이고,
+    # 이 값을 안 채우는 낡은 앱도 0으로 온다 — 둘을 구분할 필요가 없다(둘 다 "더 있었다고 말할
+    # 근거가 없다"로 같게 다뤄지고, 프롬프트가 0에 침묵한다).
+    #
+    # **개수만 나른다.** 밀려난 스텝의 화면 이름을 이어 붙이는 안은 실측으로 접었다 —
+    # 근거 수치는 `../CLAUDE.md`의 「밀려난 안내 수」 한 곳에 있다.
+    #
+    # **세는 것은 줄이 만들어진 스텝뿐이다**(빈 안내문 제외) — 창 안 목록이 그것을 빼기
+    # 때문이고, 근거는 위 링크와 같은 자리에 있다.
+    earlier_steps: int = Field(default=0, ge=0)
     # 완료 확인에서 사용자가 "아직요"라고 답한 화면. 서버는 현재 두 서명과 모두 맞을 때만
     # 명시적인 반대로 사용한다. 세션 식별자나 화면 원문은 싣지 않는다(#424).
     completion_feedback: CompletionFeedback | None = None

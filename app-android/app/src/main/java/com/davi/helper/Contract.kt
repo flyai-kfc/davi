@@ -112,6 +112,14 @@ data class NextStepRequest(
      * 활성 [GuideSession] 안에서만 최대 10개를 보관하므로 서버 상태나 기기 식별자가 필요 없다.
      */
     val steps: List<GuideStep> = emptyList(),
+    /**
+     * [steps] **앞에** 있었지만 상한에 밀려 빠진 안내 수(#418). 프롬프트가 "창이 꽉 찬 이유"를
+     * 알게 하는 값이다 — 세션이 이제 10스텝짜리인지 40스텝째인지가 [steps]만으로는 구분되지 않는다.
+     *
+     * **개수만 나른다.** 밀려난 스텝의 화면 이름을 이어 붙이는 안은 실측으로 접었다 —
+     * 근거는 `server/CLAUDE.md`의 「밀려난 안내 수」에 있다.
+     */
+    @SerialName("earlier_steps") val earlierSteps: Int = 0,
     /** 완료 확인에서 사용자가 "아직요"라고 답한 화면. 원문이나 세션 식별자는 싣지 않는다. */
     @SerialName("completion_feedback") val completionFeedback: CompletionFeedback? = null,
     @SerialName("client_version") val clientVersion: String? = null,

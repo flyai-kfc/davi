@@ -1030,6 +1030,9 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 직전에 무엇을 안내했고 그래서 화면이 바뀌었는지 모르면 모델이 같은 말을
                     // 반복한다(HANDOFF §3-10, C11 개정).
                     steps = session.steps,
+                    // 창이 꽉 찬 이유를 모델이 알아야 한다 — 이제 10스텝짜리인지 40스텝째인지가
+                    // `steps`만으로는 구분되지 않는다(#418).
+                    earlierSteps = session.earlierSteps,
                     completionFeedback = session.completionFeedback,
                     clientVersion = BuildConfig.VERSION_NAME,
                 )
