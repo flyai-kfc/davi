@@ -1,6 +1,5 @@
 package com.davi.helper
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -80,14 +79,6 @@ class QuestionFoldGateTest {
 
         gate.sync("질문", speaking = false)
         assertFalse("떠났다 돌아왔는데 옛 기록이 살아났다", gate.expanded)
-    }
-
-    @Test
-    fun `보기가 없으면 접힌 문구가 고르라고 하지 않는다`() {
-        // 서버가 선택지를 못 만드는 질문을 주면 화면에 「직접 말하기」만 남는다.
-        assertEquals(CollapsedPrompt.CHOOSE, collapsedPromptOf(3))
-        assertEquals(CollapsedPrompt.CHOOSE, collapsedPromptOf(1))
-        assertEquals(CollapsedPrompt.SPEAK, collapsedPromptOf(0))
     }
 
     @Test

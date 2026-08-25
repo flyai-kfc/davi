@@ -226,22 +226,21 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
-    fun collapsedCardDoesNotAskToChooseWhenThereIsNothingToChoose() {
-        // #452. 보기가 0개면 화면에 「직접 말하기」만 남는데, 거기서 「선택해 주세요」는
-        // **없는 것을 고르라는 말**이라 어르신이 화면에서 그것을 찾는다.
+    fun collapsedCardTellsWhatToDoNextInEveryBranch() {
+        // #452. 접힌 카드의 문구는 **다음에 할 동작**을 말한다 — 두 갈래 모두 누르기다.
+        // 보기가 0개일 때 「선택해 주세요」는 **없는 것을 고르라는 말**이고, 그렇다고
+        // 「말씀해 주세요」로 가르면 **버튼을 안 누르고 그냥 말하려 한다**(그 화면도 먼저
+        // 눌러야 마이크가 열린다). 그래서 한 문구다.
         val current = launchConversation()
 
-        showClarification(current, questionCount = 1, optionCount = 0)
-        assertEquals(
-            current.getString(R.string.clarification_prompt_collapsed_freeform),
-            current.findViewById<TextView>(R.id.card_question).text.toString(),
-        )
-
-        showClarification(current, questionCount = 1, optionCount = 2)
-        assertEquals(
-            current.getString(R.string.clarification_prompt_collapsed),
-            current.findViewById<TextView>(R.id.card_question).text.toString(),
-        )
+        for (optionCount in intArrayOf(0, 2)) {
+            showClarification(current, questionCount = 1, optionCount = optionCount)
+            assertEquals(
+                "보기 ${optionCount}개",
+                current.getString(R.string.clarification_prompt_collapsed),
+                current.findViewById<TextView>(R.id.card_question).text.toString(),
+            )
+        }
     }
 
     @Test

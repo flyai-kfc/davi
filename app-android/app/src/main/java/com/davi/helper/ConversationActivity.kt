@@ -1095,11 +1095,7 @@ class ConversationActivity : AppCompatActivity() {
                 stepOutcome.questionCount,
             )
         }
-        renderQuestionFold(
-            foldActive,
-            model,
-            (state as? ConversationUiState.Clarifying)?.outcome?.question?.options?.size ?: 0,
-        )
+        renderQuestionFold(foldActive, model)
         perchTopControlsOnCard(model)
         // 이번 render가 만든 배치가 끝난 뒤에 한 번 더 — 위 호출은 직전 프레임 값을 본다.
         binding.root.post { perchTopControlsOnCard(model) }
@@ -1839,11 +1835,7 @@ class ConversationActivity : AppCompatActivity() {
      * **사용자가 손잡이를 누른 뒤에는 낭독 상태가 덮어쓰지 않는다** — 펼쳐 놓고 읽는 중에
      * 낭독이 끝났다고 접히면 읽던 것이 사라진다.
      */
-    private fun renderQuestionFold(
-        foldActive: Boolean,
-        model: ConversationRenderModel,
-        optionCount: Int,
-    ) {
+    private fun renderQuestionFold(foldActive: Boolean, model: ConversationRenderModel) {
         val toggle = binding.btnQuestionToggle
         if (!foldActive) {
             toggle.isVisible(false)
@@ -1871,12 +1863,7 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestion.text = if (questionExpanded) {
             key
         } else {
-            getString(
-                when (collapsedPromptOf(optionCount)) {
-                    CollapsedPrompt.CHOOSE -> R.string.clarification_prompt_collapsed
-                    CollapsedPrompt.SPEAK -> R.string.clarification_prompt_collapsed_freeform
-                },
-            )
+            getString(R.string.clarification_prompt_collapsed)
         }
         // **접힌 카드는 스크롤 대상이 아니다.** movementMethod가 붙어 있으면 TextView가
         // clickable로 노출돼 **스크린리더가 누를 수 있는 것으로 읽는데 눌러도 아무 일이 없다**

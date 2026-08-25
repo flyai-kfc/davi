@@ -58,27 +58,6 @@ class QuestionFoldGate {
 }
 
 /**
- * 접힌 카드가 그 자리에 대신 띄우는 말.
- *
- * **보기가 없으면 「선택해 주세요」가 틀린 말이다** — 고를 것이 없고 「직접 말하기」만 있는
- * 화면이다(서버가 선택지를 못 만드는 질문을 주면 그렇게 된다). 없는 것을 고르라고 하면
- * 어르신이 화면에서 그것을 찾는다.
- *
- * **접지 않는 쪽은 안 골랐다.** 접힌 카드의 높이가 상수라는 것이 「배율 2.0에서 보기가 한
- * 화면에 들어온다」를 지탱하는데, 갈래마다 접고 안 접으면 그 보장이 갈린다.
- */
-enum class CollapsedPrompt {
-    /** 보기가 있다 — 고르는 화면. */
-    CHOOSE,
-
-    /** 보기가 없다 — 말하는 화면. */
-    SPEAK,
-}
-
-fun collapsedPromptOf(optionCount: Int): CollapsedPrompt =
-    if (optionCount > 0) CollapsedPrompt.CHOOSE else CollapsedPrompt.SPEAK
-
-/**
  * 낭독이 이보다 길 리 없다는 상한(ms). **정책이 아니라 그물이다.**
  *
  * 카드가 접히는 유일한 계기가 TTS의 끝 신호인데, 엔진이 말하다 죽거나 `onDone`을 안 부르면
