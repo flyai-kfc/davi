@@ -28,6 +28,7 @@ internal class DetailedTraceWriter private constructor(private val file: File?) 
             .put(
                 "resolved_target",
                 JSONObject()
+                    .put("resolved", decision.targetResolved)
                     .put("bounds", decision.targetBounds?.let(::JSONArray) ?: JSONObject.NULL)
                     .put("role", decision.targetRole ?: JSONObject.NULL)
                     .put("clickable", decision.targetClickable)

@@ -11,86 +11,66 @@ import kotlin.math.min
 
 /** Gemini가 선택한 bounds를 사용자 손동작으로 옮긴다. 앱별 정답 selector는 사용하지 않는다. */
 internal class GuidedActionExecutor(private val device: UiDevice) {
-    fun execute(
-        decision: DisplayedDecision,
-        textInput: String?,
-        step: Int,
-    ) {
-        when (decision.action.actionType) {
-            GuidedActionType.TAP -> tap(decision, step)
-            GuidedActionType.SCROLL -> scroll(decision, step)
-            GuidedActionType.TYPE -> type(decision, textInput, step)
-            GuidedActionType.OPEN_APP_DRAWER -> swipeWholeScreen(GuidedSwipeDirection.UP)
-            GuidedActionType.OPEN_QUICK_SETTINGS -> {
+    fun execute(plan: GuidedActionPlan, step: Int) {
+        when (plan) {
+            is GuidedActionPlan.Tap -> tap(plan.bounds, step)
+            is GuidedActionPlan.Scroll -> scroll(plan)
+            is GuidedActionPlan.Type -> type(plan, step)
+            is GuidedActionPlan.SwipeWholeScreen -> swipeWholeScreen(plan.fingerDirection)
+            GuidedActionPlan.OpenQuickSettings -> {
                 if (!device.openQuickSettings()) {
                     throw GuidedScenarioFailure("quick_settings_failed", step)
                 }
             }
-            GuidedActionType.DONE -> throw GuidedScenarioFailure("done_was_executed", step)
         }
         device.waitForIdle(IDLE_TIMEOUT_MS)
     }
 
-    private fun tap(decision: DisplayedDecision, step: Int) {
-        val bounds = targetBounds(decision, step)
+    private fun tap(bounds: GuidedBounds, step: Int) {
         if (!device.click(bounds.centerX(), bounds.centerY())) {
             throw GuidedScenarioFailure("tap_injection_failed", step)
         }
     }
 
     private fun type(
-        decision: DisplayedDecision,
-        textInput: String?,
+        plan: GuidedActionPlan.Type,
         step: Int,
     ) {
-        val value = textInput ?: throw GuidedScenarioFailure("type_value_missing", step)
-        tap(decision, step)
+        tap(plan.bounds, step)
         val focused = device.wait(Until.findObject(By.focused(true)), FOCUS_TIMEOUT_MS)
             ?: throw GuidedScenarioFailure("type_focus_missing", step)
-        focused.text = value
+        focused.text = plan.value
         // 입력 원문은 화면 시그니처에서 빠진다. 사용자가 입력을 마치고 키보드를 닫는 것까지 TYPE
         // 한 동작의 commit으로 재현해야 IME/focus 상태 변화 뒤 다음 안내를 받을 수 있다.
         if (isImeVisible()) device.pressBack()
     }
 
-    private fun scroll(decision: DisplayedDecision, step: Int) {
-        val serverDirection = decision.action.direction
-            ?: throw GuidedScenarioFailure("scroll_direction_missing", step)
-        // 계약(C17)의 direction은 **보러 가는 방향**이고 여기서 재현할 것은 **손가락 동작**이다.
-        // 앱이 손 모션에서 하는 변환(GestureMotion.fingerDirectionFor)과 같은 뒤집기를 드라이버도
-        // 한다 — 안 하면 사용자가 안내대로 했을 때와 정반대로 쓸어 시나리오가 막다른 곳으로 간다.
-        // 전역 제스처(OPEN_APP_DRAWER)는 direction 필드가 없어 이 변환 대상이 아니다.
-        val direction = fingerDirectionFor(serverDirection)
-        val values = decision.targetBounds
-        if (values == null) {
+    private fun scroll(plan: GuidedActionPlan.Scroll) {
+        if (plan.bounds == null) {
             // 서버 계약은 대상 없는 scroll을 전역 제스처로 허용한다. 실제 사용자도 빈 화면 영역에서
             // 쓸 수 있으므로, 앱별 시나리오가 허용한 경우에만 전체 화면으로 재현한다.
-            swipeWholeScreen(direction)
+            swipeWholeScreen(plan.fingerDirection)
         } else {
-            swipe(targetBounds(decision, step), direction)
+            swipe(plan.bounds, plan.fingerDirection)
         }
     }
-
-    /** 서버가 준 "보러 가는 방향" → 실제로 재현할 손가락 방향(C17). */
-    private fun fingerDirectionFor(direction: GuidedSwipeDirection): GuidedSwipeDirection =
-        when (direction) {
-            GuidedSwipeDirection.UP -> GuidedSwipeDirection.DOWN
-            GuidedSwipeDirection.DOWN -> GuidedSwipeDirection.UP
-            GuidedSwipeDirection.LEFT -> GuidedSwipeDirection.RIGHT
-            GuidedSwipeDirection.RIGHT -> GuidedSwipeDirection.LEFT
-        }
 
     private fun swipeWholeScreen(direction: GuidedSwipeDirection) {
         val marginX = max(24, device.displayWidth / 8)
         val marginY = max(24, device.displayHeight / 6)
         swipe(
-            Rect(marginX, marginY, device.displayWidth - marginX, device.displayHeight - marginY),
+            GuidedBounds(
+                marginX,
+                marginY,
+                device.displayWidth - marginX,
+                device.displayHeight - marginY,
+            ),
             direction,
         )
     }
 
-    private fun swipe(rawBounds: Rect, direction: GuidedSwipeDirection) {
-        val bounds = Rect(rawBounds).apply {
+    private fun swipe(rawBounds: GuidedBounds, direction: GuidedSwipeDirection) {
+        val bounds = Rect(rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom).apply {
             intersect(0, 0, device.displayWidth, device.displayHeight)
         }
         val horizontalInset = min(max(12, bounds.width() / 6), max(12, bounds.width() / 2 - 1))
@@ -111,15 +91,9 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
         device.swipe(points[0], points[1], points[2], points[3], SWIPE_STEPS)
     }
 
-    private fun targetBounds(decision: DisplayedDecision, step: Int): Rect {
-        val values = decision.targetBounds
-        if (values == null || values.size != 4) {
-            throw GuidedScenarioFailure("target_bounds_missing", step)
-        }
-        val bounds = Rect(values[0], values[1], values[2], values[3])
-        if (bounds.isEmpty) throw GuidedScenarioFailure("target_bounds_empty", step)
-        return bounds
-    }
+    private fun GuidedBounds.centerX(): Int = (left + right) / 2
+
+    private fun GuidedBounds.centerY(): Int = (top + bottom) / 2
 
     private fun isImeVisible(): Boolean = runCatching {
         InstrumentationRegistry.getInstrumentation().uiAutomation.windows

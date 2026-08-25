@@ -11,10 +11,51 @@ from pathlib import Path
 FAILURE_DESCRIPTIONS = {
     "step_limit": "허용한 최대 안내 단계 안에 목표 상태와 검증된 완료에 도달하지 못했습니다.",
     "decision_timeout": "제한 시간 안에 표시된 Gemini 결정을 받지 못했습니다.",
+    "root_unavailable": "결정 대기 종료 시점에 Davi가 접근성 화면 root를 읽지 못했습니다.",
+    "server_error": "결정 대기 중 마지막 서버 요청이 실패했습니다.",
+    "client_configuration_error": "앱의 E2E 서버 클라이언트가 구성되지 않았습니다.",
+    "response_parse_error": "성공 응답을 받았지만 앱이 서버 계약으로 해석하지 못했습니다.",
+    "screen_stuck": "안내 동작 뒤 화면이 바뀌지 않아 다음 결정을 요청하지 못했습니다.",
+    "screen_unreadable": "현재 화면을 접근성 요소로 읽을 수 없어 다음 결정을 요청하지 못했습니다.",
+    "target_node_id_mismatch": "서버 target_node_id가 같은 요청의 화면 tree에 존재하지 않습니다.",
+    "target_node_id_missing": "대상이 필요한 action에 target_node_id가 없습니다.",
+    "target_bounds_missing": "같은 요청 tree에서 해결한 대상 bounds가 실행 가능한 형태가 아닙니다.",
+    "instruction_length": "모델 안내 문장이 E2E 실행 품질 범위를 벗어났습니다.",
+    "reasoning_fields_empty": "모델 action의 기대 결과 또는 화면 근거가 비어 있습니다.",
+    "scroll_direction_missing": "scroll action에 실행할 방향이 없습니다.",
     "done_before_goal": "실제 외부 앱 상태가 목표를 충족하기 전에 완료가 선언됐습니다.",
     "settings_app_blocked": "테스트 환경을 바꿀 수 있는 설정 앱 진입을 실행 전에 차단했습니다.",
+    "sms_send_target_blocked": "모델 결정이 문자 전송 컨트롤을 직접 가리켜 실행 전에 차단했습니다.",
+    "sms_send_proximity_blocked": "실행 좌표가 문자 전송 컨트롤과 너무 가까워 차단했습니다.",
+    "sms_send_target_unverifiable": "문자 전송 컨트롤 주변에서 대상 좌표의 안전을 증명하지 못했습니다.",
+    "sms_send_control_unidentified": "전송 단계에서 문자 전송 컨트롤을 식별하지 못해 차단했습니다.",
     "davi_conversation_not_ready": "Davi 최신 대화 화면이 준비되지 않아 전체 여정을 시작하지 못했습니다.",
     "android_home_not_visible": "Davi에서 안내를 시작한 뒤 Android 홈 화면 전환을 확인하지 못했습니다.",
+}
+FAILURE_CATEGORIES = {
+    "step_limit": "model_quality_failure",
+    "target_node_id_mismatch": "model_quality_failure",
+    "target_node_id_missing": "model_quality_failure",
+    "target_bounds_missing": "model_quality_failure",
+    "instruction_length": "model_quality_failure",
+    "reasoning_fields_empty": "model_quality_failure",
+    "scroll_direction_missing": "model_quality_failure",
+    "done_before_goal": "model_quality_failure",
+    "screen_stuck": "model_quality_failure",
+    "decision_timeout": "infra_failure",
+    "root_unavailable": "infra_failure",
+    "server_error": "infra_failure",
+    "client_configuration_error": "infra_failure",
+    "response_parse_error": "infra_failure",
+    "screen_unreadable": "infra_failure",
+    "davi_conversation_not_ready": "infra_failure",
+    "android_home_not_visible": "infra_failure",
+    "instrumentation_failed": "infra_failure",
+    "settings_app_blocked": "safety_boundary_failure",
+    "sms_send_target_blocked": "safety_boundary_failure",
+    "sms_send_proximity_blocked": "safety_boundary_failure",
+    "sms_send_target_unverifiable": "safety_boundary_failure",
+    "sms_send_control_unidentified": "safety_boundary_failure",
 }
 FAILURE_PATTERN = re.compile(r"guided scenario failed code=([a-z0-9_-]+)")
 TIME_PATTERN = re.compile(r"^Time:\s*([0-9.]+)", re.MULTILINE)
@@ -63,6 +104,7 @@ def render(args: argparse.Namespace) -> str:
     )
     failure_match = FAILURE_PATTERN.search(instrumentation)
     failure_code = failure_match.group(1) if failure_match else ("-" if passed else "instrumentation_failed")
+    failure_category = "-" if passed else FAILURE_CATEGORIES.get(failure_code, "unclassified_failure")
     duration_match = TIME_PATTERN.search(instrumentation)
     duration = f"{duration_match.group(1)}초" if duration_match else "측정 불가"
     steps = STEP_PATTERN.findall(safe_log)
@@ -91,6 +133,7 @@ def render(args: argparse.Namespace) -> str:
         "|---|---|",
         f"| 판정 | **{result}** |",
         f"| 실패 코드 | `{failure_code}` |",
+        f"| 실패 범주 | `{failure_category}` |",
         f"| 설명 | {description} |",
         f"| 시작 시각 | {safe_value(args.started_at)} |",
         f"| 소요 시간 | {duration} |",

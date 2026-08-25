@@ -561,6 +561,7 @@ class GuideAccessibilityService : AccessibilityService() {
             if (!rootUnavailable) {
                 rootUnavailable = true
                 GuideTelemetry.rootState("unavailable")
+                e2ePublisher?.rootState(available = false)
             }
             overlay?.clear()
             display.onCleared()
@@ -576,6 +577,7 @@ class GuideAccessibilityService : AccessibilityService() {
             // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
             stability.markResumed(stabilityNowMs(), requery = false)
             GuideTelemetry.rootState("recovered")
+            e2ePublisher?.rootState(available = true)
         }
 
         // IME는 창 type만 읽고 키보드 root나 키 label은 직렬화하지 않는다(#112).
@@ -719,6 +721,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         signature.structure,
                         getString(R.string.guide_screen_unreadable),
                     )?.let {
+                        e2ePublisher?.screenUnreadable()
                         Log.w(
                             TAG,
                             "screen unreadable for ${ScreenStabilityTracker.UNREADABLE_AFTER_MS}ms",
@@ -747,6 +750,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     if (requeried) {
                         Log.i(TAG, "press requery")
                     } else {
+                        e2ePublisher?.screenStuck()
                         Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
                         showStuckNotice(signature.structure)
                     }
@@ -1002,6 +1006,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (!requestInFlight.compareAndSet(false, true)) return false
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
+            e2ePublisher?.clientConfigurationError()
             return false
         }
         // 논리 요청의 "같은 화면" 판정도 구조 축이다(#380) — 내용까지 넣으면 배너 로테이션이
@@ -1021,6 +1026,7 @@ class GuideAccessibilityService : AccessibilityService() {
         apiExecutor.execute {
             val startedAt = SystemClock.elapsedRealtime()
             GuideTelemetry.requestStarted(logicalRequest)
+            e2ePublisher?.requestStarted()
             try {
                 val request = NextStepRequest(
                     goal = session.goal,
@@ -1075,6 +1081,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
 
                     is NextStepResult.ApiFailure -> {
+                        e2ePublisher?.serverError()
                         logicalRequests.markHttpResponse(logicalRequest, result.statusCode)
                         GuideTelemetry.requestFinished(
                             logicalRequest,
@@ -1095,6 +1102,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
 
                     is NextStepResult.HttpFailure -> {
+                        e2ePublisher?.serverError()
                         logicalRequests.markHttpResponse(logicalRequest, result.statusCode)
                         GuideTelemetry.requestFinished(
                             logicalRequest,
@@ -1107,6 +1115,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
 
                     is NextStepResult.NetworkFailure -> {
+                        e2ePublisher?.serverError()
                         GuideTelemetry.requestFinished(
                             logicalRequest,
                             outcome = "network_error",
@@ -1118,6 +1127,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
 
                     is NextStepResult.ParseFailure -> {
+                        e2ePublisher?.responseParseError()
                         // trace가 있으면 서버의 성공 응답까지 받은 뒤 body 계약 파싱이 실패한 것이다.
                         // #82가 같은 ID의 결과를 캐시해도 불량 200을 되받지 않도록 논리 요청을 닫는다.
                         if (result.trace != null) logicalRequests.markHttpResponse(logicalRequest, 200)

@@ -35,6 +35,7 @@ class GuideE2ePublisher(private val context: Context) {
             .putExtra(GuideE2eContract.EXTRA_EXPECTED_RESULT, action.expectedResult)
             .putExtra(GuideE2eContract.EXTRA_EVIDENCE, action.evidence)
             .putExtra(GuideE2eContract.EXTRA_TARGET_BOUNDS, target?.bounds?.toIntArray())
+            .putExtra(GuideE2eContract.EXTRA_TARGET_RESOLVED, target != null)
             .putExtra(GuideE2eContract.EXTRA_TARGET_ROLE, target?.role)
             .putExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, target?.clickable ?: false)
             .putExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, target?.editable ?: false)
@@ -49,6 +50,51 @@ class GuideE2ePublisher(private val context: Context) {
             .putExtra(GuideE2eContract.EXTRA_RESPONSE_GZIP, gzip(JSON.encodeToString(response)))
         // 수신 앱도 signature 권한을 가져야 한다. 화면·안내 원문은 logcat에 출력하지 않는다.
         context.sendBroadcast(intent, GuideE2eContract.PERMISSION)
+    }
+
+    /** transient 상태는 즉시 종료하지 않고 driver가 timeout 원인을 고를 수 있게만 전달한다. */
+    fun rootState(available: Boolean) {
+        diagnostic(
+            if (available) {
+                GuideE2eContract.DIAGNOSTIC_ROOT_RECOVERED
+            } else {
+                GuideE2eContract.DIAGNOSTIC_ROOT_UNAVAILABLE
+            },
+        )
+    }
+
+    fun requestStarted() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_REQUEST_STARTED)
+    }
+
+    fun serverError() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SERVER_ERROR)
+    }
+
+    fun clientConfigurationError() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR)
+    }
+
+    fun responseParseError() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_RESPONSE_PARSE_ERROR)
+    }
+
+    fun screenStuck() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SCREEN_STUCK)
+    }
+
+    fun screenUnreadable() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SCREEN_UNREADABLE)
+    }
+
+    private fun diagnostic(value: String) {
+        if (!GuideE2eRunState.active) return
+        context.sendBroadcast(
+            Intent(GuideE2eContract.ACTION_DIAGNOSTIC)
+                .setPackage(GuideE2eContract.DRIVER_PACKAGE)
+                .putExtra(GuideE2eContract.EXTRA_DIAGNOSTIC, value),
+            GuideE2eContract.PERMISSION,
+        )
     }
 
     private fun gzip(value: String): ByteArray = ByteArrayOutputStream().use { output ->
@@ -107,6 +153,7 @@ internal object GuideE2eContract {
     const val ACTION_START_JOURNEY = "com.davi.helper.e2e.START_JOURNEY"
     const val ACTION_STOP = "com.davi.helper.e2e.STOP"
     const val ACTION_DECISION = "com.davi.helper.e2e.DECISION"
+    const val ACTION_DIAGNOSTIC = "com.davi.helper.e2e.DIAGNOSTIC"
     const val EXTRA_GOAL = "goal"
     const val EXTRA_GENERATION = "generation"
     const val EXTRA_SIGNATURE = "signature"
@@ -118,6 +165,7 @@ internal object GuideE2eContract {
     const val EXTRA_EXPECTED_RESULT = "expected_result"
     const val EXTRA_EVIDENCE = "evidence"
     const val EXTRA_TARGET_BOUNDS = "target_bounds"
+    const val EXTRA_TARGET_RESOLVED = "target_resolved"
     const val EXTRA_TARGET_ROLE = "target_role"
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
@@ -125,4 +173,13 @@ internal object GuideE2eContract {
     const val EXTRA_COMPLETION_VERDICT = "completion_verdict"
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
+    const val EXTRA_DIAGNOSTIC = "diagnostic"
+    const val DIAGNOSTIC_ROOT_UNAVAILABLE = "root_unavailable"
+    const val DIAGNOSTIC_ROOT_RECOVERED = "root_recovered"
+    const val DIAGNOSTIC_REQUEST_STARTED = "request_started"
+    const val DIAGNOSTIC_SERVER_ERROR = "server_error"
+    const val DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR = "client_configuration_error"
+    const val DIAGNOSTIC_RESPONSE_PARSE_ERROR = "response_parse_error"
+    const val DIAGNOSTIC_SCREEN_STUCK = "screen_stuck"
+    const val DIAGNOSTIC_SCREEN_UNREADABLE = "screen_unreadable"
 }

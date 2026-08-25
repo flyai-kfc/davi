@@ -13,10 +13,19 @@ import java.util.zip.GZIPInputStream
 
 internal class GuideDecisionQueue(private val context: Context) : Closeable {
     private val decisions = LinkedBlockingQueue<Result<DisplayedDecision>>()
+    private val diagnostics = GuideE2eDiagnosticState()
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != GuideE2eContract.ACTION_DECISION) return
-            decisions.offer(runCatching { intent.toDecision() })
+            when (intent?.action) {
+                GuideE2eContract.ACTION_DECISION -> {
+                    diagnostics.reset()
+                    decisions.offer(runCatching { intent.toDecision() })
+                }
+                GuideE2eContract.ACTION_DIAGNOSTIC ->
+                    GuideE2eDiagnostic.fromWire(
+                        intent.getStringExtra(GuideE2eContract.EXTRA_DIAGNOSTIC),
+                    )?.let(diagnostics::observe)
+            }
         }
     }
 
@@ -24,7 +33,10 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
         ContextCompat.registerReceiver(
             context,
             receiver,
-            IntentFilter(GuideE2eContract.ACTION_DECISION),
+            IntentFilter().apply {
+                addAction(GuideE2eContract.ACTION_DECISION)
+                addAction(GuideE2eContract.ACTION_DIAGNOSTIC)
+            },
             GuideE2eContract.PERMISSION,
             null,
             ContextCompat.RECEIVER_EXPORTED,
@@ -42,9 +54,9 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
         var candidate: DisplayedDecision? = null
         while (candidate == null) {
             val remaining = deadline - System.nanoTime()
-            if (remaining <= 0) throw GuidedScenarioFailure("decision_timeout", step)
+            if (remaining <= 0) throw timeoutFailure(step)
             val result = decisions.poll(remaining, TimeUnit.NANOSECONDS)
-                ?: throw GuidedScenarioFailure("decision_timeout", step)
+                ?: throw timeoutFailure(step)
             val decision = result.getOrElse {
                 throw GuidedScenarioFailure("decision_contract_invalid", step)
             }
@@ -103,6 +115,7 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
             evidence = getStringExtra(GuideE2eContract.EXTRA_EVIDENCE).orEmpty(),
         ),
         targetBounds = getIntArrayExtra(GuideE2eContract.EXTRA_TARGET_BOUNDS),
+        targetResolved = getBooleanExtra(GuideE2eContract.EXTRA_TARGET_RESOLVED, false),
         targetRole = getStringExtra(GuideE2eContract.EXTRA_TARGET_ROLE),
         targetClickable = getBooleanExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, false),
         targetEditable = getBooleanExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, false),
@@ -113,6 +126,9 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
         requestJson = unzip(GuideE2eContract.EXTRA_REQUEST_GZIP),
         responseJson = unzip(GuideE2eContract.EXTRA_RESPONSE_GZIP),
     )
+
+    private fun timeoutFailure(step: Int) =
+        GuidedScenarioFailure(diagnostics.timeoutFailureCode(), step)
 
     private fun Intent.unzip(name: String): String {
         val compressed = getByteArrayExtra(name) ?: throw IllegalArgumentException(name)

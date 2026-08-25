@@ -8,6 +8,10 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).parents[1] / "render-device-e2e-report.py"
+MESSAGING_SEND_SAFETY = (
+    Path(__file__).parents[2]
+    / "e2e-driver/src/main/java/com/davi/helper/e2e/MessagingSendSafety.kt"
+)
 SPEC = importlib.util.spec_from_file_location("device_e2e_report", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -15,6 +19,37 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DeviceE2eReportTest(unittest.TestCase):
+    def test_issue_209_failure_types_have_distinct_report_copy(self):
+        codes = [
+            "root_unavailable",
+            "server_error",
+            "target_node_id_mismatch",
+            "done_before_goal",
+            "instruction_length",
+        ]
+
+        descriptions = [MODULE.FAILURE_DESCRIPTIONS.get(code) for code in codes]
+
+        self.assertTrue(all(descriptions))
+        self.assertEqual(len(descriptions), len(set(descriptions)))
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["root_unavailable"], "infra_failure")
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["server_error"], "infra_failure")
+        self.assertEqual(
+            MODULE.FAILURE_CATEGORIES["target_node_id_mismatch"],
+            "model_quality_failure",
+        )
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["done_before_goal"], "model_quality_failure")
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["screen_stuck"], "model_quality_failure")
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["screen_unreadable"], "infra_failure")
+        safety_source = MESSAGING_SEND_SAFETY.read_text(encoding="utf-8")
+        messaging_codes = set(
+            re.findall(r'const val SEND_[A-Z_]+ = "([a-z_]+)"', safety_source)
+        )
+        self.assertEqual(len(messaging_codes), 4)
+        for code in {"settings_app_blocked", *messaging_codes}:
+            self.assertEqual(MODULE.FAILURE_CATEGORIES[code], "safety_boundary_failure")
+        self.assertNotIn("done_unverified", MODULE.FAILURE_CATEGORIES)
+
     def test_android_junit_success_code_is_reported_as_passed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -44,6 +79,7 @@ class DeviceE2eReportTest(unittest.TestCase):
 
             self.assertIn("| 판정 | **통과** |", report)
             self.assertIn("| 실패 코드 | `-` |", report)
+            self.assertIn("| 실패 범주 | `-` |", report)
 
     def test_crlf_android_junit_success_is_reported_as_passed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -111,6 +147,7 @@ class DeviceE2eReportTest(unittest.TestCase):
             report = MODULE.render(args)
 
             self.assertIn("`step_limit`", report)
+            self.assertIn("| 실패 범주 | `model_quality_failure` |", report)
             self.assertIn(
                 "| 1 | `com.sec.android.app.launcher` | `open_app_drawer` | false | `inconclusive` | `-` |",
                 report,

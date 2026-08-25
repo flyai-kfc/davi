@@ -151,6 +151,60 @@ SM-S921N(Android 15 / One UI 7.0), 기본 개인정보 마스킹, 로컬 실제 
 `decision_timeout`으로 시나리오 자체는 실패했다. 이는 3상태 wire 관측에는 포함하되 알람 생성 품질
 통과로 주장하지 않는다.
 
+## 2026-08-25 · #209 관측 실패 분류 경계
+
+SM-S921N(Android 15 / One UI 7.0)에서 debug driver와 test APK를 설치하고
+`GuideDecisionQueueDiagnosticTest`를 실행했다. 화면·목표·서버 원문 없이 서명 보호 broadcast로
+root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를 확인했다.
+
+| 입력한 진단 순서 | timeout 결과 | 결과 |
+|---|---|---|
+| `root_unavailable` | `root_unavailable` | 통과 |
+| `root_recovered` → `server_error` | `server_error` | 통과 |
+| `request_started` | `decision_timeout` | 통과 |
+| `screen_stuck` | `screen_stuck` | JVM 통과 · 실기기 재실행 보류 |
+| `request_started` → `screen_unreadable` | `screen_unreadable` | JVM 통과 · 실기기 재실행 보류 |
+
+세 경로와 `target_node_id_mismatch`의 signed decision 전달을 두 계측 테스트에서 실행해
+`OK (2 tests)`를 확인했다. transient root 복구와 다음 서버 요청은
+오래된 진단을 지우므로 이전 오류가 다음 단계의 원인으로 남지 않는다. `target_node_id` 불일치와
+UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 8건으로 고정했다.
+`screen_stuck`은 안내를 실행했지만 화면이 바뀌지 않은 모델 품질 실패로, `screen_unreadable`은
+접근성 관측 인프라 실패로 공유 보고서에서 갈라진다. 문자 전송 하드 경계 4코드는 모두
+`safety_boundary_failure`로 묶여 전송 차단 실행이 미분류로 떨어지지 않는다.
+두 화면 진단을 추가한 뒤 driver/test APK 컴파일과 JVM 상태 전이 테스트는 통과했지만, 연결 기기가
+없어 새 두 행의 서명 broadcast 재실행은 보류했다. 기존 root·server·target 경계의 `OK (2 tests)`
+실측을 새 화면 진단까지 통과한 것으로 넓혀 쓰지 않는다.
+JVM은 driver 상태 전이, 계측 테스트는 wire 직접 주입만 확인하므로 앱의 `UNREADABLE`·`STUCK` 방출
+지점 자체는 아직 태우지 않았다. 이 채널은 debug E2E 보고 전용이고 제품 안내 동작은 바꾸지 않으므로
+머지 차단 조건으로 두지 않는다. 다음 연결 기기 실행에서 두 상태를 실제로 유지해 edge당 broadcast
+한 번과 위 두 행을 확인하고 이 문서를 갱신한다.
+
+리뷰 수정 커밋 `bfea9fb`으로 같은 기기에서 `samsung-clock-create-alarm-full-journey`도 다시 실행했다.
+기본 개인정보 마스킹과 실제 `gemini-3.5-flash-lite`를 사용했고, 런처에서 삼성 시계로 이동해
+14개의 HTTP 200 결정을 수행했다. 14단계 `done`은 서버가 `verified`로 판정했으며 앱이 bounds를
+publish하지 않아 `target=false`였지만, bounds를 쓰지 않는 action이므로
+`target_node_id_mismatch` 오탐 없이 완료 분기까지 도달했다. 독립 robot이 최종 알람 상태 불일치를
+확인해 실행 결과는 의도대로 `done_before_goal` / `model_quality_failure`였고 테스트 데이터 정리는
+성공했다.
+
+아래는 화면·목표·안내 원문과 request id를 제외한 같은 실행의 `GuideSvc`·`DaviE2e` 발췌다.
+
+```text
+GuideSvc: event=request_started attempt=1
+GuideSvc: event=request_finished attempt=1 outcome=success status_code=200
+GuideSvc: action=done target=- direction=- history=10
+GuideSvc: done verified, asking user
+DaviE2e: step=14 action=done package=com.sec.android.app.clockpackage target=false verified=true verdict=verified
+DaviE2e: cleanup=success
+```
+
+첫 준비 실행은 로컬 `.env`의 `DAVI_GEMINI_THINKING_BUDGET=0` 때문에 모델 요청이 HTTP 400으로
+거부돼 `server_error` / `infra_failure`로 종료됐다. 민감정보 없는 최소 실호출에서 같은 모델은
+thinking budget 0일 때 400, 800일 때 200임을 다시 확인했고, 위 최종 실행은 프로세스 환경에서만
+800을 명시했다. 이 준비 실패와 실제 모델 품질 실패가 공유 보고서에서 서로 다른 범주로 보이는 것도
+함께 확인했다.
+
 ## 이후 실행 결과 확인
 
 OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매번 타임스탬프 문서가

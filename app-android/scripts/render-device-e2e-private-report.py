@@ -189,6 +189,7 @@ def render(args: argparse.Namespace) -> str:
             f"| direction | `{cell(action.get('direction'))}` |",
             f"| target_node_id | `{cell(action.get('target_node_id'))}` |",
             f"| expected_target_state | `{cell(action.get('expected_target_state'))}` |",
+            f"| target_node_id resolved | `{cell(target.get('resolved'))}` |",
             f"| resolved target role | `{cell(target.get('role'))}` |",
             f"| resolved target bounds | `{cell(target.get('bounds'))}` |",
             f"| resolved target clickable/editable | `{cell(target.get('clickable'))}` / `{cell(target.get('editable'))}` |",
