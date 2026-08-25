@@ -401,11 +401,17 @@ class GuideAccessibilityService : AccessibilityService() {
         GuideScreenLog.event(event, interesting)
         // 캐시 무효화의 근거가 되는 이벤트를 이 앱이 쏘는가(#427 2단계). 타입과 package만
         // 읽으므로 `event.source`를 건드리지 않는다(#356의 경계 그대로).
+        // **현재 화면의 package만 적립한다**(PR #445 자체 리뷰). 판정에서 읽는 것이
+        // `currentScreenPackage` 하나뿐이라, 셰이드·IME·백그라운드 앱의 이벤트까지 넣으면
+        // 읽히지 않는 항목만 세션 내내 쌓인다. 클릭 축이 쓰는 규칙과도 같아진다.
         event.packageName?.toString()?.let { pkg ->
             if (
-                event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-                event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                pkg == currentScreenPackage &&
+                (
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                        event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                        event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                    )
             ) {
                 cachePolicy.onContentEvent(pkg)
             }
@@ -666,9 +672,13 @@ class GuideAccessibilityService : AccessibilityService() {
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
         val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
         val clickAxisDead = currentScreenPackage?.let { it !in packagesWithClicks } ?: false
-        // **내용 이벤트가 끊긴 앱에서만 캐시를 끈다.** 끄면 노드 접근이 전부 IPC라
-        // 직렬화가 23ms에서 800ms대로 뛴다(2026-08-25 SM-S921N 실측) — 그 값을 모든 앱에
-        // 물리면 폴링 예산을 넘긴다. 이벤트를 쏘는 앱은 캐시가 제때 무효화되므로 낼 이유도 없다.
+        // **내용 이벤트가 끊긴 「구간」에서 캐시를 끈다.** 판정 단위가 앱이 아니라 침묵
+        // 구간이라는 점이 중요하다(PR #445 자체 리뷰) — 이벤트를 쏘는 앱이라도 화면이 정지해
+        // 이벤트가 그치면 [A11yCachePolicy.SILENCE_SAMPLES] 뒤 함께 꺼진다. 그게 낭비로만
+        // 보이지 않는 이유는, 「정지한 화면」과 「낡은 트리」가 우리 눈에 **같아 보이기**
+        // 때문이다: 이벤트를 안 쏘는 앱에서 실제로 바뀐 화면이 정확히 그 모습이었다.
+        // 끄면 노드 접근이 전부 IPC라 직렬화가 23ms에서 800ms대로 뛴다(2026-08-25 SM-S921N
+        // 실측) — 그래서 상시가 아니라 침묵 구간에만 문다. 이벤트가 다시 오면 곧바로 켠다.
         // 판정의 기본값이 **켬**인 것과 그 근거는 [A11yCachePolicy]에 있다.
         updateA11yCache(enabled = cachePolicy.onSample(currentScreenPackage))
         val decision = stability.onSample(
@@ -683,6 +693,8 @@ class GuideAccessibilityService : AccessibilityService() {
         // 밖에 남는 것: `ActiveWindowResolver.resolve()`의 창·root IPC, 직렬화 앞의 `windows.map`,
         // 직렬화 뒤의 `ScreenSignature.of`. 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 때 이 값은 **하한**이다.
         // 폴링마다 찍혀야 p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
+        // 한 번만 읽는다 — 네 값이 같은 시점의 것이어야 로그가 서로를 설명한다.
+        val quiet = stability.quietState(now)
         GuideScreenLog.sample(
             decision.name,
             result.screen.elements.size,
@@ -691,9 +703,10 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionGateOpen(now),
             targetSlotChanged,
             stability.anchorRequerySpent(),
-            stability.quietState(now).first,
-            stability.quietState(now).second,
-            stability.quietState(now).third,
+            quiet.forMs,
+            quiet.armed,
+            quiet.coldOpens,
+            quiet.opens,
             clickAxisDead,
             result.cost,
         )
@@ -1615,7 +1628,6 @@ class GuideAccessibilityService : AccessibilityService() {
 
     companion object {
         const val TAG = "GuideSvc"
-
 
         /**
          * [findEditableNode]의 순회 상한. 직렬화의 요소 상한과 같은 정신이다 — 클릭 디스패치

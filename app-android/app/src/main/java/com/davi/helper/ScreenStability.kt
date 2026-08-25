@@ -266,6 +266,36 @@ class ScreenStabilityTracker(
      * 조작은 연속 창을 타고 흐르므로 이 상한에 걸리지 않는다.
      */
     private var quietColdOpens = 0
+
+    /**
+     * 조용함이 연 재질의 **전부**. 연속 창을 탄 것까지 센다. 화면(구조)마다 [QUIET_OPENS]까지다.
+     *
+     * **연속 창이 [quietColdOpens]를 우회할 수 있어서 둔다**(PR #445 자체 리뷰, 실행으로 재현).
+     * 연속 창은 열릴 때마다 스스로 갱신되는데 그 경로는 cold를 안 올린다. 그래서 주기가
+     * [QUIET_MS]와 [QUIET_ACTIVITY_MS] **사이**인 자기발생 변화(5초 배너)는 첫 회전에서 cold로
+     * 문을 연 뒤 이후 모든 회전이 창을 타고 **무한히** 나갔다 — 5초 주기면 12 RPM으로 무료 티어
+     * 15 RPM에 붙는다. #380이 닫은 폭주가 그대로 되살아나는 자리다.
+     *
+     * 창을 없애면 연속 조작이 죽고(그게 창을 만든 이유다), 창을 두면 cold 천장이 무의미해진다 —
+     * 그래서 **창은 두되 총량에 따로 천장을 씌운다.**
+     */
+    private var quietOpens = 0
+
+    /**
+     * 위 두 예산이 누구 몫인가(화면의 구조 축).
+     *
+     * **[sentSignature]로 판정하면 안 된다**(PR #445 자체 리뷰, 실행으로 재현). 실패
+     * ([markFailed])와 늦은 응답 폐기([markResponseDiscarded])가 그 값을 `null`로 만들어서,
+     * 그 뒤 **다른 화면**에서 나가는 첫 요청이 초기화 조건을 건너뛴다 — 화면 A에서 태운 천장을
+     * 화면 B가 물려받아, B에서 조용함 뒤 사용자가 눌러도 「화면이 그대로예요」로 떨어졌다.
+     */
+    private var quietBudgetStructure: String? = null
+
+    /** 이번 판정이 조용함으로 열렸나. 예산은 **요청이 실제로 나갈 때** 태운다([markSent]). */
+    private var sendWasQuietOpened = false
+
+    /** 그중 연속 창 없이(cold) 열렸나. */
+    private var sendWasQuietCold = false
     private var sentAtMs = 0L
     private var stuckReported = false
     private var failures = 0
@@ -320,6 +350,14 @@ class ScreenStabilityTracker(
             lastContent = null
             contentChangedAtMs = nowMs
             quietChangeArmed = false
+            // 연속 창도 함께 닫는다(PR #445 자체 리뷰). 안 닫으면 스켈레톤이 몇 샘플 끼었다
+            // 돌아온 화면이 **인과 근거 없이** 창을 타고 나간다 — 조용함 시계만 되감고 창을
+            // 살려 두면 되감은 의미가 없다.
+            //
+            // **천장([quietColdOpens]·[quietOpens])은 일부러 안 비운다.** 여기는 세션 재개
+            // ([markResumed])와 달리 같은 화면의 과도기라, 비우면 로딩이 끼는 화면이 스켈레톤
+            // 한 번마다 예산을 새로 받아 총량 천장이 무의미해진다.
+            quietOpenedAtMs = null
             val since = unreadableSinceMs ?: nowMs.also { unreadableSinceMs = it }
             return if (nowMs - since >= unreadableAfterMs) {
                 Decision.UNREADABLE
@@ -384,15 +422,22 @@ class ScreenStabilityTracker(
         // ③-a 바뀌기 직전까지 [QUIET_MS]만큼 조용했다(첫 조작을 세우는 근거), 또는
         // ③-b 조용함으로 연 재질의가 [QUIET_ACTIVITY_MS] 안에 있다(연속 조작).
         //
-        // ①이 있어야 **클릭을 쏘는 앱의 동작이 하나도 안 바뀐다** — 배민은 이 문을 쓰지 않으므로
-        // 배너·검색 화면의 폭주 위험이 원리적으로 0이다. ③-a가 자기발생과 가른다:
+        // ①은 **「클릭을 쏘는 앱」이 아니라 「아직 클릭을 못 본 앱」이다**(PR #445 자체 리뷰).
+        // 앱을 여는 탭은 런처 package라, 어느 앱이든 **진입~그 앱에서의 첫 클릭까지는** 이 문이
+        // 열려 있다. 그 구간의 배너 로테이션은 아래 두 천장이 받는다. 첫 클릭 뒤로는 배민 같은
+        // 앱이 이 문을 아예 안 거친다. 화면 단위로 좁히는 것은 #394 영역이다.
+        // ③-a가 자기발생과 가른다:
         // 2026-08-25 SM-S921N 실측에서 회전하는 검색 화면은 **최대 3샘플(약 2.3초)**밖에
         // 정지하지 못했고, 코레일 인원 선택은 조작 전까지 80샘플 넘게 고정이었다.
         //
         // ③-a는 **분 단위로 도는 숫자를 못 가른다**(PR #445 리뷰). 그건 [quietColdOpens]가
         // 비용에 천장을 씌워 맡는다 — 가르는 신호가 없으므로 가르는 척하지 않는다.
+        //
+        // ③-b(연속 창)는 **총량 천장 아래에서만** 산다([quietOpens]). 창은 열릴 때마다 갱신돼
+        // 스스로를 연장하므로, 총량이 없으면 주기가 4~15초인 자기발생 변화가 cold를 한 번만
+        // 태우고 영원히 창을 타고 흐른다(PR #445 자체 리뷰에서 실행으로 재현).
         val quietActive = quietOpenedAtMs?.let { nowMs - it <= quietActivityMs } ?: false
-        val quietOpened = clickAxisDead && contentOnly &&
+        val quietOpened = clickAxisDead && contentOnly && quietOpens < QUIET_OPENS &&
             (quietActive || (quietChangeArmed && quietColdOpens < QUIET_COLD_OPENS))
         val novel = when {
             sent == null -> true
@@ -414,10 +459,13 @@ class ScreenStabilityTracker(
         sendWasAnchorOpened = novel && anchorOpened && !interactedRecently(nowMs)
         // 연속 창은 **조용함이 실제로 연 재질의**에서만 이어진다. 게이트가 이미 열려 있었다면
         // 그 재질의는 조작이 만든 것이라 조용함을 태울 이유가 없다(앵커 상한과 같은 결).
-        if (novel && quietOpened && !interactedRecently(nowMs)) {
-            if (!quietActive) quietColdOpens++
-            quietOpenedAtMs = nowMs
-        }
+        //
+        // **여기서 태우지 않고 [markSent]로 미룬다**(PR #445 자체 리뷰). 바로 위 앵커 상한이
+        // 세운 규칙("요청이 실제로 나갔을 때만 쓴다 — `SEND`는 그 보장이 아니다")을 이 자리가
+        // 어기고 있었다: `quietColdOpens++`가 in-flight 조기 반환보다 앞이라, 요청이 한 건도
+        // 안 나가는데 화면당 예산 3 중 1이 사라졌다.
+        sendWasQuietOpened = novel && quietOpened && !interactedRecently(nowMs)
+        sendWasQuietCold = sendWasQuietOpened && !quietActive
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -459,9 +507,21 @@ class ScreenStabilityTracker(
         // 인정하는 셈이다. 홀드를 통과하고 요청까지 나간 구조 전환이 여기다.
         if (sentSignature != null && signature.structure != sentSignature?.structure) {
             anchorRequeryUsed = false
-            // 화면이 바뀌었다 — 자기발생 숫자의 천장도 그 화면의 몫이라 함께 연다.
+        }
+        // 조용함 예산은 **[sentSignature]가 아니라 예산이 속한 구조**로 판정한다
+        // ([quietBudgetStructure]). 실패·폐기가 `sentSignature`를 비우고 나면 위 조건이
+        // 거짓이 되어, 옮겨 간 화면이 앞 화면에서 태운 천장을 물려받았다(PR #445 자체 리뷰).
+        if (signature.structure != quietBudgetStructure) {
+            quietBudgetStructure = signature.structure
             quietColdOpens = 0
+            quietOpens = 0
             quietOpenedAtMs = null
+        }
+        // 예산은 여기서 태운다 — 판정이 아니라 **요청이 실제로 나간 것**이 기준이다.
+        if (sendWasQuietOpened) {
+            quietOpens++
+            if (sendWasQuietCold) quietColdOpens++
+            quietOpenedAtMs = nowMs
         }
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
@@ -516,10 +576,23 @@ class ScreenStabilityTracker(
      * 조용함 문의 상태(#427 2단계). **계측 전용** — 내용이 바뀌었는데도 IDLE인 것이
      * "조용하지 않아서"인지, "클릭 축이 살아 있어서"인지, "천장에 걸려서"인지 로그에서 갈라야 한다.
      *
-     * 셋을 돌려준다: 내용이 조용한 시간(ms) · 방금 무장됐는가 · 이 화면에서 태운 천장 수.
+     * **총량([QuietState.opens])까지 싣는다**(PR #445 자체 리뷰). cold 천장을 우회하는 폭주를
+     * 막는 최후 방벽이 총량이라, 로그에 안 나오면 그 방벽이 도는지 실기기에서 볼 수 없다.
      */
-    fun quietState(nowMs: Long): Triple<Long, Boolean, Int> =
-        Triple(contentChangedAtMs?.let { nowMs - it } ?: 0L, quietChangeArmed, quietColdOpens)
+    fun quietState(nowMs: Long): QuietState = QuietState(
+        forMs = contentChangedAtMs?.let { nowMs - it } ?: 0L,
+        armed = quietChangeArmed,
+        coldOpens = quietColdOpens,
+        opens = quietOpens,
+    )
+
+    /** [quietState]의 한 묶음. 네 값이 **같은 시점**의 것이어야 로그가 서로를 설명한다. */
+    data class QuietState(
+        val forMs: Long,
+        val armed: Boolean,
+        val coldOpens: Int,
+        val opens: Int,
+    )
 
     /**
      * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
@@ -658,6 +731,7 @@ class ScreenStabilityTracker(
         quietChangeArmed = false
         quietOpenedAtMs = null
         quietColdOpens = 0
+        quietOpens = 0
         if (requery) sentSignature = null
     }
 
@@ -705,6 +779,10 @@ class ScreenStabilityTracker(
         quietChangeArmed = false
         quietOpenedAtMs = null
         quietColdOpens = 0
+        quietOpens = 0
+        quietBudgetStructure = null
+        sendWasQuietOpened = false
+        sendWasQuietCold = false
         sentAtMs = 0L
         stuckReported = false
         failures = 0
@@ -747,6 +825,18 @@ class ScreenStabilityTracker(
          * 최악이 이 횟수의 모델 호출로 끝나고, 조작은 연속 창을 타므로 여기 걸리지 않는다.
          */
         const val QUIET_COLD_OPENS = 3
+
+        /**
+         * 조용함이 열 수 있는 재질의 **총량**(화면당, 연속 창을 탄 것 포함).
+         *
+         * [QUIET_COLD_OPENS]만으로는 폭주가 안 막힌다 — 연속 창이 스스로를 연장해 cold를
+         * 우회하기 때문이다([quietOpens]). 여기가 그 최후 방벽이라 기준은 **호출량**이다:
+         * 무료 티어가 15 RPM인데(`HANDOFF.md` §10) 화면 하나가 그 예산을 통째로 먹으면 안 된다.
+         *
+         * 조작 쪽 근거는 실측이다 — 2026-08-25 코레일 220샘플 세션의 조작이 **6회**였고, 그중
+         * 한 화면에 몰린 것은 그보다 적다. 12면 그 두 배가 넘어 정상 조작이 여기 닿지 않는다.
+         */
+        const val QUIET_OPENS = 12
 
         /** 같은 시그니처가 이만큼 연속으로 나와야 "안정"으로 본다. */
         const val HOLD_SAMPLES = 2

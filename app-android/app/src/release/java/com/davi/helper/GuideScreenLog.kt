@@ -35,6 +35,7 @@ object GuideScreenLog {
         quietMs: Long,
         quietArmed: Boolean,
         quietColdOpens: Int,
+        quietOpens: Int,
         clickAxisDead: Boolean,
         cost: UiTreeSerializer.WalkCost,
     ) = Unit

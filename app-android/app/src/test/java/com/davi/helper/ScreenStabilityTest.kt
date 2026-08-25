@@ -268,10 +268,9 @@ class ScreenSignatureTest {
 /**
  * 내용 축 해시(#410).
  *
- * **전각 숫자 표본을 넣지 말 것.** `ScreenSignature.DIGITS`의 `\d`가 기기(ICU, 유니코드
- * 기본)와 JVM(OpenJDK, ASCII 기본)에서 다른 것을 잡아, JVM에서 통과하는 기대값이 기기에서는
- * 거짓이 된다(#402가 `PrivacyMasker`에서 실측). 여기서 해시하는 값은 이미 정규화를 마친
- * 내용 축이라 그 갈림이 개입하지 않지만, 표본으로 끌어들이면 그때부터 개입한다.
+ * **#427로 이 자리의 전각 숫자 위험은 사라졌다.** 내용 축이 정규화를 거치지 않는 원문이라
+ * 정규식이 개입할 자리가 없다 — 예전 경고는 내용 축을 `DIGITS`로 지우던 때의 것이다.
+ * 같은 위험은 [ScreenSignature.stableLabelOf]로 **옮겨 갔다**(아래 앵커 테스트).
  */
 class ContentSignatureTest {
 
@@ -389,6 +388,11 @@ class GuidedSlotAnchorTest {
     fun `앵커가 보는 값은 숫자를 지운 값이다`() {
         // 위 테스트는 "두 label이 다르다"만 봐서 옛 구현에서도 통과한다(`안 읽음 #` != `안 읽음 11`).
         // 규칙을 고정하려면 반환값 자체를 단언해야 한다(PR #445 리뷰).
+        //
+        // **전각 숫자 표본을 넣지 말 것.** `ANCHOR_DIGITS`의 `\d`가 기기(ICU, 유니코드 기본)와
+        // JVM(OpenJDK, ASCII 기본)에서 다른 것을 잡아, JVM에서 통과하는 기대값이 기기에서는
+        // 거짓이 된다(#402가 `PrivacyMasker`에서 실측). #427로 내용 축이 정규화를 버린 뒤로
+        // 이 갈림이 남은 자리는 **앵커뿐**이다.
         val element = UiElement(nodeId = "n3", label = "안 읽음 12", role = "View")
 
         assertEquals("안 읽음 #", ScreenSignature.stableLabelOf(element))
@@ -978,6 +982,116 @@ class ScreenStabilityTrackerTest {
 
         // 1초 뒤 두 번째 탭. 조용하지 않았지만 연속 창 안이다.
         assertEquals(Decision.SEND, sample(6_600, "어린이 3명"))
+    }
+
+    @Test
+    fun `연속 창 안 주기로 도는 화면도 총량 천장에서 멈춘다`() {
+        // **연속 창이 cold 천장을 우회한다**(PR #445 자체 리뷰, 실행으로 재현). 창은 열릴 때마다
+        // 스스로 갱신되고 그 경로는 cold를 안 올려서, 주기가 QUIET_MS~QUIET_ACTIVITY_MS 사이인
+        // 배너는 첫 회전에서 cold 하나만 태우고 이후 **무한히** 나갔다 — 5초 주기면 12 RPM으로
+        // 무료 티어(15 RPM)에 붙는다. 총량 천장이 없으면 이 단언이 그 자리에서 깨진다.
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("home", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "배너 0")
+        sample(700, "배너 0")
+        tracker.markSent(ScreenSig("home", "배너 0"), 700)
+        tracker.markFinished()
+
+        // 5초 주기 = 조용함(4초)은 넘고 연속 창(15초) 안이다. 총량만큼은 열린다.
+        var sends = 0
+        repeat(ScreenStabilityTracker.QUIET_OPENS + 6) { i ->
+            val t = 5_000L * (i + 1)
+            val v = "배너 ${i + 1}"
+            if (sample(t, v) == Decision.SEND) {
+                sends++
+                tracker.markSent(ScreenSig("home", v), t)
+                tracker.markFinished()
+            }
+        }
+
+        assertEquals(ScreenStabilityTracker.QUIET_OPENS, sends)
+    }
+
+    @Test
+    fun `요청이 안 나간 판정은 천장을 태우지 않는다`() {
+        // 앵커 상한이 세운 규칙과 같다 — 상한은 **요청이 실제로 나갔을 때만** 쓴다.
+        // 예전에는 `quietColdOpens++`가 in-flight 조기 반환보다 앞이라, 요청이 한 건도 안
+        // 나가는데 화면당 예산이 사라졌다(PR #445 자체 리뷰).
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("count", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "인원 1명")
+        sample(700, "인원 1명")
+        tracker.markSent(ScreenSig("count", "인원 1명"), 700)
+        // markFinished를 부르지 않는다 — 요청이 아직 진행 중이다.
+
+        // 조용함 뒤 내용이 바뀌지만 in-flight라 IDLE이다. 이때 예산이 줄면 안 된다.
+        assertEquals(Decision.IDLE, sample(5_600, "인원 2명"))
+        assertEquals(0, tracker.quietState(5_600).coldOpens)
+        assertEquals(0, tracker.quietState(5_600).opens)
+    }
+
+    @Test
+    fun `실패 뒤 옮겨 간 화면은 앞 화면의 천장을 물려받지 않는다`() {
+        // 초기화가 `sentSignature != null` 뒤에 있어서, 실패·폐기가 그 값을 비우고 나면 다음
+        // 화면의 첫 요청이 초기화를 건너뛰었다 — B에서 조용함 뒤 눌러도 열리지 않았다
+        // (PR #445 자체 리뷰, 실행으로 재현).
+        fun sample(t: Long, structure: String, v: String) =
+            tracker.onSample(ScreenSig(structure, v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "A", "9분 전")
+        sample(700, "A", "9분 전")
+        tracker.markSent(ScreenSig("A", "9분 전"), 700)
+        tracker.markFinished()
+        // 화면 A에서 cold 천장을 전부 태운다(연속 창 밖 간격).
+        repeat(ScreenStabilityTracker.QUIET_COLD_OPENS) { i ->
+            val t = 60_000L * (i + 1)
+            val v = "${8 - i}분 전"
+            sample(t, "A", v)
+            tracker.markSent(ScreenSig("A", v), t)
+            tracker.markFinished()
+        }
+
+        // 요청 하나가 실패해 sentSignature가 비워진다.
+        tracker.markFailed(300_000)
+
+        // 화면 B로 옮겨 실제로 요청이 나간다.
+        sample(400_000, "B", "인원 1명")
+        sample(400_700, "B", "인원 1명")
+        tracker.markSent(ScreenSig("B", "인원 1명"), 400_700)
+        tracker.markFinished()
+        assertEquals(0, tracker.quietState(400_700).coldOpens)
+
+        // B에서 조용함 뒤 사용자가 탭하면 열려야 한다.
+        assertEquals(Decision.SEND, sample(410_000, "B", "인원 2명"))
+    }
+
+    @Test
+    fun `빈 화면이 끼면 연속 창이 닫힌다`() {
+        // 관측 불가 구간은 인과 근거가 아니다. 조용함 시계만 되감고 창을 살려 두면 되감은
+        // 의미가 없다 — 스켈레톤이 끼었다 돌아온 화면이 근거 없이 창을 탄다(PR #445 자체 리뷰).
+        fun sample(t: Long, v: String, labeled: Boolean = true) =
+            tracker.onSample(ScreenSig("home", v), t, hasLabeledElement = labeled, clickAxisDead = true)
+
+        sample(0, "9분 전")
+        sample(700, "9분 전")
+        tracker.markSent(ScreenSig("home", "9분 전"), 700)
+        tracker.markFinished()
+        // 조용함으로 한 번 연다 — 여기서 연속 창이 선다.
+        assertEquals(Decision.SEND, sample(5_600, "8분 전"))
+        tracker.markSent(ScreenSig("home", "8분 전"), 5_600)
+        tracker.markFinished()
+
+        // label이 사라졌다 돌아온다. 창이 살아 있으면 아래가 SEND가 된다.
+        //
+        // **샘플을 둘 넣는다.** 돌아온 첫 샘플은 홀드에 걸려 무조건 `WAIT`이라, 거기서 단언하면
+        // 창이 살았든 닫혔든 통과해 **테스트가 공허해진다**(변이로 확인 — 이 줄이 하나였을 때
+        // 연속 창을 안 닫는 변이가 살아남았다).
+        sample(6_300, "", labeled = false)
+        sample(7_000, "", labeled = false)
+        sample(7_700, "7분 전")
+        assertNotEquals(Decision.SEND, sample(8_400, "7분 전"))
     }
 
     @Test
