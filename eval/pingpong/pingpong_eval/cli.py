@@ -19,7 +19,14 @@ from pathlib import Path
 from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
 from .metrics import batch_of, in_batch, summarize, transcript_metrics
-from .models import JudgeBatch, ScenarioFile, ScenarioResult, StopReason, Transcript
+from .models import (
+    JudgeBatch,
+    ScenarioFile,
+    ScenarioResult,
+    StopReason,
+    Transcript,
+    _judge_contract,
+)
 from .report import render_completion_comparison, write_run
 from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
@@ -142,7 +149,11 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print(f"준비 실패: {error}", file=sys.stderr)
         return 1
 
-    batch = JudgeBatch(model=judge_client.model, scenario_digest=current)
+    batch = JudgeBatch(
+        model=judge_client.model,
+        scenario_digest=current,
+        judge_contract=_judge_contract(),
+    )
     judge_failures = 0
     for result in picked:
         # 재채점 대상의 이전 채점은 재시도 전에 비운다 — 실패했는데 남아 있으면
@@ -196,6 +207,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
             ),
             "채점범위": args.difficulty or args.only or "전체",
             "채점시_시나리오해시": current,
+            "채점계약": _judge_contract(),
         }
     )
     report = write_run(run_dir, results, meta)
@@ -281,7 +293,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             try:
                 result.judge = run_judge(judge_client, scenario, result.transcript)
                 result.judge_batch = JudgeBatch(
-                    model=judge_client.model, scenario_digest=digest
+                    model=judge_client.model,
+                    scenario_digest=digest,
+                    judge_contract=_judge_contract(),
                 )
             except LlmError as error:
                 print(f"[{scenario.id}] 채점 실패: {error}", file=sys.stderr)
@@ -300,6 +314,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "시나리오수": len(scenarios),
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,
+        "채점계약": _judge_contract() if judge_client else None,
         "평가자경유": judge_client.base_url if judge_client else None,
         "평가자_입력토큰": judge_client.input_tokens if judge_client else 0,
         "평가자_출력토큰": judge_client.output_tokens if judge_client else 0,

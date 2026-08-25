@@ -276,7 +276,9 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
         slot_scores=[],
         violations=[],
     )
-    good.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+    good.judge_batch = JudgeBatch(
+        model="judge", scenario_digest="same", judge_contract="c1"
+    )
 
     hallucinated = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
     hallucinated.missing_slot_keys = ["대상"]
@@ -295,9 +297,11 @@ def test_316_완료지표는_채점분모와_코드분모를_섞지_않는다(sc
             )
         ],
     )
-    hallucinated.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+    hallucinated.judge_batch = JudgeBatch(
+        model="judge", scenario_digest="same", judge_contract="c1"
+    )
 
-    summary = summarize([good, hallucinated], batch=("judge", "same"))["전체"]
+    summary = summarize([good, hallucinated], batch=("judge", "same", "c1"))["전체"]
     assert summary["ready율"] == 1.0
     assert summary["2회이내_ready율"] == 1.0
     assert summary["goal_유효율"] == 0.5
@@ -349,7 +353,9 @@ def test_예전_run은_transcript로_새_지표를_재계산한다(scenarios, tm
         slot_scores=[],
         violations=[],
     )
-    result.judge_batch = JudgeBatch(model="judge", scenario_digest="same")
+    result.judge_batch = JudgeBatch(
+        model="judge", scenario_digest="same", judge_contract="c1"
+    )
     old_record = result.model_dump(mode="json", exclude={"missing_slot_keys"})
     old_record["metrics"] = {"질문수": 99}  # #316 지표가 없던 예전 저장값
     (tmp_path / "transcripts.jsonl").write_text(
@@ -362,7 +368,7 @@ def test_예전_run은_transcript로_새_지표를_재계산한다(scenarios, tm
     assert loaded[0].metrics["질문수"] == 2
     assert loaded[0].metrics["2회이내_ready"] is True
     assert loaded[0].missing_slot_keys is None
-    summary = summarize(loaded, batch=("judge", "same"))["전체"]
+    summary = summarize(loaded, batch=("judge", "same", "c1"))["전체"]
     assert summary["누락정보_환각"] is None
     assert summary["누락정보_환각_분모"] == 0
     assert summary["누락정보_환각률"] is None
@@ -969,3 +975,41 @@ def test_채점_지시문은_모든_위반_축을_열거한다(scenarios):
     prompt = build_prompt(scenarios[0], result.transcript)
     missing = [axis.value for axis in ViolationAxis if axis.value not in prompt]
     assert not missing, f"지시문에 없는 축: {missing}"
+
+
+def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는다(scenarios):
+    """같은 평가자 모델·같은 시나리오라도 **채점 계약이 다르면** 한 수치가 아니다.
+
+    이것이 없으면 위반 축을 늘린 뒤 일부만 재채점했을 때, 재채점분은 새 축이고 나머지는
+    옛 축인데 둘 다 같은 배치로 판정돼 한 보고서에 섞인다(PR #448 리뷰). 모델이 달라지는
+    경로는 위 `test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않는다`가 이미 막는다.
+    """
+    from pingpong_eval.metrics import batch_of, in_batch
+    from pingpong_eval.models import (
+        Achievement,
+        JudgeBatch,
+        JudgeResult,
+        _judge_contract,
+    )
+
+    def scored(contract: str):
+        result = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+        result.judge = JudgeResult(
+            achievement=Achievement.FULL, reason="충족", slot_scores=[], violations=[]
+        )
+        result.judge_batch = JudgeBatch(
+            model="같은모델", scenario_digest="같은해시", judge_contract=contract
+        )
+        return result
+
+    batch = batch_of(
+        {
+            "평가자모델": "같은모델",
+            "시나리오해시": "같은해시",
+            "채점계약": _judge_contract(),
+        }
+    )
+    assert in_batch(scored(_judge_contract()), batch)
+    assert not in_batch(scored("v1:옛계약"), batch)
+    # 이 필드가 생기기 전의 채점(빈 값)도 현재 배치가 아니다.
+    assert not in_batch(scored(""), batch)
