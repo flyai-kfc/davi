@@ -519,6 +519,14 @@
       **「골라주세요」가 아니라 「선택해 주세요」다** — 다비는 어르신께 높임말을 쓴다.
     -->
     <string name="clarification_prompt_collapsed">선택해 주세요</string>
+    <!--
+      **보기가 없는 질문**의 접힌 문구(#452). 서버가 선택지를 못 만드는 질문을 주면 화면에
+      「직접 말하기」 하나만 남는데, 거기서 「선택해 주세요」는 **없는 것을 고르라는 말**이라
+      어르신이 화면에서 그것을 찾는다. 자유 발화형 질문이면 항상 이 갈래다.
+      **접지 않는 쪽은 안 골랐다** — 접힌 카드 높이가 상수라는 것이 「배율 2.0에서 보기가 한
+      화면에 들어온다」를 지탱하는데, 갈래마다 접고 안 접으면 그 보장이 갈린다.
+    -->
+    <string name="clarification_prompt_collapsed_freeform">말씀해 주세요</string>
     <string name="clarification_question_show">질문 다시 보기</string>
     <!-- 접힘/펼침을 **상태로** 알린다. 라벨은 다음에 할 일을, 이 값은 지금 어떤지를 말한다. -->
     <string name="clarification_question_state_collapsed">접힘</string>

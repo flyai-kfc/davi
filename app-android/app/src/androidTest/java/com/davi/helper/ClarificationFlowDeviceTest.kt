@@ -226,6 +226,25 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
+    fun collapsedCardDoesNotAskToChooseWhenThereIsNothingToChoose() {
+        // #452. 보기가 0개면 화면에 「직접 말하기」만 남는데, 거기서 「선택해 주세요」는
+        // **없는 것을 고르라는 말**이라 어르신이 화면에서 그것을 찾는다.
+        val current = launchConversation()
+
+        showClarification(current, questionCount = 1, optionCount = 0)
+        assertEquals(
+            current.getString(R.string.clarification_prompt_collapsed_freeform),
+            current.findViewById<TextView>(R.id.card_question).text.toString(),
+        )
+
+        showClarification(current, questionCount = 1, optionCount = 2)
+        assertEquals(
+            current.getString(R.string.clarification_prompt_collapsed),
+            current.findViewById<TextView>(R.id.card_question).text.toString(),
+        )
+    }
+
+    @Test
     fun emptyOptionsRepeatedNoMatchKeepsVisibleExitThatEndsTheDialogue() {
         val current = launchConversation()
         showClarification(current, questionCount = 1, optionCount = 0)
