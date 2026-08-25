@@ -1667,6 +1667,8 @@ class ConversationActivity : AppCompatActivity() {
         if (!model.clarificationVisible || model.questionText == null) {
             toggle.isVisible(false)
             questionFoldKey = null
+            // 다른 화면의 카드는 예전대로 끌어서 스크롤한다.
+            binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
             return
         }
         val key = model.questionText
@@ -1719,7 +1721,24 @@ class ConversationActivity : AppCompatActivity() {
                 topMargin = resources.getDimensionPixelSize(R.dimen.davi_spacing_md)
             }
         }
+        // **접힌 카드는 스크롤 대상이 아니다.** movementMethod가 붙어 있으면 TextView가
+        // clickable로 노출돼 **스크린리더가 누를 수 있는 것으로 읽는데 눌러도 아무 일이 없다**
+        // (실측: content-desc 없이 clickable=true). 넘칠 일이 없는 한 줄에는 떼어 둔다.
+        binding.cardQuestion.movementMethod =
+            if (questionExpanded) ScrollingMovementMethod.getInstance() else null
         toggle.isVisible(true)
+        // **접힘/펼침을 라벨이 아니라 상태로 알린다.** 라벨(「질문 다시 보기」)은 다음에 할 일을
+        // 말할 뿐이라, 누른 뒤 **무엇이 바뀌었는지**는 스크린리더가 따로 읽어 줘야 한다.
+        ViewCompat.setStateDescription(
+            toggle,
+            getString(
+                if (questionExpanded) {
+                    R.string.clarification_question_state_expanded
+                } else {
+                    R.string.clarification_question_state_collapsed
+                },
+            ),
+        )
         // **삼각형은 돌려서 방향만 바꾼다** — 접혔을 때 아래(펼쳐진다), 펼쳤을 때 위(접힌다).
         // 그림에는 말이 없으므로 **contentDescription이 그 말을 대신한다** — 스크린리더에서
         // 「질문 다시 보기」/「질문 접기」로 읽혀 정보가 안 사라진다.

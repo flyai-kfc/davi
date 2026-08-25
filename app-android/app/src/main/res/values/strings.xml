@@ -512,6 +512,9 @@
     -->
     <string name="clarification_prompt_collapsed">선택해 주세요</string>
     <string name="clarification_question_show">질문 다시 보기</string>
+    <!-- 접힘/펼침을 **상태로** 알린다. 라벨은 다음에 할 일을, 이 값은 지금 어떤지를 말한다. -->
+    <string name="clarification_question_state_collapsed">접힘</string>
+    <string name="clarification_question_state_expanded">펼침</string>
     <string name="clarification_question_hide">질문 접기</string>
     <string name="conversation_failed">목표를 정리하지 못했어요\n처음으로 돌아갈게요</string>
     <!--
