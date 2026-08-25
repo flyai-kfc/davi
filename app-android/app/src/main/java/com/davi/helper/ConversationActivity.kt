@@ -674,7 +674,19 @@ class ConversationActivity : AppCompatActivity() {
         // 둘이 딱 붙어 davi_home_bubble_margin_bottom이 통째로 0이 된다 — 여유가 있는데도
         // 붙일 이유가 없다. 여유가 없을 때만 하한이 걸려 이 여백부터 먹힌다.
         val gap = resources.getDimensionPixelSize(R.dimen.davi_home_bubble_margin_bottom)
-        val overflow = bubbleBottomAtBase + gap - micAt[1]
+        // **위 여백이 실제로 먹은 만큼을 뺀다**(2026-08-25 리뷰). 안 그러면 줄어든 캐릭터가
+        // 영영 안 돌아온다.
+        //
+        // davi_home_control_reserve(173) = davi_home_mic_margin_bottom(82) + davi_mic_button_size(91)이라
+        // **열이 안 넘치는 구간에서 말풍선 바닥은 정확히 micTop - gap에 못 박힌다** — 남는 세로를
+        // space_flex_top 혼자 위에서 먹기 때문이다. 그 값을 넣으면 overflow == caneShrink가 되고,
+        // applyCaneShrink가 「값이 같으면 아무것도 안 한다」로 빠져 되돌아올 기울기가 사라진다.
+        // (긴 문구 -> 설정 다녀오기 -> 짧은 문구에서 캐릭터가 큰 채로 굳는다.)
+        //
+        // space_flex_top의 높이가 곧 **열에 남은 여유**다(홈에서 weight를 가진 자식이 그것뿐이다).
+        // 그래서 이 한 항이 두 구간을 하나로 합친다 — 넘치는 구간에서는 0이라 식이 그대로고,
+        // 안 넘치는 구간에서는 남은 여유만큼 음수로 끌어내려 한 패스에 0으로 수렴한다.
+        val overflow = bubbleBottomAtBase + gap - micAt[1] - binding.spaceFlexTop.height
         val floor = resources.getDimensionPixelSize(R.dimen.davi_home_cane_min_height)
         applyCaneShrink(overflow.coerceIn(0, (caneBaseHeight - floor).coerceAtLeast(0)))
     }
