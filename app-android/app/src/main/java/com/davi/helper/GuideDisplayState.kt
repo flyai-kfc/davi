@@ -40,6 +40,11 @@ class GuideDisplayState {
      * [confirm]이 있으면 안내창 컨트롤 행이 X칩 대신 확인쌍이 된다. 무엇을 그릴지의 판정이라
      * 여기 있고, 어떻게 그릴지는 오버레이가 정한다.
      *
+     * [inputText]는 「바로 입력」 버튼이 입력칸에 채울 글자다(C21 · #405). 값이 있으면
+     * 안내창 컨트롤 행에 버튼이 뜬다. **type 안내에서만 남긴다** — 서버 가드가 이미 비우지만
+     * (`_keep_input_text_named_by_instruction`), 이 값으로 창에 버튼이 생기므로 앱도 [show]에서 한 번 더
+     * 좁힌다. 값이 곧 예외 조작의 범위라서다(`SPEC.md` §2).
+     *
      * [targetSuppressed]는 **강조·손 시연을 그리지 말라는 명시 신호**다(PR #343 리뷰 P1).
      * 예전에는 `copy(bounds = null, direction = null)`이 그 뜻을 겸했는데, 가장자리 제스처
      * (#222)의 강조 선·손은 [actionType]에서 파생돼 그 규약을 조용히 비껴갔다 — 지우는 쪽
@@ -52,6 +57,7 @@ class GuideDisplayState {
         val text: String,
         val actionType: ActionType? = null,
         val direction: SwipeDirection? = null,
+        val inputText: String? = null,
         val confirm: ConfirmKind? = null,
         val targetSuppressed: Boolean = false,
     )
@@ -124,9 +130,16 @@ class GuideDisplayState {
         text: String,
         actionType: ActionType? = null,
         direction: SwipeDirection? = null,
+        inputText: String? = null,
     ): Content {
         clearUnreadableState()
-        val content = Content(bounds, text, actionType, direction)
+        val content = Content(
+            bounds,
+            text,
+            actionType,
+            direction,
+            inputText = inputText?.takeIf { it.isNotBlank() && actionType == ActionType.TYPE },
+        )
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = true
@@ -276,6 +289,29 @@ class GuideDisplayState {
         visible = on
         targetHidden = false
         pressConsumed = false
+    }
+
+    /**
+     * 「바로 입력」이 채울 값과 그 값을 넣을 칸의 자리(#405). 값이 없으면 null.
+     *
+     * **서비스가 미러를 들지 않는다**(PR #407 리뷰 P1). 표시 깔때기에는 `input_text`가 빈
+     * Content가 섞여 들어온다 — 종료 확인([showQuitConfirm])과 읽기 불가 안내가 그렇다. 그걸
+     * 받아 적으면 **되살아난 안내에서 자리가 죽는다**: ✕ → 「계속 볼래요」로 돌아온 안내는
+     * 버튼이 함께 돌아오는데 자리만 비어 입력 포커스 폴백으로 새고, 그 폴백이 안내한 칸이
+     * 아닌 곳을 채울 수 있는 경로다(실기기 재현: `via=bounds` → `via=focus`).
+     *
+     * [guide]는 그 왕복에 안 죽는다 — [dismissQuitConfirm]이 원본을 그대로 되살리고,
+     * [hideTarget]은 복사본만 지운다. [pressTargetBounds]가 같은 성질에 기대는 선례다.
+     *
+     * **[pressTargetBounds]와 달리 `visible`을 보지 않는다.** 저쪽은 시스템이 아무 때나 주는
+     * 클릭 이벤트에서 불려 "지금 우리 안내가 떠 있는가"를 스스로 물어야 하지만, 이쪽은
+     * **우리 버튼의 클릭 리스너에서만** 불린다 — 그 버튼은 조작 오버레이가 떠 있는 동안만
+     * 존재하므로 창이 걷힌 뒤에는 호출 자체가 없다.
+     */
+    fun inputFill(): Pair<String, List<Int>?>? {
+        val current = guide ?: return null
+        val text = current.inputText ?: return null
+        return text to current.bounds?.takeIf { it.size == 4 }
     }
 
     /**

@@ -56,6 +56,12 @@ class OverlayController(
 
         /** 확인의 ×. 완료 확인이면 "아직", 종료 확인이면 "계속" — 둘 다 같은 세션으로 잇는다. */
         fun onConfirmReject(kind: GuideDisplayState.ConfirmKind)
+
+        /**
+         * 「바로 입력」 버튼(C21 · #405). 무엇을 어디에 채울지는 서비스가 안다 — 이 창은
+         * 버튼이 눌렸다는 사실만 전한다(중지 칩과 같은 분업).
+         */
+        fun onInputFillRequested()
     }
 
     private val windowManager =
@@ -66,6 +72,9 @@ class OverlayController(
 
     /** 지금 그리는 확인 화면의 종류(없으면 null). 자리 계산 콜백이 조작 오버레이에 그대로 넘긴다. */
     private var confirmKind: GuideDisplayState.ConfirmKind? = null
+
+    /** 「바로 입력」 버튼이 채울 글자(없으면 null). [confirmKind]와 같은 경로로 조작 오버레이에 넘긴다. */
+    private var inputText: String? = null
 
     /**
      * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
@@ -88,16 +97,19 @@ class OverlayController(
         direction: SwipeDirection? = null,
         confirm: GuideDisplayState.ConfirmKind? = null,
         targetSuppressed: Boolean = false,
+        inputText: String? = null,
     ) {
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
+        this.inputText = inputText
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed)
+        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed, inputText)
     }
 
     fun clear() {
         confirmKind = null
+        inputText = null
         view?.setConfirmChrome(null)
         view?.clearTarget()
     }
@@ -152,7 +164,7 @@ class OverlayController(
                 if (rect == null) {
                     control.hide()
                 } else {
-                    control.show(rect, lines, confirmKind, reading, reserved)
+                    control.show(rect, lines, confirmKind, reading, reserved, inputText)
                 }
             }
         return runCatching {

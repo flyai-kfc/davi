@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「바로 입력」 버튼 배경(C21 · #405). 확인쌍 캡슐(`bg_davi_overlay_confirm_accept`)과 같은
+  구조·치수이고 채움만 본문 primary(#A50014)다 — 확정(초록)·부정(빨강 A50014와 다른 자리)의
+  뜻을 빌리지 않는, 안내 중의 일반 행동 버튼이라서다.
+
+  그림자는 blur 없는 근사다(단색 도형을 아래로 민다) — 카드·버튼과 같은 사정이다.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/davi_state_layer_pressed_on_dark">
+    <item>
+        <layer-list>
+            <item
+                android:top="@dimen/davi_overlay_confirm_shadow_y"
+                android:bottom="0dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_overlay_confirm_shadow" />
+                    <corners android:radius="@dimen/davi_overlay_confirm_radius" />
+                </shape>
+            </item>
+            <item android:bottom="@dimen/davi_overlay_confirm_shadow_y">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/davi_button_primary" />
+                    <corners android:radius="@dimen/davi_overlay_confirm_radius" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

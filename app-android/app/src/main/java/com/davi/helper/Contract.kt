@@ -151,6 +151,17 @@ data class GuideAction(
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
     @SerialName("target_node_id") val targetNodeId: String? = null,
+    /**
+     * `type`일 때 입력칸에 넣을 글자(C21). 서버 가드가 **안내문([instruction])이 집어 말한 말**만
+     * 남긴다 — 값이 있으면 안내창에 「바로 입력」 버튼이 뜨고, 누르면 `ACTION_SET_TEXT`로 대상
+     * 입력칸에 채운다(#405, `SPEC.md` §2의 유일한 예외).
+     *
+     * **동의를 받는 면이 안내문인 이유**: 사용자는 버튼을 누르기 직전에 그 문장을 읽으므로,
+     * 채워지는 값이 방금 읽은 말과 같으면 버튼은 눈으로 확인된 일만 한다. 목표 문장과 대조하던
+     * 초안은 2026-08-24에 뒤집혔다 — 검색어는 목표에 그대로 있지 않은 것이 정상이라
+     * (`한국이랑 미국의 시차를 알고 싶어` -> `한국 미국 시차`) 정상 안내에서 버튼이 죽었다.
+     */
+    @SerialName("input_text") val inputText: String? = null,
     val instruction: String,
 )
 

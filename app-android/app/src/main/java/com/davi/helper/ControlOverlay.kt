@@ -34,6 +34,7 @@ class ControlOverlay(
     private var readingDots: LoadingDotsView? = null
     private var stopChip: View? = null
     private var confirmPair: View? = null
+    private var inputFillButton: View? = null
 
     /**
      * 지금 컨트롤 행에 앉아 있는 확인의 종류. 확인쌍 리스너가 이 값을 실어 콜백에 넘긴다 —
@@ -69,6 +70,7 @@ class ControlOverlay(
         confirm: GuideDisplayState.ConfirmKind? = null,
         reading: Boolean = false,
         reserved: Float = 0f,
+        inputText: String? = null,
     ) {
         val current = root
         if (current == null) {
@@ -78,6 +80,7 @@ class ControlOverlay(
                 box?.setLines(lines)
                 applyMode(confirm)
                 applyReading(reading)
+                applyInputFill(inputText, confirm, reading)
             }
             return
         }
@@ -86,6 +89,7 @@ class ControlOverlay(
         box?.setLines(lines)
         applyMode(confirm)
         applyReading(reading)
+        applyInputFill(inputText, confirm, reading)
         if (isApplied(rect)) return
         runCatching {
             windowManager.updateViewLayout(current, params(rect))
@@ -103,6 +107,7 @@ class ControlOverlay(
         box = null
         stopChip = null
         confirmPair = null
+        inputFillButton = null
         readingDots = null
         kind = null
     }
@@ -115,6 +120,21 @@ class ControlOverlay(
     private fun applyReading(on: Boolean) {
         val dots = readingDots ?: return
         dots.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * 「바로 입력」 버튼(C21 · #405)을 켜고 끈다. 확인쌍·읽는 중 점 셋과 **같은 자리**(창 바닥
+     * 컨트롤 행)를 쓰므로 그 둘이 있는 동안은 값이 있어도 숨긴다 — 확인은 답할 자리고, 읽는
+     * 중의 안내는 이미 유효하지 않은 화면의 것이라 그 값을 채우게 두면 안 된다.
+     */
+    private fun applyInputFill(
+        inputText: String?,
+        confirm: GuideDisplayState.ConfirmKind?,
+        reading: Boolean,
+    ) {
+        val button = inputFillButton ?: return
+        button.visibility =
+            if (inputText != null && confirm == null && !reading) View.VISIBLE else View.GONE
     }
 
     /**
@@ -165,6 +185,9 @@ class ControlOverlay(
         created.findViewById<View>(R.id.btn_stop_chip)
             .setOnClickListener { callbacks.onStopRequested() }
 
+        created.findViewById<View>(R.id.btn_input_fill)
+            .setOnClickListener { callbacks.onInputFillRequested() }
+
         val pair = created.findViewById<View>(R.id.confirm_pair)
         // 확인쌍은 대화 화면과 공유하는 컴포넌트라 XML 라벨이 그 화면 문구다. 오버레이에서는 뜻이
         // 달라 [applyMode]가 덮는다 — 안 덮으면 TalkBack이 "이대로 안내 시작"을 읽는다.
@@ -182,6 +205,7 @@ class ControlOverlay(
             root = created
             box = created.findViewById(R.id.guide_box)
             stopChip = created.findViewById(R.id.btn_stop_chip)
+            inputFillButton = created.findViewById(R.id.btn_input_fill)
             readingDots = created.findViewById(R.id.reading_dots)
             confirmPair = pair
             created

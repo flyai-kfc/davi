@@ -791,4 +791,94 @@ class GuideDisplayStateTest {
 
         assertNull(state.pressTargetBounds())
     }
+    // ── 「바로 입력」 버튼(C21 · #405) ─────────────────────────────────
+
+    /** 서버 가드가 이미 비우지만, 버튼이라는 예외 조작을 여는 값이라 앱도 한 번 더 좁힌다. */
+    @Test
+    fun `input_text는 type 안내에서만 남는다`() {
+        val typed = state.show(
+            sigA, pressBounds, "여기에 입력하세요",
+            ActionType.TYPE, inputText = "테헤란로 4번지",
+        )
+        assertEquals("테헤란로 4번지", typed.inputText)
+
+        val tapped = state.show(
+            sigA, pressBounds, "여기를 누르세요",
+            ActionType.TAP, inputText = "테헤란로 4번지",
+        )
+        assertNull(tapped.inputText)
+    }
+
+    /** 빈 값으로 버튼이 뜨면 눌러도 아무 일이 없다 — 값이 없으면 버튼도 없어야 한다. */
+    @Test
+    fun `공백 input_text는 남기지 않는다`() {
+        val content = state.show(
+            sigA, pressBounds, "여기에 입력하세요",
+            ActionType.TYPE, inputText = "  ",
+        )
+        assertNull(content.inputText)
+    }
+
+    /** 종료 확인에서 ×로 되돌아오면 버튼까지 함께 되살아나야 한다 — 문구만 돌아오면 반쪽이다. */
+    @Test
+    fun `종료 확인에서 되돌아온 안내는 input_text를 되찾는다`() {
+        state.show(sigA, pressBounds, "여기에 입력하세요", ActionType.TYPE, inputText = "안녕하세요")
+        state.showQuitConfirm(quitText)
+
+        assertEquals("안녕하세요", state.dismissQuitConfirm(sigA)?.inputText)
+    }
+
+    // ── 채울 자리는 왕복에 죽지 않는다(PR #407 리뷰 P1) ─────────────────
+
+    // 서비스가 `input_text`·bounds를 따로 들고 표시 깔때기에서 받아 적던 동안, 값이 빈 Content가
+    // 지나가는 것만으로 자리가 죽어 입력 포커스 폴백으로 샜다(실기기: via=bounds -> via=focus).
+    // 이제 `guide`에서 파생하므로 그 경로가 없다.
+
+    @Test
+    fun `종료 확인 왕복 뒤에도 채울 자리가 남는다`() {
+        state.show(sigA, pressBounds, "여기에 입력하세요", ActionType.TYPE, inputText = "안녕하세요")
+        state.showQuitConfirm(quitText)
+
+        // 확인 중에는 버튼이 없으니 채울 것도 없다.
+        assertNull(state.inputFill())
+
+        state.dismissQuitConfirm(sigA)
+
+        assertEquals("안녕하세요" to pressBounds, state.inputFill())
+    }
+
+    @Test
+    fun `재표시 뒤에도 채울 자리가 남는다`() {
+        state.show(sigA, pressBounds, "여기에 입력하세요", ActionType.TYPE, inputText = "안녕하세요")
+        state.onCleared()
+        redisplayContent(sigA, true)
+
+        assertEquals("안녕하세요" to pressBounds, state.inputFill())
+    }
+
+    @Test
+    fun `강조를 내려도 채울 자리는 남는다`() {
+        state.show(sigA, pressBounds, "여기에 입력하세요", ActionType.TYPE, inputText = "안녕하세요")
+
+        // 내려간 Content의 bounds는 null이지만(#225) 상태의 guide는 안 죽는다.
+        assertNull(state.hideTarget()?.bounds)
+        assertEquals("안녕하세요" to pressBounds, state.inputFill())
+    }
+
+    @Test
+    fun `값이 없는 안내에는 채울 것이 없다`() {
+        state.show(sigA, pressBounds, "여기를 눌러 주세요", ActionType.TAP)
+
+        assertNull(state.inputFill())
+    }
+
+    /** root=null 청소 뒤 같은 화면의 재표시도 버튼을 되찾는다(#63 P1과 같은 경로). */
+    @Test
+    fun `재표시된 안내는 input_text를 그대로 가져온다`() {
+        state.show(sigA, pressBounds, "여기에 입력하세요", ActionType.TYPE, inputText = "안녕하세요")
+        state.onCleared()
+
+        assertEquals("안녕하세요", redisplayContent(sigA, true)?.inputText)
+    }
+
 }
