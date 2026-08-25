@@ -711,6 +711,21 @@ class GuideAccessibilityService : AccessibilityService() {
             result.cost,
         )
         lastDecision = decision
+        // 확인 대기 중 **자기발생** 내용 변화를 따라잡는다(PR #445 리뷰 5-1). 완료 피드백이
+        // 나르는 내용 서명은 done 응답 시점에 얼리는데, #427로 그 축이 숫자를 담게 되어
+        // 인앱 시계가 한 번만 돌아도 서버의 「정확히 같은 화면」 대조가 깨진다 — 사용자가
+        // 「아직이에요」를 눌러도 그 신호가 통째로 버려진다. 시니어가 안내를 읽고 누르기까지의
+        // 구간이 분 단위라 실제로 걸린다.
+        //
+        // **인과가 있으면 따라잡지 않는다.** 사용자가 확인창 뒤 화면을 건드렸다면 그건 done이
+        // 가리킨 그 화면이 아니고, 서버가 피드백을 버리는 것이 맞다. 구조가 달라진 경우도
+        // 같다 — 얼린 값을 그대로 둬서 대조가 어긋나게 한다.
+        GuideSession.observeConfirmScreen(
+            session.generation,
+            signature,
+            hasLabeledElement,
+            causal = stability.interactionGateOpen(now),
+        )
         updateReading()
 
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만
