@@ -277,6 +277,21 @@ class VerdictTest(unittest.TestCase):
 
 
 class GridTest(unittest.TestCase):
+    def test_the_grid_also_covers_the_screen_that_still_uses_the_badge_margin(self):
+        """구체화에서 배지를 뺀 뒤에도 **청취에는 배지가 선다** — 배지 위 여백이 카드를
+        잡는 화면이 거기다. 칩 유무로 카드가 뛰는지를 여기서도 봐야 「자리를 남긴다」가
+        이 화면을 안 깼다고 말할 수 있다."""
+        listening = [c for c in MODULE.default_cases() if c.tap]
+
+        self.assertEqual({c.chip for c in listening}, {"있음", "없음"})
+        for case in listening:
+            self.assertEqual(case.expect_after, "card_utterance_wrap")
+            # 음성 인식을 켜면 아무도 말하지 않아 곧 구체화로 되돌아간다.
+            self.assertIn(
+                ("--ez", f"{MODULE.E}.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER", "true"),
+                case.extras,
+            )
+
     def test_grid_covers_every_option_and_question_count_the_contract_allows(self):
         clarification = [c for c in MODULE.default_cases() if c.perched]
         combinations = {(case.options, case.chip) for case in clarification}
@@ -443,6 +458,38 @@ class LaunchUntilReadyTest(unittest.TestCase):
 
         self.assertIn("btn_close", nodes)
         self.assertEqual(device.launches, 2)
+
+    def test_a_screen_behind_a_tap_is_reached_and_measured(self):
+        """**주입만으로 못 닿는 화면이 있다** — 청취는 「직접 말하기」를 거쳐야 온다.
+        누른 뒤에는 그 화면에만 있는 뷰가 뜰 때까지 다시 기다린다."""
+        before = dump({"btn_direct_speak": (72, 1481, 1012, 1684)})
+        after = dump(
+            {
+                "card_question_wrap": (68, 301, 1012, 1013),
+                "card_utterance_wrap": (68, 1148, 1012, 1942),
+            }
+        )
+        device = self.ScriptedDevice([before, after])
+
+        nodes = MODULE.launch_until_ready(
+            device, MODULE.listening_case(2), "/dev/null", MODULE.DEFAULT_PACKAGE
+        )
+
+        self.assertIn("card_utterance_wrap", nodes)
+        self.assertEqual(device.launches, 1)
+        # 좌표는 적어 두지 않고 덤프에서 읽는다 — 배율이 바뀌면 버튼이 옮겨 간다.
+        self.assertEqual(device.commands[-1], ["input", "tap", "542", "1582"])
+
+    def test_a_tap_that_never_lands_relaunches_rather_than_measuring_the_wrong_screen(self):
+        before = dump({"btn_direct_speak": (72, 1481, 1012, 1684)})
+        device = self.ScriptedDevice([before] * (MODULE.READY_DUMPS * 2 * MODULE.LAUNCH_ATTEMPTS))
+
+        nodes = MODULE.launch_until_ready(
+            device, MODULE.listening_case(2), "/dev/null", MODULE.DEFAULT_PACKAGE
+        )
+
+        self.assertNotIn("card_utterance_wrap", nodes)
+        self.assertEqual(device.launches, MODULE.LAUNCH_ATTEMPTS)
 
     def test_a_screen_that_never_stands_gives_up_instead_of_hanging(self):
         device = self.ScriptedDevice([])

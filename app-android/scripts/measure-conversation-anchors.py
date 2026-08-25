@@ -62,6 +62,8 @@ TRACKED_IDS = (
     "btn_option_2",
     "btn_option_3",
     "btn_direct_speak",
+    #: 청취 화면에만 있다 — 「다 섰다」의 기준으로 쓴다.
+    "card_utterance_wrap",
     "btn_mic",
     "logo",
     # 홈에는 질문 카드가 없다 — 맨 위에 서는 것이 제목이다.
@@ -99,6 +101,11 @@ class Case:
     #: 찍힌다(실측 S23 Ultra: MA-1·MA-4 칸이 통째로 비었다). 화면마다 맨 위에 서는
     #: 것이 다르므로 칸이 스스로 무엇을 기다릴지 안다.
     expect: str = "card_question_wrap"
+    #: 화면이 선 뒤 누를 뷰. **주입만으로 못 닿는 화면이 있다** — 청취는 「직접 말하기」를
+    #: 거쳐야 오고, 그 전이는 세션이 아니라 화면 상태만 보므로 주입한 화면에서도 탄다.
+    tap: str = None
+    #: 누른 뒤 기다릴 뷰. [tap]이 있으면 이쪽이 「다 섰다」의 기준이 된다.
+    expect_after: str = None
     #: 띄운 뒤 스스로 사라지는 화면은 캡처를 서둘러야 한다(메인 8은 자동 복귀한다).
     settle_s: float = 1.2
 
@@ -122,12 +129,43 @@ def clarification_case(option_count: int, question_count: int) -> Case:
     )
 
 
+def listening_case(question_count: int) -> Case:
+    """「직접 말하기」 청취(MA-3에서 이어지는 화면).
+
+    **여기가 상쇄 토큰이 살아 있는 화면이다** — 구체화에서 배지를 뺀 뒤에도 이쪽은 배지가
+    서고 배지 위 여백이 카드를 잡는다. 칩이 서고 안 서고에 따라 카드가 뛰는지를 **여기서도**
+    봐야 #452의 「자리를 남긴다」가 이 화면을 안 깼다고 말할 수 있다.
+
+    **음성 인식은 끈다.** 켜면 마이크가 열리고, 아무도 말하지 않으면 곧 오류로 구체화로
+    되돌아가 재려던 화면이 사라진다. 상태 전이는 그대로 타므로 배치는 진짜다.
+    """
+    labels = "|".join(OPTION_LABELS)
+    return Case(
+        screen="MA-3 청취(직접 말하기)",
+        label=f"질문 {question_count}",
+        extras=(
+            ("--es", f"{E}.DEBUG_CLARIFICATION", labels),
+            ("--es", f"{E}.DEBUG_CLARIFICATION_PROMPT", PROMPT_WITH_OPTIONS),
+            ("--ei", f"{E}.DEBUG_CLARIFICATION_COUNT", str(question_count)),
+            ("--ez", f"{E}.INSTRUMENTATION_SKIP_SPEECH_RECOGNIZER", "true"),
+        ),
+        options="3",
+        chip="있음" if question_count > 1 else "없음",
+        # **✕가 걸치지 않는 화면이다** — 걸치기는 구체화에서만 한다. 시작선은 카드 상단이다.
+        perched=False,
+        expect="btn_direct_speak",
+        tap="btn_direct_speak",
+        expect_after="card_utterance_wrap",
+    )
+
+
 def default_cases() -> list:
     cases = [
         clarification_case(options, questions)
         for questions in (2, 1)
         for options in (3, 2, 1, 0)
     ]
+    cases.extend(listening_case(questions) for questions in (2, 1))
     cases.append(Case(screen="MA-1 홈", label="기본", expect="home_title"))
     cases.append(
         Case(
@@ -528,6 +566,16 @@ class Device:
     def launch(self, case: Case, package: str = DEFAULT_PACKAGE) -> None:
         self.shell(*launch_args(case, package))
 
+    def tap(self, bounds: Bounds) -> None:
+        """뷰 한가운데를 누른다. **좌표를 적어 두지 않고 덤프에서 읽는다** — 배율이 바뀌면
+        버튼이 옮겨 가고, 적어 둔 좌표는 그때 빈 곳을 누른다."""
+        self.shell(
+            "input",
+            "tap",
+            str((bounds.left + bounds.right) // 2),
+            str((bounds.top + bounds.bottom) // 2),
+        )
+
     def dump(self, local_path: str) -> str:
         """화면 하나를 덤프해서 XML 문자열로.
 
@@ -570,11 +618,29 @@ def launch_until_ready(device, case: Case, tmp_path: str, package: str) -> dict:
     nodes = {}
     for _ in range(LAUNCH_ATTEMPTS):
         device.launch(case, package)
-        for attempt in range(READY_DUMPS):
-            time.sleep(case.settle_s if attempt == 0 else READY_INTERVAL_S)
-            nodes = parse_dump(device.dump(tmp_path), package)
-            if case.expect in nodes:
-                return nodes
+        nodes = wait_for(device, case, case.expect, tmp_path, package)
+        if case.expect not in nodes:
+            continue
+        if case.tap is None:
+            return nodes
+        target = nodes.get(case.tap)
+        if target is None:
+            continue
+        device.tap(target)
+        nodes = wait_for(device, case, case.expect_after, tmp_path, package)
+        if case.expect_after in nodes:
+            return nodes
+    return nodes
+
+
+def wait_for(device, case: Case, view: str, tmp_path: str, package: str) -> dict:
+    """`view`가 덤프에 뜰 때까지 다시 잰다. 못 보면 마지막 덤프를 그대로 돌려준다."""
+    nodes = {}
+    for attempt in range(READY_DUMPS):
+        time.sleep(case.settle_s if attempt == 0 else READY_INTERVAL_S)
+        nodes = parse_dump(device.dump(tmp_path), package)
+        if view in nodes:
+            return nodes
     return nodes
 
 
@@ -631,7 +697,7 @@ def run(args) -> int:
                         chip=case.chip,
                         scale=scale,
                         inset_top_dp=dp(inset_top, density),
-                        expected=case.expect,
+                        expected=case.expect_after or case.expect,
                         seen=tuple(sorted(nodes)),
                         # **그 화면에 원래 있는 뷰만 「못 찾음」으로 센다** — MA-4에는 ✕가
                         # 없고 홈에는 질문 카드가 없다. 없는 것을 못 찾았다고 적으면
