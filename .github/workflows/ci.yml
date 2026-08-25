@@ -622,12 +622,12 @@ jobs:
       - name: eval 린트
         if: needs.changes.outputs.backend == 'true'
         working-directory: eval
-        run: ruff check harness.py judge.py tests pingpong
+        run: ruff check harness.py judge.py completion_ab.py tests pingpong
 
       - name: eval 포맷 검사
         if: needs.changes.outputs.backend == 'true'
         working-directory: eval
-        run: ruff format --check harness.py judge.py tests pingpong
+        run: ruff format --check harness.py judge.py completion_ab.py tests pingpong
 
       - name: eval 테스트
         if: needs.changes.outputs.backend == 'true'
@@ -639,6 +639,13 @@ jobs:
         if: needs.changes.outputs.backend == 'true'
         working-directory: eval
         run: python harness.py
+
+      # #424의 제품 계약과 분리된 #425 keyless 측정 경계. 같은 corpus로 두 정책을 함께 돌리고
+      # candidate의 false success가 늘면 종료 코드 1로 PR을 막는다.
+      - name: 완료 판정 baseline/candidate A/B
+        if: needs.changes.outputs.backend == 'true'
+        working-directory: eval
+        run: python completion_ab.py --compact
 
       # 필수 PR CI는 외부 모델의 비결정성·비용에 의존하지 않는다. CLI의 keyless skip 계약만 검사한다.
       - name: eval LLM judge 키 없는 스모크

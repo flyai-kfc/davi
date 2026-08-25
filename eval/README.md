@@ -154,7 +154,9 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
    scroll이 앱까지 나가지 않는지 — 교정·앱서랍 전환·실패로 갈리는지 — 를 검사한다.
    목표 앱 후보는 fake resolver로 후보 누락·오패키지 `not_found`·복수 후보·접근 가능한 profile의
    조회 실패 `unknown`을 재현해 자동 선택이나 미설치 단정을 막는다(#128).
-3. `main` 주 1회·수동 관측: 실제 모델 + LLM judge(#42, #68)
+3. 항상 실행: `completion_ab.py`가 같은 완료 fixture corpus에서 baseline/candidate를 함께 실행해
+   3×3 혼동 행렬과 안전성 지표를 낸다(#425). API 키나 실제 모델은 부르지 않는다.
+4. `main` 주 1회·수동 관측: 실제 모델 + LLM judge(#42, #68)
 
 현재 출력은 의미 품질 점수가 아니다. 실기기 기반 fixture가 늘어나도 “현재 수치는 깨끗한 fixture
 기준의 낙관적 상한”이라는 단서를 유지한다.
@@ -162,9 +164,28 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 ### 완료 근거 판정 fixture
 
 `completion-fixtures/evidence_cases.json`은 일반 화면 fixture와 목적이 다르다. fake LLM이 각
-사례의 `expected_result`·`evidence`로 `done`을 내게 하고, `expected_verified`와 비교해
-TP/TN/FP/FN을 센다. 실기기 기반 사례는 `fixtures/*.json`을 파일명으로 참조하고, 합성 사례는
-`source=eval_case`와 최소 화면을 직접 넣는다. 두 종류 모두 하니스의 PII 검사를 먼저 통과한다.
+사례의 `expected_result`·`evidence`로 `done`을 내게 하고, 사람이 정한
+`expected_verdict=verified|inconclusive|contradicted`와 비교한다. 실기기 기반 사례는
+`fixtures/*.json`을 파일명으로 참조하고, 합성 사례는 `source=eval_case`와 최소 화면을 직접
+넣는다. 두 종류 모두 하니스의 PII·스키마 검사를 먼저 통과한다.
+
+로컬 실행은 다음 한 줄이다. stdout에는 fixture 원문 없이 JSON 보고서만 나간다.
+
+```bash
+cd eval
+python3.12 completion_ab.py
+```
+
+보고서는 fixture 파일과 참조한 화면 fixture를 함께 묶은 `corpus_sha256`, baseline/candidate
+`policy_id`, 현재 `git_sha`를 남긴다. 이 셋으로 만든 실험·실행 ID도 함께 남기며, 저장한 보고서를
+코드에서 대조할 때 corpus 해시나 정책 식별자가 다르면 `assert_same_experiment()`가 거부한다.
+candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가 되고 프로세스도 종료
+코드 1로 실패한다.
+
+#424가 신뢰도 판정을 확정하기 전까지 baseline은 착수 시점의 화면 근거 정책을 명시적으로
+보존하고, candidate는 현재 서버의 bool 결과에서 false를 `inconclusive`로 옮긴다. 따라서 지금
+두 adapter의 판정은 의도적으로 같다. `contradicted`를 추측해 넣는 것은 #424와 겹치므로 하지
+않으며, #424 구현에서 candidate adapter와 정책 식별자만 교체해 같은 보고서로 채택 근거를 낸다.
 
 #71에서 조사·동사 활용·부정 표현 위험을 포함한 18사례를 비교한 결과는 다음과 같다. 이 수치는
 실제 사용 성공률이 아니라 정책 후보를 같은 작은 표본에서 비교한 결정론적 회귀값이다.
