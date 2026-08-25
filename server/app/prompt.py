@@ -104,13 +104,28 @@ PAGE_ONLY_ONE = "쪽이 하나뿐이라 좌우로 넘길 곳이 없습니다"
 IME_VISIBLE = "입력기: 화면에 키보드가 표시되어 있습니다"
 IME_NOT_VISIBLE = "입력기: 화면에 키보드가 표시되어 있지 않습니다"
 FOCUSED_INPUT_INSTRUCTION = (
-    "editable=true, focused=true인 입력칸은 사용자가 이미 입력 대상을 선택한 상태입니다. "
+    "editable=True, focused=True인 입력칸은 사용자가 이미 입력 대상을 선택한 상태입니다. "
     "포커스나 키보드 상태만으로 추가 입력이 필요하다고 단정하지 마세요. 입력이 더 필요할 때만 "
     "같은 칸을 다시 누르는 tap보다 그 입력칸을 대상으로 한 type을 우선하세요. 포커스나 키보드 "
     "상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
+# 입력칸은 보이는데 **어느 것도 선택되지 않은** 화면(#373). 표기를 `True`일 때만 싣게 되면서
+# 이 화면에서 `focused=False`가 지고 있던 정보가 표기에서 사라졌고, 다른 두 관례와 달리
+# 그것을 말해 주는 문장이 없었다 — `clickable`은 선택 범위 문장이, `showing_hint_text`는 설명
+# 문장이 부재의 뜻을 진다. 그 자리를 이 문장이 메운다.
+#
+# **필요한 이유는 토큰이 아니라 오안내다.** 키보드가 떠 있고 입력칸이 보이면
+# ([INPUT_TEXT_INSTRUCTION]이 그때 나간다) 모델이 곧바로 type을 고를 수 있는데, 아무 칸도
+# 선택되지 않았으면 그 칸을 먼저 tap해야 한다. [FOCUSED_INPUT_KEYBOARD_CLOSED]가 반대
+# 방향(선택됐는데 키보드가 닫힘)에서 같은 일을 한다.
+#
+# **관측 사실까지만 쓴다**(C17) — 무엇을 누르라고 정하지 않는다.
+INPUT_NOT_FOCUSED = (
+    "입력칸이 보이지만 어느 것도 focused=True가 아닙니다 — 아직 입력 대상이 선택되지 "
+    "않았습니다. 입력이 필요하다면 그 입력칸을 먼저 tap해 선택하는 단계가 남아 있습니다."
+)
 FOCUSED_INPUT_KEYBOARD_CLOSED = (
-    "editable=true, focused=true인 입력칸은 선택되어 있지만 키보드는 닫혀 있습니다. 화면 터치로 "
+    "editable=True, focused=True인 입력칸은 선택되어 있지만 키보드는 닫혀 있습니다. 화면 터치로 "
     "입력해야 한다면 type을 바로 안내하지 말고, 그 입력칸을 tap해 키보드를 여는 한 단계를 먼저 "
     "안내하세요. 포커스나 키보드 상태만으로 입력 완료 또는 목표 달성을 추론하지 마세요."
 )
@@ -759,6 +774,9 @@ def _input_context(req: NextStepRequest) -> str:
         context += f"{FOCUSED_INPUT_KEYBOARD_CLOSED}\n"
     if input_ready:
         context += f"{ACTIONABLE_RESULT_INSTRUCTION}\n"
+    # 입력칸은 있는데 아무것도 선택되지 않은 화면 — 표기가 침묵하는 자리를 문장이 진다(#373).
+    elif any(element.editable for element in elements):
+        context += f"{INPUT_NOT_FOCUSED}\n"
     # 입력칸이 하나라도 보이면 붙인다 — 포커스도 키보드도 보지 않는다. 위 문장들과 조건이 다른
     # 이유는 주제가 달라서다: 저것들은 "지금 입력 단계인가"를 말하고, 이 문장은 type을 고를 때의
     # 필드 작성 규칙이라 아직 아무 칸도 포커스되지 않은 화면에서도 필요하다.
@@ -841,8 +859,13 @@ def _format_element(element: UiElement, tried: dict[str, int]) -> str:
     # 근거는 `server/CLAUDE.md` C20 행에 적었다.
     if element.editable:
         details.append("editable=True")
-    if element.focused:
-        details.append("focused=True")
+        # **`focused`는 입력칸에만 싣는다.** 직렬화는 `isClickable || isEditable`로 방출하면서
+        # `focused`를 조건 없이 채우므로(`UiTreeSerializer`), clickable뿐인 노드도 `focused=True`로
+        # 올 수 있다. 그 값을 그대로 실으면 아무 문장도 설명하지 않는 표기가 나간다 —
+        # [_input_context]가 `editable and focused`만 보기 때문이다. 읽는 곳이 없는 값이라
+        # 빼는 쪽이 맞고, 그래야 표기와 설명이 정확히 같은 집합이 된다.
+        if element.focused:
+            details.append("focused=True")
     # 상태는 **정보가 있을 때만** 싣는다. 요소가 최대 200개라 `enabled=True`·`selected=False`처럼
     # 기본값인 줄까지 붙이면 토큰이 요소 수만큼 불어난다. 미관측(None)에는 침묵한다(C10).
     if element.enabled is False:

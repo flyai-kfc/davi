@@ -244,8 +244,8 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
     from app.schemas import UiElement
 
     assert {"editable", "focused"} <= set(UiElement.model_fields)
-    # `Screen.ime_visible`은 위 순회(test_screen_wire_names_match_the_kotlin_serial_names)가
-    # 덮는다 — 여기서 손으로 다시 세지 않는다.
+    # `Screen.ime_visible`의 양쪽 존재는 아래 두 테스트가 덮는다(Kotlin 쪽은 wire 이름 순회,
+    # Python 쪽은 필드 집합 고정) — 여기서 손으로 다시 세지 않는다.
 
 
 def test_screen_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
@@ -253,8 +253,12 @@ def test_screen_wire_names_match_the_kotlin_serial_names(contract_source: str) -
 
     스텝은 이미 이 모양이었는데(`test_step_wire_names_match_the_kotlin_serial_names`) 화면은
     필드가 늘 때마다 단언을 손으로 달았다 — `ime_visible`에 이어 `content_signature`가 그랬다.
-    순회로 바꾸면 그 부류가 통째로 사라진다: 다음에 `Screen`에 필드를 더하면 Kotlin을 함께
-    고치기 전까지 여기서 걸린다.
+    순회로 바꾸면 그 부류가 사라진다: 다음에 `Screen`에 필드를 더하면 Kotlin을 함께 고치기
+    전까지 여기서 걸린다.
+
+    **순회는 한 방향뿐이다** — `Screen.model_fields`를 도므로 Python에서 필드가 사라지면 아예
+    안 돈다. 그 축은 아래 집합 동등 비교가 잡는다(스텝의
+    `test_step_history_fields_exist_on_both_sides`와 같은 짝).
 
     **선언 블록을 잘라내서 그 안에서만 찾는다** — 파일 전체를 보면 다른 data class의 같은
     이름이 통과시킨다(스텝 쪽에서 실제로 걸린 함정, #289 셀프 리뷰).
@@ -267,6 +271,28 @@ def test_screen_wire_names_match_the_kotlin_serial_names(contract_source: str) -
         # snake_case 필드만 @SerialName이 필요하다. 나머지는 Kotlin 이름이 곧 wire 이름이다.
         expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
         assert expected in screen_block, f"Screen.{name}이 Kotlin 쪽에 없다"
+
+
+def test_screen_fields_are_pinned() -> None:
+    """`Screen`의 필드 집합을 통째로 고정한다 — **필드가 사라지는 축**을 잡는다.
+
+    위 순회는 Python에 있는 필드가 Kotlin에 있는지만 본다. 서버에서 필드를 지우면 순회가 그
+    필드를 안 돌아 조용히 통과하므로, 계약을 줄이는 변경이 여기서 한 번 걸리게 둔다.
+    스텝의 `test_step_history_fields_exist_on_both_sides`와 같은 역할이다.
+    """
+
+    from app.schemas import Screen
+
+    assert {
+        "package_name",
+        "window_title",
+        "elements",
+        "current_page",
+        "total_pages",
+        "has_scrollable_element",
+        "ime_visible",
+        "content_signature",
+    } == set(Screen.model_fields)
 
 
 def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:

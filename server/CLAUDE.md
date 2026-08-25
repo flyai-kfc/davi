@@ -290,14 +290,23 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
 미관측 분기가 없고, **표기 없음 = `False`**가 관례다(C20이 적어 둔 관례 셋 중 셋째).
 
 세 표기의 뜻이 서로 대칭이다 — `clickable=True`는 tap 후보, `editable=True`는 type 후보,
-`focused=True`는 사용자가 이미 그 칸을 입력 대상으로 골랐다는 상태다. 앞 둘은
-`CLICKABLE_TARGET_INSTRUCTION`이 한 문장으로 함께 설명하고, `focused`는
-`FOCUSED_INPUT_INSTRUCTION`·`FOCUSED_INPUT_KEYBOARD_CLOSED`가 실릴 때만 나가므로 **표기와 설명이
-함께 침묵한다.**
+`focused=True`는 사용자가 이미 그 칸을 입력 대상으로 골랐다는 상태다.
+
+**`focused`는 `editable=True`인 요소에만 싣는다.** 직렬화는 `isClickable || isEditable`로
+방출하면서 `focused`를 조건 없이 채우므로 clickable뿐인 노드도 `focused=True`로 올 수 있는데,
+그 값을 읽는 곳이 프롬프트에 없다(`_input_context`가 `editable and focused`만 본다). 그대로
+실으면 **아무 문장도 설명하지 않는 표기**가 나간다.
+
+**표기 없음의 뜻은 문장이 진다.** 관례를 모델이 알아서 짐작하게 두지 않는다 —
+- `clickable`·`editable` → `CLICKABLE_TARGET_INSTRUCTION`(또는 `NO_CLICKABLE_ELEMENT_NOTICE`)이
+  항상 실려 "…만"으로 부재의 뜻을 준다
+- `focused` → 있으면 `FOCUSED_INPUT_INSTRUCTION`·`FOCUSED_INPUT_KEYBOARD_CLOSED`가, **없으면
+  `INPUT_NOT_FOCUSED`가** 진다(#373). 후자가 없던 동안 「입력칸은 보이는데 아무것도 선택되지
+  않은」 화면에서 아무도 그 사실을 말하지 않았다 — 키보드가 떠 있으면 모델이 곧바로 type을
+  고를 수 있는 자리라 오안내로 이어진다
 
 **설명 문장의 조건은 표기 규칙과 같아야 한다** — 프롬프트에 없는 값을 설명하거나, 실린 값을
-설명 없이 두면 안 된다. `editable`·`focused` 편입으로 그 정합이 오히려 좋아졌다: 포커스 없는
-입력칸 화면에서 `focused` 표기와 `FOCUSED_INPUT_*` 문장이 둘 다 안 나간다.
+설명 없이 두면 안 된다. 위 두 규칙(editable에 묶기 · 부재 문장)이 그 정합을 세운다.
 
 **행동 상태(`enabled`·`checked`·`selected`·`showing_hint_text`)는 규칙이 다르다** — 세 상태
 필드라 미관측(`None`)에 침묵해야 하고, 그래서 관례도 갈린다(`enabled` 없음=`True` 기본값,

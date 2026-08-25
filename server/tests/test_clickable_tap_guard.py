@@ -20,6 +20,7 @@ import pytest
 from app.errors import LlmError
 from app.prompt import (
     CLICKABLE_TARGET_INSTRUCTION,
+    INPUT_NOT_FOCUSED,
     NO_CLICKABLE_ELEMENT_NOTICE,
     build_prompt,
 )
@@ -221,6 +222,17 @@ def _prompt(screen: Screen) -> str:
     return build_prompt(NextStepRequest(goal="치킨을 주문한다", screen=screen))
 
 
+def _element_lines(screen: Screen) -> str:
+    """요소 줄만 잘라낸다.
+
+    **전체 프롬프트로 표기를 단언하면 안 된다** — [CLICKABLE_TARGET_INSTRUCTION]이 문장 안에
+    `clickable=True`·`editable=True`를 글자 그대로 담고 있어, 요소 줄에서 그 표기가 통째로
+    사라져도 단언이 초록으로 남는다.
+    """
+
+    return "\n".join(line for line in _prompt(screen).splitlines() if line.startswith("- id="))
+
+
 def test_prompt_marks_clickable_only_when_true():
     prompt = _prompt(_shade_screen())
     assert "clickable=True" in prompt
@@ -245,13 +257,17 @@ def test_prompt_marks_editable_and_focused_only_when_true():
         ],
     )
 
-    prompt = _prompt(screen)
+    lines = _element_lines(screen)
 
-    assert "editable=True" in prompt
-    assert "focused=True" in prompt
+    assert "editable=True" in lines
+    assert "focused=True" in lines
     # 모든 줄에 반복되면 값 하나 다른 줄이 묻힌다 — clickable과 같은 근거(C20 ①).
-    assert "editable=False" not in prompt
-    assert "focused=False" not in prompt
+    assert "editable=False" not in lines
+    assert "focused=False" not in lines
+    # 표기는 **그 요소의 줄에만** 붙는다 — 하나가 focused면 전 줄에 붙이는 구현도 막는다.
+    assert lines.count("focused=True") == 1
+    kakao_line = next(line for line in lines.splitlines() if "카카오톡" in line)
+    assert "focused" not in kakao_line
 
 
 def test_prompt_omits_focused_on_an_unfocused_input():
@@ -268,10 +284,12 @@ def test_prompt_omits_focused_on_an_unfocused_input():
         ],
     )
 
-    prompt = _prompt(screen)
+    lines = _element_lines(screen)
 
-    assert "editable=True" in prompt
-    assert "focused" not in prompt
+    assert "editable=True" in lines
+    assert "focused" not in lines
+    # 표기가 진 뜻을 문장이 받는다 — 그 화면에서 아무도 말하지 않으면 정보가 사라진다(#373).
+    assert INPUT_NOT_FOCUSED in _prompt(screen)
 
 
 def test_prompt_explains_the_selection_rule_when_a_clickable_element_exists():
