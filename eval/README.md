@@ -208,19 +208,22 @@ python3.12 completion_ab.py --compare previous.json
 candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가 되고 프로세스도 종료
 코드 1로 실패한다.
 이 gate는 **채택 전 candidate가 고정 baseline보다 나빠지는 것만** 막는다. 채택 후 현재 정책의
-`1/21`이 `8/21`로 퇴행하는 것처럼 baseline보다 여전히 나은 회귀는
+`1/22`가 `8/22`로 퇴행하는 것처럼 baseline보다 여전히 나은 회귀는
 `tests/test_completion_ab.py`의 정확한 혼동 행렬·지표 리터럴이 막는다. 의도적으로 정책을
 바꿀 때는 fixture 사람 정답과 그 리터럴을 같은 리뷰에서 함께 갱신한다.
 
 #424 이후에도 baseline은 착수 시점의 화면 근거 정책을 `completion_baseline.py`에 독립 snapshot으로
 보존한다. candidate는 현재 서버의 구조화 완료 근거·현재 접근성 상태·직전 수행 결과·동일 화면
-사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 32개 결정론적 사례에서
-baseline/candidate의 false success는 17/21 → 1/21, verified recall은 9/11 → 9/11,
-contradiction recall은 0/6 → 6/6이고, candidate의 inconclusive는 16/32다. 오류 신고 메뉴·
+사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 33개 결정론적 사례에서
+baseline/candidate의 false success는 18/22 → 1/22, verified recall은 9/11 → 9/11,
+contradiction recall은 0/6 → 6/6이고, candidate의 inconclusive는 17/33이다. 오류 신고 메뉴·
 0건 표시·부정문 6건은 모델의 `failure` 주장을 그대로 받지 않는 음성 경계, `오류 발생` 계열
-2건은 직접 실패를 회수하는 양성 경계다. 남은 false success는
-일반 `설정` label을 모델이 success 근거로 주장한 사례다. 사람 정답을 candidate에 맞추지 않고
-현재 정책의 의미 한계를 그대로 보존한다.
+2건은 직접 실패를 회수하는 양성 경계다. #446 실기기 사례는 알람 편집 화면의 상태 없는
+`*Button` class-suffix role을 완료 근거로 삼은 오탐을 고정하며 candidate는 이를
+`inconclusive`로 내린다. 현재 verified 11건에는 상태 claim 없는 Button 역할의 정답이 없어
+`9/11` 유지는 이 규칙의 recall 비용을 측정하지 않는다. 남은 false success는 일반 `설정` label을
+모델이 success 근거로 주장한 사례다. 사람 정답을 candidate에 맞추지 않고 현재 정책의 의미
+한계를 그대로 보존한다.
 
 채택 기준은 false success 감소, verified recall 비감소, 합의한 직접 반대 fixture 전부 회수다.
 현재 수치가 세 조건을 만족하므로 #424는 candidate 구조화 근거 정책을 채택한다.

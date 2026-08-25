@@ -442,6 +442,13 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
   대상의 관측 상태가 기대값과 반대인 경우다.
   부재나 패키지·문구 일부 일치만으로는 만들지 않는다.
 
+Android `className`의 마지막 조각인 `role`이 `Button`으로 끝나면, 활성·클릭 가능 여부와
+무관하게 `completion_evidence.state` 없는 success 근거를 `inconclusive`로 내린다(#446).
+이는 Button의 의미를 판별하는 규칙이 아니라 클래스명 관례에 건 보수적 경계다. 상태를 구조화해
+현재 트리에서 다시 확인한 ToggleButton은 통과하지만, 상태를 label로만 나타낸 Button 계열은
+false negative가 될 수 있고 커스텀 action class는 경계 밖일 수 있다. 앱·문구별 selector는 두지
+않는다.
+
 응답은 가산적으로 `completion_verdict`와 기존 `verified`를 함께 보낸다. `verified`는 verdict가
 `verified`일 때만 true다. 구버전 앱은 새 키를 무시하고, 새 앱은 enum이 없는 구버전 서버에서만
 bool로 폴백한다. verdict는 성공 종료 후보인 `done`에서만 의미가 있으며, `tap`·`scroll`·`type` 등
@@ -466,12 +473,15 @@ SM-S921N 삼성 시계 알람 스위치 1회 실측(2026-08-25)에서는 탭 주
 사용자 부정은 `completion_feedback`에 구조·내용 서명만 싣고, goal·label·세션 식별자는 추가하지
 않는다. 두 서명이 현재 요청과 다르면 서버는 그 피드백을 판정과 프롬프트에서 모두 무시한다.
 
-키 없는 A/B corpus 32건에서 #71 기준선은 false success `17/21`, verified recall `9/11`,
-contradiction recall `0/6`이었다. 구조화 근거 정책은 각각 `1/21`, `9/11`, `6/6`이며
-inconclusive는 `6/32`에서 `16/32`로 늘었다. 추가한 6건은 오류 신고 메뉴·0건 표시·부정문을
+키 없는 A/B corpus 33건에서 #71 기준선은 false success `18/22`, verified recall `9/11`,
+contradiction recall `0/6`이었다. 구조화 근거 정책은 각각 `1/22`, `9/11`, `6/6`이며
+inconclusive는 `6/33`에서 `17/33`으로 늘었다. 추가한 6건은 오류 신고 메뉴·0건 표시·부정문을
 실패 상태로 읽지 않는 false-positive 경계이고, `오류 발생`·`오류가 발생했습니다` 두 건은
-명시 실패를 회수하는 양성 경계다. candidate의 남은 false success 한 건은 일반
-`설정` label에 대한 모델의 success 주장을 화면 의미로 반증할 수 없는 현재 정책 한계다.
+명시 실패를 회수하는 양성 경계다. #446의 익명화 실기기 사례는 상태 없는 `저장` Button을
+완료로 읽은 오탐을 candidate에서 `inconclusive`로 회수한다. 현재 verified 11건에는 상태 claim
+없는 Button 역할의 정답이 없어, `9/11` 유지는 이 클래스명 경계의 recall 비용을 측정하지 않는다.
+candidate의 남은 false success 한 건은 일반 `설정` label에 대한 모델의 success 주장을 화면
+의미로 반증할 수 없는 현재 정책 한계다.
 깨끗한 합성·익명화 fixture의 낙관적 상한이고,
 실제 모델 의미 판단의 정확도는 별도 관측 대상이다(#425).
 
