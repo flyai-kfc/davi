@@ -40,6 +40,11 @@ class GuideAccessibilityService : AccessibilityService() {
     private var e2ePublisher: GuideE2ePublisher? = null
 
     /**
+     * 안내 문구를 소리로도 읽는다(#450). 서비스가 사는 동안만 있고, 판정은 전부 그 클래스에 있다.
+     */
+    private var speaker: GuideSpeaker? = null
+
+    /**
      * 지금 안내 중인 대상의 label(#238). `source`가 회수된 순간에 눌림을 맞추는 유일한 축이다.
      * 1차 마스킹을 거친 값이라 원본 개인정보가 아니다.
      */
@@ -190,6 +195,8 @@ class GuideAccessibilityService : AccessibilityService() {
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
+            // 세션이 바뀌면 읽은 것도 잊는다 — 다음 세션의 첫 안내는 문구가 같아도 읽어야 한다.
+            speaker?.reset()
             lastReading = null
             guidedTargetLabel = null
             guidedScreenPackage = null
@@ -246,6 +253,10 @@ class GuideAccessibilityService : AccessibilityService() {
                     performInputFill()
                 }
 
+                override fun onSpeechRepeatRequested() {
+                    speaker?.repeat()
+                }
+
                 override fun onConfirmReject(kind: GuideDisplayState.ConfirmKind) {
                     Log.i(TAG, "confirm rejected ($kind), continuing")
                     when (kind) {
@@ -291,6 +302,8 @@ class GuideAccessibilityService : AccessibilityService() {
             },
         )
         e2ePublisher = GuideE2ePublisher(this)
+        // 오버레이보다 먼저 만들 이유는 없지만 함께 산다 — 안내창이 뜨는 자리에서만 쓰인다.
+        speaker = GuideSpeaker(this)
         authStore = AuthStore(this)
         guideApiClient = GuideApiClient(
             BuildConfig.SERVER_URL,
@@ -412,6 +425,9 @@ class GuideAccessibilityService : AccessibilityService() {
         if (screenOff) return
         screenOff = true
         cancelSample()
+        // 화면이 꺼졌는데 목소리만 계속 나가면 안 된다. 문구는 [display]가, 읽은 자리는
+        // [GuideSpeaker]가 기억하므로 잠금이 풀린 뒤 재표시는 다시 읽지 않는다.
+        speaker?.stop()
         overlay?.clear()
         display.onCleared()
         lastDecision = null
@@ -848,9 +864,17 @@ class GuideAccessibilityService : AccessibilityService() {
         overlay?.setReading(reading)
     }
 
-    /** 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다. */
+    /**
+     * 판정된 표시 내용을 그린다. bounds 변환만 여기서 한다 — 상태는 Android 타입을 모른다.
+     *
+     * **낭독도 여기서 건다**(#450). 이 함수가 화면에 뜨는 모든 문구가 지나는 한 자리라
+     * "안내가 바뀌면 한 번 읽는다"가 여기서 성립한다 — 서버 안내·확인 질문·오류·상한 문구가
+     * 전부 안내창의 한 문장이고, 사용자에게는 그 차이가 없다. 재표시·강조 내림/되돌림처럼
+     * 내용이 그대로인 호출은 [GuideSpeaker]가 문구 대조로 걸러 다시 읽지 않는다.
+     */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
+        speaker?.speak(content.text)
         overlay?.showGuide(
             rect,
             content.text,
@@ -1501,6 +1525,8 @@ class GuideAccessibilityService : AccessibilityService() {
         // 같이 표시 상태도 함께 내려야 다음 유효 샘플이 재표시한다 — clear만 하면 display가
         // "떠 있음"으로 남아 활성 세션의 오버레이가 영구히 빈다(PR #63 리뷰 3차 P1).
         Log.w(TAG, "interrupted")
+        // 접근성 피드백 중단 요청이라 **낭독이 첫 대상이다** — 시스템이 지금 조용하길 바란다.
+        speaker?.stop()
         overlay?.clear()
         display.onCleared()
         lastDecision = null
@@ -1537,6 +1563,9 @@ class GuideAccessibilityService : AccessibilityService() {
         // 창을 걷지 않으면 서비스가 꺼진 뒤에도 유령 오버레이가 화면에 남는다.
         overlay?.destroy()
         overlay = null
+        // TTS 엔진 연결은 명시적으로 끊는다 — 안 끊으면 서비스가 내려간 뒤에도 붙어 있다.
+        speaker?.shutdown()
+        speaker = null
         guideApiClient = null
         authStore = null
         e2ePublisher = null

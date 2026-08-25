@@ -43,6 +43,13 @@ class ControlOverlay(
     private var kind: GuideDisplayState.ConfirmKind? = null
 
     /**
+     * 지금 창이 「읽는 중」 문구를 들고 있는가(#450). 다시 듣기 탭을 그 구간에만 막는다 —
+     * 그때 창에 보이는 문장은 「화면을 읽고 있어요」인데(#229·#295) 낭독이 들고 있는 것은
+     * 그 앞 안내라, 탭하면 **화면에 없는 문장**이 나온다.
+     */
+    private var reading = false
+
+    /**
      * 직전에 창에 실제로 넣은 자리. 같은 자리면 [show]가 `updateViewLayout`을 건너뛴다.
      *
      * 아끼려는 것은 CPU가 아니라 **우리가 우리를 깨우는 일**이다 — 창을 건드릴 때마다
@@ -72,6 +79,7 @@ class ControlOverlay(
         reserved: Float = 0f,
         inputText: String? = null,
     ) {
+        this.reading = reading
         val current = root
         if (current == null) {
             if (create(rect) != null) {
@@ -110,6 +118,7 @@ class ControlOverlay(
         inputFillButton = null
         readingDots = null
         kind = null
+        reading = false
     }
 
     /**
@@ -187,6 +196,14 @@ class ControlOverlay(
 
         created.findViewById<View>(R.id.btn_input_fill)
             .setOnClickListener { callbacks.onInputFillRequested() }
+
+        // **안내창 면 전체가 다시 듣기 탭이다**(#450). 칩을 하나 더 두지 않은 이유는 자리다 —
+        // 컨트롤 행에 얹으면 창이 커져 안내 대상 앱을 그만큼 더 가린다. 이 면은 **이미** 이 창이
+        // 터치를 삼키던 자리라([GuideBoxView]) 아래 앱에서 새로 뺏는 것이 없고, 강조 사각형은
+        // 표시 오버레이에 남아 계속 통과하므로 "안내 대상을 누른 것"과 헷갈릴 자리도 아니다.
+        // 중지 칩·확인쌍·「바로 입력」은 이 뷰 **위에** 얹혀 있어 그쪽 탭을 뺏지 않는다.
+        created.findViewById<View>(R.id.guide_box)
+            .setOnClickListener { if (!reading) callbacks.onSpeechRepeatRequested() }
 
         val pair = created.findViewById<View>(R.id.confirm_pair)
         // 확인쌍은 대화 화면과 공유하는 컴포넌트라 XML 라벨이 그 화면 문구다. 오버레이에서는 뜻이
