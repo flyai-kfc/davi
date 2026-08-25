@@ -828,8 +828,21 @@ def _format_element(element: UiElement, tried: dict[str, int]) -> str:
     # 표시가 곧 "tap 후보"라는 뜻은 [CLICKABLE_TARGET_INSTRUCTION]이 말해 준다.
     if element.clickable:
         details.append("clickable=True")
-    details.append(f"editable={element.editable}")
-    details.append(f"focused={element.focused}")
+    # `editable`·`focused`도 같은 규칙에 넣는다(#373). C20 ①이 `clickable`만 편입하고 둘을
+    # 남긴 것은 그 PR의 실모델 A/B가 어느 변경의 결과인지 갈리지 않게 하려던 범위 제한이었다.
+    #
+    # 표기의 뜻이 `clickable=True`(tap 후보)와 **대칭**이 된다 — `editable=True`는 type 후보다.
+    # [CLICKABLE_TARGET_INSTRUCTION]이 이미 그 대칭을 전제로 쓰여 있다("clickable=True로 표시된
+    # 요소와 editable=True인 입력칸만").
+    #
+    # `focused`는 [FOCUSED_INPUT_INSTRUCTION]·[FOCUSED_INPUT_KEYBOARD_CLOSED]가 `True`일 때만
+    # 나가므로 표기가 실릴 때 그 뜻이 함께 설명된다. **없음=False**가 이 둘의 관례이고
+    # (C20이 적어 둔 관례 셋 중 `clickable`과 같은 쪽 — 계약상 non-null bool이라 미관측이 없다),
+    # 근거는 `server/CLAUDE.md` C20 행에 적었다.
+    if element.editable:
+        details.append("editable=True")
+    if element.focused:
+        details.append("focused=True")
     # 상태는 **정보가 있을 때만** 싣는다. 요소가 최대 200개라 `enabled=True`·`selected=False`처럼
     # 기본값인 줄까지 붙이면 토큰이 요소 수만큼 불어난다. 미관측(None)에는 침묵한다(C10).
     if element.enabled is False:

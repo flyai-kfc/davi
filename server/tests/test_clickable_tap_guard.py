@@ -228,6 +228,52 @@ def test_prompt_marks_clickable_only_when_true():
     assert "clickable=False" not in prompt
 
 
+def test_prompt_marks_editable_and_focused_only_when_true():
+    """`editable`·`focused`도 「정보가 있을 때만」 규칙에 든다(C20 · #373).
+
+    표기의 뜻이 `clickable=True`(tap 후보)와 **대칭**이 된다 — `editable=True`는 type 후보다.
+    `False`는 표기 자체가 없고, 없음=False가 관례다(계약상 non-null bool이라 미관측이 없다).
+    """
+
+    screen = Screen(
+        package_name="com.example.app",
+        elements=[
+            UiElement(
+                node_id="n1", label="검색어 입력", role="EditText", editable=True, focused=True
+            ),
+            UiElement(node_id="n2", label="카카오톡", role="View", clickable=True),
+        ],
+    )
+
+    prompt = _prompt(screen)
+
+    assert "editable=True" in prompt
+    assert "focused=True" in prompt
+    # 모든 줄에 반복되면 값 하나 다른 줄이 묻힌다 — clickable과 같은 근거(C20 ①).
+    assert "editable=False" not in prompt
+    assert "focused=False" not in prompt
+
+
+def test_prompt_omits_focused_on_an_unfocused_input():
+    """입력칸이 있는데 포커스가 없는 화면 — `focused` 표기가 통째로 빠진다.
+
+    정보가 죽지는 않는다: `editable=True`는 실리고, 「없음=False」 관례가 나머지를 말한다.
+    포커스가 없으므로 [FOCUSED_INPUT_INSTRUCTION]도 안 나가 **설명과 표기가 함께 침묵한다**.
+    """
+
+    screen = Screen(
+        package_name="com.example.app",
+        elements=[
+            UiElement(node_id="n1", label="검색어 입력", role="EditText", editable=True),
+        ],
+    )
+
+    prompt = _prompt(screen)
+
+    assert "editable=True" in prompt
+    assert "focused" not in prompt
+
+
 def test_prompt_explains_the_selection_rule_when_a_clickable_element_exists():
     prompt = _prompt(_shade_screen())
     assert CLICKABLE_TARGET_INSTRUCTION in prompt
