@@ -3,6 +3,12 @@
   "default_scenario": "samsung-clock-create-alarm-full-journey",
   "scenarios": [
     {
+      "id": "completion-verdict-device-smoke",
+      "test_class": "com.davi.helper.e2e.CompletionVerdictDeviceSmokeTest",
+      "description": "삼성 시계 알람 목록에서 실제 모델의 verified 완료와 사용자 부정 뒤 contradicted 복구를 조작 없이 확인한다.",
+      "requirements": "Samsung Clock 알람 목록과 실제 모델 서버가 필요하며 기기 데이터를 만들거나 변경하지 않음"
+    },
+    {
       "id": "samsung-clock-create-alarm-full-journey",
       "test_class": "com.davi.helper.e2e.SamsungClockFullJourneyGeminiTest",
       "description": "Davi 최신 화면에서 홈으로 나가 실제 Gemini 안내로 삼성 시계를 찾고 테스트 알람을 만든 뒤 삭제한다.",

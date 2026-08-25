@@ -147,8 +147,19 @@ class GuideDisplayState {
         return content
     }
 
-    /** [signature] 화면에 미검증 done 상한 안내를 표시한다(#55). STUCK 접미사를 붙이지 않는다. */
-    fun showCapNotice(signature: String, text: String): Content {
+    /**
+     * [signature] 화면에 done 복구·상한 안내를 표시한다(#55, #424). STUCK 접미사를 붙이지 않는다.
+     * 같은 화면에 같은 문구가 이미 떠 있으면 다시 그리지 않는다. 오버레이가 만든 접근성 이벤트가
+     * 폴링 시계를 되감는 자기 루프를 막는 경계로, [showUnreadableNotice]와 같은 이유다(#380).
+     */
+    fun showCapNotice(signature: String, text: String): Content? {
+        if (
+            visible &&
+            !stuckSuffixAllowed &&
+            !unreadableNoticeActive &&
+            guideSignature == signature &&
+            guide?.text == text
+        ) return null
         clearUnreadableState()
         val content = Content(null, text)
         guide = content

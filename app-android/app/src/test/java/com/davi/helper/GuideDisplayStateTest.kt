@@ -168,6 +168,28 @@ class GuideDisplayStateTest {
     }
 
     @Test
+    fun `같은 화면의 같은 상한 안내는 다시 그리지 않는다`() {
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.showCapNotice(sigA, capNotice))
+
+        assertNull(state.showCapNotice(sigA, capNotice))
+    }
+
+    @Test
+    fun `같은 문구라도 화면이 바뀌면 새로 그린다`() {
+        state.showCapNotice(sigA, capNotice)
+
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.showCapNotice(sigB, capNotice))
+    }
+
+    @Test
+    fun `일반 안내와 문구가 같아도 상한 안내 상태로 전환한다`() {
+        state.show(sigA, null, capNotice)
+
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.showCapNotice(sigA, capNotice))
+        assertEquals(GuideDisplayState.Content(null, capNotice), state.stuckContent(stuck, sigA))
+    }
+
+    @Test
     fun `재표시는 한 번만 일어난다`() {
         state.showCapNotice(sigA, capNotice)
         state.onCleared()

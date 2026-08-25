@@ -164,7 +164,7 @@ build/reports/device-e2e-private/
 | 관측한 안내 단계 | driver가 실제로 받은 Gemini 결정 수 |
 | 비종료 이탈 | 예상 경로를 벗어났지만 남은 단계에서 계속 수행한 코드와 횟수 |
 | 시작된 서버 요청 | Davi가 서버에 시작한 논리 요청 수 |
-| 단계 trace | action, target bounds 존재 여부, 완료 검증 여부 |
+| 단계 trace | action, target bounds 존재 여부, 완료 3상태 판정 |
 | 경유한 package | 안내가 런처와 외부 앱 사이에서 이동한 순서 |
 | 테스트 데이터 정리 | 성공·실패 뒤 테스트 전용 데이터 삭제 결과 |
 
@@ -172,7 +172,7 @@ build/reports/device-e2e-private/
 
 - 요청 시점의 package/page/scroll/IME 및 전달된 화면 요소 전체
 - 그 요청에 실제 포함된 스텝 이력(`steps`) — 안내 문장·조작·대상 label·화면 요약·화면 변화 여부
-- 응답의 model/verified/screen signature와 전체 `GuideAction` 필드
+- 응답의 model/completion verdict/screen signature와 전체 `GuideAction` 필드
 - 해석된 target bounds·role, 비종료 이탈과 실행/실패 결과
 
 `step_limit`은 Gemini 할당량 제한이 아니다. 시나리오가 정한 최대 안내 단계 안에 목표를 완료하지

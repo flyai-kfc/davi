@@ -112,6 +112,8 @@ data class NextStepRequest(
      * 활성 [GuideSession] 안에서만 최대 10개를 보관하므로 서버 상태나 기기 식별자가 필요 없다.
      */
     val steps: List<GuideStep> = emptyList(),
+    /** 완료 확인에서 사용자가 "아직요"라고 답한 화면. 원문이나 세션 식별자는 싣지 않는다. */
+    @SerialName("completion_feedback") val completionFeedback: CompletionFeedback? = null,
     @SerialName("client_version") val clientVersion: String? = null,
 )
 
@@ -124,6 +126,11 @@ data class NextStepResponse(
      * `false`인 `done`은 세션을 끝내지 않는다 — [GuideSession.onDone]이 소비한다(#55).
      */
     val verified: Boolean = false,
+    /**
+     * 목표 완료 신뢰도(#424). 새 서버는 항상 보내며, 구버전 서버와의 호환 구간에는 null이다.
+     * null이면 [verified]를 기존 규칙으로 해석한다.
+     */
+    @SerialName("completion_verdict") val completionVerdict: CompletionVerdict? = null,
     /**
      * 서버가 label 없이 계산한 현재 화면 구조 서명. 앱은 내용을 해석하거나 만들지 않고,
      * 표시한 행동과 함께 다음 요청으로 되돌려 보낸다.
@@ -148,9 +155,11 @@ data class GuideAction(
      */
     @SerialName("screen_summary") val screenSummary: String = "",
     val evidence: String,
+    @SerialName("completion_evidence") val completionEvidence: CompletionEvidence? = null,
     @SerialName("action_type") val actionType: ActionType,
     val direction: SwipeDirection? = null,
     @SerialName("target_node_id") val targetNodeId: String? = null,
+    @SerialName("expected_target_state") val expectedTargetState: ExpectedTargetState? = null,
     /**
      * `type`일 때 입력칸에 넣을 글자(C21). 서버 가드가 **안내문([instruction])이 집어 말한 말**만
      * 남긴다 — 값이 있으면 안내창에 「바로 입력」 버튼이 뜨고, 누르면 `ACTION_SET_TEXT`로 대상
@@ -163,6 +172,34 @@ data class GuideAction(
      */
     @SerialName("input_text") val inputText: String? = null,
     val instruction: String,
+)
+
+@Serializable
+data class ExpectedTargetState(
+    val attribute: ObservableState,
+    val value: Boolean,
+)
+
+/**
+ * 기대 상태는 서버 응답 원문의 id가 아니라, 앱이 현재 화면에서 실제로 찾은 tap 대상과 함께
+ * 기록한다. 대상 조회가 실패했거나 다른 액션이면 id·label과 같은 자리에서 함께 비운다(#424).
+ * 상태 의미는 서버가 검증하고 앱은 해석하지 않는다.
+ */
+internal fun GuideAction.expectedTargetStateFor(target: UiElement?): ExpectedTargetState? =
+    expectedTargetState?.takeIf { actionType == ActionType.TAP && target != null }
+
+@Serializable
+data class CompletionEvidence(
+    @SerialName("node_id") val nodeId: String,
+    val kind: CompletionEvidenceKind,
+    val state: ExpectedTargetState? = null,
+)
+
+@Serializable
+data class CompletionFeedback(
+    val status: CompletionFeedbackStatus,
+    @SerialName("structure_signature") val structureSignature: String,
+    @SerialName("content_signature") val contentSignature: String? = null,
 )
 
 /**
@@ -190,6 +227,8 @@ data class GuideStep(
      * 있다. 화면마다 다시 매겨지는 값이라 서버가 [structureSignature]와 짝으로만 쓴다.
      */
     @SerialName("target_node_id") val targetNodeId: String? = null,
+    /** 실제로 조회된 tap 대상의 기대 상태. 상태의 의미는 해석하지 않고 다음 요청에 echo한다. */
+    @SerialName("expected_target_state") val expectedTargetState: ExpectedTargetState? = null,
     /** 그 안내가 나간 화면이 무엇이었는지. 응답 [GuideAction.screenSummary]의 echo. */
     @SerialName("screen_hint") val screenHint: String? = null,
     /** 응답 [NextStepResponse.screenSignature]의 echo. 앱이 만들지 않는다. */
@@ -237,6 +276,32 @@ enum class ActionType {
     /** [OPEN_QUICK_SETTINGS]와 같은 가장자리 제스처다(#222) — 계약도 표현 규칙도 같다. */
     @SerialName("open_app_drawer") OPEN_APP_DRAWER,
     @SerialName("done") DONE,
+}
+
+@Serializable
+enum class CompletionVerdict {
+    @SerialName("verified") VERIFIED,
+    @SerialName("inconclusive") INCONCLUSIVE,
+    @SerialName("contradicted") CONTRADICTED,
+}
+
+@Serializable
+enum class CompletionEvidenceKind {
+    @SerialName("success") SUCCESS,
+    @SerialName("failure") FAILURE,
+}
+
+@Serializable
+enum class ObservableState {
+    @SerialName("checked") CHECKED,
+    @SerialName("selected") SELECTED,
+    @SerialName("enabled") ENABLED,
+    @SerialName("showing_hint_text") SHOWING_HINT_TEXT,
+}
+
+@Serializable
+enum class CompletionFeedbackStatus {
+    @SerialName("user_rejected") USER_REJECTED,
 }
 
 /**

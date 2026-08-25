@@ -264,6 +264,8 @@ def test_every_provider_produces_the_same_guide_action(cls, body_factory):
         **_ACTION,
         "action_type": "tap",
         "direction": None,
+        "completion_evidence": None,
+        "expected_target_state": None,
         "input_text": None,
     }
 

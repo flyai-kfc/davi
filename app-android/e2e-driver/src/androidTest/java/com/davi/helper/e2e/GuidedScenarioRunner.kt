@@ -47,15 +47,22 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                         TRACE_TAG,
                         "step=$step action=${decision.action.actionType.wire} " +
                             "package=${decision.screenPackage} " +
-                            "target=${decision.targetBounds?.size == 4} verified=${decision.verified}",
+                            "target=${decision.targetBounds?.size == 4} verified=${decision.verified} " +
+                            "verdict=${decision.completionVerdict.wire}",
                     )
 
                     if (decision.action.actionType == GuidedActionType.DONE) {
+                        if (decision.completionVerdict != GuidedCompletionVerdict.VERIFIED) {
+                            val code = "done_${decision.completionVerdict.wire}"
+                            Log.i(TRACE_TAG, "step=$step deviation=$code")
+                            detailedTrace.recordDeviation(step, code)
+                            detailedTrace.recordStepOutcome(step, code)
+                            // 앱도 이 두 verdict에서 세션을 끝내지 않는다. 같은 화면 재질의를
+                            // 기다려 recovery가 실제로 성공하는지 남은 step 예산 안에서 본다.
+                            continue
+                        }
                         if (!scenario.isGoalSatisfied(device, prepared)) {
                             throw GuidedScenarioFailure("done_before_goal", step)
-                        }
-                        if (!decision.verified) {
-                            throw GuidedScenarioFailure("done_unverified", step)
                         }
                         detailedTrace.recordStepOutcome(step, "done_verified")
                         return

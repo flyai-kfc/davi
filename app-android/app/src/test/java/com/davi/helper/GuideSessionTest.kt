@@ -31,6 +31,15 @@ class GuideSessionTest {
 
     private fun history(): List<String> = steps().map { it.instruction }
 
+    /** 프로덕션의 verdict + 내용 서명 경계를 모든 done 회귀가 직접 지난다. */
+    private fun onDone(
+        generation: Long,
+        verdict: CompletionVerdict,
+        screenSignature: String,
+        contentSignature: String? = null,
+    ): GuideSession.DoneOutcome? =
+        GuideSession.onDone(generation, verdict, screenSignature, contentSignature)
+
     private fun sampleStep(
         instruction: String = "화면을 넘기세요.",
         actionType: ActionType = ActionType.SCROLL,
@@ -538,15 +547,15 @@ class GuideSessionTest {
 
     // --- done 판정 (#55, #139) ---------------------------------------------------
     //
-    // `verified=false`인 done은 조기 종료일 수 있어 종료 신호로 쓰지 않는다(#55).
-    // `verified=true`인 done도 이제 세션을 끝내지 않는다 — 성공 오탐을 사용자에게 한 번
+    // `inconclusive`인 done은 조기 종료일 수 있어 종료 신호로 쓰지 않는다(#55).
+    // `verified`인 done도 이제 세션을 끝내지 않는다 — 성공 오탐을 사용자에게 한 번
     // 묻고, 종료는 "됐어요"만이 만든다(#139 GD-3).
 
     @Test
     fun `검증된 done은 세션을 끝내지 않고 확인을 기다린다`() {
         GuideSession.start("카메라 열기")
 
-        val outcome = GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        val outcome = onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
 
         assertEquals(GuideSession.DoneOutcome.CONFIRM_CONFIDENT, outcome)
         assertTrue(GuideSession.isActive)
@@ -556,7 +565,7 @@ class GuideSessionTest {
     @Test
     fun `됐어요를 누르면 세션이 끝난다`() {
         GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
 
         GuideSession.confirmAccepted()
 
@@ -567,11 +576,78 @@ class GuideSessionTest {
     @Test
     fun `아직요를 누르면 세션이 유지되고 대기가 풀린다`() {
         GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
 
         GuideSession.confirmRejected()
 
         assertTrue(GuideSession.isActive)
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
+    @Test
+    fun `아직요는 확인한 화면의 구조와 내용 서명을 서버 피드백으로 남긴다`() {
+        GuideSession.start("카메라 열기")
+        val content = "c".repeat(64)
+        onDone(
+            currentGeneration(),
+            CompletionVerdict.VERIFIED,
+            SIGNATURE,
+            content,
+        )
+
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            CompletionFeedback(
+                CompletionFeedbackStatus.USER_REJECTED,
+                SIGNATURE,
+                content,
+            ),
+            GuideSession.active()?.completionFeedback,
+        )
+    }
+
+    @Test
+    fun `명시 반대 done은 완료 확인을 띄우지 않고 재탐색한다`() {
+        GuideSession.start("기능 켜기")
+
+        val outcome = onDone(
+            currentGeneration(),
+            CompletionVerdict.CONTRADICTED,
+            SIGNATURE,
+            "c".repeat(64),
+        )
+
+        assertEquals(GuideSession.DoneOutcome.RECOVER_CONTRADICTED, outcome)
+        assertFalse(GuideSession.awaitingConfirm)
+        assertTrue(GuideSession.isActive)
+    }
+
+    @Test
+    fun `명시 반대가 상한까지 반복돼도 성공 확인으로 올리지 않는다`() {
+        GuideSession.start("기능 켜기")
+        val generation = currentGeneration()
+
+        repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
+            assertEquals(
+                GuideSession.DoneOutcome.RECOVER_CONTRADICTED,
+                onDone(
+                    generation,
+                    CompletionVerdict.CONTRADICTED,
+                    SIGNATURE,
+                    null,
+                ),
+            )
+        }
+        assertEquals(
+            GuideSession.DoneOutcome.NOTICE_CONTRADICTED,
+            onDone(
+                generation,
+                CompletionVerdict.CONTRADICTED,
+                SIGNATURE,
+                null,
+            ),
+        )
         assertFalse(GuideSession.awaitingConfirm)
     }
 
@@ -580,12 +656,12 @@ class GuideSessionTest {
     fun `부정한 화면의 done은 확인을 다시 띄우지 않는다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
         GuideSession.confirmRejected()
 
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
         assertFalse(GuideSession.awaitingConfirm)
     }
@@ -595,20 +671,20 @@ class GuideSessionTest {
     fun `부정한 화면에서 done이 상한까지 반복되면 문구만 남긴다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
         GuideSession.confirmRejected()
 
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
         assertEquals(
             GuideSession.DoneOutcome.NOTICE_ONLY,
-            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
         assertTrue(GuideSession.isActive)
     }
@@ -618,12 +694,12 @@ class GuideSessionTest {
     fun `부정 뒤 다른 화면의 검증된 done은 다시 확인을 띄운다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE)
+        onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
         GuideSession.confirmRejected()
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(generation, verified = true, screenSignature = OTHER_SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = OTHER_SIGNATURE),
         )
     }
 
@@ -631,7 +707,7 @@ class GuideSessionTest {
     fun `미검증 done은 세션을 끝내지 않는다`() {
         GuideSession.start("카메라 열기")
 
-        val outcome = GuideSession.onDone(currentGeneration(), verified = false, screenSignature = SIGNATURE)
+        val outcome = onDone(currentGeneration(), verdict = CompletionVerdict.INCONCLUSIVE, screenSignature = SIGNATURE)
 
         assertEquals(GuideSession.DoneOutcome.RETRY, outcome)
         assertTrue(GuideSession.isActive)
@@ -644,11 +720,11 @@ class GuideSessionTest {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
 
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE))
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, false, SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
         )
         assertTrue(GuideSession.isActive)
         assertTrue(GuideSession.awaitingConfirm)
@@ -659,11 +735,11 @@ class GuideSessionTest {
     fun `상한 이후의 미검증 done도 사용자에게 넘긴다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        repeat(3) { GuideSession.onDone(generation, false, SIGNATURE) }
+        repeat(3) { onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE) }
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, false, SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
         )
     }
 
@@ -675,21 +751,21 @@ class GuideSessionTest {
         repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
             assertEquals(
                 GuideSession.DoneOutcome.RETRY,
-                GuideSession.onDone(generation, false, SIGNATURE),
+                onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
             )
         }
 
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, OTHER_SIGNATURE),
         )
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, OTHER_SIGNATURE),
         )
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, false, OTHER_SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, OTHER_SIGNATURE),
         )
     }
 
@@ -699,13 +775,25 @@ class GuideSessionTest {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
 
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, OTHER_SIGNATURE))
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, OTHER_SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
+        )
+        assertEquals(
+            GuideSession.DoneOutcome.RETRY,
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, OTHER_SIGNATURE),
+        )
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, false, SIGNATURE),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE),
         )
     }
 
@@ -716,13 +804,13 @@ class GuideSessionTest {
         repeat(GuideSession.MAX_UNVERIFIED_DONE_TOTAL - 1) { index ->
             assertEquals(
                 GuideSession.DoneOutcome.RETRY,
-                GuideSession.onDone(generation, false, "signature-$index"),
+                onDone(generation, CompletionVerdict.INCONCLUSIVE, "signature-$index"),
             )
         }
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, false, "signature-last"),
+            onDone(generation, CompletionVerdict.INCONCLUSIVE, "signature-last"),
         )
     }
 
@@ -731,12 +819,12 @@ class GuideSessionTest {
     fun `다른 안내가 표시되면 미검증 done 연속이 끊긴다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, false, SIGNATURE)
-        GuideSession.onDone(generation, false, SIGNATURE)
+        onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE)
+        onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE)
 
         record(generation, "카메라를 누르세요.")
 
-        assertEquals(GuideSession.DoneOutcome.RETRY, GuideSession.onDone(generation, false, SIGNATURE))
+        assertEquals(GuideSession.DoneOutcome.RETRY, onDone(generation, CompletionVerdict.INCONCLUSIVE, SIGNATURE))
     }
 
     /** 늦게 도착한 이전 세션의 done은 검증 여부와 무관하게 새 세션을 건드리면 안 된다. */
@@ -747,7 +835,7 @@ class GuideSessionTest {
         GuideSession.stop()
         GuideSession.start("카메라 열기")
 
-        assertNull(GuideSession.onDone(stale, verified = true, screenSignature = SIGNATURE))
+        assertNull(onDone(stale, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE))
         assertTrue(GuideSession.isActive)
         assertFalse(GuideSession.awaitingConfirm)
     }
@@ -756,15 +844,15 @@ class GuideSessionTest {
     fun `중지 후 다시 시작하면 미검증 done 카운트도 비워진다`() {
         GuideSession.start("카메라 열기")
         val before = currentGeneration()
-        GuideSession.onDone(before, false, SIGNATURE)
-        GuideSession.onDone(before, false, SIGNATURE)
+        onDone(before, CompletionVerdict.INCONCLUSIVE, SIGNATURE)
+        onDone(before, CompletionVerdict.INCONCLUSIVE, SIGNATURE)
 
         GuideSession.stop()
         GuideSession.start("카메라 열기")
 
         assertEquals(
             GuideSession.DoneOutcome.RETRY,
-            GuideSession.onDone(currentGeneration(), false, SIGNATURE),
+            onDone(currentGeneration(), CompletionVerdict.INCONCLUSIVE, SIGNATURE),
         )
     }
 
@@ -772,7 +860,7 @@ class GuideSessionTest {
     @Test
     fun `중지 후 다시 시작하면 부정 이력도 비워진다`() {
         GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
         GuideSession.confirmRejected()
 
         GuideSession.stop()
@@ -780,7 +868,7 @@ class GuideSessionTest {
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE),
+            onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
     }
 
@@ -793,7 +881,7 @@ class GuideSessionTest {
     fun `화면이 바뀌어도 확인 대기는 유지된다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, true, SIGNATURE)
+        onDone(generation, CompletionVerdict.VERIFIED, SIGNATURE)
 
         record(generation, "다른 화면의 안내")
 
@@ -812,14 +900,14 @@ class GuideSessionTest {
     fun `안내가 나가면 부정 이력이 풀린다`() {
         GuideSession.start("알람 끄기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, true, SIGNATURE)
+        onDone(generation, CompletionVerdict.VERIFIED, SIGNATURE)
         GuideSession.confirmRejected()
 
         record(generation, "알람을 눌러 보세요.")
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(generation, true, SIGNATURE),
+            onDone(generation, CompletionVerdict.VERIFIED, SIGNATURE),
         )
     }
 
@@ -834,11 +922,11 @@ class GuideSessionTest {
     fun `부정 뒤 같은 화면의 done이 반복돼도 확인은 재발행되지 않는다`() {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
-        GuideSession.onDone(generation, true, SIGNATURE)
+        onDone(generation, CompletionVerdict.VERIFIED, SIGNATURE)
         GuideSession.confirmRejected()
 
         val outcomes = (1..GuideSession.MAX_UNVERIFIED_DONE).map {
-            GuideSession.onDone(generation, true, SIGNATURE)
+            onDone(generation, CompletionVerdict.VERIFIED, SIGNATURE)
         }
 
         assertEquals(
@@ -903,7 +991,7 @@ class GuideSessionTest {
 
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_CONFIDENT,
-            GuideSession.onDone(generation, verified = true, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE),
         )
     }
 
@@ -913,7 +1001,7 @@ class GuideSessionTest {
         GuideSession.start("카메라 열기")
         val generation = currentGeneration()
         repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
-            GuideSession.onDone(generation, verified = false, screenSignature = SIGNATURE)
+            onDone(generation, verdict = CompletionVerdict.INCONCLUSIVE, screenSignature = SIGNATURE)
         }
 
         GuideSession.awaitQuitConfirm()
@@ -922,7 +1010,7 @@ class GuideSessionTest {
         // 카운터가 살아 있으면 다음 미검증 done이 상한에 닿는다.
         assertEquals(
             GuideSession.DoneOutcome.CONFIRM_UNSURE,
-            GuideSession.onDone(generation, verified = false, screenSignature = SIGNATURE),
+            onDone(generation, verdict = CompletionVerdict.INCONCLUSIVE, screenSignature = SIGNATURE),
         )
     }
 
@@ -937,7 +1025,7 @@ class GuideSessionTest {
     @Test
     fun `이미 확인 대기 중이면 종료 확인으로 겹쳐 들어가지 않는다`() {
         GuideSession.start("카메라 열기")
-        GuideSession.onDone(currentGeneration(), verified = true, screenSignature = SIGNATURE)
+        onDone(currentGeneration(), verdict = CompletionVerdict.VERIFIED, screenSignature = SIGNATURE)
 
         assertFalse(GuideSession.awaitQuitConfirm())
     }

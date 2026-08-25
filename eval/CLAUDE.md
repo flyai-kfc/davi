@@ -69,8 +69,8 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).
   baseline adapter는 #425 착수 시점의 화면 근거 정책과 보이는 요소 판정을
   `completion_baseline.py`에 복사해 독립적으로 보존하고, 파일 해시를 policy id에 넣는다.
-  candidate id도 서버 추론 파일 해시를 포함한다. #424가 새 분류를 확정하기 전에는 현재 서버
-  bool 경계의 false를 `inconclusive`로 옮길 뿐 `contradicted`를 추측하지 않는다.
+  candidate id도 서버 추론 파일 해시를 포함한다. #424 이후 candidate는 서버의 구조화 완료
+  근거·현재 상태·직전 수행 결과·동일 화면 사용자 거절을 사용해 세 상태를 직접 분류한다.
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
 

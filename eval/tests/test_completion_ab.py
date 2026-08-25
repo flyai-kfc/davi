@@ -23,6 +23,20 @@ from completion_ab import (
 from harness import FIXTURES, FixtureError
 
 _GIT_SHA = "a" * 40
+_FALSE_POSITIVE_FAILURE_CASES = {
+    "inconclusive-error-report-menu",
+    "inconclusive-error-report-action",
+    "inconclusive-error-log-menu",
+    "inconclusive-error-report-send-menu",
+    "inconclusive-zero-error-count",
+    "inconclusive-negated-error-occurrence",
+}
+_EXPLICIT_FAILURE_CASES = {
+    "contradicted-explicit-save-failure",
+    "contradicted-error-occurred",
+    "contradicted-error-occurrence",
+    "contradicted-permission-required",
+}
 
 
 class _FixedPolicy:
@@ -37,8 +51,8 @@ class _FixedPolicy:
 def test_completion_fixture_has_human_tristate_verdict_and_is_pii_safe():
     loaded = load_completion_dataset()
 
-    assert loaded.dataset.dataset_version == 2
-    assert len(loaded.cases) == 18
+    assert loaded.dataset.dataset_version == 3
+    assert len(loaded.cases) == 32
     assert {item.case.expected_verdict for item in loaded.cases} == {
         CompletionVerdict.VERIFIED,
         CompletionVerdict.INCONCLUSIVE,
@@ -50,6 +64,17 @@ def test_completion_fixture_has_human_tristate_verdict_and_is_pii_safe():
         by_id["invalid-opposite-state-prefix"].expected_verdict
         is CompletionVerdict.VERIFIED
     )
+    for case_id in ("valid-compound-particle", "invalid-negated-visible-label"):
+        assert by_id[case_id].expected_verdict is CompletionVerdict.INCONCLUSIVE
+        # 모델 오판을 재현하는 입력은 남기고 사람 정답만 독립적으로 보존한다.
+        assert by_id[case_id].completion_evidence is not None
+    for case_id in _FALSE_POSITIVE_FAILURE_CASES:
+        assert by_id[case_id].expected_verified
+        assert by_id[case_id].expected_verdict is CompletionVerdict.INCONCLUSIVE
+        assert by_id[case_id].completion_evidence is not None
+    for case_id in _EXPLICIT_FAILURE_CASES:
+        assert by_id[case_id].expected_verdict is CompletionVerdict.CONTRADICTED
+        assert by_id[case_id].completion_evidence is not None
     assert len(loaded.corpus_sha256) == 64
 
 
@@ -86,30 +111,46 @@ def test_default_ab_report_has_confusion_matrices_metrics_and_identity():
     loaded = load_completion_dataset()
     report = run_comparison(loaded, git_sha=_GIT_SHA)
 
-    expected_matrix = {
-        "verified": {"verified": 8, "inconclusive": 2, "contradicted": 0},
-        "inconclusive": {"verified": 2, "inconclusive": 1, "contradicted": 0},
-        "contradicted": {"verified": 2, "inconclusive": 3, "contradicted": 0},
+    baseline_matrix = {
+        "verified": {"verified": 9, "inconclusive": 2, "contradicted": 0},
+        "inconclusive": {"verified": 11, "inconclusive": 4, "contradicted": 0},
+        "contradicted": {"verified": 6, "inconclusive": 0, "contradicted": 0},
+    }
+    candidate_matrix = {
+        "verified": {"verified": 9, "inconclusive": 2, "contradicted": 0},
+        "inconclusive": {"verified": 1, "inconclusive": 14, "contradicted": 0},
+        "contradicted": {"verified": 0, "inconclusive": 0, "contradicted": 6},
     }
     assert report.baseline.policy_id == BaselineCompletionPolicy.policy_id
     assert report.candidate.policy_id == CurrentServerCandidatePolicy.policy_id
-    assert report.baseline.confusion_matrix == expected_matrix
-    assert report.candidate.confusion_matrix == expected_matrix
-    assert report.baseline.verdicts == report.candidate.verdicts
+    assert report.baseline.confusion_matrix == baseline_matrix
+    assert report.candidate.confusion_matrix == candidate_matrix
+    assert report.baseline.verdicts != report.candidate.verdicts
+    assert report.candidate.verdicts["valid-compound-particle"] == "verified"
+    assert report.candidate.verdicts["invalid-negated-visible-label"] == "inconclusive"
+    for case_id in _FALSE_POSITIVE_FAILURE_CASES:
+        assert report.candidate.verdicts[case_id] == "inconclusive"
+    for case_id in _EXPLICIT_FAILURE_CASES:
+        assert report.candidate.verdicts[case_id] == "contradicted"
 
-    for policy in (report.baseline, report.candidate):
-        assert policy.false_success.numerator == 4
-        assert policy.false_success.denominator == 8
-        assert policy.false_success.rate == pytest.approx(1 / 2)
-        assert policy.verified_recall.numerator == 8
-        assert policy.verified_recall.denominator == 10
-        assert policy.verified_recall.rate == pytest.approx(4 / 5)
-        assert policy.contradiction_recall.numerator == 0
-        assert policy.contradiction_recall.denominator == 5
-        assert policy.contradiction_recall.rate == 0
-        assert policy.inconclusive_rate.numerator == 6
-        assert policy.inconclusive_rate.denominator == 18
-        assert policy.inconclusive_rate.rate == pytest.approx(1 / 3)
+    assert report.baseline.false_success.numerator == 17
+    assert report.baseline.false_success.denominator == 21
+    assert report.baseline.false_success.rate == pytest.approx(17 / 21)
+    assert report.baseline.verified_recall.numerator == 9
+    assert report.baseline.verified_recall.denominator == 11
+    assert report.baseline.contradiction_recall.numerator == 0
+    assert report.baseline.contradiction_recall.denominator == 6
+    assert report.baseline.inconclusive_rate.numerator == 6
+    assert report.baseline.inconclusive_rate.denominator == 32
+
+    assert report.candidate.false_success.numerator == 1
+    assert report.candidate.false_success.denominator == 21
+    assert report.candidate.verified_recall.numerator == 9
+    assert report.candidate.verified_recall.denominator == 11
+    assert report.candidate.contradiction_recall.numerator == 6
+    assert report.candidate.contradiction_recall.denominator == 6
+    assert report.candidate.inconclusive_rate.numerator == 16
+    assert report.candidate.inconclusive_rate.denominator == 32
 
     assert report.corpus_sha256 == loaded.corpus_sha256
     assert report.git_sha == _GIT_SHA
@@ -128,7 +169,7 @@ def test_false_success_increase_is_an_explicit_gate_failure():
     )
 
     assert report.baseline.false_success.numerator == 0
-    assert report.candidate.false_success.numerator == 8
+    assert report.candidate.false_success.numerator == 21
     assert report.false_success_regression
     assert report.to_dict()["gate"]["false_success_not_increased"] is False
 
@@ -137,7 +178,11 @@ def test_cli_fails_when_server_candidate_regresses_without_changing_baseline(
     monkeypatch,
     capsys,
 ):
-    monkeypatch.setattr(completion_ab, "_verify_done", lambda action, request: True)
+    monkeypatch.setattr(
+        completion_ab,
+        "_classify_completion",
+        lambda action, request: CompletionVerdict.VERIFIED,
+    )
     monkeypatch.setattr(completion_ab, "current_git_sha", lambda: _GIT_SHA)
 
     exit_code = completion_ab.main(["--compact"])
@@ -145,8 +190,8 @@ def test_cli_fails_when_server_candidate_regresses_without_changing_baseline(
     payload = json.loads(captured.out)
 
     assert exit_code == 1
-    assert payload["baseline"]["metrics"]["false_success"]["count"] == 4
-    assert payload["candidate"]["metrics"]["false_success"]["count"] == 8
+    assert payload["baseline"]["metrics"]["false_success"]["count"] == 17
+    assert payload["candidate"]["metrics"]["false_success"]["count"] == 21
     assert payload["gate"]["false_success_not_increased"] is False
     assert "candidate false success" in captured.err
 

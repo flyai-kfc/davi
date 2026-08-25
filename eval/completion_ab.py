@@ -1,9 +1,8 @@
 """완료 판정 정책을 같은 fixture corpus에서 비교하는 keyless A/B runner(#425).
 
-#424가 제품의 신뢰도 상태와 종료 UX를 확정하기 전에도 측정 경계는 독립적으로 유지한다.
-baseline은 현재 화면 근거 정책을 별도 snapshot 모듈에 명시적으로 보존하고, candidate는 현재 서버의 순수
-완료 검증 경계를 호출한다. 지금 두 정책의 의미는 같지만 adapter는 분리되어 있으므로 #424가
-candidate만 교체해도 같은 corpus와 보고서 계약으로 전후 비용을 비교할 수 있다.
+baseline은 #424 착수 전 화면 근거 정책을 별도 snapshot 모듈에 보존하고, candidate는 현재 서버의
+3상태 완료 검증 경계를 호출한다. 보고서 재검증·정책 해시·비교 계약은 그대로 두고 candidate만
+교체해 같은 corpus에서 전후 비용을 비교한다.
 
 출력에는 case id와 집계만 싣는다. 화면 label, goal, evidence 같은 fixture 원문은 출력하지 않는다.
 """
@@ -26,8 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 _SERVER = ROOT / "server"
 sys.path.insert(0, str(_SERVER))
 
-from app.reasoning import _verify_done
-from app.schemas import ActionType, GuideAction, NextStepRequest
+from app.reasoning import _classify_completion
+from app.schemas import ActionType, CompletionEvidence, GuideAction, NextStepRequest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from completion_baseline import BASELINE_POLICY_ID, baseline_verified
@@ -70,8 +69,13 @@ class CompletionCase(BaseModel):
     expected_result: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
     evidence_label: str = Field(min_length=1)
-    expected_verified: bool
-    expected_verdict: CompletionVerdict
+    expected_verified: bool = Field(
+        description="#71 근거-label 인용 이진축. expected_verdict와 독립이다."
+    )
+    completion_evidence: CompletionEvidence | None = None
+    expected_verdict: CompletionVerdict = Field(
+        description="#425 현재 화면 완료 상태 3단계 정답. expected_verified와 독립이다."
+    )
 
     @model_validator(mode="after")
     def validate_source(self) -> CompletionCase:
@@ -93,7 +97,7 @@ class CompletionDataset(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    dataset_version: Literal[2]
+    dataset_version: Literal[3]
     description: str = Field(min_length=1)
     cases: list[CompletionCase] = Field(min_length=1)
 
@@ -143,24 +147,17 @@ class BaselineCompletionPolicy:
 
 
 class CurrentServerCandidatePolicy:
-    """현재 서버의 순수 완료 검증 경계를 호출하는 candidate adapter.
+    """#424 서버의 구조화 3상태 완료 검증 경계를 호출하는 candidate adapter."""
 
-    #424가 `contradicted`를 판정하는 순수 경계를 추가하면 이 adapter만 그 함수를 호출하도록
-    바꾼다. 그 전에는 기존 bool의 false를 안전하게 `inconclusive`로 옮기며 제품 계약을 바꾸지
-    않는다.
-    """
-
-    policy_id = f"current-server-candidate-v1-{_CANDIDATE_SOURCE_SHA256[:12]}"
+    policy_id = f"grounded-server-candidate-v2-{_CANDIDATE_SOURCE_SHA256[:12]}"
 
     def evaluate(
         self,
         case: CompletionCase,
         request: NextStepRequest,
     ) -> CompletionVerdict:
-        verified = _verify_done(_done_action(case), request)
-        return (
-            CompletionVerdict.VERIFIED if verified else CompletionVerdict.INCONCLUSIVE
-        )
+        verdict = _classify_completion(_done_action(case), request)
+        return CompletionVerdict(verdict.value)
 
 
 @dataclass(frozen=True)
@@ -544,6 +541,7 @@ def _done_action(case: CompletionCase) -> GuideAction:
         expected_result=case.expected_result,
         screen_summary="평가 화면",
         evidence=case.evidence,
+        completion_evidence=case.completion_evidence,
         action_type=ActionType.DONE,
         instruction="완료했습니다.",
     )

@@ -1,6 +1,7 @@
 import pytest
 from app.prompt import (
     ACTIONABLE_RESULT_INSTRUCTION,
+    COMPLETION_EVIDENCE_INSTRUCTION,
     EVIDENCE_INSTRUCTION,
     FOCUSED_INPUT_INSTRUCTION,
     FOCUSED_INPUT_KEYBOARD_CLOSED,
@@ -32,9 +33,13 @@ from app.prompt import (
 from app.schemas import (
     MAX_STEPS,
     ActionType,
+    CompletionFeedback,
+    CompletionFeedbackStatus,
+    ExpectedTargetState,
     GuideAction,
     GuideStep,
     NextStepRequest,
+    ObservableState,
     Screen,
     ScrollAxis,
     SwipeDirection,
@@ -113,6 +118,64 @@ def test_prompt_asks_for_evidence_that_the_verifier_can_check():
     assert "닫는 따옴표 뒤" in EVIDENCE_INSTRUCTION
     assert EVIDENCE_INSTRUCTION.count("쓰세요") == 1
     assert "판단 근거인 이유까지 쓰세요" in EVIDENCE_INSTRUCTION
+    assert "그 node_id와 같은 요소의 label" in EVIDENCE_INSTRUCTION
+
+
+def test_prompt_explains_direct_completion_evidence_and_inconclusive_default():
+    prompt = build_prompt(_request())
+
+    assert COMPLETION_EVIDENCE_INSTRUCTION in prompt
+    assert "명시적 오류·거절·취소" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "결과가 로딩 중인 것은" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "label 자체가" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "그 node_id의 label" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "화면만으로 정할 수 없으면" in COMPLETION_EVIDENCE_INSTRUCTION
+
+
+def test_prompt_only_includes_user_rejection_for_the_exact_current_screen():
+    screen = Screen(
+        package_name="com.example.app",
+        elements=[UiElement(node_id="n1", label="완료 상태")],
+        content_signature="c" * 64,
+    )
+    feedback = CompletionFeedback(
+        status=CompletionFeedbackStatus.USER_REJECTED,
+        structure_signature=screen_signature(screen),
+        content_signature=screen.content_signature,
+    )
+    matching = NextStepRequest(goal="작업 완료", screen=screen, completion_feedback=feedback)
+    mismatching = matching.model_copy(
+        update={
+            "completion_feedback": feedback.model_copy(
+                update={"content_signature": "d" * 64},
+            )
+        }
+    )
+
+    assert "사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다" in build_prompt(
+        matching
+    )
+    assert "사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다" not in build_prompt(
+        mismatching
+    )
+    assert "\n\n\n현재 화면 요소:" not in build_prompt(mismatching)
+    assert (
+        "- 없음\n- 사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다.\n"
+        in build_prompt(matching)
+    )
+
+
+def test_prompt_echoes_the_previous_expected_target_state():
+    request = _with_steps(
+        _step(
+            expected_target_state=ExpectedTargetState(
+                attribute=ObservableState.CHECKED,
+                value=True,
+            )
+        )
+    )
+
+    assert "기대 상태 checked=true" in build_prompt(request)
 
 
 def test_schema_description_of_evidence_agrees_with_the_prompt():
@@ -127,6 +190,7 @@ def test_schema_description_of_evidence_agrees_with_the_prompt():
     assert "작은따옴표로 감싸 글자 그대로 인용" in described
     assert "닫는 따옴표 뒤" in described
     assert "판단 근거인 이유까지" in described
+    assert "같은 요소의 label" in described
     assert "짧" not in described
 
 
