@@ -30,6 +30,16 @@ SM-S921N의 Davi 최신 대화 화면에서 홈으로 나가 삼성 시계를 �
 비종료 이탈로 기록하고 최대 단계 안에서 계속 수행한다. 설정 앱 진입과 메시지 전송·결제·게시·통화처럼
 기기 밖에 영향을 미치는 조작만 실행 전 하드 차단한다. 성공은 최종 알람 시간·이름을 독립 확인한다.
 
+다음 행동은 순수 `GuidedActionPlanner`가 앱이 전달한 action·direction·target bounds만으로 만든다.
+UIAutomator를 쓰는 `GuidedActionExecutor`는 이 계획만 받아 실제 손동작으로 옮기므로 앱별 selector나
+화면 조회 결과로 대상을 바꿀 입력이 없다. 이 의존 방향과 bounds 보존은 JVM 회귀 테스트로 고정한다.
+
+결정 대기 실패도 하나의 timeout으로 뭉치지 않는다. debug 앱은 화면 원문 없이 root 상태와 서버 요청
+상태만 서명 채널에 함께 보내며, transient 복구와 재시도는 계속 허용한다. 제한 시간이 끝났을 때
+root가 여전히 없으면 `root_unavailable`, 마지막 서버 요청이 실패했으면 `server_error`, 둘 다 아니면
+`decision_timeout`이다. 대상이 필요한 action의 `target_node_id`가 같은 요청 tree에서 풀리지 않으면
+`target_node_id_mismatch`, 최종 외부 앱 상태가 목표에 못 미치면 `done_before_goal`로 각각 기록한다.
+
 이 full-journey는 최신 Davi 화면과 홈 전환부터 검증하지만 음성 인식의 비결정성을 섞지 않기 위해
 목표 문장은 debug 서명 채널로 주입한다. 음성 인식·후속 질문·사용자의 최종 확인 UI 품질은 별도
 대화 테스트 범위다. `samsung-clock-create-alarm-focused`는 알람 목록부터 시작하는 빠른 진단용이다.
@@ -115,7 +125,7 @@ build/reports/device-e2e-private/<scenario>/latest.md
 앱 1차 또는 서버 2차 마스킹 중 하나라도 우회 중이면 실행기가 상세 보고서를 자동으로
 비활성화하며, 기기에도 원문 label을 포함하는 상세 화면 로그를 남기지 않는다.
 
-두 렌더러는 다음 명령으로 API 키 없이 검증한다.
+두 렌더러, 앱↔driver 계약과 다음 행동 비보정 경계는 다음 명령으로 API 키 없이 검증한다.
 
 ```bash
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'

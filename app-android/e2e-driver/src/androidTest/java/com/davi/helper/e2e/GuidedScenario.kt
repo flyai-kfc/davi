@@ -75,14 +75,3 @@ interface GuidedScenario<State> {
 data class GuidedDecisionAssessment(
     val deviationCodes: List<String> = emptyList(),
 )
-
-class GuidedScenarioFailure(
-    val code: String,
-    val step: Int? = null,
-) : AssertionError(
-    buildString {
-        append("guided scenario failed code=").append(code)
-        if (step != null) append(" step=").append(step)
-        append(" (화면/안내 원문 생략)")
-    },
-)

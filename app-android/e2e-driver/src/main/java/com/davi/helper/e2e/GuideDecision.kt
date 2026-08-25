@@ -57,6 +57,8 @@ data class DisplayedDecision(
     val screenPackage: String,
     val action: ObservedGuideAction,
     val targetBounds: IntArray?,
+    /** 응답의 target_node_id가 앱이 서버로 보낸 바로 그 screen tree에서 해석됐는가. */
+    val targetResolved: Boolean = targetBounds != null,
     val targetRole: String?,
     val targetClickable: Boolean,
     val targetEditable: Boolean,
@@ -91,6 +93,7 @@ internal object GuideE2eContract {
     const val ACTION_START_JOURNEY = "com.davi.helper.e2e.START_JOURNEY"
     const val ACTION_STOP = "com.davi.helper.e2e.STOP"
     const val ACTION_DECISION = "com.davi.helper.e2e.DECISION"
+    const val ACTION_DIAGNOSTIC = "com.davi.helper.e2e.DIAGNOSTIC"
     const val EXTRA_GOAL = "goal"
     const val EXTRA_GENERATION = "generation"
     const val EXTRA_SIGNATURE = "signature"
@@ -102,6 +105,7 @@ internal object GuideE2eContract {
     const val EXTRA_EXPECTED_RESULT = "expected_result"
     const val EXTRA_EVIDENCE = "evidence"
     const val EXTRA_TARGET_BOUNDS = "target_bounds"
+    const val EXTRA_TARGET_RESOLVED = "target_resolved"
     const val EXTRA_TARGET_ROLE = "target_role"
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
@@ -109,4 +113,58 @@ internal object GuideE2eContract {
     const val EXTRA_COMPLETION_VERDICT = "completion_verdict"
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
+    const val EXTRA_DIAGNOSTIC = "diagnostic"
 }
+
+/** 화면 원문 없이 결정 대기 실패 원인을 구분하는 debug 전용 관측 이벤트. */
+internal enum class GuideE2eDiagnostic(val wire: String) {
+    ROOT_UNAVAILABLE("root_unavailable"),
+    ROOT_RECOVERED("root_recovered"),
+    REQUEST_STARTED("request_started"),
+    SERVER_ERROR("server_error"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): GuideE2eDiagnostic? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/** transient 오류를 즉시 중단하지 않고, 결정 timeout 시점의 실제 원인만 남긴다. */
+internal class GuideE2eDiagnosticState {
+    private var rootUnavailable = false
+    private var serverError = false
+
+    @Synchronized
+    fun observe(event: GuideE2eDiagnostic) {
+        when (event) {
+            GuideE2eDiagnostic.ROOT_UNAVAILABLE -> rootUnavailable = true
+            GuideE2eDiagnostic.ROOT_RECOVERED -> rootUnavailable = false
+            GuideE2eDiagnostic.REQUEST_STARTED -> serverError = false
+            GuideE2eDiagnostic.SERVER_ERROR -> serverError = true
+        }
+    }
+
+    @Synchronized
+    fun reset() {
+        rootUnavailable = false
+        serverError = false
+    }
+
+    @Synchronized
+    fun timeoutFailureCode(): String = when {
+        rootUnavailable -> "root_unavailable"
+        serverError -> "server_error"
+        else -> "decision_timeout"
+    }
+}
+
+class GuidedScenarioFailure(
+    val code: String,
+    val step: Int? = null,
+) : AssertionError(
+    buildString {
+        append("guided scenario failed code=").append(code)
+        if (step != null) append(" step=").append(step)
+        append(" (화면/안내 원문 생략)")
+    },
+)

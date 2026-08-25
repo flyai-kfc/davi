@@ -15,6 +15,20 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DeviceE2eReportTest(unittest.TestCase):
+    def test_issue_209_failure_types_have_distinct_report_copy(self):
+        codes = [
+            "root_unavailable",
+            "server_error",
+            "target_node_id_mismatch",
+            "done_before_goal",
+            "instruction_length",
+        ]
+
+        descriptions = [MODULE.FAILURE_DESCRIPTIONS.get(code) for code in codes]
+
+        self.assertTrue(all(descriptions))
+        self.assertEqual(len(descriptions), len(set(descriptions)))
+
     def test_android_junit_success_code_is_reported_as_passed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

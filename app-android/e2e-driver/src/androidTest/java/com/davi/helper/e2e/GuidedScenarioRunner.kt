@@ -17,6 +17,7 @@ class GuidedScenarioRunner(private val device: UiDevice) {
         var state: State? = null
         var primaryFailure: Throwable? = null
         val queue = GuideDecisionQueue(context)
+        queue.resetDiagnostics()
         val detailedTrace = DetailedTraceWriter.create(context, scenario.handlesPersonalData)
         try {
             val prepared = scenario.prepare(device)
@@ -80,7 +81,12 @@ class GuidedScenarioRunner(private val device: UiDevice) {
                     }
                     // 현재 결정 검증 중 같은 화면에서 중복 방송된 값은 실제 조작 뒤 실행하지 않는다.
                     queue.discardPending(discard)
-                    executor.execute(decision, scenario.textFor(prepared, step, decision), step)
+                    val plan = GuidedActionPlanner.plan(
+                        decision,
+                        scenario.textFor(prepared, step, decision),
+                        step,
+                    )
+                    executor.execute(plan, step)
                     previousSignature = decision.requestSignature
                     detailedTrace.recordStepOutcome(step, "executed")
                 } catch (failure: Throwable) {

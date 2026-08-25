@@ -151,6 +151,27 @@ SM-S921N(Android 15 / One UI 7.0), 기본 개인정보 마스킹, 로컬 실제 
 `decision_timeout`으로 시나리오 자체는 실패했다. 이는 3상태 wire 관측에는 포함하되 알람 생성 품질
 통과로 주장하지 않는다.
 
+## 2026-08-25 · #209 관측 실패 분류 경계
+
+별도 SM-S921N(Android 16 / One UI 8.5)에서 debug driver와 test APK를 설치하고
+`GuideDecisionQueueDiagnosticTest`를 실행했다. 화면·목표·서버 원문 없이 서명 보호 broadcast로
+root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를 확인했다.
+
+| 입력한 진단 순서 | timeout 결과 | 결과 |
+|---|---|---|
+| `root_unavailable` | `root_unavailable` | 통과 |
+| `root_recovered` → `server_error` | `server_error` | 통과 |
+| `request_started` | `decision_timeout` | 통과 |
+
+세 경로와 `target_node_id_mismatch`의 signed decision 전달을 두 계측 테스트에서 실행해
+`OK (2 tests)`를 확인했다. transient root 복구와 다음 서버 요청은
+오래된 진단을 지우므로 이전 오류가 다음 단계의 원인으로 남지 않는다. `target_node_id` 불일치와
+UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 5건으로 고정했다.
+
+실제 Gemini·삼성 시계 관통은 이 문서의 2026-08-13 실행 4가 이미 같은 Davi 요청/action 채널을
+검증한다. #209는 그 채널의 누락된 실패 분류와 회귀 관문을 보완하며 서버 API나 시나리오는 바꾸지
+않는다.
+
 ## 이후 실행 결과 확인
 
 OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매번 타임스탬프 문서가

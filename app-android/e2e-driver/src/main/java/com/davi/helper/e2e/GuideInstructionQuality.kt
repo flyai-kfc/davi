@@ -12,7 +12,16 @@ internal object GuideInstructionQuality {
         if (action.expectedResult.isBlank() || action.evidence.isBlank()) {
             throw GuidedScenarioFailure("reasoning_fields_empty", step)
         }
+        val hasTargetNodeId = !action.targetNodeId.isNullOrBlank()
+        // 대상 없는 scroll만 전역 제스처다. id가 있었는데 같은 요청 tree에서 못 푼 scroll을
+        // 전역 스크롤로 바꾸면 서버 결정을 추측해 보정하는 셈이므로 모든 action에서 먼저 막는다.
+        if (hasTargetNodeId && !decision.targetResolved) {
+            throw GuidedScenarioFailure("target_node_id_mismatch", step)
+        }
         if (action.actionType in TARGETED_ACTIONS) {
+            if (!hasTargetNodeId) {
+                throw GuidedScenarioFailure("target_node_id_missing", step)
+            }
             if (decision.targetBounds?.size != 4) {
                 throw GuidedScenarioFailure("target_bounds_missing", step)
             }
