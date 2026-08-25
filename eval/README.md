@@ -200,20 +200,30 @@ python3.12 completion_ab.py --compare previous.json
 
 보고서는 fixture 파일과 참조한 화면 fixture를 함께 묶은 `corpus_sha256`, baseline/candidate
 `policy_id`, 현재 `git_sha`를 남긴다. baseline id에는 고정 snapshot 파일 해시, candidate id에는
-현재 서버 추론 파일 해시가 붙어 구현 변경을 식별한다. 이 값과 보고서 schema로 만든 실험·실행
-ID도 함께 남긴다. `--compare`는 JSON을 스키마·지표·식별자까지 검증해 되읽고, schema·corpus
+현재 서버 추론 파일 **전체** 해시가 붙어 구현 변경을 식별한다. 완료 판정과 무관한 같은 파일의
+가드레일 변경도 비교를 거부하는 보수적 경계이며, 저장 보고서의 수명보다 구현 동일성을 우선한다.
+이 값과 보고서 schema로 만든 실험·실행 ID도 함께 남긴다. `--compare`는 JSON을
+스키마·지표·식별자까지 검증해 되읽고, schema·corpus
 해시·정책 식별자 중 하나라도 다르면 거부한다.
 candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가 되고 프로세스도 종료
 코드 1로 실패한다.
+이 gate는 **채택 전 candidate가 고정 baseline보다 나빠지는 것만** 막는다. 채택 후 현재 정책의
+`1/21`이 `8/21`로 퇴행하는 것처럼 baseline보다 여전히 나은 회귀는
+`tests/test_completion_ab.py`의 정확한 혼동 행렬·지표 리터럴이 막는다. 의도적으로 정책을
+바꿀 때는 fixture 사람 정답과 그 리터럴을 같은 리뷰에서 함께 갱신한다.
 
 #424 이후에도 baseline은 착수 시점의 화면 근거 정책을 `completion_baseline.py`에 독립 snapshot으로
 보존한다. candidate는 현재 서버의 구조화 완료 근거·현재 접근성 상태·직전 수행 결과·동일 화면
-사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 30개 결정론적 사례에서
-baseline/candidate의 false success는 15/19 → 1/19, verified recall은 9/11 → 9/11,
-contradiction recall은 0/4 → 4/4이고, candidate의 inconclusive는 16/30이다. 오류 신고 메뉴·
-0건 표시·부정문 6건도 모델의 `failure` 주장을 그대로 받지 않는 경계로 포함한다. 남은 false success는
+사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 32개 결정론적 사례에서
+baseline/candidate의 false success는 17/21 → 1/21, verified recall은 9/11 → 9/11,
+contradiction recall은 0/6 → 6/6이고, candidate의 inconclusive는 16/32다. 오류 신고 메뉴·
+0건 표시·부정문 6건은 모델의 `failure` 주장을 그대로 받지 않는 음성 경계, `오류 발생` 계열
+2건은 직접 실패를 회수하는 양성 경계다. 남은 false success는
 일반 `설정` label을 모델이 success 근거로 주장한 사례다. 사람 정답을 candidate에 맞추지 않고
 현재 정책의 의미 한계를 그대로 보존한다.
+
+채택 기준은 false success 감소, verified recall 비감소, 합의한 직접 반대 fixture 전부 회수다.
+현재 수치가 세 조건을 만족하므로 #424는 candidate 구조화 근거 정책을 채택한다.
 
 #71에서 조사·동사 활용·부정 표현 위험을 포함한 기존 18사례를 비교한 결과는 다음과 같다. 이 수치는
 실제 사용 성공률이 아니라 정책 후보를 같은 작은 표본에서 비교한 결정론적 회귀값이다.

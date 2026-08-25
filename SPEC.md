@@ -459,13 +459,18 @@ SM-S921N 삼성 시계 알람 스위치 1회 실측(2026-08-25)에서는 탭 주
 사용자 부정은 `completion_feedback`에 구조·내용 서명만 싣고, goal·label·세션 식별자는 추가하지
 않는다. 두 서명이 현재 요청과 다르면 서버는 그 피드백을 판정과 프롬프트에서 모두 무시한다.
 
-키 없는 A/B corpus 30건에서 #71 기준선은 false success `15/19`, verified recall `9/11`,
-contradiction recall `0/4`였다. 구조화 근거 정책은 각각 `1/19`, `9/11`, `4/4`이며
-inconclusive는 `6/30`에서 `16/30`으로 늘었다. 추가한 6건은 오류 신고 메뉴·0건 표시·부정문을
-실패 상태로 읽지 않는 false-positive 경계다. candidate의 남은 false success 한 건은 일반
+키 없는 A/B corpus 32건에서 #71 기준선은 false success `17/21`, verified recall `9/11`,
+contradiction recall `0/6`이었다. 구조화 근거 정책은 각각 `1/21`, `9/11`, `6/6`이며
+inconclusive는 `6/32`에서 `16/32`로 늘었다. 추가한 6건은 오류 신고 메뉴·0건 표시·부정문을
+실패 상태로 읽지 않는 false-positive 경계이고, `오류 발생`·`오류가 발생했습니다` 두 건은
+명시 실패를 회수하는 양성 경계다. candidate의 남은 false success 한 건은 일반
 `설정` label에 대한 모델의 success 주장을 화면 의미로 반증할 수 없는 현재 정책 한계다.
 깨끗한 합성·익명화 fixture의 낙관적 상한이고,
 실제 모델 의미 판단의 정확도는 별도 관측 대상이다(#425).
+
+**#424 정책 채택 기준**은 baseline보다 false success가 감소하고, verified recall이 떨어지지
+않으며, 합의한 직접 반대 fixture를 모두 `contradicted`로 회수하는 것이다. 위 결과가 세 조건을
+모두 만족하므로 구조화 완료 근거 정책을 채택한다.
 
 #### #71 기준선 — 화면 label 인용 존재 검사
 

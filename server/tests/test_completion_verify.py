@@ -325,7 +325,16 @@ def test_unobserved_or_mismatched_claimed_state_is_inconclusive():
 
 @pytest.mark.parametrize(
     "label",
-    ["저장 실패", "네트워크 오류", "권한이 필요합니다", "주문 취소됨", "Permission denied"],
+    [
+        "저장 실패",
+        "네트워크 오류",
+        "오류 발생",
+        "오류가 발생했습니다",
+        "에러가 발생했습니다",
+        "권한이 필요합니다",
+        "주문 취소됨",
+        "Permission denied",
+    ],
 )
 def test_grounded_explicit_failure_is_contradicted(label: str):
     request = NextStepRequest(goal="항목 저장", screen=_screen(label))

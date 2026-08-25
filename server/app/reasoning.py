@@ -88,6 +88,12 @@ _EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES = (
     "했습니다",
     "하였습니다",
 )
+_EXPLICIT_FAILURE_OCCURRENCE_STEMS = (
+    "오류발생",
+    "오류가발생",
+    "에러발생",
+    "에러가발생",
+)
 _EXPLICIT_FAILURE_ENGLISH_COMPLETED_WORDS = frozenset(
     {"failed", "failure", "denied", "rejected", "cancelled", "canceled"}
 )
@@ -776,6 +782,14 @@ def _is_explicit_failure_observation(element: UiElement) -> bool:
             for suffix in _EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES
         ):
             return True
+    # 가장 흔한 상태 문구인 `오류 발생` 계열. label 끝의 발생/완료형만 받으므로
+    # `오류 발생 신고` 같은 메뉴는 통과하지 않는다. `발생하지 않음`은 위 부정 가드가 먼저 닫는다.
+    if any(
+        normalized.endswith(stem + suffix)
+        for stem in _EXPLICIT_FAILURE_OCCURRENCE_STEMS
+        for suffix in ("", *_EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES)
+    ):
+        return True
 
     words = _evidence_words(element.label)
     if not words:

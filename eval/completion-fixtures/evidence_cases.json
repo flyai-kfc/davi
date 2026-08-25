@@ -379,6 +379,46 @@
       "expected_verdict": "contradicted"
     },
     {
+      "id": "contradicted-error-occurred",
+      "axis": "explicit_failure_occurrence",
+      "source": "eval_case",
+      "request": {
+        "goal": "작업 완료",
+        "screen": {
+          "package_name": "com.example.task",
+          "elements": [
+            {"node_id": "n1", "label": "오류가 발생했습니다", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "작업이 완료되어 있다",
+      "evidence": "화면에 '오류가 발생했습니다' 상태가 보입니다",
+      "evidence_label": "오류가 발생했습니다",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "contradicted-error-occurrence",
+      "axis": "explicit_failure_occurrence",
+      "source": "eval_case",
+      "request": {
+        "goal": "작업 완료",
+        "screen": {
+          "package_name": "com.example.task",
+          "elements": [
+            {"node_id": "n1", "label": "오류 발생", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "작업이 완료되어 있다",
+      "evidence": "화면에 '오류 발생' 상태가 보입니다",
+      "evidence_label": "오류 발생",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
       "id": "contradicted-permission-required",
       "axis": "explicit_rejection",
       "source": "eval_case",
