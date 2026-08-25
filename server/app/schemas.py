@@ -73,6 +73,36 @@ class ScrollAxis(StrEnum):
     HORIZONTAL = "horizontal"
 
 
+class CompletionVerdict(StrEnum):
+    """현재 관측으로 본 목표 완료 신뢰도(#424)."""
+
+    VERIFIED = "verified"
+    INCONCLUSIVE = "inconclusive"
+    CONTRADICTED = "contradicted"
+
+
+class CompletionEvidenceKind(StrEnum):
+    """모델이 현재 노드를 완료의 어느 방향 근거로 읽었는가."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
+class ObservableState(StrEnum):
+    """서버가 현재 접근성 트리에서 다시 읽을 수 있는 boolean 상태."""
+
+    CHECKED = "checked"
+    SELECTED = "selected"
+    ENABLED = "enabled"
+    SHOWING_HINT_TEXT = "showing_hint_text"
+
+
+class CompletionFeedbackStatus(StrEnum):
+    """완료 확인 UI에서 사용자가 서버에 돌려주는 명시적 판정."""
+
+    USER_REJECTED = "user_rejected"
+
+
 class UiElement(BaseModel):
     """직렬화된 화면 요소 하나. 앱의 UiTreeSerializer가 만든다.
 
@@ -163,6 +193,37 @@ class Screen(BaseModel):
 MAX_STEPS = 10
 
 
+class ExpectedTargetState(BaseModel):
+    """안내한 조작 뒤 대상에 기대하는 검증 가능한 상태."""
+
+    attribute: ObservableState
+    value: bool
+
+
+class CompletionFeedback(BaseModel):
+    """사용자가 완료 확인을 부정한 화면의 비식별 identity."""
+
+    status: CompletionFeedbackStatus
+    structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class CompletionEvidence(BaseModel):
+    """모델의 완료 판단을 현재 화면 사실에 고정하는 구조화 근거."""
+
+    node_id: str = Field(description="현재 화면에서 완료 판단의 직접 근거인 요소 node_id")
+    kind: CompletionEvidenceKind = Field(
+        description="그 요소가 목표의 직접 성공 근거인지 명시 실패·거절·취소 근거인지"
+    )
+    state: ExpectedTargetState | None = Field(
+        default=None,
+        description=(
+            "근거가 checked·selected·enabled·showing_hint_text 상태에 의존할 때 "
+            "현재 관측한 속성과 값"
+        ),
+    )
+
+
 class GuideStep(BaseModel):
     """안내 한 번의 기록. **스텝 하나 = 안내 하나**다(C11 개정, #270).
 
@@ -197,6 +258,8 @@ class GuideStep(BaseModel):
     # 필요한 이유는 label이 요소 신원으로 못 쓰이기 때문이다 — 한 화면에 같은 label이 여럿이고
     # (목록의 '삭제' 버튼들), 부제목이 값이라 같은 행의 label이 바뀌며, scroll 대상에는 아예 없다.
     target_node_id: str | None = None
+    # 직전 안내 뒤 서버가 검증할 수 있는 대상 상태. 응답 값을 앱이 해석하지 않고 echo한다.
+    expected_target_state: ExpectedTargetState | None = None
     # 그 안내가 나간 화면이 무엇이었는지. 응답 `GuideAction.screen_summary`의 echo다.
     screen_hint: str | None = None
     structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -236,6 +299,9 @@ class NextStepRequest(BaseModel):
     # 상한만큼 보관해 보내고 서버는 `MAX_STEPS` 초과를 거부해, 세션 메모리와 요청 크기 양쪽에
     # 각각 상한이 선다.
     steps: list[GuideStep] = Field(default_factory=list, max_length=MAX_STEPS)
+    # 완료 확인에서 사용자가 "아직요"라고 답한 화면. 서버는 현재 두 서명과 모두 맞을 때만
+    # 명시적인 반대로 사용한다. 세션 식별자나 화면 원문은 싣지 않는다(#424).
+    completion_feedback: CompletionFeedback | None = None
     # 서버는 즉시 바뀌지만 앱은 기기에 설치된 채 낡는다. 서버가 그 비대칭을 알아채야 한다(C7).
     client_version: str | None = None
 
@@ -274,6 +340,15 @@ class GuideAction(BaseModel):
             "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장"
         )
     )
+    completion_evidence: CompletionEvidence | None = Field(
+        default=None,
+        description=(
+            "현재 화면에서 목표 성공을 직접 증명하거나 명시적으로 반박하는 구조화 근거. "
+            "node_id는 현재 요소 중 하나이고 상태에 의존하면 state도 채운다. 성공 근거는 done을 "
+            "고를 때 쓰고, 명시 실패 근거는 복구 행동을 고를 때도 쓸 수 있다. 화면만으로 "
+            "성공·실패를 정할 수 없으면 값이 없다."
+        ),
+    )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
     # 않아서**다 — 스키마 변환기가 싣는 것은 필드 description뿐이라 기준이 모델에게 도달하지
@@ -296,6 +371,13 @@ class GuideAction(BaseModel):
     target_node_id: str | None = Field(
         default=None,
         description="동작 대상 요소의 node_id. 대상이 없는 동작에는 값이 없다.",
+    )
+    expected_target_state: ExpectedTargetState | None = Field(
+        default=None,
+        description=(
+            "tap 뒤 같은 대상에서 검증할 boolean 상태와 기대값. 토글·선택처럼 현재 트리로 "
+            "확인할 수 있을 때만 쓰며 단순 화면 전환이나 type에는 값이 없다."
+        ),
     )
     # 복사 신호(C21). **필드만 늘고 제품 동작은 그대로다** — 앱은 모르는 키를 무시하므로
     # (`GuideApiClient`의 `ignoreUnknownKeys`) 이 값을 읽는 소비자가 생기기 전까지 안내는 지금과
@@ -342,6 +424,8 @@ class NextStepResponse(BaseModel):
     action: GuideAction
     model: str
     verified: bool = False
+    # 기존 앱은 모르는 키를 무시하고 verified를 계속 쓴다. 새 앱은 이 세 상태를 우선한다.
+    completion_verdict: CompletionVerdict = CompletionVerdict.INCONCLUSIVE
     # label을 제외한 현재 화면 구조의 SHA-256. 앱은 행동 이력에 붙여 다음 요청에서 그대로 돌려준다.
     screen_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
 

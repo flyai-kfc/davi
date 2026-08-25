@@ -8,11 +8,19 @@ from __future__ import annotations
 
 import pytest
 from app.llm import LlmClient
-from app.reasoning import next_step
+from app.reasoning import _classify_completion, _evidence_quotes_element, next_step
 from app.schemas import (
     ActionType,
+    CompletionEvidence,
+    CompletionEvidenceKind,
+    CompletionFeedback,
+    CompletionFeedbackStatus,
+    CompletionVerdict,
+    ExpectedTargetState,
     GuideAction,
+    GuideStep,
     NextStepRequest,
+    ObservableState,
     Screen,
     UiElement,
 )
@@ -21,15 +29,22 @@ from app.schemas import (
 class _DoneLlmClient(LlmClient):
     """`done`을 내는 fake. `StubLlmClient`는 `done`을 내지 않아 이 경로를 못 만든다."""
 
-    def __init__(self, evidence: str, expected_result: str = "카카오톡이 열려 있다") -> None:
+    def __init__(
+        self,
+        evidence: str,
+        expected_result: str = "카카오톡이 열려 있다",
+        completion_evidence: CompletionEvidence | None = None,
+    ) -> None:
         self._evidence = evidence
         self._expected_result = expected_result
+        self._completion_evidence = completion_evidence
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         return GuideAction(
             expected_result=self._expected_result,
             screen_summary="테스트 화면",
             evidence=self._evidence,
+            completion_evidence=self._completion_evidence,
             action_type=ActionType.DONE,
             instruction="다 되었습니다.",
         )
@@ -47,7 +62,19 @@ def _screen(*labels: str) -> Screen:
 
 def _verified(evidence: str, screen: Screen, **kwargs) -> bool:
     request = NextStepRequest(goal="카카오톡 열기", screen=screen)
-    return next_step(request, _DoneLlmClient(evidence, **kwargs)).verified
+    matching = next(
+        (element for element in screen.elements if _evidence_quotes_element(evidence, element)),
+        None,
+    )
+    claim = (
+        CompletionEvidence(node_id=matching.node_id, kind=CompletionEvidenceKind.SUCCESS)
+        if matching is not None
+        else None
+    )
+    return next_step(
+        request,
+        _DoneLlmClient(evidence, completion_evidence=claim, **kwargs),
+    ).verified
 
 
 def test_done_with_evidence_that_is_not_on_screen_is_not_verified():
@@ -238,6 +265,152 @@ def test_non_done_action_is_never_verified():
             )
 
     assert not next_step(request, _TapClient()).verified
+
+
+def _done_with_claim(
+    *,
+    evidence: str = "화면에 '기능 사용 중'이 보입니다",
+    node_id: str = "n1",
+    kind: CompletionEvidenceKind = CompletionEvidenceKind.SUCCESS,
+    state: ExpectedTargetState | None = None,
+) -> GuideAction:
+    return GuideAction(
+        expected_result="기능이 켜져 있다",
+        screen_summary="설정 화면",
+        evidence=evidence,
+        completion_evidence=CompletionEvidence(
+            node_id=node_id,
+            kind=kind,
+            state=state,
+        ),
+        action_type=ActionType.DONE,
+        instruction="다 되었습니다.",
+    )
+
+
+def test_done_without_structured_evidence_is_inconclusive():
+    request = NextStepRequest(goal="기능 켜기", screen=_screen("기능 사용 중"))
+    action = _DoneLlmClient("화면에 '기능 사용 중'이 보입니다").reason(request)
+
+    assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
+
+
+def test_grounded_observed_state_is_verified():
+    request = NextStepRequest(
+        goal="기능 켜기",
+        screen=Screen(
+            elements=[UiElement(node_id="n1", label="기능 사용 중", role="Switch", checked=True)]
+        ),
+    )
+    action = _done_with_claim(
+        state=ExpectedTargetState(attribute=ObservableState.CHECKED, value=True)
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.VERIFIED
+
+
+def test_unobserved_or_mismatched_claimed_state_is_inconclusive():
+    action = _done_with_claim(
+        state=ExpectedTargetState(attribute=ObservableState.CHECKED, value=True)
+    )
+    for checked in (None, False):
+        request = NextStepRequest(
+            goal="기능 켜기",
+            screen=Screen(
+                elements=[UiElement(node_id="n1", label="기능 사용 중", checked=checked)]
+            ),
+        )
+        assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
+
+
+def test_grounded_explicit_failure_is_contradicted():
+    request = NextStepRequest(goal="항목 저장", screen=_screen("저장 실패"))
+    action = _done_with_claim(
+        evidence="화면에 '저장 실패' 오류가 보입니다",
+        kind=CompletionEvidenceKind.FAILURE,
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.CONTRADICTED
+
+
+def test_user_rejection_is_bound_to_current_structure_and_content():
+    from app.signature import screen_signature
+
+    screen = Screen(
+        package_name="com.example.task",
+        content_signature="a" * 64,
+        elements=[UiElement(node_id="n1", label="완료 화면")],
+    )
+    action = _done_with_claim(evidence="화면에 '완료 화면'이 보입니다")
+    feedback = CompletionFeedback(
+        status=CompletionFeedbackStatus.USER_REJECTED,
+        structure_signature=screen_signature(screen),
+        content_signature=screen.content_signature,
+    )
+
+    matching = NextStepRequest(
+        goal="작업 완료",
+        screen=screen,
+        completion_feedback=feedback,
+    )
+    changed_content = matching.model_copy(
+        update={"screen": screen.model_copy(update={"content_signature": "b" * 64})}
+    )
+
+    assert _classify_completion(action, matching) is CompletionVerdict.CONTRADICTED
+    assert _classify_completion(action, changed_content) is CompletionVerdict.VERIFIED
+
+
+def test_performed_unchanged_target_with_opposite_state_is_contradicted():
+    from app.signature import screen_signature
+
+    screen = Screen(
+        elements=[UiElement(node_id="n1", label="기능 꺼짐", role="Switch", checked=False)]
+    )
+    step = GuideStep(
+        instruction="스위치를 눌러 주세요.",
+        action_type=ActionType.TAP,
+        target_label="기능 꺼짐",
+        target_node_id="n1",
+        expected_target_state=ExpectedTargetState(
+            attribute=ObservableState.CHECKED,
+            value=True,
+        ),
+        structure_signature=screen_signature(screen),
+        screen_changed=False,
+        performed=True,
+    )
+    request = NextStepRequest(goal="기능 켜기", screen=screen, steps=[step])
+    action = _done_with_claim(evidence="화면에 '기능 꺼짐'이 보입니다")
+
+    assert _classify_completion(action, request) is CompletionVerdict.CONTRADICTED
+
+
+def test_absence_or_screen_change_is_not_a_state_contradiction():
+    from app.signature import screen_signature
+
+    screen = Screen(elements=[UiElement(node_id="n1", label="기능 꺼짐", checked=False)])
+    base = GuideStep(
+        instruction="스위치를 눌러 주세요.",
+        action_type=ActionType.TAP,
+        target_label="기능 꺼짐",
+        target_node_id="n1",
+        expected_target_state=ExpectedTargetState(
+            attribute=ObservableState.CHECKED,
+            value=True,
+        ),
+        structure_signature=screen_signature(screen),
+        performed=True,
+    )
+    action = _done_with_claim(node_id="missing")
+
+    for step in (
+        base.model_copy(update={"screen_changed": True}),
+        base.model_copy(update={"target_node_id": "missing", "screen_changed": False}),
+        base.model_copy(update={"target_label": "다른 기능", "screen_changed": False}),
+    ):
+        request = NextStepRequest(goal="기능 켜기", screen=screen, steps=[step])
+        assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
 
 
 # ── 값 연결자 경계(C21 리팩터의 부수효과, PR #406 재리뷰) ─────────────

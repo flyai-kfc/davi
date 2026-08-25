@@ -398,6 +398,7 @@
       되묻는 대신 계속 안내한다고 알리고 끝내는 방법만 남긴다.
     -->
     <string name="guide_done_unconfirmed">다 되셨는지 확인하지 못해 안내를 이어갈게요.\n그만 보시려면 ×를 눌러 주세요.</string>
+    <string name="guide_done_contradicted">아직 완료되지 않은 상태를 확인했어요.\n화면을 다시 살펴볼게요.</string>
     <!--
       완료 확인(GD-3, #139). 검증된 완료와 미검증 상한이 같은 화면을 쓰고 **문구만 갈린다**.
 

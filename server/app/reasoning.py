@@ -19,6 +19,8 @@ from .llm import LlmClient
 from .masking import MaskingPolicy, active_masking_policy, mask_text
 from .schemas import (
     ActionType,
+    CompletionEvidenceKind,
+    CompletionVerdict,
     ErrorKind,
     GuideAction,
     NextStepRequest,
@@ -579,20 +581,102 @@ def _area(element: UiElement) -> int:
 
 
 def _verify_done(action: GuideAction, req: NextStepRequest) -> bool:
-    """완료 판정 2차 검증. 근거가 **화면에 있는 것인지**까지 본다(SPEC §4 결정).
+    """기존 bool 계약의 호환 경계. 새 판정에서 verified만 True로 옮긴다."""
+    return _classify_completion(action, req) is CompletionVerdict.VERIFIED
 
-    두 근거 필드는 `GuideAction`의 필수 필드라 구조화 출력이 항상 채운다. 비었는지만 보면
-    `done`은 언제나 통과했다(빈 evidence로 done을 거부한 실측 사례는 그 앞 단계에서 걸린 것이다).
 
-    **목표 달성에 충분한 근거인지는 판정하지 않는다.** 최소 두 글자·어절 경계로 우연 일치만
-    줄이고, role/clickable이나 목표 문자열 겹침은 쓰지 않는다 — #71 fixture에서 정상 완료를
-    더 많이 막았다. 이 함수는 `verified` 플래그만 정확하게 만들고 안내를 막지 않는다.
+def _classify_completion(
+    action: GuideAction,
+    req: NextStepRequest,
+) -> CompletionVerdict:
+    """현재 관측과 검증 가능한 이력으로 완료 신뢰도를 보수적으로 분류한다(#424).
+
+    모델은 목표와 UI의 의미 관계를 제안하지만 서버는 그 결론을 그대로 믿지 않는다. 지정한
+    node와 boolean 상태가 현재 트리에 실제로 있는지 확인하고, 검증하지 못하면 언제나
+    ``inconclusive``로 내린다. 서버가 모델의 주장을 더 강한 상태로 올리는 경로는 없다.
+
+    ``contradicted``는 부재가 아니라 세 가지 직접 반대 사실에만 쓴다: 같은 화면에서 받은 사용자
+    부정, 수행된 직전 조작의 검증 가능한 반대 상태, 현재 노드에 고정된 명시 실패 근거. 화면이
+    같거나 예상 node가 사라진 것만으로는 실패를 만들지 않는다.
     """
-    if action.action_type is not ActionType.DONE:
+    if _feedback_rejects_current_screen(req):
+        return CompletionVerdict.CONTRADICTED
+    if _previous_expected_state_is_opposite(req):
+        return CompletionVerdict.CONTRADICTED
+
+    claim = action.completion_evidence
+    if claim is None or not action.evidence.strip() or not action.expected_result.strip():
+        return CompletionVerdict.INCONCLUSIVE
+    element = next(
+        (item for item in visible_elements(req.screen.elements) if item.node_id == claim.node_id),
+        None,
+    )
+    if element is None or not _evidence_quotes_element(action.evidence, element):
+        return CompletionVerdict.INCONCLUSIVE
+    if claim.state is not None:
+        observed = getattr(element, claim.state.attribute.value)
+        if observed is None or observed is not claim.state.value:
+            return CompletionVerdict.INCONCLUSIVE
+
+    if claim.kind is CompletionEvidenceKind.FAILURE:
+        return CompletionVerdict.CONTRADICTED
+    if action.action_type is ActionType.DONE:
+        return CompletionVerdict.VERIFIED
+    return CompletionVerdict.INCONCLUSIVE
+
+
+def _feedback_rejects_current_screen(req: NextStepRequest) -> bool:
+    """사용자 부정은 그 답을 받은 정확한 화면에서만 hard contradiction이다."""
+    feedback = req.completion_feedback
+    if feedback is None:
         return False
-    if not action.evidence.strip() or not action.expected_result.strip():
+    return (
+        feedback.structure_signature == screen_signature(req.screen)
+        and feedback.content_signature == req.screen.content_signature
+    )
+
+
+def _previous_expected_state_is_opposite(req: NextStepRequest) -> bool:
+    """수행한 직전 안내 뒤에도 같은 대상의 관측 상태가 기대와 반대인가."""
+    if not req.steps:
         return False
-    return _evidence_quotes_screen(action.evidence, req.screen)
+    step = req.steps[-1]
+    expected = step.expected_target_state
+    if (
+        expected is None
+        or step.target_node_id is None
+        or step.performed is not True
+        or step.screen_changed is not False
+        or step.structure_signature != screen_signature(req.screen)
+    ):
+        return False
+    element = next(
+        (
+            item
+            for item in visible_elements(req.screen.elements)
+            if item.node_id == step.target_node_id
+        ),
+        None,
+    )
+    if element is None:
+        return False
+    # node id는 구조가 같은 동안의 슬롯일 뿐 영구 식별자가 아니다. 같은 구조의 목록이
+    # 자발적으로 재정렬되면 다른 요소가 같은 id를 받을 수 있으므로, 직전 대상의 마스킹된
+    # label까지 같을 때만 "그 대상이 그대로 반대 상태"라고 확신한다. label이 없거나 상태 변화
+    # 전후에 이미 달라졌다면 실패가 아니라 관측 불가다.
+    if step.target_label is None or element.label != step.target_label:
+        return False
+    observed = getattr(element, expected.attribute.value)
+    return observed is not None and observed is not expected.value
+
+
+def _evidence_quotes_element(evidence: str, element: UiElement) -> bool:
+    """자연어 근거가 구조화 근거와 **같은** 현재 node의 label을 인용했는가."""
+    normalized = _normalize_for_evidence(element.label)
+    if len(normalized) < _MIN_EVIDENCE_LABEL_CHARS:
+        return False
+    phrases = _phrase_offsets(evidence)
+    return bool(phrases.compact) and _contains_quoted_phrase(phrases, normalized)
 
 
 def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
@@ -767,12 +851,13 @@ def next_step(
     action = llm.reason(masked)
     action = _apply_guardrails(action, masked)
 
-    verified = _verify_done(action, masked)
+    verdict = _classify_completion(action, masked)
     return NextStepResponse(
         action=action,
         # DAVI_MODEL을 비우면 공급자 기본 모델이 쓰인다. 앱·eval이 받는 값은
         # 설정 문자열이 아니라 **실제로 호출된 모델 id**여야 한다.
         model=settings.resolved_model,
-        verified=verified,
+        verified=verdict is CompletionVerdict.VERIFIED,
+        completion_verdict=verdict,
         screen_signature=screen_signature(masked.screen),
     )

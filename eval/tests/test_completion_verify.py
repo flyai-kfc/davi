@@ -18,7 +18,13 @@ from app.reasoning import (
     _normalize_for_evidence,
     next_step,
 )
-from app.schemas import ActionType, GuideAction, NextStepRequest
+from app.schemas import (
+    ActionType,
+    CompletionEvidence,
+    CompletionEvidenceKind,
+    GuideAction,
+    NextStepRequest,
+)
 from app.screen_view import visible_elements
 
 from completion_ab import (
@@ -34,16 +40,21 @@ class DoneLlmClient(LlmClient):
     """언제나 `done`을 내는 fake. 근거 문장만 갈아 끼운다."""
 
     def __init__(
-        self, evidence: str, expected_result: str = "카메라가 열려 있다"
+        self,
+        evidence: str,
+        expected_result: str = "카메라가 열려 있다",
+        completion_evidence: CompletionEvidence | None = None,
     ) -> None:
         self._evidence = evidence
         self._expected_result = expected_result
+        self._completion_evidence = completion_evidence
 
     def reason(self, req: NextStepRequest) -> GuideAction:
         return GuideAction(
             expected_result=self._expected_result,
             screen_summary="테스트 화면",
             evidence=self._evidence,
+            completion_evidence=self._completion_evidence,
             action_type=ActionType.DONE,
             instruction="다 되었습니다.",
         )
@@ -70,6 +81,21 @@ def _first_label(req: NextStepRequest) -> str:
     )
     assert label is not None, f"{_FIXTURE}에 대조할 label이 없다"
     return label
+
+
+def _first_grounded_evidence(req: NextStepRequest) -> CompletionEvidence:
+    element = next(
+        (
+            e
+            for e in req.screen.elements
+            if len(_normalize_for_evidence(e.label)) >= _MIN_EVIDENCE_LABEL_CHARS
+        ),
+        None,
+    )
+    assert element is not None, f"{_FIXTURE}에 대조할 요소가 없다"
+    return CompletionEvidence(
+        node_id=element.node_id, kind=CompletionEvidenceKind.SUCCESS
+    )
 
 
 def test_fabricated_evidence_is_not_verified(request_from_device):
@@ -101,6 +127,7 @@ def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device)
         DoneLlmClient(
             f"홈 화면에 {quoted} 이(가) 보임",
             expected_result="홈 화면이 보인다",
+            completion_evidence=_first_grounded_evidence(reached_goal),
         ),
     )
 
@@ -114,7 +141,11 @@ def _load_completion_cases() -> list[tuple[CompletionCase, NextStepRequest]]:
 def _new_policy(case: CompletionCase, request: NextStepRequest) -> bool:
     return next_step(
         request,
-        DoneLlmClient(case.evidence, expected_result=case.expected_result),
+        DoneLlmClient(
+            case.evidence,
+            expected_result=case.expected_result,
+            completion_evidence=case.completion_evidence,
+        ),
     ).verified
 
 
@@ -176,10 +207,8 @@ def test_completion_policy_fixture_is_valid_and_measures_candidates():
     문자열 겹침은 부정문 FP도 없애지 못하면서 정상 완료를 각각 셋·넷 막는다. 따라서 둘은 적용하지
     않는다.
     """
-    assert _confusion_matrix(_legacy_policy) == Counter(tp=9, tn=2, fp=6, fn=1)
-    assert _confusion_matrix(_new_policy) == Counter(tp=9, tn=5, fp=3, fn=1)
-    assert _confusion_matrix(_non_clickable_policy) == Counter(tp=7, tn=7, fp=1, fn=3)
-    assert _confusion_matrix(_goal_overlap_policy) == Counter(tp=6, tn=7, fp=1, fn=4)
+    assert _confusion_matrix(_legacy_policy) == Counter(tp=10, tn=2, fp=11, fn=1)
+    assert _confusion_matrix(_new_policy) == Counter(tp=10, tn=13, fn=1)
 
 
 def test_remaining_false_results_are_named_instead_of_hidden():
@@ -193,11 +222,7 @@ def test_remaining_false_results_are_named_instead_of_hidden():
 
     assert {
         case_id for case_id, result in results.items() if result == (False, True)
-    } == {
-        "invalid-app-name-on-launcher",
-        "invalid-negated-visible-label",
-        "invalid-unrelated-visible-label",
-    }
+    } == set()
     assert {
         case_id for case_id, result in results.items() if result == (True, False)
     } == {"valid-paraphrase-without-exact-label"}

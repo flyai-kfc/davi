@@ -575,6 +575,73 @@ class GuideSessionTest {
         assertFalse(GuideSession.awaitingConfirm)
     }
 
+    @Test
+    fun `아직요는 확인한 화면의 구조와 내용 서명을 서버 피드백으로 남긴다`() {
+        GuideSession.start("카메라 열기")
+        val content = "c".repeat(64)
+        GuideSession.onDone(
+            currentGeneration(),
+            CompletionVerdict.VERIFIED,
+            SIGNATURE,
+            content,
+        )
+
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            CompletionFeedback(
+                CompletionFeedbackStatus.USER_REJECTED,
+                SIGNATURE,
+                content,
+            ),
+            GuideSession.active()?.completionFeedback,
+        )
+    }
+
+    @Test
+    fun `명시 반대 done은 완료 확인을 띄우지 않고 재탐색한다`() {
+        GuideSession.start("기능 켜기")
+
+        val outcome = GuideSession.onDone(
+            currentGeneration(),
+            CompletionVerdict.CONTRADICTED,
+            SIGNATURE,
+            "c".repeat(64),
+        )
+
+        assertEquals(GuideSession.DoneOutcome.RECOVER_CONTRADICTED, outcome)
+        assertFalse(GuideSession.awaitingConfirm)
+        assertTrue(GuideSession.isActive)
+    }
+
+    @Test
+    fun `명시 반대가 상한까지 반복돼도 성공 확인으로 올리지 않는다`() {
+        GuideSession.start("기능 켜기")
+        val generation = currentGeneration()
+
+        repeat(GuideSession.MAX_UNVERIFIED_DONE - 1) {
+            assertEquals(
+                GuideSession.DoneOutcome.RECOVER_CONTRADICTED,
+                GuideSession.onDone(
+                    generation,
+                    CompletionVerdict.CONTRADICTED,
+                    SIGNATURE,
+                    null,
+                ),
+            )
+        }
+        assertEquals(
+            GuideSession.DoneOutcome.NOTICE_CONTRADICTED,
+            GuideSession.onDone(
+                generation,
+                CompletionVerdict.CONTRADICTED,
+                SIGNATURE,
+                null,
+            ),
+        )
+        assertFalse(GuideSession.awaitingConfirm)
+    }
+
     /** 부정한 화면이 done을 또 줘도 같은 질문을 다시 하지 않는다 — 확인 화면 무한 반복 방지. */
     @Test
     fun `부정한 화면의 done은 확인을 다시 띄우지 않는다`() {

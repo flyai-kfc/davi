@@ -12,7 +12,6 @@ FAILURE_DESCRIPTIONS = {
     "step_limit": "허용한 최대 안내 단계 안에 목표 상태와 검증된 완료에 도달하지 못했습니다.",
     "decision_timeout": "제한 시간 안에 표시된 Gemini 결정을 받지 못했습니다.",
     "done_before_goal": "실제 외부 앱 상태가 목표를 충족하기 전에 완료가 선언됐습니다.",
-    "done_unverified": "완료 응답의 화면 근거가 검증되지 않았습니다.",
     "settings_app_blocked": "테스트 환경을 바꿀 수 있는 설정 앱 진입을 실행 전에 차단했습니다.",
     "davi_conversation_not_ready": "Davi 최신 대화 화면이 준비되지 않아 전체 여정을 시작하지 못했습니다.",
     "android_home_not_visible": "Davi에서 안내를 시작한 뒤 Android 홈 화면 전환을 확인하지 못했습니다.",
@@ -22,6 +21,7 @@ TIME_PATTERN = re.compile(r"^Time:\s*([0-9.]+)", re.MULTILINE)
 STEP_PATTERN = re.compile(
     r"step=(\d+) action=([a-z_]+) "
     r"(?:package=([A-Za-z0-9._]+) )?target=(true|false) verified=(true|false)"
+    r"(?: verdict=(verified|inconclusive|contradicted))?"
 )
 DEVIATION_PATTERN = re.compile(r"step=(\d+) deviation=([a-z0-9_-]+)")
 CLEANUP_PATTERN = re.compile(r"cleanup=(success|failed)")
@@ -69,7 +69,7 @@ def render(args: argparse.Namespace) -> str:
     deviations: dict[str, list[str]] = {}
     for step, code in DEVIATION_PATTERN.findall(safe_log):
         deviations.setdefault(step, []).append(code)
-    traversed_packages = list(dict.fromkeys(package for _, _, package, _, _ in steps if package))
+    traversed_packages = list(dict.fromkeys(package for _, _, package, _, _, _ in steps if package))
     cleanup_matches = CLEANUP_PATTERN.findall(safe_log)
     cleanup = cleanup_matches[-1] if cleanup_matches else "unobserved"
     request_count = safe_log.count("event=request_started")
@@ -111,13 +111,14 @@ def render(args: argparse.Namespace) -> str:
     ]
     if steps:
         lines += [
-            "| 단계 | package | action | target bounds | 완료 검증 | 비종료 이탈 |",
+            "| 단계 | package | action | target bounds | 완료 판정 | 비종료 이탈 |",
             "|---:|---|---|---|---|---|",
         ]
         lines += [
-            f"| {step} | `{package or '-'}` | `{action}` | {target} | {verified} | "
+            f"| {step} | `{package or '-'}` | `{action}` | {target} | "
+            f"`{verdict or ('verified' if verified == 'true' else 'inconclusive')}` | "
             f"`{', '.join(deviations.get(step, [])) or '-'}` |"
-            for step, action, package, target, verified in steps
+            for step, action, package, target, verified, verdict in steps
         ]
     else:
         lines.append("표시된 결정을 실행하기 전 실패했거나 구조화 trace를 관측하지 못했습니다.")

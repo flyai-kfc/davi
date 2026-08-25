@@ -25,6 +25,7 @@ def test_property_ordering_puts_evidence_before_action():
     """근거 -> 동작 순서. 뒤집히면 모델이 근거를 나중에 대충 채운다(HANDOFF §3-7)."""
     ordering = GUIDE_ACTION_SCHEMA["propertyOrdering"]
     assert ordering.index("expected_result") < ordering.index("evidence")
+    assert ordering.index("evidence") < ordering.index("completion_evidence")
     assert ordering.index("evidence") < ordering.index("action_type")
     # 사용자 문구는 동작을 정한 뒤에 만든다.
     assert ordering.index("action_type") < ordering.index("instruction")
@@ -40,6 +41,8 @@ def test_optional_fields_are_not_required():
     required = GUIDE_ACTION_SCHEMA["required"]
     assert "direction" not in required
     assert "target_node_id" not in required
+    assert "completion_evidence" not in required
+    assert "expected_target_state" not in required
     assert {"expected_result", "evidence", "action_type", "instruction"} <= set(required)
 
 

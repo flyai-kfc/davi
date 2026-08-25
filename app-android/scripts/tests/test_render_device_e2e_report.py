@@ -83,9 +83,11 @@ class DeviceE2eReportTest(unittest.TestCase):
             )
             safe_log.write_text(
                 "I DaviE2e: step=1 action=open_app_drawer "
-                "package=com.sec.android.app.launcher target=false verified=false\n"
+                "package=com.sec.android.app.launcher target=false verified=false "
+                "verdict=inconclusive\n"
                 "I DaviE2e: step=2 action=tap "
-                "package=com.sec.android.app.clockpackage target=true verified=false\n"
+                "package=com.sec.android.app.clockpackage target=true verified=false "
+                "verdict=contradicted\n"
                 "I DaviE2e: step=2 deviation=unknown_clock_screen\n"
                 "I GuideSvc: event=request_started logical_request_id=opaque attempt=1\n"
                 "I DaviE2e: cleanup=success\n",
@@ -110,11 +112,11 @@ class DeviceE2eReportTest(unittest.TestCase):
 
             self.assertIn("`step_limit`", report)
             self.assertIn(
-                "| 1 | `com.sec.android.app.launcher` | `open_app_drawer` | false | false | `-` |",
+                "| 1 | `com.sec.android.app.launcher` | `open_app_drawer` | false | `inconclusive` | `-` |",
                 report,
             )
             self.assertIn(
-                "| 2 | `com.sec.android.app.clockpackage` | `tap` | true | false | `unknown_clock_screen` |",
+                "| 2 | `com.sec.android.app.clockpackage` | `tap` | true | `contradicted` | `unknown_clock_screen` |",
                 report,
             )
             self.assertIn("| 비종료 이탈 | 1회 |", report)

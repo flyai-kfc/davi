@@ -37,7 +37,7 @@ class GuideApiClientTest {
                 .addHeader(RequestTracingContract.LOGICAL_REQUEST_ID_HEADER, TRACE_ID)
                 .addHeader(RequestTracingContract.ATTEMPT_HEADER, "2")
                 .setBody(
-                    """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","action_type":"tap","target_node_id":"n1","instruction":"카카오톡을 누르세요."},"model":"stub","verified":false,"screen_signature":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+                    """{"action":{"expected_result":"채팅 목록이 보인다","evidence":"첫 클릭 요소","completion_evidence":{"node_id":"n1","kind":"failure"},"action_type":"tap","target_node_id":"n1","expected_target_state":{"attribute":"checked","value":true},"instruction":"카카오톡을 누르세요."},"model":"stub","verified":false,"completion_verdict":"contradicted","screen_signature":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
                 ),
         )
 
@@ -48,6 +48,9 @@ class GuideApiClientTest {
         assertEquals(ActionType.TAP, result.response.action.actionType)
         assertEquals("n1", result.response.action.targetNodeId)
         assertEquals("카카오톡을 누르세요.", result.response.action.instruction)
+        assertEquals(CompletionVerdict.CONTRADICTED, result.response.completionVerdict)
+        assertEquals(CompletionEvidenceKind.FAILURE, result.response.action.completionEvidence?.kind)
+        assertEquals(ObservableState.CHECKED, result.response.action.expectedTargetState?.attribute)
         assertEquals("a".repeat(64), result.response.screenSignature)
         assertEquals(SERVER_REQUEST_ID, result.trace.requestId)
         assertEquals(TRACE_ID, result.trace.logicalRequestId)
@@ -71,6 +74,9 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"screen_changed\":true"))
         assertTrue(body.contains("\"performed\":true"))
         assertTrue(body.contains("\"target_node_id\":\"n7\""))
+        assertTrue(body.contains("\"completion_feedback\""))
+        assertTrue(body.contains("\"status\":\"user_rejected\""))
+        assertTrue(body.contains("\"expected_target_state\":{\"attribute\":\"checked\",\"value\":true}"))
         // null인 performed(귀속 미확인)는 explicitNulls=false라 키째 생략된다 — 서버 기본값
         // None과 맞물리는 침묵 규약이다. 두 번째 스텝이 그 생략을 고정한다(값이 있는 스텝은
         // 하나뿐이므로 키도 한 번만 나타나야 한다).
@@ -79,8 +85,9 @@ class GuideApiClientTest {
         // 맞대는 것이라 한쪽만 실리면 판정이 성립하지 않는다.
         assertTrue(body.contains("\"content_signature\":\"${"d".repeat(64)}\""))
         assertTrue(body.contains("\"content_signature\":\"${"e".repeat(64)}\""))
-        // 값이 없는 스텝은 performed와 같은 침묵 규약으로 키째 빠진다 — 화면 1 + 스텝 1뿐이다.
-        assertEquals(2, Regex("\"content_signature\"").findAll(body).count())
+        // 값이 없는 스텝은 performed와 같은 침묵 규약으로 키째 빠진다. 현재 화면·스텝·완료
+        // 부정 feedback 세 자리가 각각 같은 wire 이름을 쓴다.
+        assertEquals(3, Regex("\"content_signature\"").findAll(body).count())
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -301,6 +308,7 @@ class GuideApiClientTest {
                 actionType = ActionType.TAP,
                 targetLabel = "설정",
                 targetNodeId = "n7",
+                expectedTargetState = ExpectedTargetState(ObservableState.CHECKED, true),
                 screenHint = "런처 홈 화면",
                 structureSignature = "b".repeat(64),
                 screenChanged = true,
@@ -314,6 +322,11 @@ class GuideApiClientTest {
                 screenHint = "설정 앱의 메뉴 목록 화면",
                 structureSignature = "c".repeat(64),
             ),
+        ),
+        completionFeedback = CompletionFeedback(
+            CompletionFeedbackStatus.USER_REJECTED,
+            "f".repeat(64),
+            "d".repeat(64),
         ),
         clientVersion = "0.1.0",
     )
