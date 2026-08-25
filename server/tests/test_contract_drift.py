@@ -241,27 +241,32 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
     assert "val focused: Boolean = false" in contract_source
     assert '@SerialName("ime_visible") val imeVisible: Boolean? = null' in contract_source
 
-    from app.schemas import Screen, UiElement
+    from app.schemas import UiElement
 
     assert {"editable", "focused"} <= set(UiElement.model_fields)
-    assert "ime_visible" in Screen.model_fields
+    # `Screen.ime_visible`은 위 순회(test_screen_wire_names_match_the_kotlin_serial_names)가
+    # 덮는다 — 여기서 손으로 다시 세지 않는다.
 
 
-def test_screen_content_signature_exists_on_both_sides(contract_source: str) -> None:
-    """#410의 내용 서명이 `Screen`에서 한쪽에만 생기지 않게 한다.
+def test_screen_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
+    """`Screen`의 필드를 **순회해** Kotlin 쪽에 같은 wire 이름이 있는지 본다(#419 리뷰 5번).
 
-    스텝 쪽은 위 두 테스트가 이미 덮는다(필드 집합 동등 비교 + wire 이름 대조). 여기서 새로
-    막는 것은 `Screen`이다 — **서버의 판정이 두 자리를 맞대는 것이라** 현재 화면 쪽이 빠지면
-    이력에 값이 흐르는데 비교 상대가 없다.
+    스텝은 이미 이 모양이었는데(`test_step_wire_names_match_the_kotlin_serial_names`) 화면은
+    필드가 늘 때마다 단언을 손으로 달았다 — `ime_visible`에 이어 `content_signature`가 그랬다.
+    순회로 바꾸면 그 부류가 통째로 사라진다: 다음에 `Screen`에 필드를 더하면 Kotlin을 함께
+    고치기 전까지 여기서 걸린다.
+
+    **선언 블록을 잘라내서 그 안에서만 찾는다** — 파일 전체를 보면 다른 data class의 같은
+    이름이 통과시킨다(스텝 쪽에서 실제로 걸린 함정, #289 셀프 리뷰).
     """
 
     from app.schemas import Screen
 
-    assert (
-        '@SerialName("content_signature") val contentSignature: String? = null'
-        in _kotlin_class_body(contract_source, "Screen")
-    )
-    assert "content_signature" in Screen.model_fields
+    screen_block = _kotlin_class_body(contract_source, "Screen")
+    for name in Screen.model_fields:
+        # snake_case 필드만 @SerialName이 필요하다. 나머지는 Kotlin 이름이 곧 wire 이름이다.
+        expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
+        assert expected in screen_block, f"Screen.{name}이 Kotlin 쪽에 없다"
 
 
 def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:
