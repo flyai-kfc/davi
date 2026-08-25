@@ -7,6 +7,7 @@
 
 from app.masking import mask_screen, mask_screen_model
 from app.prompt import (
+    ALREADY_IN_TARGET_STATE_INSTRUCTION,
     DISABLED_ELEMENT_INSTRUCTION,
     HINT_TEXT_INSTRUCTION,
     PARTIAL_CHECK_STATE_INSTRUCTION,
@@ -75,6 +76,7 @@ def test_toggle_state_is_carried_for_checkable_elements():
     assert "checked=true/false" in prompt
     assert TOGGLE_STATE_INSTRUCTION in prompt
     assert PARTIAL_CHECK_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION in prompt
 
 
 def test_partial_check_state_is_carried_as_observation_only():
@@ -95,6 +97,7 @@ def test_partial_check_state_is_carried_as_observation_only():
     assert "check_state=partial" in prompt
     assert PARTIAL_CHECK_STATE_INSTRUCTION in prompt
     assert TOGGLE_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION not in prompt
 
 
 def test_selected_is_carried_only_when_it_marks_the_current_item():
@@ -110,6 +113,24 @@ def test_selected_is_carried_only_when_it_marks_the_current_item():
     assert "selected=False" not in prompt
     assert SELECTED_STATE_INSTRUCTION in prompt
     assert TOGGLE_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION in prompt
+
+
+def test_repeat_guard_is_emitted_once_when_toggle_and_selected_are_both_present():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="Wi-Fi",
+                    check_state=CheckState.CHECKED,
+                ),
+                UiElement(node_id="n2", label="연결", selected=True),
+            ]
+        )
+    )
+
+    assert prompt.count(ALREADY_IN_TARGET_STATE_INSTRUCTION) == 1
 
 
 def test_empty_input_is_named_without_sending_the_value():
@@ -150,6 +171,7 @@ def test_state_sentences_are_absent_when_no_element_carries_the_value():
     assert TOGGLE_STATE_INSTRUCTION not in prompt
     assert PARTIAL_CHECK_STATE_INSTRUCTION not in prompt
     assert SELECTED_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION not in prompt
     assert HINT_TEXT_INSTRUCTION not in prompt
 
 

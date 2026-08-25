@@ -712,6 +712,9 @@ object UiTreeSerializer {
     ): CharSequence? = if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value() else null
 
     /** 이 노드 자신의 체크 상태. 자손은 보지 않는다. */
+    // lint는 게이트가 [checkStateFor] 안에 있어 람다 너머를 못 본다. 새 API 람다는
+    // `sdkInt >= BAKLAVA`일 때만 호출되고 그 경계를 단위 테스트가 고정한다. 게이트를 이 자리로
+    // 인라인하면 lint는 조용해지지만 API 경계가 테스트에서 빠진다.
     @SuppressLint("NewApi")
     internal fun checkStateOf(node: AccessibilityNodeInfo): CheckState =
         checkStateFor(
@@ -745,7 +748,14 @@ object UiTreeSerializer {
         }
     }
 
-    /** Android 16 `AccessibilityNodeInfo.getChecked()`의 네 가지 결과를 wire 상태로 옮긴다. */
+    /**
+     * Android 16 `AccessibilityNodeInfo.getChecked()`의 세 결과를 wire 상태로 옮긴다.
+     *
+     * 플랫폼이 현재 정의한 셋 밖의 값은 읽을 수 없는 미래 상태이므로 fail-closed로
+     * [CheckState.UNAVAILABLE]에 접는다. 그 경우 자손 상태 끌어올림과 `checkable_count`에서도
+     * 미관측으로 취급하는 것이 의도다. Android가 새 상수를 추가하면 이 결정과 매핑을 함께
+     * 다시 검토한다.
+     */
     internal fun checkState(platformState: Int): CheckState = when (platformState) {
         AccessibilityNodeInfo.CHECKED_STATE_TRUE -> CheckState.CHECKED
         AccessibilityNodeInfo.CHECKED_STATE_FALSE -> CheckState.UNCHECKED
