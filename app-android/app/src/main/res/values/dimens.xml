@@ -1053,6 +1053,13 @@
     <dimen name="davi_type_home_title">34sp</dimen>
     <dimen name="davi_type_home_caption">16sp</dimen>
     <dimen name="davi_home_cane_height">216dp</dimen>
+    <!--
+      캐릭터가 줄어들 수 있는 하한(2026-08-25). 말풍선 문구가 길어지면 캐릭터가 그만큼 양보한다
+      — 「이보다 긴 문구를 넣으면 그때 접어야 하는 것은 안내 문구가 아니라 캐릭터다」(#235)의
+      구현이다. 기준의 60%다: 더 줄이면 지팡이 끝의 빨간 구슬이 안 보여 「무엇을 가리키는
+      그림」으로 안 읽힌다.
+    -->
+    <dimen name="davi_home_cane_min_height">130dp</dimen>
     <!-- 캐릭터 위 여백. **시안에 없는 값이라 환산 대상이 아니다** — 실기기에서 부제에
          너무 붙어 보여 내렸다(2026-08-18 디자인 담당). -->
     <dimen name="davi_home_cane_margin_top">18dp</dimen>

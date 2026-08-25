@@ -307,6 +307,18 @@ class ConversationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 말풍선 높이는 문구 길이 x 글꼴 배율로 정해져 배치가 끝나야 알 수 있다.
+        binding.homeBubble.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateCaneShrink()
+        }
+        // 제목 폭은 글꼴 배율을 따라 자란다 — 배치가 끝나야 화살표를 침범하는지 알 수 있다.
+        // **둘 다에 단다.** 제목에만 달았더니 화살표가 아직 안 재진 첫 배치에서 빠져나온 뒤
+        // 제목이 다시 안 바뀌어 판정이 영영 안 돌았다.
+        val sparkleWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateSparkleOcclusion()
+        }
+        binding.homeTitle.addOnLayoutChangeListener(sparkleWatch)
+        binding.homeSparkle.addOnLayoutChangeListener(sparkleWatch)
         // 파형 계산을 미리 해 둔다 — 처음 울릴 때 메인 스레드에서 하면 소리가 늦다(#313).
         micTone.prepare()
         launchableAppIndex.start()
@@ -559,6 +571,84 @@ class ConversationActivity : AppCompatActivity() {
         launchableAppIndex.stop()
         voiceExecutor.shutdownNow()
         super.onDestroy()
+    }
+
+    /**
+     * 화살표가 제목을 침범하면 **숨긴다**(2026-08-25).
+     *
+     * 화살표는 프레임 오른쪽 끝에 고정이고 제목은 가운데 정렬이다. 글꼴 배율이 커지면 제목이
+     * 그 자리까지 자란다 — 배율 2.0·320dp 폭에서 「어려운 건」을 가로 17.1dp, 「물어보세요」를
+     * 30.5dp 덮었다(실측).
+     *
+     * **배율 숫자로 걸지 않는다.** 화면이 좁으면 더 낮은 배율에서도 부딪히고, 문구가 바뀌어도
+     * 달라진다. 실제로 겹치는지를 재는 규칙이라야 어느 기기·배율·문구에서도 맞는다.
+     *
+     * **여기서는 숨겨도 안전하다.** 화살표는 FrameLayout 위에 얹힌 오버레이라 자리를 비우든
+     * 그림만 지우든 **다른 요소의 배치가 안 움직인다** — 흐름 안의 요소를 숨겨 연쇄가 나는
+     * 것과 사정이 다르다. 자리를 남기는 INVISIBLE로 둬 판정을 다시 할 수 있게 한다.
+     */
+    private fun updateSparkleOcclusion() {
+        val sparkle = binding.homeSparkle
+        if (sparkle.visibility == View.GONE || sparkle.width == 0) return
+        val at = IntArray(2).also { sparkle.getLocationInWindow(it) }
+        val hit = listOf(binding.homeTitle, binding.homeTitleAccent).any { text ->
+            if (text.visibility != View.VISIBLE || text.width == 0) return@any false
+            val t = IntArray(2).also { text.getLocationInWindow(it) }
+            at[0] < t[0] + text.width && t[0] < at[0] + sparkle.width &&
+                at[1] < t[1] + text.height && t[1] < at[1] + sparkle.height
+        }
+        val wanted = if (hit) View.INVISIBLE else View.VISIBLE
+        if (sparkle.visibility != wanted) sparkle.visibility = wanted
+    }
+
+    /** 캐릭터의 기준 높이(px). 처음 볼 때 치수에서 한 번 읽는다. */
+    private var caneBaseHeight = 0
+
+    /** 말풍선에 자리를 내주려고 캐릭터를 줄인 양(px). 0이면 기준 높이다. */
+    private var caneShrink = 0
+
+    /**
+     * 말풍선이 마이크를 파고들면 **캐릭터를 그만큼 줄인다**(2026-08-25).
+     *
+     * 홈은 말풍선이 열 안에 있고 마이크는 **열 밖에서 바닥에 못 박혀 있다.** 그래서 문구가
+     * 길어지면 말풍선이 밀리는 대신 마이크를 **덮는다** — 배율 2.0의 기본 문구에서 이미 6.22dp
+     * 겹쳤고(실측), 줄바꿈이 박힌 문구(voice_network_error)는 네 줄이라 더 나쁘다.
+     *
+     * **줄일 것은 문구가 아니라 캐릭터다** — 「이보다 긴 문구를 넣으면 그때 접어야 하는 것은
+     * 안내 문구가 아니라 캐릭터다」(#235 결정). 안내를 자르면 어르신이 무엇을 해야 할지 잃지만,
+     * 캐릭터는 작아져도 같은 것을 가리킨다.
+     *
+     * **줄인 만큼을 되돌려 「줄이기 전」 기준으로 잰다** — 안 그러면 줄여서 겹침이 사라진 다음
+     * 판정에서 되돌리고, 되돌리면 또 겹쳐 무한히 오간다.
+     */
+    private fun updateCaneShrink() {
+        val cane = binding.homeCane
+        if (cane.visibility != View.VISIBLE ||
+            binding.homeBubble.visibility != View.VISIBLE ||
+            binding.micSlot.visibility != View.VISIBLE ||
+            binding.homeBubble.height == 0
+        ) {
+            applyCaneShrink(0)
+            return
+        }
+        if (caneBaseHeight == 0) {
+            caneBaseHeight = resources.getDimensionPixelSize(R.dimen.davi_home_cane_height)
+        }
+        val bubbleAt = IntArray(2).also { binding.homeBubble.getLocationInWindow(it) }
+        val micAt = IntArray(2).also { binding.micSlot.getLocationInWindow(it) }
+        val bubbleBottomAtBase = bubbleAt[1] + binding.homeBubble.height + caneShrink
+        val overflow = bubbleBottomAtBase - micAt[1]
+        val floor = resources.getDimensionPixelSize(R.dimen.davi_home_cane_min_height)
+        applyCaneShrink(overflow.coerceIn(0, (caneBaseHeight - floor).coerceAtLeast(0)))
+    }
+
+    /** 캐릭터를 기준 높이에서 [shrink]px 줄인다. 값이 같으면 아무것도 하지 않는다. */
+    private fun applyCaneShrink(shrink: Int) {
+        if (shrink == caneShrink || caneBaseHeight == 0) return
+        caneShrink = shrink
+        binding.homeCane.updateLayoutParams<LinearLayout.LayoutParams> {
+            height = caneBaseHeight - shrink
+        }
     }
 
     /**
