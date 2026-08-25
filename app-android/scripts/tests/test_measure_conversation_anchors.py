@@ -108,6 +108,17 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(result["start_line_source"], "✕")
         self.assertEqual(result["start_line_dp"], 225 - 28 + 6)
 
+    def test_a_perched_screen_that_lost_its_anchors_is_not_measured_from_the_card(self):
+        """**갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고**, 대신 토큰 사슬이 재는 데
+        실패한 것을 레이아웃 결함으로 신고한다 — 조용하지는 않은데 진단이 틀린다."""
+        # 트리가 덜 만들어져 카드만 있고 칩·✕가 없다.
+        result = self.measure({"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}, perched=True)
+
+        self.assertIsNone(result["start_line_dp"])
+        self.assertEqual(result["start_line_source"], "-")
+        # 카드 상단은 자기 열에 그대로 남는다 — 잃는 정보가 없다.
+        self.assertEqual(result["card_top_dp"], 114)
+
     def test_other_screens_measure_the_card_top(self):
         nodes = {"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}
 
@@ -566,21 +577,47 @@ class ScreenStateTest(unittest.TestCase):
     def test_an_awake_unlocked_device_is_recognised(self):
         raw = "  mAwake=true mScreenOnEarly=true\n  mDreamingLockscreen=false\n"
 
-        self.assertEqual(FakeDevice(raw).screen_state(), (True, False))
+        self.assertEqual(FakeDevice(raw).screen_state(), (True, True))
 
     def test_a_sleeping_or_locked_device_is_recognised(self):
         self.assertEqual(
             FakeDevice("  mAwake=false\n  mDreamingLockscreen=true\n").screen_state(),
-            (False, True),
+            (False, False),
         )
 
-    def test_keeping_the_screen_on_is_tied_to_usb_and_released_afterwards(self):
+    def test_a_device_without_the_field_stops_instead_of_passing(self):
+        """**`=true`를 찾으면 그 필드가 없는 기기에서 가드가 조용히 열린다** — 막으려던 실패
+        모양 그대로다(`app-android/CLAUDE.md` 잠금 함정 절). 필드는 SM-S921N에서만 봤다.
+        「봤을 때만 참」이라야 필드가 없을 때도 멈춘다."""
+        raw = "  mAwake=true mScreenOnEarly=true\n"  # mDreamingLockscreen 줄이 아예 없다
+
+        awake, unlocked = FakeDevice(raw).screen_state()
+
+        self.assertTrue(awake)
+        self.assertFalse(unlocked, "잠금 확인이 안 됐는데 통과했다")
+
+    def test_keeping_the_screen_on_is_tied_to_usb(self):
         device = FakeDevice()
 
-        device.keep_screen_on(True)
+        device.keep_screen_on()
+
         self.assertEqual(device.commands[-1], ["svc", "power", "stayon", "usb"])
 
-        device.keep_screen_on(False)
+    def test_the_stay_on_setting_goes_back_to_its_own_value(self):
+        # **끄는 것이 아니라 되돌린다** — 이 설정을 켜 두고 쓰는 기기가 있다.
+        device = FakeDevice()
+
+        device.restore_stay_on("7")
+
+        self.assertEqual(
+            device.commands[-1], ["settings", "put", "global", "stay_on_while_plugged_in", "7"]
+        )
+
+    def test_an_unreadable_stay_on_setting_falls_back_to_off(self):
+        device = FakeDevice()
+
+        device.restore_stay_on("null")
+
         self.assertEqual(device.commands[-1], ["svc", "power", "stayon", "false"])
 
 

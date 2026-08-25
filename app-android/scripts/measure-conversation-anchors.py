@@ -33,6 +33,12 @@ S23 Ultra: MA-1·MA-4가 그랬고, 같은 격자가 S24에서는 멀쩡했다).
     ./scripts/measure-conversation-anchors.py --scales 1.0       # 배율 하나만
     ./scripts/measure-conversation-anchors.py --serial R3CX...   # 기기 지정
 
+**판정이 빨간불이어도 종료코드는 0이다** — 사람이 표를 읽는 도구다. 회귀 관문으로 쓸 거면
+그때 종료코드를 갈라야 한다(그 전에는 아무도 이 값을 믿으면 안 된다).
+
+**맥·리눅스 전용이다** — `adb`를 `~/Library/Android/sdk` 또는 `ANDROID_HOME`에서 찾고
+임시 폴더 기본값이 `/tmp`다. Windows에서는 첫 호출에서 죽는다.
+
 기기가 없으면 아무것도 못 잰다 — 이 스크립트는 실기기 전용이고, 파싱·판정 부분만
 `scripts/tests/test_measure_conversation_anchors.py`가 기기 없이 검증한다.
 """
@@ -356,7 +362,11 @@ def measure(
             candidates.append(("칩", chip_top))
         if close_top is not None:
             candidates.append(("✕", close_top + close_circle_inset_px))
-    if not candidates:
+    # **걸치는 화면이 칩·✕를 못 찾으면 카드로 갈아타지 않는다**(#458 리뷰). 갈아타면 행이
+    # 비지 않아 「못 잼」 그물을 통과하고, 대신 토큰 사슬이 **재는 데 실패한 것을 레이아웃
+    # 결함으로** 신고한다 — 조용하지는 않은데 진단이 틀린다. 카드 상단은 자기 열에 그대로
+    # 남으므로 잃는 정보도 없다.
+    if not candidates and not perched:
         if card is not None:
             candidates.append(("카드", card.top))
         elif "home_title" in nodes:
@@ -590,20 +600,41 @@ class Device:
         return self.system_bar_height_px("navigationBars").height
 
     def screen_state(self) -> tuple:
-        """`(깨어 있는가, 잠겨 있는가)`. `dumpsys window`의 두 줄로 본다."""
+        """`(깨어 있는 것을 봤는가, 잠금이 풀린 것을 봤는가)`.
+
+        **둘 다 「봤을 때만 참」이다 — `=true`를 찾지 않는다.** 그 필드가 없는 기기에서는
+        매칭이 실패해 **가드가 조용히 열리고**, 그것이 바로 이 가드가 막으려던 실패 모양이다
+        (`app-android/CLAUDE.md` 잠금 함정 절). 필드 자체는 SM-S921N에서만 확인됐고 다른
+        기기는 안 봤다 — 없을 수 있다는 뜻이다.
+
+        `svc power stayon usb`를 그 문단에서 가져왔으면서 **이쪽 절반을 놓쳤었다**(#458 리뷰).
+        """
         raw = self.shell("dumpsys", "window")
         awake = "mAwake=true" in raw
-        locked = "mDreamingLockscreen=true" in raw
-        return awake, locked
+        unlocked = "mDreamingLockscreen=false" in raw
+        return awake, unlocked
 
-    def keep_screen_on(self, on: bool) -> None:
+    def stay_on_setting(self) -> str:
+        """지금의 `stay_on_while_plugged_in` 값(비트마스크). 되돌릴 때 쓴다."""
+        return (self.shell("settings", "get", "global", "stay_on_while_plugged_in") or "").strip()
+
+    def keep_screen_on(self) -> None:
         """USB로 붙어 있는 동안 화면을 안 끄게 한다.
 
         **격자 한 판이 기기의 화면 꺼짐 시간보다 길다.** S23 Ultra는 30초로 잡혀 있었고,
         앞선 기기를 재는 10분 사이에 잠들어 **배율 1.0 패스 14칸이 통째로 빈 트리**를 읽었다
         (`본 것: 아무것도`). 잠든 화면에서도 `am start`는 종료코드 0을 준다.
         """
-        self.shell("svc", "power", "stayon", "usb" if on else "false")
+        self.shell("svc", "power", "stayon", "usb")
+
+    def restore_stay_on(self, original: str) -> None:
+        """**끄는 것이 아니라 원래 값으로 되돌린다**(#458 리뷰). 이 설정을 켜 두고 쓰는
+        기기가 있고, `false`로 밀면 그 사람의 설정을 말없이 바꾼다 — 배율 복원과 같은 이유다.
+        값은 비트마스크라 `svc`가 아니라 `settings put`으로 되돌린다."""
+        if original.isdigit():
+            self.shell("settings", "put", "global", "stay_on_while_plugged_in", original)
+        else:
+            self.shell("svc", "power", "stayon", "false")
 
     def wake(self) -> None:
         self.shell("input", "keyevent", "KEYCODE_WAKEUP")
@@ -741,13 +772,14 @@ def run(args) -> int:
     # 못 넣으므로 여기서 세운다 — 사람이 풀어야 한다.
     device.wake()
     time.sleep(1.0)
-    awake, locked = device.screen_state()
-    if not awake or locked:
+    awake, unlocked = device.screen_state()
+    if not (awake and unlocked):
         raise RuntimeError(
-            "기기 화면이 꺼져 있거나 잠겨 있다 — 잠금을 풀고 다시 돌려라 "
-            f"(awake={awake} locked={locked})"
+            "화면이 꺼졌거나 잠겼거나 **확인이 안 된다** — 잠금을 풀고 다시 돌려라 "
+            f"(깨어 있음 확인={awake} 잠금 풀림 확인={unlocked})"
         )
-    device.keep_screen_on(True)
+    original_stay_on = device.stay_on_setting()
+    device.keep_screen_on()
     cases = default_cases()
     rows = []
     tmp = os.path.join(args.work_dir, "davi-anchors.xml")
@@ -801,7 +833,7 @@ def run(args) -> int:
                 )
     finally:
         device.restore_font_scale(original_scale)
-        device.keep_screen_on(False)
+        device.restore_stay_on(original_stay_on)
 
     header = (
         f"# 대화 화면 시작선 실측 (#452)\n\n"
