@@ -374,7 +374,7 @@ class RemoteIntentResolver(IntentResolver):
 def _normalize_clarification_decision(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
-    """유효한 질문 계획에서 추측 없이 복구 가능한 교차 필드만 맞춘다."""
+    """복구 가능한 교차 필드를 맞추고, 첫 질문을 쓸 수 없으면 계약 위반으로 닫는다."""
 
     normalized = dict(payload)
     if normalized.get("status") != IntentDialogueStatus.NEEDS_CLARIFICATION:
