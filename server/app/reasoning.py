@@ -667,10 +667,15 @@ def _classify_completion(
     node와 boolean 상태가 현재 트리에 실제로 있는지 확인하고, 검증하지 못하면 언제나
     ``inconclusive``로 내린다. 서버가 모델의 주장을 더 강한 상태로 올리는 경로는 없다.
 
+    이 판정은 성공 종료 후보인 ``done``에만 의미가 있다. 그 밖의 행동은 현재 화면에 반대 근거가
+    있더라도 다음 안내를 수행하는 응답이므로 언제나 ``inconclusive``다.
+
     ``contradicted``는 부재가 아니라 세 가지 직접 반대 사실에만 쓴다: 같은 화면에서 받은 사용자
     부정, 수행된 직전 조작의 검증 가능한 반대 상태, 현재 노드에 고정된 명시 실패 근거. 화면이
     같거나 예상 node가 사라진 것만으로는 실패를 만들지 않는다.
     """
+    if action.action_type is not ActionType.DONE:
+        return CompletionVerdict.INCONCLUSIVE
     if _feedback_rejects_current_screen(req):
         return CompletionVerdict.CONTRADICTED
     if _previous_expected_state_is_opposite(req):
@@ -696,9 +701,7 @@ def _classify_completion(
             if _is_explicit_failure_observation(element)
             else CompletionVerdict.INCONCLUSIVE
         )
-    if action.action_type is ActionType.DONE:
-        return CompletionVerdict.VERIFIED
-    return CompletionVerdict.INCONCLUSIVE
+    return CompletionVerdict.VERIFIED
 
 
 def _feedback_rejects_current_screen(req: NextStepRequest) -> bool:

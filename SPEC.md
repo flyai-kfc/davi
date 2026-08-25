@@ -443,7 +443,9 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 
 응답은 가산적으로 `completion_verdict`와 기존 `verified`를 함께 보낸다. `verified`는 verdict가
 `verified`일 때만 true다. 구버전 앱은 새 키를 무시하고, 새 앱은 enum이 없는 구버전 서버에서만
-bool로 폴백한다. `done`은 계속 성공 종료 의미다. `contradicted`를 실패형 `done`으로 끝내지 않고,
+bool로 폴백한다. verdict는 성공 종료 후보인 `done`에서만 의미가 있으며, `tap`·`scroll`·`type` 등
+non-`done` 응답은 화면에 반대 근거가 있어도 항상 `inconclusive`다. `done`은 계속 성공 종료
+의미다. `contradicted`를 실패형 `done`으로 끝내지 않고,
 앱은 완료 확인을 띄우지 않은 채 고정 문구를 보여 준 뒤 재탐색한다. `inconclusive`는 화면별 3회·
 세션 전체 6회 재시도 뒤 확신 없는 사용자 확인으로 넘긴다.
 

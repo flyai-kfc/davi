@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import pytest
 from app.llm import LlmClient
-from app.reasoning import _classify_completion, _evidence_quotes_element, next_step
+from app.reasoning import (
+    _classify_completion,
+    _evidence_quotes_element,
+    next_step,
+)
 from app.schemas import (
     ActionType,
     CompletionEvidence,
@@ -24,6 +28,7 @@ from app.schemas import (
     Screen,
     UiElement,
 )
+from app.signature import screen_signature
 
 
 class _DoneLlmClient(LlmClient):
@@ -264,7 +269,55 @@ def test_non_done_action_is_never_verified():
                 instruction="'채팅'을 눌러 주세요.",
             )
 
-    assert not next_step(request, _TapClient()).verified
+    response = next_step(request, _TapClient())
+
+    assert not response.verified
+    assert response.completion_verdict is CompletionVerdict.INCONCLUSIVE
+
+
+def test_non_done_grounded_failure_is_inconclusive():
+    request = NextStepRequest(goal="항목 저장", screen=_screen("저장 실패"))
+    action = GuideAction(
+        expected_result="항목이 저장되어 있다",
+        screen_summary="저장 결과 화면",
+        evidence="화면에 '저장 실패'가 보입니다",
+        completion_evidence=CompletionEvidence(
+            node_id="n1",
+            kind=CompletionEvidenceKind.FAILURE,
+        ),
+        action_type=ActionType.TAP,
+        target_node_id="n1",
+        instruction="'저장 실패'를 눌러 주세요.",
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
+
+
+def test_non_done_action_ignores_completion_rejection_feedback():
+    screen = Screen(
+        package_name="com.example.task",
+        content_signature="b" * 64,
+        elements=[UiElement(node_id="n1", label="다시 시도", clickable=True)],
+    )
+    request = NextStepRequest(
+        goal="항목 저장",
+        screen=screen,
+        completion_feedback=CompletionFeedback(
+            status=CompletionFeedbackStatus.USER_REJECTED,
+            structure_signature=screen_signature(screen),
+            content_signature="b" * 64,
+        ),
+    )
+    action = GuideAction(
+        expected_result="항목이 저장되어 있다",
+        screen_summary="재시도 화면",
+        evidence="화면에 '다시 시도'가 보입니다",
+        action_type=ActionType.TAP,
+        target_node_id="n1",
+        instruction="'다시 시도'를 눌러 주세요.",
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
 
 
 def _done_with_claim(
@@ -375,8 +428,6 @@ def test_model_failure_kind_without_an_explicit_failure_label_is_inconclusive(
 
 
 def test_user_rejection_is_bound_to_current_structure_and_content():
-    from app.signature import screen_signature
-
     screen = Screen(
         package_name="com.example.task",
         content_signature="a" * 64,
@@ -402,9 +453,7 @@ def test_user_rejection_is_bound_to_current_structure_and_content():
     assert _classify_completion(action, changed_content) is CompletionVerdict.VERIFIED
 
 
-def test_performed_unchanged_target_with_opposite_state_is_contradicted():
-    from app.signature import screen_signature
-
+def test_performed_unchanged_target_with_opposite_state_only_contradicts_done():
     screen = Screen(
         elements=[UiElement(node_id="n1", label="기능 꺼짐", role="Switch", checked=False)]
     )
@@ -423,13 +472,19 @@ def test_performed_unchanged_target_with_opposite_state_is_contradicted():
     )
     request = NextStepRequest(goal="기능 켜기", screen=screen, steps=[step])
     action = _done_with_claim(evidence="화면에 '기능 꺼짐'이 보입니다")
+    tap = action.model_copy(
+        update={
+            "action_type": ActionType.TAP,
+            "target_node_id": "n1",
+            "instruction": "'기능 꺼짐'을 눌러 주세요.",
+        }
+    )
 
     assert _classify_completion(action, request) is CompletionVerdict.CONTRADICTED
+    assert _classify_completion(tap, request) is CompletionVerdict.INCONCLUSIVE
 
 
 def test_absence_or_screen_change_is_not_a_state_contradiction():
-    from app.signature import screen_signature
-
     screen = Screen(elements=[UiElement(node_id="n1", label="기능 꺼짐", checked=False)])
     base = GuideStep(
         instruction="스위치를 눌러 주세요.",

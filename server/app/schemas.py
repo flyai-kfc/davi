@@ -74,7 +74,7 @@ class ScrollAxis(StrEnum):
 
 
 class CompletionVerdict(StrEnum):
-    """현재 관측으로 본 목표 완료 신뢰도(#424)."""
+    """`done` 후보를 현재 관측으로 검증한 목표 완료 신뢰도(#424)."""
 
     VERIFIED = "verified"
     INCONCLUSIVE = "inconclusive"
@@ -429,6 +429,7 @@ class NextStepResponse(BaseModel):
     action: GuideAction
     model: str
     verified: bool = False
+    # `done`일 때만 종료 후보의 세 상태를 말한다. 그 밖의 action은 항상 inconclusive다.
     # 기존 앱은 모르는 키를 무시하고 verified를 계속 쓴다. 새 앱은 이 세 상태를 우선한다.
     completion_verdict: CompletionVerdict = CompletionVerdict.INCONCLUSIVE
     # label을 제외한 현재 화면 구조의 SHA-256. 앱은 행동 이력에 붙여 다음 요청에서 그대로 돌려준다.
