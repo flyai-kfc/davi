@@ -100,6 +100,23 @@ internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
  */
 internal const val EXTRA_DEBUG_HOME_STATUS = "com.davi.helper.extra.DEBUG_HOME_STATUS"
 
+/**
+ * 최종 확인 화면(MA-4)을 goal 문구로 띄운다(debug 전용).
+ *
+ * 이 화면은 **말로 목표를 말해야만** 닿는다 — 서버가 READY를 준 뒤에 열린다. 그래서 배치를
+ * 재려면 음성 세션을 매번 돌려야 했고, 문구 길이를 바꿔 가며 재는 것은 사실상 불가능했다.
+ * goal의 길이는 사용자가 무엇을 말하느냐가 정하므로 **앱이 못 정하는 값**이고, 그런 값이
+ * 배치를 흔드는 화면일수록 길게·짧게 넣어 봐야 한다(#372).
+ *
+ * 바로가기 행은 [EXTRA_DEBUG_CONFIRM_APP]이 있을 때만 뜬다 — 사전 점검이 통과한 경우다.
+ *
+ *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *     --es com.davi.helper.extra.DEBUG_CONFIRM "'엄마에게 사진 보내기'" \
+ *     --es com.davi.helper.extra.DEBUG_CONFIRM_APP "'카카오톡'"
+ */
+internal const val EXTRA_DEBUG_CONFIRM = "com.davi.helper.extra.DEBUG_CONFIRM"
+internal const val EXTRA_DEBUG_CONFIRM_APP = "com.davi.helper.extra.DEBUG_CONFIRM_APP"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -727,7 +744,8 @@ class ConversationActivity : AppCompatActivity() {
         BuildConfig.DEBUG && (
             intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
                 intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null ||
-                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null
+                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null ||
+                intent.getStringExtra(EXTRA_DEBUG_CONFIRM) != null
             )
 
     /**
@@ -742,6 +760,16 @@ class ConversationActivity : AppCompatActivity() {
         if (intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false)) {
             GuideTelemetry.voiceState("debug_failed_injected")
             return ConversationUiState.Failed
+        }
+        intent.getStringExtra(EXTRA_DEBUG_CONFIRM)?.let { goal ->
+            GuideTelemetry.voiceState("debug_confirm_injected")
+            val app = intent.getStringExtra(EXTRA_DEBUG_CONFIRM_APP)
+            return ConversationUiState.Confirm(
+                goal = goal,
+                // 바로가기 행은 **열 앱을 아는 경우에만** 뜬다. 패키지는 배치를 재는 데
+                // 쓰이지 않으므로(아이콘은 PackageManager가 라벨로 찾는다) 라벨만 받는다.
+                shortcutApp = app?.let { ShortcutApp(packageName = "", label = it) },
+            )
         }
         return debugClarificationState()
     }
