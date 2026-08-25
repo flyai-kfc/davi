@@ -27,7 +27,11 @@
   슬롯이 접혀도(「시간 정하기」처럼 앱이 아닌 답) 넷의 줄이 안 흐트러진다.
 
   **버튼 높이는 minHeight다** — 앱 이름은 PackageManager에서 오는 실제 이름이라 길이를 우리가
-  정할 수 없다. 더 긴 이름이 오면 잘리는 대신 버튼이 자란다.
+  정할 수 없다. 더 긴 이름이 오면 잘리는 대신 버튼이 자란다. **위아래 안쪽 여백을 함께 준다**
+  (davi_shortcut_row_padding_vertical 12dp) — 안 주면 두 줄이 되는 순간 자식이 TextView 하나뿐이라
+  버튼 높이가 글자 높이 그대로가 되고 **글자가 둥근 모서리에 붙는다.** MA-4가 같은 변경에서
+  실기기로 본 것이고(2026-08-24, #396) 그때 만든 토큰을 그대로 쓴다. 한 줄에서는 아이콘
+  48 + 12 + 12 = 72라 minHeight에 묻혀 배치가 안 바뀐다.
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -49,6 +53,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
             android:clickable="true"
@@ -90,6 +96,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_gap"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
@@ -132,6 +140,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_gap"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
@@ -174,6 +184,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_group_gap"
             android:background="@drawable/bg_davi_choice_primary"
             android:elevation="@dimen/davi_choice_primary_elevation"
