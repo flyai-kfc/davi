@@ -231,9 +231,14 @@ object UiTreeSerializer {
         // 것은 그대로 막힌다.
         // **끊는 자리는 하나이고 근거가 다르다** — 아래 [exceedsHiddenChain]은 노드의 자기 보고가
         // 아니라 **안 보임이 연속된 길이**를 본다. 값의 근거는 [MAX_HIDDEN_RUN]에 있다.
-        // **한 노드에서 바로 끊는 자리가 아직 둘 남아 있다** — 라벨 병합·상태 hoist
-        // ([collectDescendantText]·[descendantCheckedState]). 고치면 화면 전반의 label이 함께
-        // 바뀌어 별도 측정이 필요하다(#382). 가림 판정 [hasPaintedContent]는 #359가 맞췄다.
+        // **한 노드에서 바로 끊는 자리가 둘 남아 있고, 그대로 두기로 했다**(#382) — 라벨 병합·상태
+        // hoist([collectDescendantText]·[descendantCheckedState]). 같은 규칙으로 고쳤을 때 값이
+        // 달라지는 요소가 **20개 화면에서 0개**였다(2026-08-25 SM-S921N). 병합은 모든 화면에서
+        // 돌았고(4~32회) 네이버 앱 홈에서는 완화 경로가 안 보이는 자식을 실제로 만나 내려갔는데도
+        // (4회) label과 상태가 그대로였다 — 발화하려면 **병합 중인 노드 안**의 안 보이는 노드
+        // **아래에 보이는 텍스트**가 있어야 하는데 그 조합이 관측되지 않는다. #358의 하단 바는
+        // 병합 대상 밖이었고 자식들이 자기 요소로 나갔다. 고치는 쪽의 값이 0이라 순회를 더 하는
+        // 비용만 남는다(#367이 줄인 축과 반대). 가림 판정 [hasPaintedContent]는 #359가 맞췄다.
         // **스크롤 관측은 일부러 둔다.** 아래 `observeScrollable`이 이 return 뒤에 있어, 스크롤
         // 컨테이너 자신이 `visibleToUser=false`면 `has_scrollable_element`도 스크롤 대상도 안 나간다.
         // 여기서도 관측하면 **오프스크린 페이지가 `scrollable=true`를 올려 런처 페이징 가드레일이
