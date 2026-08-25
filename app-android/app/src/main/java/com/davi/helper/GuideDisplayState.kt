@@ -302,6 +302,11 @@ class GuideDisplayState {
      *
      * [guide]는 그 왕복에 안 죽는다 — [dismissQuitConfirm]이 원본을 그대로 되살리고,
      * [hideTarget]은 복사본만 지운다. [pressTargetBounds]가 같은 성질에 기대는 선례다.
+     *
+     * **[pressTargetBounds]와 달리 `visible`을 보지 않는다.** 저쪽은 시스템이 아무 때나 주는
+     * 클릭 이벤트에서 불려 "지금 우리 안내가 떠 있는가"를 스스로 물어야 하지만, 이쪽은
+     * **우리 버튼의 클릭 리스너에서만** 불린다 — 그 버튼은 조작 오버레이가 떠 있는 동안만
+     * 존재하므로 창이 걷힌 뒤에는 호출 자체가 없다.
      */
     fun inputFill(): Pair<String, List<Int>?>? {
         val current = guide ?: return null
@@ -323,7 +328,6 @@ class GuideDisplayState {
      *
      * 판정 자체는 [PressMatch]가 한다 — 이 클래스는 무엇이 떠 있는지만 안다.
      */
-
     fun pressTargetBounds(): List<Int>? {
         if (!visible || pressConsumed) return null
         val current = guide ?: return null
