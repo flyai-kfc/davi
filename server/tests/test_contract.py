@@ -28,6 +28,7 @@ def test_partial_check_state_round_trips_without_boolean_loss():
     assert element.check_state is CheckState.PARTIAL
     assert element.model_dump(mode="json")["check_state"] == "partial"
 
+
 # --- C1: propertyOrdering이 선언 순서에서 실제로 생성되는가 -------------------
 
 
