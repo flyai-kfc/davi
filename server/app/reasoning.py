@@ -67,10 +67,7 @@ _MIN_EVIDENCE_LABEL_CHARS = 2
 #
 # 취소·거부의 기본형은 버튼 label일 수 있어 넣지 않고, 완료된 상태형만 둔다. 새 표현을 넓힐
 # 때는 실제 익명화 관측과 false-positive fixture를 함께 추가한다.
-_EXPLICIT_FAILURE_LABEL_MARKERS = (
-    "실패",
-    "오류",
-    "에러",
+_EXPLICIT_FAILURE_COMPLETED_MARKERS = (
     "권한필요",
     "권한이필요",
     "거부됨",
@@ -82,8 +79,17 @@ _EXPLICIT_FAILURE_LABEL_MARKERS = (
     "취소됐",
     "permissionrequired",
 )
-_EXPLICIT_FAILURE_ENGLISH_WORDS = frozenset(
-    {"failed", "failure", "error", "errors", "denied", "rejected", "cancelled", "canceled"}
+_EXPLICIT_FAILURE_KOREAN_TERMS = ("실패", "오류", "에러")
+_EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES = (
+    "함",
+    "됨",
+    "됐",
+    "했",
+    "했습니다",
+    "하였습니다",
+)
+_EXPLICIT_FAILURE_ENGLISH_COMPLETED_WORDS = frozenset(
+    {"failed", "failure", "denied", "rejected", "cancelled", "canceled"}
 )
 _EXPLICIT_FAILURE_LABEL_NEGATIONS = (
     "실패하지않",
@@ -97,7 +103,7 @@ _EXPLICIT_FAILURE_LABEL_NEGATIONS = (
     "noerror",
 )
 _EXPLICIT_FAILURE_NEGATION_PATTERN = re.compile(
-    r"(?:실패|오류|에러)(?:한)?(?:항목|작업|내용)?(?:이|가|는)?없"
+    r"(?:실패|오류|에러)(?:(?:한)?(?:항목|작업|내용)?(?:이|가|는)?없|(?:이|가)?발생하지않)"
 )
 
 # 복사 문구의 하한. 근거는 매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는
@@ -755,10 +761,30 @@ def _is_explicit_failure_observation(element: UiElement) -> bool:
     negated = any(marker in normalized for marker in _EXPLICIT_FAILURE_LABEL_NEGATIONS) or bool(
         _EXPLICIT_FAILURE_NEGATION_PATTERN.search(normalized)
     )
-    return not negated and (
-        any(marker in normalized for marker in _EXPLICIT_FAILURE_LABEL_MARKERS)
-        or bool(set(_evidence_words(element.label)) & _EXPLICIT_FAILURE_ENGLISH_WORDS)
-    )
+    if negated:
+        return False
+    if any(marker in normalized for marker in _EXPLICIT_FAILURE_COMPLETED_MARKERS):
+        return True
+
+    # `오류 신고`·`에러 리포트` 같은 메뉴를 상태로 읽지 않는다. 맨몸 표지는 받지 않고,
+    # 앞에 구체적인 대상이 붙어 label 끝의 상태가 되거나 완료형 활용이 붙었을 때만 받는다.
+    for term in _EXPLICIT_FAILURE_KOREAN_TERMS:
+        if normalized.endswith(term) and len(normalized) > len(term):
+            return True
+        if any(
+            normalized.endswith(term + suffix)
+            for suffix in _EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES
+        ):
+            return True
+
+    words = _evidence_words(element.label)
+    if not words:
+        return False
+    last = words[-1]
+    if last in _EXPLICIT_FAILURE_ENGLISH_COMPLETED_WORDS:
+        return True
+    # `Network error`는 상태지만 `Error log`·`Errors: 0`과 맨몸 `Error`는 상태가 아니다.
+    return len(words) > 1 and last in {"error", "errors"}
 
 
 class _Phrases(NamedTuple):

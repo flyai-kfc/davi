@@ -339,7 +339,19 @@ def test_grounded_explicit_failure_is_contradicted(label: str):
 
 @pytest.mark.parametrize(
     "label",
-    ["연결", "저장", "오류 없음", "실패한 항목 없음", "No error"],
+    [
+        "연결",
+        "저장",
+        "오류 없음",
+        "실패한 항목 없음",
+        "오류 신고",
+        "오류 신고하기",
+        "Error log",
+        "에러 리포트 보내기",
+        "Errors: 0",
+        "오류가 발생하지 않았습니다",
+        "No error",
+    ],
 )
 def test_model_failure_kind_without_an_explicit_failure_label_is_inconclusive(
     label: str,

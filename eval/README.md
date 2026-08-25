@@ -208,9 +208,10 @@ candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가
 
 #424 이후에도 baseline은 착수 시점의 화면 근거 정책을 `completion_baseline.py`에 독립 snapshot으로
 보존한다. candidate는 현재 서버의 구조화 완료 근거·현재 접근성 상태·직전 수행 결과·동일 화면
-사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 24개 결정론적 사례에서
-baseline/candidate의 false success는 9/13 → 1/13, verified recall은 9/11 → 9/11,
-contradiction recall은 0/4 → 4/4이고, candidate의 inconclusive는 10/24다. 남은 false success는
+사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 30개 결정론적 사례에서
+baseline/candidate의 false success는 15/19 → 1/19, verified recall은 9/11 → 9/11,
+contradiction recall은 0/4 → 4/4이고, candidate의 inconclusive는 16/30이다. 오류 신고 메뉴·
+0건 표시·부정문 6건도 모델의 `failure` 주장을 그대로 받지 않는 경계로 포함한다. 남은 false success는
 일반 `설정` label을 모델이 success 근거로 주장한 사례다. 사람 정답을 candidate에 맞추지 않고
 현재 정책의 의미 한계를 그대로 보존한다.
 

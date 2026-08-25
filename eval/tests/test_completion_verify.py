@@ -135,7 +135,13 @@ def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device)
 
 
 def _load_completion_cases() -> list[tuple[CompletionCase, NextStepRequest]]:
-    return [(item.case, item.request) for item in load_completion_dataset().cases]
+    # 아래 혼동행렬은 #71 당시 evidence 인용 정책의 고정 비교다. #425 이후 추가된 완료 상태
+    # 전용 축을 섞으면 과거 실험의 분모가 corpus 확장 때마다 바뀌므로 명시적으로 제외한다.
+    return [
+        (item.case, item.request)
+        for item in load_completion_dataset().cases
+        if item.case.axis != "explicit_failure_false_positive"
+    ]
 
 
 def _new_policy(case: CompletionCase, request: NextStepRequest) -> bool:

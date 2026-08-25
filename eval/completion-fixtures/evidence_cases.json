@@ -418,6 +418,126 @@
       "expected_verdict": "inconclusive"
     },
     {
+      "id": "inconclusive-error-report-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "오류 신고", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류 신고'가 있어 실패 상태입니다",
+      "evidence_label": "오류 신고",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-report-action",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "오류 신고하기", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류 신고하기'가 있어 실패 상태입니다",
+      "evidence_label": "오류 신고하기",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-log-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "Error log", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 'Error log'가 있어 실패 상태입니다",
+      "evidence_label": "Error log",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-report-send-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "에러 리포트 보내기", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '에러 리포트 보내기'가 있어 실패 상태입니다",
+      "evidence_label": "에러 리포트 보내기",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-zero-error-count",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.status",
+          "elements": [
+            {"node_id": "n1", "label": "Errors: 0", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 'Errors: 0'이 있어 실패 상태입니다",
+      "evidence_label": "Errors: 0",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-negated-error-occurrence",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.status",
+          "elements": [
+            {"node_id": "n1", "label": "오류가 발생하지 않았습니다", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류가 발생하지 않았습니다'가 있어 실패 상태입니다",
+      "evidence_label": "오류가 발생하지 않았습니다",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
       "id": "contradicted-user-rejection",
       "axis": "user_feedback",
       "source": "eval_case",

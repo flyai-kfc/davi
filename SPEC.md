@@ -450,12 +450,19 @@ bool로 폴백한다. `done`은 계속 성공 종료 의미다. `contradicted`�
 직전 안내의 검증 가능한 기대 상태는 `expected_target_state`로 보낸다. 서버는 현재 화면에서 그
 상태가 관측되는 `tap` 대상에만 값을 남기고, 앱은 실제 대상 조회에 성공했을 때만 node·label과
 함께 `GuideStep`에 기록한다. 상태의 의미 자체는 앱이 해석하지 않는다.
+SM-S921N 삼성 시계 알람 스위치 1회 실측(2026-08-25)에서는 탭 주입 시작 285ms 뒤 완료된 첫
+`rootInActiveWindow` 직접 조회가 이미 바뀐 `checked`를 보였다(탭 호출 반환 155ms, root 조회
+130ms). 서비스는 마지막 접근성 이벤트 뒤 350ms를 기다려 샘플하므로 이 측정에서는 낡은 반대
+상태가 다음 요청에 실리지 않았다. 한 기기·한 번의 하한 관측이므로 지연이 없다는 일반 보장은
+아니며, 실제 오탐이 관측되기 전에는 `performed + same screen + same label + opposite state` 조건을
+더 좁히지 않는다.
 사용자 부정은 `completion_feedback`에 구조·내용 서명만 싣고, goal·label·세션 식별자는 추가하지
 않는다. 두 서명이 현재 요청과 다르면 서버는 그 피드백을 판정과 프롬프트에서 모두 무시한다.
 
-키 없는 A/B corpus 24건에서 #71 기준선은 false success `9/13`, verified recall `9/11`,
-contradiction recall `0/4`였다. 구조화 근거 정책은 각각 `1/13`, `9/11`, `4/4`이며
-inconclusive는 `6/24`에서 `10/24`로 늘었다. candidate의 남은 false success 한 건은 일반
+키 없는 A/B corpus 30건에서 #71 기준선은 false success `15/19`, verified recall `9/11`,
+contradiction recall `0/4`였다. 구조화 근거 정책은 각각 `1/19`, `9/11`, `4/4`이며
+inconclusive는 `6/30`에서 `16/30`으로 늘었다. 추가한 6건은 오류 신고 메뉴·0건 표시·부정문을
+실패 상태로 읽지 않는 false-positive 경계다. candidate의 남은 false success 한 건은 일반
 `설정` label에 대한 모델의 success 주장을 화면 의미로 반증할 수 없는 현재 정책 한계다.
 깨끗한 합성·익명화 fixture의 낙관적 상한이고,
 실제 모델 의미 판단의 정확도는 별도 관측 대상이다(#425).
