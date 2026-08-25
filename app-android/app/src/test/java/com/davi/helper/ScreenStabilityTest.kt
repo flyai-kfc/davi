@@ -373,12 +373,40 @@ class GuidedSlotAnchorTest {
     }
 
     @Test
-    fun `숫자만 다른 label도 밀린 것으로 본다`() {
-        // 정규화를 걷었으므로(#427) 앵커도 시그니처와 같은 값을 본다 — 두 자리가 같은 기준을
-        // 쓴다는 것이 계약이고, 자기발생 변화를 막는 것은 정규화가 아니라 앵커 상한이다.
+    fun `숫자만 다른 label은 앵커에서 같은 줄로 본다`() {
+        // 앵커는 "강조가 아직 같은 줄인가"를 묻는다(#427·PR #445 리뷰). 그 줄에 붙은 개수·시계가
+        // 도는 것은 줄이 바뀐 것이 아니다 — 원문으로 비교하면 한 번 돈 것만으로 앵커가 영구히
+        // 어긋나 강조가 다음 안내까지 내려간 채 남는다. **내용 축은 반대로 이 숫자를 본다.**
+        val before = UiElement(nodeId = "n3", label = "안 읽음 11", role = "View")
         val after = screen(UiElement(nodeId = "n3", label = "안 읽음 12", role = "View"))
 
-        assertTrue(after.guidedSlotLabelChanged("n3", "안 읽음 11", SAME, SAME))
+        // 얼려 두는 값도 호출부에서 같은 함수를 거친다(`GuideAccessibilityService`의 응답 처리).
+        val expected = ScreenSignature.stableLabelOf(before)
+        assertFalse(after.guidedSlotLabelChanged("n3", expected, SAME, SAME))
+    }
+
+    @Test
+    fun `앵커가 보는 값은 숫자를 지운 값이다`() {
+        // 위 테스트는 "두 label이 다르다"만 봐서 옛 구현에서도 통과한다(`안 읽음 #` != `안 읽음 11`).
+        // 규칙을 고정하려면 반환값 자체를 단언해야 한다(PR #445 리뷰).
+        val element = UiElement(nodeId = "n3", label = "안 읽음 12", role = "View")
+
+        assertEquals("안 읽음 #", ScreenSignature.stableLabelOf(element))
+    }
+
+    @Test
+    fun `내용 축은 앵커와 달리 숫자를 남긴다`() {
+        // 두 자리가 서로 다른 질문을 한다는 것이 #427의 결론이다. 한쪽으로 통일하면 둘 중
+        // 하나가 깨진다 — 앵커로 통일하면 수량 변화가 안 보이고, 내용 축으로 통일하면 강조가 죽는다.
+        fun sig(label: String) = ScreenSignature.of(
+            screen(UiElement(nodeId = "n1", label = label, role = "View")),
+        )
+
+        assertNotEquals(sig("수량 2").content, sig("수량 3").content)
+        assertEquals(
+            ScreenSignature.stableLabelOf(UiElement(nodeId = "n1", label = "수량 2", role = "View")),
+            ScreenSignature.stableLabelOf(UiElement(nodeId = "n1", label = "수량 3", role = "View")),
+        )
     }
 
     @Test
@@ -925,17 +953,120 @@ class ScreenStabilityTrackerTest {
         sample(700, "어린이 1명")
         tracker.markSent(ScreenSig("count", "어린이 1명"), 700)
         tracker.markFinished()
-        // 조용한 구간을 [QUIET_SAMPLES]만큼 채운다.
-        repeat(ScreenStabilityTracker.QUIET_SAMPLES) { i -> sample(1_400 + i * 700L, "어린이 1명") }
+        // 조용한 구간을 [QUIET_MS]만큼 채운다. **샘플 수가 아니라 시간이다**(PR #445 리뷰).
+        sample(4_900, "어린이 1명")
 
-        val at = 1_400 + ScreenStabilityTracker.QUIET_SAMPLES * 700L
-        assertEquals(Decision.SEND, sample(at, "어린이 2명"))
+        assertEquals(Decision.SEND, sample(5_600, "어린이 2명"))
+    }
+
+    @Test
+    fun `연속 조작은 조용함을 다시 요구하지 않는다`() {
+        // 코레일은 `+`를 여러 번 누르는 화면이다. 매번 조용함을 요구하면 두 번째 탭부터
+        // 인정되지 않아 「화면이 그대로예요」가 뜬다 — 이 이슈가 없애려던 거짓 문구가 같은
+        // 자리에 다시 선다(PR #445 리뷰). 첫 탭이 인과를 세우면 뒤는 같은 조작의 연속이다.
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("count", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "어린이 1명")
+        sample(700, "어린이 1명")
+        tracker.markSent(ScreenSig("count", "어린이 1명"), 700)
+        tracker.markFinished()
+        sample(4_900, "어린이 1명")
+        assertEquals(Decision.SEND, sample(5_600, "어린이 2명"))
+        tracker.markSent(ScreenSig("count", "어린이 2명"), 5_600)
+        tracker.markFinished()
+
+        // 1초 뒤 두 번째 탭. 조용하지 않았지만 연속 창 안이다.
+        assertEquals(Decision.SEND, sample(6_600, "어린이 3명"))
+    }
+
+    @Test
+    fun `분 단위로 도는 숫자는 천장까지만 연다`() {
+        // 「자기발생은 조용할 틈이 없다」는 실측은 **초 단위**로 도는 값의 이야기다. 인앱 시계나
+        // 「N분 전」 목록은 정반대라 조용함 조건을 매번 만족한다(PR #445 리뷰). 클릭을 안 쏘는
+        // 앱에서 그것을 조작과 가를 신호가 없으므로, 가르는 대신 **비용에 천장을 씌운다**.
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("home", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "9분 전")
+        sample(700, "9분 전")
+        tracker.markSent(ScreenSig("home", "9분 전"), 700)
+        tracker.markFinished()
+
+        repeat(ScreenStabilityTracker.QUIET_COLD_OPENS) { i ->
+            val t = 60_000L * (i + 1)
+            val v = "${8 - i}분 전"
+            assertEquals(Decision.SEND, sample(t, v))
+            tracker.markSent(ScreenSig("home", v), t)
+            tracker.markFinished()
+        }
+
+        val past = 60_000L * (ScreenStabilityTracker.QUIET_COLD_OPENS + 1)
+        assertNotEquals(Decision.SEND, sample(past, "0분 전"))
+    }
+
+    @Test
+    fun `조용함의 임계는 시간이다`() {
+        // 임계 바로 아래는 안 열리고 바로 위는 열린다 — 상수를 고정한다. 샘플 수로 재면 같은
+        // 상수가 앱마다 4초도 7.5초도 되어 [STUCK_AFTER_MS]를 넘긴다(PR #445 리뷰).
+        fun fresh() = ScreenStabilityTracker()
+        fun run(gap: Long): Decision {
+            val t = fresh()
+            fun s(at: Long, v: String) =
+                t.onSample(ScreenSig("count", v), at, hasLabeledElement = true, clickAxisDead = true)
+            s(0, "A")
+            s(700, "A")
+            t.markSent(ScreenSig("count", "A"), 700)
+            t.markFinished()
+            s(1_400, "B") // 내용이 바뀌어 조용 시계가 여기서 다시 선다.
+            return s(1_400 + gap, "C")
+        }
+
+        assertNotEquals(Decision.SEND, run(ScreenStabilityTracker.QUIET_MS - 100))
+        assertEquals(Decision.SEND, run(ScreenStabilityTracker.QUIET_MS))
+    }
+
+    @Test
+    fun `화면이 꺼져 있던 시간은 조용했던 시간이 아니다`() {
+        // [markResumed]가 조작 관측을 지우는 것과 같은 성격이다 — 관측 불가 구간을 사이에 둔
+        // 변화는 "방금 한 조작"이 아니다(PR #445 리뷰).
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("count", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "어린이 1명")
+        sample(700, "어린이 1명")
+        tracker.markSent(ScreenSig("count", "어린이 1명"), 700)
+        tracker.markFinished()
+        sample(4_900, "어린이 1명")
+
+        tracker.markResumed(300_000, requery = false)
+
+        assertNotEquals(Decision.SEND, sample(300_700, "어린이 2명"))
+    }
+
+    @Test
+    fun `세션이 바뀌면 조용함도 지워진다`() {
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("count", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "이전 세션")
+        sample(60_000, "이전 세션") // 아주 오래 조용했던 화면을 남긴다.
+
+        tracker.reset()
+
+        // 새 세션의 첫 화면은 보낸 적이 없어 홀드만 채우면 SEND다 — 누수는 그 **다음**
+        // 변화에서 드러난다.
+        sample(100_000, "새 세션 1")
+        assertEquals(Decision.SEND, sample(100_700, "새 세션 1"))
+        tracker.markSent(ScreenSig("count", "새 세션 1"), 100_700)
+        tracker.markFinished()
+        assertNotEquals(Decision.SEND, sample(101_400, "새 세션 2"))
     }
 
     @Test
     fun `조용하지 않았던 화면은 클릭이 없으면 열리지 않는다`() {
         // 회전하는 검색 화면 — 샘플마다 내용이 바뀌어 조용할 틈이 없다. 실측에서 이런 화면의
-        // 최대 연속 정지는 3샘플이었고 [QUIET_SAMPLES]는 그보다 크다.
+        // 최대 연속 정지는 3샘플(약 2.3초)이었고 [QUIET_MS]는 그보다 길다.
         fun sample(t: Long, v: String) =
             tracker.onSample(ScreenSig("search", v), t, hasLabeledElement = true, clickAxisDead = true)
 
@@ -961,10 +1092,9 @@ class ScreenStabilityTrackerTest {
         sample(700, "수량 1")
         tracker.markSent(ScreenSig("cart", "수량 1"), 700)
         tracker.markFinished()
-        repeat(ScreenStabilityTracker.QUIET_SAMPLES) { i -> sample(1_400 + i * 700L, "수량 1") }
+        sample(4_900, "수량 1")
 
-        val at = 1_400 + ScreenStabilityTracker.QUIET_SAMPLES * 700L
-        assertEquals(Decision.IDLE, sample(at, "수량 2"))
+        assertEquals(Decision.IDLE, sample(5_600, "수량 2"))
     }
 
     @Test

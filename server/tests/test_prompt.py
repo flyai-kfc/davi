@@ -1094,7 +1094,7 @@ def test_confirmed_returned_screen_explanation_still_does_not_pick_a_target():
 def test_confirmed_returned_screen_explanation_does_not_overclaim():
     """걷는 것은 "구조만 봤다"는 유보 하나뿐이다.
 
-    내용 축은 숫자를 `#`로 지우므로 주문번호·가격만 다른 상세는 같은 해시다 — "같은 화면이
+    내용 축은 label 열과 창 제목뿐이라 요소의 상태·좌표를 안 본다 — "같은 화면이
     맞다"까지 말하면 축이 뒷받침하지 않는 것을 주장한다. 권고도 조건절로 남는다: 왕복의
     원인이 사용자 오조작일 수 있고, 확인된 것은 화면 동일성이지 그 안내가 루프였다가 아니다.
     """

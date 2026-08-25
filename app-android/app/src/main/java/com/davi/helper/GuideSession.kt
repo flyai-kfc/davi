@@ -117,8 +117,8 @@ object GuideSession {
      *   화면으로 읽는다. #350이 그 화면을 안정 화면에서 이미 빼서 지금은 요청 자체가 나가지
      *   않지만, 규칙은 값이 만들어지는 이 자리에 둔다.
      *
-     * 입력은 [ScreenSig.content] **그대로**다 — 정규화는 [ScreenSignature]가 이미 했고
-     * 여기서 다시 하지 않는다.
+     * 입력은 [ScreenSig.content] **그대로**다 — 여기서 다듬지 않는다. 그 축은 숫자를 포함한
+     * label 원문을 담는다(#427). 기기 밖으로 나가는 것은 세션 salt 해시뿐이다(#410).
      */
     @Synchronized
     fun contentSignature(

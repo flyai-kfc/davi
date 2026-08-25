@@ -111,8 +111,9 @@ object GuideScreenLog {
         gateOpen: Boolean,
         anchorMoved: Boolean,
         anchorSpent: Boolean,
-        quietSamples: Int,
+        quietMs: Long,
         quietArmed: Boolean,
+        quietColdOpens: Int,
         clickAxisDead: Boolean,
         cost: UiTreeSerializer.WalkCost,
     ) {
@@ -130,7 +131,7 @@ object GuideScreenLog {
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
                 "anchor=$anchor " +
-                "quiet=$quietSamples${if (quietArmed) "!" else ""} " +
+                "quiet=${quietMs}ms${if (quietArmed) "!" else ""}/$quietColdOpens " +
                 "cad=${if (clickAxisDead) "y" else "n"} " +
                 "v=${cost.visits} cut=${cost.cuts}",
         )

@@ -62,7 +62,8 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guidedTargetClickable = false
 
     /**
-     * 타깃 앵커(#380) — 지금 안내가 가리키는 슬롯의 node id와, 응답 시점의 정규화 label.
+     * 타깃 앵커(#380) — 지금 안내가 가리키는 슬롯의 node id와, 응답 시점의 앵커 label
+     * ([ScreenSignature.stableLabelOf], **숫자를 지운 값**이다 — 내용 축과 다르다, #427).
      * 구조가 같은 채 목록이 재정렬되면(새 메시지로 순서가 밀리는 대화방 목록) 강조가 엉뚱한
      * 줄을 가리키게 되는데, 그 순간 이 슬롯의 label이 달라지므로 조작 이벤트 없이도 재질의를
      * 연다. node id는 직렬화 순서 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다 — 앵커를
@@ -94,16 +95,8 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private val packagesWithClicks = mutableSetOf<String>()
 
-    /**
-     * 이 세션에서 **내용 변화 이벤트**를 한 번이라도 쏜 package(#427 2단계).
-     *
-     * 접근성 노드 캐시는 **대상 앱이 쏘는 이벤트로만** 무효화된다. 여기 없는 앱에서는
-     * `getRootInActiveWindow()`가 낡은 트리를 계속 돌려주므로 화면이 바뀌어도 우리가 못 본다 —
-     * 2026-08-25 SM-S921N 실측: 코레일 인원 선택에서 인원을 다섯 번 올리는 동안
-     * `VIEW_CLICKED`·`WINDOW_CONTENT_CHANGED`가 **0건**이었고(창 전환 2건이 전부),
-     * 화면이 `5`인데 서명은 153샘플(약 2분) 동안 옛 값 그대로였다.
-     */
-    private val packagesWithContentEvents = mutableSetOf<String>()
+    /** 노드 캐시를 언제 끌지의 판정(#427 2단계). 근거는 [A11yCachePolicy]에 있다. */
+    private val cachePolicy = A11yCachePolicy()
 
     /** 지금 캐시를 켜 둔 상태인가. 매 샘플 같은 값을 다시 넣지 않으려고 든다. */
     private var a11yCacheEnabled = true
@@ -208,7 +201,9 @@ class GuideAccessibilityService : AccessibilityService() {
         mainHandler.post {
             stability.reset()
             packagesWithClicks.clear()
-            packagesWithContentEvents.clear()
+            cachePolicy.reset()
+            // 세션이 끝나면 캐시를 되돌린다. 안 되돌리면 다음 세션이 남의 앱 판정으로 시작한다.
+            updateA11yCache(enabled = true)
             logicalRequests.reset()
             // 새 세션의 첫 예약은 기한을 새로 받는다 — 직전 세션이 열어 둔 기한이 그사이
             // 지났으면 settle 없이 곧바로 뜬다(#380).
@@ -411,7 +406,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
                 event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
             ) {
-                packagesWithContentEvents.add(pkg)
+                cachePolicy.onContentEvent(pkg)
             }
         }
         if (!interesting) return
@@ -568,10 +563,16 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun updateA11yCache(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (enabled == a11yCacheEnabled) return
+        // **이 API는 실패를 예외가 아니라 `false`로 알린다**(PR #445 리뷰). `onSuccess`를
+        // "적용됐다"로 읽고 상태를 갱신하면, 실패한 뒤에도 위 조기 반환이 걸려 재시도가 영영 없다.
         runCatching { setCacheEnabled(enabled) }
-            .onSuccess {
-                a11yCacheEnabled = enabled
-                Log.i(TAG, "a11y cache=${if (enabled) "on" else "off"}")
+            .onSuccess { applied ->
+                if (applied) {
+                    a11yCacheEnabled = enabled
+                    Log.i(TAG, "a11y cache=${if (enabled) "on" else "off"}")
+                } else {
+                    Log.w(TAG, "a11y cache toggle rejected enabled=$enabled")
+                }
             }
             .onFailure { Log.w(TAG, "a11y cache toggle failed", it) }
     }
@@ -620,6 +621,9 @@ class GuideAccessibilityService : AccessibilityService() {
             // 아래에 그릴 대상이 없다. 읽는 중도 함께 내린다 — clear()는 안내만 지운다.
             lastDecision = null
             updateReading()
+            // 읽을 창이 없으면 낡은 트리도 없다. 캐시를 켠 채로 돌려 놓아, 다음 앱이 우리가
+            // 보지도 않은 앱의 판정을 물려받지 않게 한다(PR #445 리뷰).
+            updateA11yCache(enabled = cachePolicy.onSample(null))
             scheduleSample(POLL_MS)
             return
         }
@@ -659,10 +663,11 @@ class GuideAccessibilityService : AccessibilityService() {
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
         val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
         val clickAxisDead = currentScreenPackage?.let { it !in packagesWithClicks } ?: false
-        // **내용 이벤트를 안 쏘는 앱에서만 캐시를 끈다.** 끄면 노드 접근이 전부 IPC라
+        // **내용 이벤트가 끊긴 앱에서만 캐시를 끈다.** 끄면 노드 접근이 전부 IPC라
         // 직렬화가 23ms에서 800ms대로 뛴다(2026-08-25 SM-S921N 실측) — 그 값을 모든 앱에
         // 물리면 폴링 예산을 넘긴다. 이벤트를 쏘는 앱은 캐시가 제때 무효화되므로 낼 이유도 없다.
-        updateA11yCache(enabled = currentScreenPackage?.let { it in packagesWithContentEvents } ?: true)
+        // 판정의 기본값이 **켬**인 것과 그 근거는 [A11yCachePolicy]에 있다.
+        updateA11yCache(enabled = cachePolicy.onSample(currentScreenPackage))
         val decision = stability.onSample(
             signature,
             now,
@@ -683,8 +688,9 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionGateOpen(now),
             targetSlotChanged,
             stability.anchorRequerySpent(),
-            stability.quietState().first,
-            stability.quietState().second,
+            stability.quietState(now).first,
+            stability.quietState(now).second,
+            stability.quietState(now).third,
             clickAxisDead,
             result.cost,
         )
@@ -1598,6 +1604,7 @@ class GuideAccessibilityService : AccessibilityService() {
 
     companion object {
         const val TAG = "GuideSvc"
+
 
         /**
          * [findEditableNode]의 순회 상한. 직렬화의 요소 상한과 같은 정신이다 — 클릭 디스패치
