@@ -141,7 +141,11 @@ def _load_completion_cases() -> list[tuple[CompletionCase, NextStepRequest]]:
         (item.case, item.request)
         for item in load_completion_dataset().cases
         if item.case.axis
-        not in {"explicit_failure_false_positive", "explicit_failure_occurrence"}
+        not in {
+            "action_control_not_state",
+            "explicit_failure_false_positive",
+            "explicit_failure_occurrence",
+        }
     ]
 
 

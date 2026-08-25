@@ -600,6 +600,9 @@ pytest
   두 글자 label을 evidence가 어절 경계로 인용했는지 확인하고, 필요한 접근성 상태도 다시 읽어
   `verified`·`inconclusive`·`contradicted`를 분류한다. 모델의 `failure` 주장만 믿지 않고 해당
   node label 자체의 명시 오류·거절·취소 표지가 있을 때만 hard contradiction으로 받는다.
+  Android class-suffix `role`이 `Button`으로 끝나는 요소는 활성·클릭 가능 여부와 무관하게 상태
+  claim 없는 성공 근거로 받지 않고 `inconclusive`로 내린다(#446). 이는 의미 분류가 아니라
+  클래스명 관례에 건 보수적 경계다.
   `_verify_done`은 이 결과를 기존 `verified: bool`로 투영하는 호환 경계다.
 - `reasoning._apply_guardrails` — 단일 결정 지점. `scroll`의 대상을 요구한다(#202): 화면의
   스크롤 요소로 교정하거나, 런처처럼 대체 행동이 있는 화면은 `open_app_drawer`로 돌리거나,
