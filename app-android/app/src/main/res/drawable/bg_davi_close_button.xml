@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 대화 닫기(×) 버튼: 주 버튼 색 원. **어두운 채움이라 눌림은 흰색 20%**다(#246, E2). -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/davi_state_layer_pressed_on_dark">
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="@color/davi_button_primary" />
-        </shape>
-    </item>
-</ripple>
+<!--
+  종료 ✕의 원형 배경.
+
+  **원은 터치 영역보다 작다**(2026-08-25). 뷰는 davi_size_touch_target(56dp) 그대로 두고
+  그림만 davi_close_circle_inset만큼 안으로 들인다 — 원을 줄이자고 뷰를 줄이면 누를 자리가
+  같이 줄어 접근성 하한(48dp)에 걸린다. **줄이는 것은 보이는 크기이지 누를 크기가 아니다.**
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="@dimen/davi_close_circle_inset">
+    <ripple android:color="@color/davi_state_layer_pressed_on_dark">
+        <item>
+            <shape android:shape="oval">
+                <solid android:color="@color/davi_button_primary" />
+            </shape>
+        </item>
+    </ripple>
+</inset>

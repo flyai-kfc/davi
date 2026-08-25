@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  질문 카드 접기/펼치기 손잡이의 삼각형(#434). **아래를 향한다** — 접힌 상태에서
+  「누르면 아래로 펼쳐진다」를 가리킨다. 펼친 상태에서는 뷰를 180도 돌려 위를 향하게 한다.
+
+  **글리프(▾)를 안 쓴다** — 카드 문구는 Cafe24를 쓰는데 그 서체에 없는 글자면 두부가 뜬다.
+  색은 tint로 준다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,8 L21,8 L12,18 Z" />
+</vector>
