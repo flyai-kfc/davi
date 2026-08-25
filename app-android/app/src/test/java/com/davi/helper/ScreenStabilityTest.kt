@@ -236,6 +236,32 @@ class ScreenSignatureTest {
     }
 
     @Test
+    fun `요소 종류만 다른 화면은 구조가 같다`() {
+        // 광고 캐러샐이 같은 슬롯의 위젯 종류를 소재마다 바꾼다(#456) — 이미지 소재는
+        // ImageView, 텍스트 조합 소재는 View다. 2026-08-25 배민 홈 실측에서 무조작 90초
+        // 요청 16회의 구조 차이가 전부 이것이었다.
+        val imageCreative = screen(
+            UiElement(nodeId = "n1", label = "치킨 반값 쿠폰", role = "ImageView", clickable = true),
+            UiElement(nodeId = "n2", label = "주문하기", role = "Button", clickable = true),
+        )
+        val textCreative = screen(
+            UiElement(nodeId = "n1", label = "치킨 반값 쿠폰", role = "View", clickable = true),
+            UiElement(nodeId = "n2", label = "주문하기", role = "Button", clickable = true),
+        )
+
+        assertEquals(ScreenSignature.of(imageCreative).structure, ScreenSignature.of(textCreative).structure)
+    }
+
+    @Test
+    fun `행동 상태는 role을 빼도 구조 축에 남는다`() {
+        // role을 뺀 근거가 "행동 상태와 중복"이라 그 중복분이 실제로 남는지 못 박는다(#456).
+        val plain = screen(UiElement(nodeId = "n1", label = "다음", role = "View"))
+        val tappable = screen(UiElement(nodeId = "n1", label = "다음", role = "View", clickable = true))
+
+        assertNotEquals(ScreenSignature.of(plain).structure, ScreenSignature.of(tappable).structure)
+    }
+
+    @Test
     fun `행동 상태 변화는 구조 축에 나타난다`() {
         // 토글·활성화·입력 채움은 안내를 무효화하는 변화라 게이트 없이 재질의를 열어야 한다(#271·#380).
         val off = screen(
@@ -429,6 +455,78 @@ class ScreenStabilityTrackerTest {
         tracker.onSample(sig("a"), 0, hasLabeledElement = true)
 
         assertEquals(Decision.SEND, tracker.onSample(sig("a"), 100, hasLabeledElement = true))
+    }
+
+    /** 홀드를 통과시켜 [structure] 화면 하나를 실제로 보낸다. 회전 시나리오의 반복 부분이다. */
+    private fun send(structure: String, atMs: Long): Decision {
+        tracker.onSample(sig(structure), atMs, hasLabeledElement = true)
+        val decision = tracker.onSample(sig(structure), atMs + 100, hasLabeledElement = true)
+        if (decision == Decision.SEND) {
+            tracker.markSent(sig(structure), atMs + 100)
+            tracker.markFinished()
+        }
+        return decision
+    }
+
+    @Test
+    fun `회전이 반복되면 되돌아온 구조를 접는다`() {
+        // 광고 캐러샐이 구조 축을 흔드는 경우(#456). role 제거가 오늘의 소재 조합을 끊지만
+        // 요소 수·obscured로도 같은 폭주가 나므로 축과 무관한 받침이 필요하다.
+        assertEquals(Decision.SEND, send("a", 0))
+        assertEquals(Decision.SEND, send("b", 1_000))
+        assertEquals(Decision.SEND, send("a", 2_000))
+        assertEquals(Decision.SEND, send("b", 3_000))
+
+        // a로 두 번째 복귀 — 여기서 회전으로 판정한다. 화면당 4회에서 멈춘다.
+        assertEquals(Decision.IDLE, send("a", 4_000))
+        assertEquals(Decision.IDLE, send("b", 5_000))
+    }
+
+    @Test
+    fun `한 번 되돌아온 것은 뒤로 가기와 구분되지 않아 보낸다`() {
+        // A→B→A까지는 회전과 복귀가 같은 열이다(#456). 여기서 접으면 뒤로 가서 돌아온 화면의
+        // 안내가 안 나오고, 클릭을 안 쏘는 앱에서는 인과 게이트도 그것을 못 살린다(#394).
+        assertEquals(Decision.SEND, send("목록", 0))
+        assertEquals(Decision.SEND, send("상세", 1_000))
+
+        assertEquals(Decision.SEND, send("목록", 2_000))
+    }
+
+    @Test
+    fun `조작이 관측되면 되돌아온 구조도 보낸다`() {
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        send("b", 3_000)
+        tracker.markInteraction(3_500)
+
+        assertEquals(Decision.SEND, send("a", 4_000))
+    }
+
+    @Test
+    fun `창을 벗어난 이력은 회전으로 세지 않는다`() {
+        val window = ScreenStabilityTracker.ROTATION_WINDOW_MS
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        send("b", 3_000)
+
+        assertEquals(Decision.SEND, send("a", window + 4_000))
+    }
+
+    @Test
+    fun `회전으로 접힌 뒤에도 정체 알림은 뜬다`() {
+        // 접기가 침묵으로 끝나면 안 된다. 접힌 화면은 STUCK 분기로 내려가 사용자에게 알린다(#39).
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        send("b", 3_000)
+        assertEquals(Decision.IDLE, send("a", 4_000))
+
+        // 홀드는 이미 차 있다 — 접힌 화면을 계속 보고 있었으므로 다음 샘플이 곧바로 판정된다.
+        // 기준 시각은 마지막으로 **실제로 물어본** 때(3_100)다.
+        val stuckAt = 3_100 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.STUCK, tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
     }
 
     @Test
