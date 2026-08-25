@@ -173,6 +173,9 @@ class SlotScore(BaseModel):
 class ViolationAxis(StrEnum):
     HALLUCINATED_PROPER_NOUN = "고유명_환각"
     UNNECESSARY_QUESTION = "불필요_질문"
+    # `불필요_질문`의 반대 방향(#447). 이 축이 없던 동안 과소 질문은 위반으로 안 잡히면서
+    # `불필요_질문`을 낮추는 쪽으로만 기여했다 — 한쪽만 재는 눈금이었다.
+    MISSING_QUESTION = "질문_누락"
     REPEATED_QUESTION = "질문_반복"
     TWO_QUESTIONS_AT_ONCE = "한번에_두개"
     FORCED_CHOICE = "선택_강요"
@@ -185,7 +188,7 @@ class Violation(BaseModel):
 
     axis: ViolationAxis
     round_index: int
-    quote: str = Field(description="문제가 된 문장의 앞부분")
+    quote: str = Field(description="문제가 된 문장의 앞부분을 글자 그대로")
     why: str = Field(description="한 구절")
 
 
@@ -205,17 +208,22 @@ class JudgeResult(BaseModel):
 
 
 class JudgeBatch(BaseModel):
-    """이 judge가 나온 채점 배치(평가자 모델·시나리오 해시).
+    """이 judge가 나온 채점 배치(평가자 모델·시나리오 해시·채점 계약).
 
     평가자 모델이나 시나리오 파일이 다른 채점을 한 수치로 섞으면 '비교 가능한 수치'라는
     하니스의 계약이 깨진다 — 집계는 같은 배치만 한다. ``JudgeResult``에 두지 않는 이유는
     그 모델이 평가자 LLM의 구조화 출력 스키마로 그대로 나가기 때문이다.
+
+    ``judge_contract``가 세 번째 축이다. 이것이 없으면 **같은 모델로 일부만 재채점**했을 때
+    재채점분은 새 축, 나머지는 옛 축인데 둘 다 같은 배치로 판정돼 한 보고서에 섞인다
+    (PR #448 리뷰). 빈 값은 이 필드가 생기기 전의 채점이라 현재 배치와 같지 않다.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     model: str
     scenario_digest: str
+    judge_contract: str = ""
 
 
 class ScenarioResult(BaseModel):

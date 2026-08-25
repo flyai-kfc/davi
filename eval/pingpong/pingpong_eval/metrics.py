@@ -96,16 +96,20 @@ def _has_missing_information_hallucination(result: ScenarioResult) -> bool:
     return wrong_missing_slot or invented_proper_noun
 
 
-def batch_of(meta: dict) -> tuple[str, str] | None:
+def batch_of(meta: dict) -> tuple[str, str, str] | None:
     """meta가 가리키는 '이번 채점 배치'. 채점자가 없으면 None(제한 없이 집계)."""
 
     model = meta.get("평가자모델")
     if not model:
         return None
-    return model, str(meta.get("채점시_시나리오해시") or meta.get("시나리오해시") or "")
+    return (
+        model,
+        str(meta.get("채점시_시나리오해시") or meta.get("시나리오해시") or ""),
+        str(meta.get("채점계약") or ""),
+    )
 
 
-def in_batch(result: ScenarioResult, batch: tuple[str, str] | None) -> bool:
+def in_batch(result: ScenarioResult, batch: tuple[str, str, str] | None) -> bool:
     """이 결과의 judge를 지금 집계에 넣어도 되는가 — 같은 배치만 비교 가능하다."""
 
     if result.judge is None:
@@ -113,16 +117,21 @@ def in_batch(result: ScenarioResult, batch: tuple[str, str] | None) -> bool:
     if batch is None:
         return True
     return result.judge_batch is not None and (
-        (result.judge_batch.model, result.judge_batch.scenario_digest) == batch
+        (
+            result.judge_batch.model,
+            result.judge_batch.scenario_digest,
+            result.judge_batch.judge_contract,
+        )
+        == batch
     )
 
 
 def summarize(
-    results: list[ScenarioResult], *, batch: tuple[str, str] | None = None
+    results: list[ScenarioResult], *, batch: tuple[str, str, str] | None = None
 ) -> dict:
     """티어별·요인별 집계. 요인별은 어려움의 원인을 가르는 자리다.
 
-    ``batch``가 주어지면 그 배치(평가자 모델·시나리오 해시)로 채점된 결과만 집계한다 —
+    ``batch``가 주어지면 그 배치(평가자 모델·시나리오 해시·채점 계약)로 채점된 결과만 집계한다 —
     부분 재채점이 겹칠 때 서로 다른 평가 배치가 한 모델의 수치처럼 보이면 안 된다.
     """
 

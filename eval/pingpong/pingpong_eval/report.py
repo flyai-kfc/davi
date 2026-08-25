@@ -49,7 +49,10 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
             f"해시 {meta.get('시나리오해시', '?')})"
         ),
         f"- 사용자 LLM: {meta.get('사용자모델')} / 평가자 LLM: {meta.get('평가자모델')}"
-        + (f" (경유: {meta['평가자경유']})" if meta.get("평가자경유") else ""),
+        + (f" (경유: {meta['평가자경유']})" if meta.get("평가자경유") else "")
+        # 채점 계약이 다르면 위반 건수를 맞댈 수 없다. 사람이 보는 산출물에 남겨,
+        # 경계선 경고를 손으로 쓰지 않아도 어느 판인지 알게 한다(PR #448 리뷰).
+        + f" (계약 {meta.get('채점계약') or '미기록'})",
         f"- 핑퐁: {meta.get('핑퐁')} (davi {meta.get('davi_sha', '?')})",
         f"- 실행 조건: seed {meta.get('seed', '?')} / max_requests {meta.get('max_requests', '?')}",
         (
@@ -100,7 +103,7 @@ def render(summary: dict, results: list[ScenarioResult], meta: dict) -> str:
     ]
     batch = batch_of(meta)
     for result in results:
-        # 다른 배치(다른 평가자 모델·시나리오 해시)의 채점은 위 집계에서 빠졌다 —
+        # 다른 배치(다른 평가자 모델·시나리오 해시·채점 계약)의 채점은 위 집계에서 빠졌다 —
         # 표에서도 이번 수치처럼 보이면 안 된다.
         if in_batch(result, batch):
             achievement = result.judge.achievement.value
