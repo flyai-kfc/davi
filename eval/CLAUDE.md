@@ -16,7 +16,11 @@ Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증
   fixture에서 생략 가능해야 하며, 알 수 없는 필드가 조용히 버려지면 실패해야 한다.
 - `completion-fixtures/evidence_cases.json`은 완료 근거 판정의 TP/TN/FP/FN을 고정한다. 실기기
   화면은 기존 익명화 fixture를 파일명으로 참조하고, 합성 사례는 `eval_case`로 명시한다. 후보
-  정책 수치는 `tests/test_completion_verify.py`가 키 없이 결정론적으로 센다(#71).
+  정책 수치는 `completion_ab.py`가 같은 corpus에서 키 없이 결정론적으로 센다(#71·#425).
+  기존 `expected_verified`는 근거 문장 인용의 #71 이진 정답으로 유지하고, 별도 사람 기대값
+  `expected_verdict=verified|inconclusive|contradicted`는 현재 화면의 목표 상태만 판정한다.
+  보고서에는 3×3 혼동 행렬·false success·verified recall·contradiction recall·inconclusive
+  rate와 corpus 해시·두 정책 식별자·git SHA를 남긴다. 화면·목표·근거 원문은 출력하지 않는다.
 - 실제 후보 모델과 LLM judge는 `judge.py`의 별도 HTTP 경계로 호출한다. 키나 judge 모델이
   없으면 명시적으로 skip하고, 활성화된 실행의 HTTP·파싱 오류와 오답 판정은 실패한다.
 - HTTP·실패·출력 정책은 서버와 분리하되, Gemini 후보 텍스트 추출·`MAX_TOKENS` 판별·JSON
@@ -30,6 +34,7 @@ Python 3.12. 기기 없이 `[화면 fixture → 다음 안내]` 회귀를 검증
 cd eval
 py -3.12 -m pip install -r requirements.txt
 py -3.12 harness.py
+py -3.12 completion_ab.py
 py -3.12 -m pytest
 py -3.12 judge.py
 ```
@@ -59,8 +64,13 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   `prompt.INPUT_NOT_FOCUSED`가 실모델 A/B의 무회귀 근거 밖이다 — 입력 요소가 있는 픽스처는
   알람 편집기 하나뿐이고 거기엔 focused 입력칸이 있어 그 분기가 죽은 경로다. 그 화면을
   익명화해 넣으면 닫힌다.
-- 완료 근거 fixture의 `expected_verified`는 모델 응답의 관측값이 아니라 사람이 정한 의미상
-  기대값이다. 알려진 FP/FN도 지우지 않고 case id와 혼동행렬로 남겨 정책 비용을 드러낸다(#71).
+- 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
+  올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
+  직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).
+  baseline adapter는 #425 착수 시점의 화면 근거 정책과 보이는 요소 판정을
+  `completion_baseline.py`에 복사해 독립적으로 보존하고, 파일 해시를 policy id에 넣는다.
+  candidate id도 서버 추론 파일 해시를 포함한다. #424가 새 분류를 확정하기 전에는 현재 서버
+  bool 경계의 false를 `inconclusive`로 옮길 뿐 `contradicted`를 추측하지 않는다.
 
 현재 수치는 깨끗한 fixture 기준의 낙관적 상한이다. 보고할 때 이 단서를 계속 붙인다.
 

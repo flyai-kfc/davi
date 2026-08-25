@@ -8,10 +8,7 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter
-from pathlib import Path
-from typing import Literal
 
 import pytest
 from app.llm import LlmClient
@@ -23,53 +20,14 @@ from app.reasoning import (
 )
 from app.schemas import ActionType, GuideAction, NextStepRequest
 from app.screen_view import visible_elements
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from harness import FIXTURES, assert_no_sensitive_data, load_fixture
+from completion_ab import (
+    CompletionCase,
+    load_completion_dataset,
+)
+from harness import FIXTURES, load_fixture
 
 _FIXTURE = "samsung_launcher_open_camera.json"
-_COMPLETION_CASES = (
-    Path(__file__).parents[1] / "completion-fixtures" / "evidence_cases.json"
-)
-
-
-class CompletionCase(BaseModel):
-    """#71의 개인정보 없는 완료 판정 사례 한 건."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    axis: str
-    source: Literal["eval_case", "anonymized_real_device_fixture"]
-    request: dict | None = None
-    screen_fixture: str | None = Field(default=None, pattern=r"^[a-z0-9_]+\.json$")
-    goal: str | None = None
-    expected_result: str
-    evidence: str
-    evidence_label: str
-    expected_verified: bool
-
-    @model_validator(mode="after")
-    def validate_source(self) -> CompletionCase:
-        if self.source == "eval_case" and (
-            self.request is None
-            or self.screen_fixture is not None
-            or self.goal is not None
-        ):
-            raise ValueError("eval_case는 request만 가져야 한다")
-        if self.source == "anonymized_real_device_fixture" and (
-            self.screen_fixture is None or self.request is not None
-        ):
-            raise ValueError("실기기 참조 사례는 screen_fixture만 가져야 한다")
-        return self
-
-
-class CompletionDataset(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    dataset_version: Literal[1]
-    description: str
-    cases: list[CompletionCase] = Field(min_length=1)
 
 
 class DoneLlmClient(LlmClient):
@@ -150,22 +108,7 @@ def test_evidence_quoted_from_the_device_screen_is_verified(request_from_device)
 
 
 def _load_completion_cases() -> list[tuple[CompletionCase, NextStepRequest]]:
-    raw = json.loads(_COMPLETION_CASES.read_text(encoding="utf-8"))
-    assert_no_sensitive_data(raw, filename=_COMPLETION_CASES.name)
-    dataset = CompletionDataset.model_validate(raw)
-    assert len({case.id for case in dataset.cases}) == len(dataset.cases)
-
-    loaded: list[tuple[CompletionCase, NextStepRequest]] = []
-    for case in dataset.cases:
-        if case.request is not None:
-            request = NextStepRequest.model_validate(case.request)
-        else:
-            assert case.screen_fixture is not None
-            request = load_fixture(FIXTURES / case.screen_fixture).request
-            if case.goal is not None:
-                request = request.model_copy(update={"goal": case.goal})
-        loaded.append((case, request))
-    return loaded
+    return [(item.case, item.request) for item in load_completion_dataset().cases]
 
 
 def _new_policy(case: CompletionCase, request: NextStepRequest) -> bool:
@@ -241,7 +184,10 @@ def test_completion_policy_fixture_is_valid_and_measures_candidates():
 
 def test_remaining_false_results_are_named_instead_of_hidden():
     results = {
-        case.id: (case.expected_verified, _new_policy(case, request))
+        case.id: (
+            case.expected_verified,
+            _new_policy(case, request),
+        )
         for case, request in _load_completion_cases()
     }
 
