@@ -851,7 +851,6 @@ class GuideAccessibilityService : AccessibilityService() {
         )
     }
 
-
     /**
      * 「바로 입력」 버튼(C21 · #405) — `SPEC.md` §2 「대신 해주지 않는다」의 **유일한 예외**를
      * 실행하는 자리다. 예외의 세 경계가 다 여기 걸려 있다: ① 개시는 사용자의 버튼 탭이다(이
