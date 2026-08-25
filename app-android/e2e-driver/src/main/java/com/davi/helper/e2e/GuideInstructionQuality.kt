@@ -12,7 +12,17 @@ internal object GuideInstructionQuality {
         if (action.expectedResult.isBlank() || action.evidence.isBlank()) {
             throw GuidedScenarioFailure("reasoning_fields_empty", step)
         }
-        if (action.actionType in TARGETED_ACTIONS) {
+        val hasTargetNodeId = !action.targetNodeId.isNullOrBlank()
+        // bounds를 실제로 소비하는 action만 검사한다. 대상 없는 scroll은 전역 제스처지만, id가
+        // 있었는데 같은 요청 tree에서 못 푼 scroll을 전역으로 바꾸면 서버 결정을 보정하는 셈이다.
+        // done·가장자리 제스처는 앱도 target을 해석하지 않으므로 stray id를 mismatch로 읽지 않는다.
+        if (action.actionType in BOUNDS_ACTIONS && hasTargetNodeId && !decision.targetResolved) {
+            throw GuidedScenarioFailure("target_node_id_mismatch", step)
+        }
+        if (action.actionType in TARGET_REQUIRED_ACTIONS) {
+            if (!hasTargetNodeId) {
+                throw GuidedScenarioFailure("target_node_id_missing", step)
+            }
             if (decision.targetBounds?.size != 4) {
                 throw GuidedScenarioFailure("target_bounds_missing", step)
             }
@@ -22,7 +32,10 @@ internal object GuideInstructionQuality {
         }
     }
 
-    private val TARGETED_ACTIONS =
+    private val BOUNDS_ACTIONS =
+        setOf(GuidedActionType.TAP, GuidedActionType.TYPE, GuidedActionType.SCROLL)
+
+    private val TARGET_REQUIRED_ACTIONS =
         // scroll은 계약상 target_node_id가 없는 전역 제스처일 수 있다. tap/type만 요소가 필수다.
         setOf(GuidedActionType.TAP, GuidedActionType.TYPE)
 }

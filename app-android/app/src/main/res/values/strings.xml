@@ -505,6 +505,17 @@
       통하는 말이다** — "응답"(시스템 용어)이나 "무엇을 하려는지"(사용자를 탓하는 어감)를
       피한다. 무엇이 안 됐는지와 다음에 무슨 일이 일어나는지를 한 줄씩 말한다.
     -->
+    <!--
+      구체화 질문 카드를 접었을 때의 문구(#434). 원문은 사라지지 않고 「질문 다시 보기」로
+      돌아온다 — 그래서 여기에 서버 문장의 축약형이 필요 없고, 계약을 안 바꿔도 된다.
+      **「골라주세요」가 아니라 「선택해 주세요」다** — 다비는 어르신께 높임말을 쓴다.
+    -->
+    <string name="clarification_prompt_collapsed">선택해 주세요</string>
+    <string name="clarification_question_show">질문 다시 보기</string>
+    <!-- 접힘/펼침을 **상태로** 알린다. 라벨은 다음에 할 일을, 이 값은 지금 어떤지를 말한다. -->
+    <string name="clarification_question_state_collapsed">접힘</string>
+    <string name="clarification_question_state_expanded">펼침</string>
+    <string name="clarification_question_hide">질문 접기</string>
     <string name="conversation_failed">목표를 정리하지 못했어요\n처음으로 돌아갈게요</string>
     <!--
       메인 9·10 문구(#197). **줄바꿈 위치까지 시안 그대로**이고 전부 가운데 정렬이다.

@@ -14,4 +14,19 @@ class GuideE2ePublisher(@Suppress("UNUSED_PARAMETER") context: Context) {
         response: NextStepResponse,
         target: UiElement?,
     ) = Unit
+
+    @Suppress("UNUSED_PARAMETER")
+    fun rootState(available: Boolean) = Unit
+
+    fun requestStarted() = Unit
+
+    fun serverError() = Unit
+
+    fun clientConfigurationError() = Unit
+
+    fun responseParseError() = Unit
+
+    fun screenStuck() = Unit
+
+    fun screenUnreadable() = Unit
 }

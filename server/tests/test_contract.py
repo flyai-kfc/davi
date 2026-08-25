@@ -9,6 +9,7 @@ from app.llm import GUIDE_ACTION_SCHEMA, LlmError, StubLlmClient
 from app.schemas import (
     ActionType,
     ApiError,
+    CheckState,
     ErrorKind,
     GuideAction,
     GuideStep,
@@ -19,6 +20,36 @@ from app.schemas import (
     UiElement,
 )
 from pydantic import ValidationError
+
+
+def test_partial_check_state_round_trips_without_boolean_loss():
+    element = UiElement.model_validate(
+        {"node_id": "n1", "label": "일부 선택", "check_state": "partial"}
+    )
+
+    assert element.check_state is CheckState.PARTIAL
+    assert element.model_dump(mode="json")["check_state"] == "partial"
+
+
+def test_legacy_checked_input_maps_to_the_single_enum_contract():
+    for legacy, expected in (
+        (True, CheckState.CHECKED),
+        (False, CheckState.UNCHECKED),
+        (None, CheckState.UNAVAILABLE),
+    ):
+        element = UiElement.model_validate({"node_id": "n1", "checked": legacy})
+
+        assert element.check_state is expected
+        assert "checked" not in element.model_dump(mode="json")
+
+
+def test_new_check_state_wins_when_legacy_checked_is_also_present():
+    element = UiElement.model_validate(
+        {"node_id": "n1", "check_state": "partial", "checked": False}
+    )
+
+    assert element.check_state is CheckState.PARTIAL
+
 
 # --- C1: propertyOrdering이 선언 순서에서 실제로 생성되는가 -------------------
 

@@ -343,7 +343,7 @@
         "screen": {
           "package_name": "com.example.settings",
           "elements": [
-            {"node_id": "n1", "label": "기능 사용 중", "role": "Switch", "clickable": true, "checked": true}
+            {"node_id": "n1", "label": "기능 사용 중", "role": "Switch", "clickable": true, "check_state": "checked"}
           ]
         }
       },
@@ -592,7 +592,7 @@
         },
         "completion_feedback": {
           "status": "user_rejected",
-          "structure_signature": "c6692a9af1a79991fa2d94d01d25f2dd568055fe201d162178ccea2d3928d381",
+          "structure_signature": "8deb015230456a673c796d56b18c4692787dc7ac2afc16538d14eaad098defb7",
           "content_signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         }
       },
@@ -613,7 +613,7 @@
           "package_name": "com.example.settings",
           "content_signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "elements": [
-            {"node_id": "n1", "label": "기능 꺼짐", "role": "Switch", "clickable": true, "checked": false}
+            {"node_id": "n1", "label": "기능 꺼짐", "role": "Switch", "clickable": true, "check_state": "unchecked"}
           ]
         },
         "steps": [
@@ -623,7 +623,7 @@
             "target_label": "기능 꺼짐",
             "target_node_id": "n1",
             "expected_target_state": {"attribute": "checked", "value": true},
-            "structure_signature": "4341d38cb743169744f11f28adadf15f020028876d48de365c22dff072fb50d7",
+            "structure_signature": "fbf7f29a0ffda25f677ffc2df3c011f6a1e052212fcd9b27f0f947bcba17ad6a",
             "screen_changed": false,
             "performed": true,
             "content_signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

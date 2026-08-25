@@ -15,6 +15,7 @@ from app.reasoning import (
 )
 from app.schemas import (
     ActionType,
+    CheckState,
     CompletionEvidence,
     CompletionEvidenceKind,
     CompletionFeedback,
@@ -352,7 +353,14 @@ def test_grounded_observed_state_is_verified():
     request = NextStepRequest(
         goal="기능 켜기",
         screen=Screen(
-            elements=[UiElement(node_id="n1", label="기능 사용 중", role="Switch", checked=True)]
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="기능 사용 중",
+                    role="Switch",
+                    check_state=CheckState.CHECKED,
+                )
+            ]
         ),
     )
     action = _done_with_claim(
@@ -366,11 +374,21 @@ def test_unobserved_or_mismatched_claimed_state_is_inconclusive():
     action = _done_with_claim(
         state=ExpectedTargetState(attribute=ObservableState.CHECKED, value=True)
     )
-    for checked in (None, False):
+    for check_state in (
+        CheckState.UNAVAILABLE,
+        CheckState.UNCHECKED,
+        CheckState.PARTIAL,
+    ):
         request = NextStepRequest(
             goal="기능 켜기",
             screen=Screen(
-                elements=[UiElement(node_id="n1", label="기능 사용 중", checked=checked)]
+                elements=[
+                    UiElement(
+                        node_id="n1",
+                        label="기능 사용 중",
+                        check_state=check_state,
+                    )
+                ]
             ),
         )
         assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
@@ -455,7 +473,14 @@ def test_user_rejection_is_bound_to_current_structure_and_content():
 
 def test_performed_unchanged_target_with_opposite_state_only_contradicts_done():
     screen = Screen(
-        elements=[UiElement(node_id="n1", label="기능 꺼짐", role="Switch", checked=False)]
+        elements=[
+            UiElement(
+                node_id="n1",
+                label="기능 꺼짐",
+                role="Switch",
+                check_state=CheckState.UNCHECKED,
+            )
+        ]
     )
     step = GuideStep(
         instruction="스위치를 눌러 주세요.",
@@ -485,7 +510,15 @@ def test_performed_unchanged_target_with_opposite_state_only_contradicts_done():
 
 
 def test_absence_or_screen_change_is_not_a_state_contradiction():
-    screen = Screen(elements=[UiElement(node_id="n1", label="기능 꺼짐", checked=False)])
+    screen = Screen(
+        elements=[
+            UiElement(
+                node_id="n1",
+                label="기능 꺼짐",
+                check_state=CheckState.UNCHECKED,
+            )
+        ]
+    )
     base = GuideStep(
         instruction="스위치를 눌러 주세요.",
         action_type=ActionType.TAP,

@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ExpectedTargetStateTest {
     private val expected = ExpectedTargetState(ObservableState.CHECKED, true)
-    private val target = UiElement(nodeId = "n1", label = "기능", checked = false)
+    private val target = UiElement(nodeId = "n1", label = "기능", checkState = CheckState.UNCHECKED)
 
     private fun action(type: ActionType) = GuideAction(
         expectedResult = "상태가 바뀐다",

@@ -309,6 +309,9 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   `build/reports/device-e2e-private/`에 기본 생성되며 로컬 분석 전용이라 공유·커밋하지 않는다.
   기본 시나리오는 Davi 최신 화면 → Android 홈 → 여러 package를 같은 세션에서 잇는
   `full-journey`이며, 특정 외부 앱 화면부터 시작하는 시나리오는 빠른 진단용으로 명시한다.
+  다음 행동 계획은 `e2e-driver/src/main`의 순수 planner가 서버 action과 같은 요청 tree의 bounds로만
+  만들고, UIAutomator executor는 그 계획만 실행한다. root·서버 진단은 transient 상태에서 즉시
+  중단하지 않고 결정 timeout 시점에 구조화 실패 코드로 확정한다(#209).
 - **Studio로 빌드하면 접근성 권한이 꺼진 채로 남는다.** Studio는 그걸 되살려주지 않으므로
   PowerShell `./scripts/dev-install.ps1 -A11yOnly` 또는 Bash
   `./scripts/dev-install.sh --a11y-only`로 권한만 복구한다(2초).

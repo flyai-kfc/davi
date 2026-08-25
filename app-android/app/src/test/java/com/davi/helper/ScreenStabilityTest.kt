@@ -68,13 +68,13 @@ class ScreenSignatureTest {
 
     @Test
     fun `스위치를 켜면 다른 화면이다`() {
-        // 이 화면에서 바뀌는 것은 checked 하나뿐이다 — label도 role도 clickable도 그대로다.
+        // 이 화면에서 바뀌는 것은 checkState 하나뿐이다 — label도 role도 clickable도 그대로다.
         // 상태를 서명에 안 넣으면 스위치를 켜도 IDLE이라 다음 안내가 나가지 않는다(#271).
         val off = screen(
-            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = false),
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checkState = CheckState.UNCHECKED),
         )
         val on = screen(
-            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = true),
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checkState = CheckState.CHECKED),
         )
 
         assertNotEquals(ScreenSignature.of(off), ScreenSignature.of(on))
@@ -133,10 +133,10 @@ class ScreenSignatureTest {
 
     @Test
     fun `미관측과 꺼짐은 다른 상태다`() {
-        // 낡은 앱의 침묵(null)을 false로 접으면 세 상태가 죽는다.
+        // unavailable을 unchecked로 접으면 네 상태 계약이 죽는다.
         val unknown = screen(UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true))
         val off = screen(
-            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = false),
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checkState = CheckState.UNCHECKED),
         )
 
         assertNotEquals(ScreenSignature.of(unknown), ScreenSignature.of(off))
@@ -244,10 +244,10 @@ class ScreenSignatureTest {
     fun `행동 상태 변화는 구조 축에 나타난다`() {
         // 토글·활성화·입력 채움은 안내를 무효화하는 변화라 게이트 없이 재질의를 열어야 한다(#271·#380).
         val off = screen(
-            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = false),
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checkState = CheckState.UNCHECKED),
         )
         val on = screen(
-            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checked = true),
+            UiElement(nodeId = "n1", label = "Wi-Fi", role = "Switch", clickable = true, checkState = CheckState.CHECKED),
         )
 
         assertNotEquals(ScreenSignature.of(off).structure, ScreenSignature.of(on).structure)
