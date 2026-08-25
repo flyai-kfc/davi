@@ -173,6 +173,9 @@ class SlotScore(BaseModel):
 class ViolationAxis(StrEnum):
     HALLUCINATED_PROPER_NOUN = "고유명_환각"
     UNNECESSARY_QUESTION = "불필요_질문"
+    # `불필요_질문`의 반대 방향(#447). 이 축이 없던 동안 과소 질문은 위반으로 안 잡히면서
+    # `불필요_질문`을 낮추는 쪽으로만 기여했다 — 한쪽만 재는 눈금이었다.
+    MISSING_QUESTION = "질문_누락"
     REPEATED_QUESTION = "질문_반복"
     TWO_QUESTIONS_AT_ONCE = "한번에_두개"
     FORCED_CHOICE = "선택_강요"
