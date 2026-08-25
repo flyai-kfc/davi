@@ -8,9 +8,8 @@
   ══════════════════════════════════════════════════════════════════════
   **무엇이 먼저 줄지를 구조가 정한다**(D4, `docs/DESIGN-CONVENTIONS.md` · #372).
 
-      바깥 스크롤   마지막 안전망. 창이 두 블록의 합보다도 짧을 때만 움직인다
-      위 블록       줄어도 되는 쪽. 남는 세로를 먹고 모자란 것도 문다
-      버튼 블록     안 주는 쪽. 자기 높이를 먼저 확보한다
+      위 블록     줄어도 되는 쪽. 남는 세로를 먹고 **모자란 것을 먼저 문다**(0dp + weight)
+      버튼 블록   안 주는 쪽. 자기 높이를 먼저 확보하고, **창이 그보다 짧을 때만 자기 안이 스크롤된다**
 
   **왜 바꿨나** — 전에는 열 하나를 통째로 스크롤에 넣었다. 내용이 넘치면 **버튼까지 함께
   스크롤 대상이 되어 화면 밖으로 나갔다.** 실측(SM-S921N, density 540 · 배율 2.0 → 320×693dp):
@@ -26,11 +25,22 @@
   **그래도 고칠 자리인 이유**는 D1이 「56dp로 측정된다」가 아니라 **「누를 수 있게 보인다」**를
   요구하기 때문이다.
 
-  **바깥 스크롤이 왜 또 필요한가**(PR #423 리뷰) — 버튼 블록을 스크롤 밖으로 빼면 **창이 그
-  블록보다도 짧아졌을 때 끌어도 안 온다.** 배율 2.0에서 이 블록은 324dp이고 진행 중 표시가
-  뜨면 ~374dp인데, **분할 화면**과 **API 36의 대형 화면 방향 무시**가 그 아래로 내려가는 길이다.
-  전 구조에서는 「밑에 더 있다」였던 것이 「없다」가 되므로, 평소에는 안 움직이고 그때만 도는
-  마지막 안전망을 바깥에 하나 둔다.
+  **버튼 블록이 왜 스크롤인가**(PR #423 리뷰) — 스크롤 밖에 두면 **창이 그 블록보다도 짧아졌을 때
+  끌어도 안 온다.** 배율 2.0에서 이 블록은 324dp이고 진행 중 표시가 뜨면 ~374dp인데,
+  **분할 화면**(780dp를 ~350~390dp로 만든다)과 **API 36의 대형 화면 방향 무시**가 그 아래로
+  내려가는 길이다. 전 구조에서 「밑에 더 있다」였던 것이 「없다」가 된다.
+
+  `layout_height="wrap_content"`인 `ScrollView`라 부모(EXACTLY)에서 **AT_MOST로 측정돼
+  `min(자연 높이, 남은 창)`**을 갖는다 — 평소에는 자연 높이 그대로 바닥에 붙고, 창이 그보다
+  짧을 때만 **이 블록 안이 스크롤돼** 버튼에 닿는다. 위 블록은 그전에 이미 0까지 준다.
+
+  ⚠ **한때 바깥을 `NestedScrollView`(fillViewport)로 감쌌다가 걷었다.** 그것은 안전망이 아니었다 —
+  `fillViewport`는 **자식이 뷰포트보다 작을 때만** 다시 재므로 **남을 때만 주고 모자랄 때는
+  아무것도 못 한다.** 게다가 그 UNSPECIFIED 패스에서 `0dp + weight` 자식이 0으로 접히지 않고
+  (`measureVertical`의 `useExcessSpace`가 `WRAP_CONTENT`로 다시 잰다) 열의 자연 높이가
+  **위 블록 자연 + 버튼 블록**이 되어, 실제 임계값이 「창 < 버튼 블록」이 아니라
+  **「창 < 자연 합(배율 2.0에서 ≈601dp)」**이었다. 그 아래로 내려가면 버튼까지 함께 스크롤
+  대상이 됐다 — **위 블록만 줄고 버튼은 안 주는 중간 구간이 아예 없었다.**
 
   **범인은 배율이 아니라 화면 dp다**(같은 실측). 360×780dp에서는 배율 2.0에서도 스킵 버튼이
   91.67dp로 온전하고 19dp가 남는다. 무너뜨리는 것은 「화면 크게」가 dp 좌표계를 줄이는 쪽이다.
@@ -57,22 +67,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!--
-          **마지막 안전망이다. 평소에는 움직이지 않는다.**
-          `fillViewport`가 아래 열을 창 높이로 늘려 주므로 두 블록이 들어가는 동안에는 이
-          스크롤이 스크롤할 것이 없다 — 그때 열 안의 weight가 지금까지의 배치를 그대로 만든다.
-          **버튼 블록보다도 창이 짧아질 때만** 늘리기가 멈추고 전체가 스크롤된다(위 머리 주석).
-          `NestedScrollView`인 이유는 안쪽에 스크롤이 하나 더 있어서다.
-        -->
-        <androidx.core.widget.NestedScrollView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
+            android:orientation="vertical">
 
                 <!--
                   **줄어도 되는 쪽.** `0dp + weight`라 남는 세로를 먹고 모자란 것도 문다.
@@ -167,10 +165,16 @@
                 </ScrollView>
 
                 <!--
-                  **안 주는 쪽.** `wrap_content`라 자기 높이를 먼저 확보하고, 부족분은 위 블록이 문다.
-                  아래 여백을 이 블록의 패딩으로 들고 있어 **버튼과 함께 지켜진다** — 열의 패딩으로
-                  두면 그것도 부족분에 먹힌다.
+                  **안 주는 쪽.** `wrap_content`인 `ScrollView`라 `min(자연 높이, 남은 창)`을 갖는다 —
+                  평소에는 자연 높이 그대로 바닥에 붙고, 창이 그보다 짧을 때만 **여기 안이 스크롤돼**
+                  버튼에 닿는다(위 머리 주석). 부족분은 그전에 위 블록이 0까지 문다.
+                  아래 여백을 안쪽 열의 패딩으로 들고 있어 **버튼과 함께 스크롤된다** — 바깥 열의
+                  패딩으로 두면 그것도 부족분에 먹힌다.
                 -->
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -215,7 +219,7 @@
                         android:minHeight="@dimen/davi_onboarding_button_min_height"
                         android:text="@string/btn_login_skip" />
                 </LinearLayout>
-            </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
+                </ScrollView>
+        </LinearLayout>
     </FrameLayout>
 </FrameLayout>
