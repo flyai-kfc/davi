@@ -305,6 +305,24 @@ class GuideDisplayState {
      *
      * 판정 자체는 [PressMatch]가 한다 — 이 클래스는 무엇이 떠 있는지만 안다.
      */
+    /**
+     * 「바로 입력」이 채울 값과 그 값을 넣을 칸의 자리(#405). 값이 없으면 null.
+     *
+     * **서비스가 미러를 들지 않는다**(PR #407 리뷰 P1). 표시 깔때기에는 `input_text`가 빈
+     * Content가 섞여 들어온다 — 종료 확인([showQuitConfirm])과 읽기 불가 안내가 그렇다. 그걸
+     * 받아 적으면 **되살아난 안내에서 자리가 죽는다**: ✕ → 「계속 볼래요」로 돌아온 안내는
+     * 버튼이 함께 돌아오는데 자리만 비어 입력 포커스 폴백으로 새고, 그 폴백이 안내한 칸이
+     * 아닌 곳을 채울 수 있는 경로다(실기기 재현: `via=bounds` → `via=focus`).
+     *
+     * [guide]는 그 왕복에 안 죽는다 — [dismissQuitConfirm]이 원본을 그대로 되살리고,
+     * [hideTarget]은 복사본만 지운다. [pressTargetBounds]가 같은 성질에 기대는 선례다.
+     */
+    fun inputFill(): Pair<String, List<Int>?>? {
+        val current = guide ?: return null
+        val text = current.inputText ?: return null
+        return text to current.bounds?.takeIf { it.size == 4 }
+    }
+
     fun pressTargetBounds(): List<Int>? {
         if (!visible || pressConsumed) return null
         val current = guide ?: return null
