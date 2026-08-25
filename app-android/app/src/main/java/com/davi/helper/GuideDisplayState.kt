@@ -42,7 +42,7 @@ class GuideDisplayState {
      *
      * [inputText]는 「바로 입력」 버튼이 입력칸에 채울 글자다(C21 · #405). 값이 있으면
      * 안내창 컨트롤 행에 버튼이 뜬다. **type 안내에서만 남긴다** — 서버 가드가 이미 비우지만
-     * (`_keep_input_text_from_goal`), 이 값으로 창에 버튼이 생기므로 앱도 [show]에서 한 번 더
+     * (`_keep_input_text_named_by_instruction`), 이 값으로 창에 버튼이 생기므로 앱도 [show]에서 한 번 더
      * 좁힌다. 값이 곧 예외 조작의 범위라서다(`SPEC.md` §2).
      *
      * [targetSuppressed]는 **강조·손 시연을 그리지 말라는 명시 신호**다(PR #343 리뷰 P1).

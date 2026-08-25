@@ -314,10 +314,6 @@ class GuideApiClientTest {
 
     private fun trace(attempt: Int = 1) = LogicalRequestAttempt(TRACE_ID, attempt)
 
-    private companion object {
-        const val TRACE_ID = "123e4567-e89b-12d3-a456-426614174000"
-        const val SERVER_REQUEST_ID = "0123456789abcdef0123456789abcdef"
-    }
     /** C21(#405): type 안내의 input_text를 파싱한다. 필드가 없는 응답은 기본값 null이다. */
     @Test
     fun `parses input_text on a type action`() {
@@ -335,4 +331,8 @@ class GuideApiClientTest {
         assertEquals("근처 약국", result.response.action.inputText)
     }
 
+    private companion object {
+        const val TRACE_ID = "123e4567-e89b-12d3-a456-426614174000"
+        const val SERVER_REQUEST_ID = "0123456789abcdef0123456789abcdef"
+    }
 }
