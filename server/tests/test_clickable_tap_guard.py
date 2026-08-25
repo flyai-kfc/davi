@@ -234,10 +234,10 @@ def _element_lines(screen: Screen) -> str:
 
 
 def test_prompt_marks_clickable_only_when_true():
-    prompt = _prompt(_shade_screen())
-    assert "clickable=True" in prompt
+    lines = _element_lines(_shade_screen())
+    assert "clickable=True" in lines
     # False는 표기 자체가 없다 — 모든 줄에 반복되면 값 하나 다른 줄이 묻힌다.
-    assert "clickable=False" not in prompt
+    assert "clickable=False" not in lines
 
 
 def test_prompt_marks_editable_and_focused_only_when_true():
@@ -253,7 +253,10 @@ def test_prompt_marks_editable_and_focused_only_when_true():
             UiElement(
                 node_id="n1", label="검색어 입력", role="EditText", editable=True, focused=True
             ),
-            UiElement(node_id="n2", label="카카오톡", role="View", clickable=True),
+            # **clickable뿐인데 focused=True인 노드.** 직렬화가 `isClickable || isEditable`로
+            # 방출하면서 `focused`를 조건 없이 채워 실제로 이 모양이 온다 — 표기를 editable에
+            # 묶지 않으면 여기에도 `focused=True`가 실려 아무 문장도 설명하지 않는다.
+            UiElement(node_id="n2", label="카카오톡", role="View", clickable=True, focused=True),
         ],
     )
 
