@@ -953,3 +953,19 @@ def test_시나리오_해시는_내용이_바뀌면_달라진다(tmp_path):
     before = scenario_digest(path)
     path.write_text('{"version": 1, "시나리오": [] }', encoding="utf-8")
     assert scenario_digest(path) != before
+
+
+def test_채점_지시문은_모든_위반_축을_열거한다(scenarios):
+    """`ViolationAxis`에 값을 더하고 지시문을 빠뜨리면 그 축은 영영 안 찍힌다.
+
+    평가자는 이 지시문만 보고 축을 고른다. enum과 프롬프트가 따로 놀아도 스키마 검증은
+    통과하므로(값이 유효한 enum이긴 하다) 아무것도 안 걸린다 — #447에서 축을 하나 더하며
+    실제로 그 위험을 만났다. 판정 품질은 못 재지만 **열거 누락**은 키 없이 잡을 수 있다.
+    """
+    from pingpong_eval.judge import build_prompt
+    from pingpong_eval.models import ViolationAxis
+
+    result = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
+    prompt = build_prompt(scenarios[0], result.transcript)
+    missing = [axis.value for axis in ViolationAxis if axis.value not in prompt]
+    assert not missing, f"지시문에 없는 축: {missing}"

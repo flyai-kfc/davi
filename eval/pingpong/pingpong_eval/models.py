@@ -188,7 +188,7 @@ class Violation(BaseModel):
 
     axis: ViolationAxis
     round_index: int
-    quote: str = Field(description="문제가 된 문장의 앞부분")
+    quote: str = Field(description="문제가 된 문장의 앞부분을 글자 그대로")
     why: str = Field(description="한 구절")
 
 
