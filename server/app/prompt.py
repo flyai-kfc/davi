@@ -256,6 +256,15 @@ INPUT_TEXT_INSTRUCTION = (
 # 이력 블록(C11 · #305). 헤더에 "그 결과"가 붙은 이유는 줄에 결과가 실려서다 —
 # 안내 문구만 나열하던 옛 이력의 헤더(`최근에 했던 안내:`)는 이제 줄과 어긋난다.
 STEP_HISTORY_HEADER = "최근에 한 안내와 그 결과:"
+# 창 밖으로 밀려난 안내 수(#418). **개수만 말하고 무엇이었는지는 말하지 않는다** — 밀려난 스텝의
+# 화면 이름을 이어 붙이는 안은 실측으로 접었다 — 근거는 `../CLAUDE.md`의 「밀려난 안내 수」.
+#
+# **줄 접두어가 `- `가 아닌 이유**는 스텝 줄과 섞이지 않게 하려는 것이다. `- `로 시작하면 모델이
+# 안내 하나로 세어 요소 줄의 `tried=` 횟수·회귀 표시와 어긋난다.
+#
+# 이 줄이 답하는 것은 "창이 왜 꽉 찼나"다 — `steps` 열 개만 보면 세션이 이제 열 걸음짜리인지
+# 마흔 걸음째인지 구분되지 않는다. 지시는 붙이지 않는다(루트 CLAUDE.md: 지식이 아니라 상태).
+STEP_HISTORY_EARLIER = "(이 목록 앞에 안내 {count}번이 더 있었지만 오래되어 빠졌습니다.)"
 STEP_CHANGED = "화면이 바뀜"
 STEP_UNCHANGED = "화면이 그대로임"
 # 눌림 귀속(#319). "누른 것"이라는 구체 표현은 지금 생산자가 TAP·TYPE뿐이라 정확하다 —
@@ -427,6 +436,9 @@ def _recent_step_lines(
     (`reasoning._resolve_scroll`은 모델이 고른 대상을 가장 넓은 스크롤 영역으로 교체한다).
     `content_signature`도 줄에 싣지 않는다 — 해시라 사람이 읽는 문장에 담을 값이 아니다.
     그 값은 [_returned_to]가 회귀 판정에 쓰고 **결과**만 꼬리 표시로 나간다(#410).
+
+    창 밖으로 밀려난 안내가 있으면 [STEP_HISTORY_EARLIER] 한 줄이 목록 **앞**에 붙는다(#418).
+    개수뿐이라 스텝 줄과 성격이 다르고, 그래서 접두어도 다르다.
     """
 
     # **판정은 걸러지지 않은 이력으로 한다.** "한 번 떠났다"는 서명의 흐름이지 그 스텝이 줄을
@@ -438,7 +450,15 @@ def _recent_step_lines(
         for index, step in enumerate(recent_steps)
         if step.instruction.strip()
     ]
-    return "\n".join(lines) or "- 없음"
+    # 밀려난 것이 있을 때만 붙인다(C10 침묵 규약 — 0은 적지 않는다). **줄보다 앞이다**:
+    # 그 안내들이 시간상 앞서므로 뒤에 두면 목록의 시간 순서가 깨진다.
+    earlier = STEP_HISTORY_EARLIER.format(count=req.earlier_steps) if req.earlier_steps else ""
+    if not lines:
+        # **"없음"과 겹치면 그 줄이 이긴다.** 둘을 나란히 두면 "이력 없음"과 "안내 N번 있었음"이
+        # 한 블록에서 서로를 부정한다. 밀려난 것이 있다는 사실이 더 정확한 진술이다.
+        return earlier or "- 없음"
+    body = "\n".join(lines)
+    return f"{earlier}\n{body}" if earlier else body
 
 
 def _completion_feedback_context(

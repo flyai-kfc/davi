@@ -37,6 +37,8 @@ object GuideSession {
         val generation: Long,
         val goal: String,
         val steps: List<GuideStep>,
+        /** [steps] 앞에 있었지만 상한에 밀려 빠진 안내 수(#418). */
+        val earlierSteps: Int,
         val completionFeedback: CompletionFeedback?,
     )
 
@@ -51,6 +53,7 @@ object GuideSession {
                 generation = generation,
                 goal = it,
                 steps = steps.toList(),
+                earlierSteps = earlierSteps,
                 completionFeedback = completionFeedback,
             )
         }
@@ -79,6 +82,12 @@ object GuideSession {
      * 서비스의 네트워크 스레드가 읽고 메인 스레드가 쓰므로 접근을 잠금으로 막는다.
      */
     private val steps = ArrayDeque<GuideStep>()
+
+    /**
+     * [steps]에서 상한에 밀려 빠진 안내 수(#418). 보관하지 않고 **세기만** 한다 — 밀려난 스텝의
+     * 내용을 남기는 안은 세션 길이에 선형으로 붙어 접었다(#418).
+     */
+    private var earlierSteps = 0
 
     /**
      * 마지막 스텝이 표시된 화면의 **기기 시그니처**([ScreenSignature]).
@@ -400,7 +409,9 @@ object GuideSession {
         pressRequeryArmed = false
         steps.addLast(step.copy(instruction = step.instruction.trim()))
         while (steps.size > MAX_HISTORY) {
-            steps.removeFirst()
+            // **줄이 만들어지는 스텝만 센다** — 서버의 창 안 목록이 빈 안내문을 빼기 때문이다.
+            // 근거는 `server/CLAUDE.md`의 「밀려난 안내 수」.
+            if (steps.removeFirst().instruction.isNotBlank()) earlierSteps++
         }
         lastStepSignature = screenSignature
     }
@@ -516,6 +527,8 @@ object GuideSession {
             // 세대가 달라지고, 그 사이에 떠 있던 응답이 새 세션에 섞이지 않는다.
             generation++
             steps.clear()
+            // 개수도 이력의 일부다 — 세대가 갈리면 함께 비운다.
+            earlierSteps = 0
             lastStepSignature = null
             // 내용 서명의 salt도 세션에 매인다(#410). 남기면 이전 세션의 이력과 해시가 맞아
             // 서버가 세션을 넘어 같은 화면으로 읽는다.

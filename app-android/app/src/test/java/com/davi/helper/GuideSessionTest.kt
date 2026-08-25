@@ -128,6 +128,55 @@ class GuideSessionTest {
         assertTrue(seen.isEmpty())
     }
 
+    /**
+     * 상한을 넘긴 안내는 버리되 **몇 개를 버렸는지는 센다**(#418). 서버가 "창이 꽉 찬 이유"를
+     * 알아야 하는데, 스텝 목록만으로는 세션이 이제 열 걸음짜리인지 더 긴지 구분되지 않는다.
+     */
+    @Test
+    fun `상한을 넘겨 밀려난 안내 수를 센다`() {
+        GuideSession.start("카카오톡 열기")
+
+        repeat(10) { record(instruction = "안내 $it") }
+        assertEquals(10, steps().size)
+        assertEquals(0, GuideSession.active()!!.earlierSteps)
+
+        repeat(3) { record(instruction = "추가 안내 $it") }
+
+        assertEquals(10, steps().size)
+        assertEquals(3, GuideSession.active()!!.earlierSteps)
+        // 밀려난 것은 가장 오래된 쪽이다.
+        assertEquals("안내 3", history().first())
+    }
+
+    /** **줄이 만들어지는 스텝만 센다** — 서버의 창 안 목록이 빈 안내문을 빼기 때문이다(#418). */
+    @Test
+    fun `밀려난 것이 빈 안내문이면 세지 않는다`() {
+        GuideSession.start("카카오톡 열기")
+
+        // 맨 앞 둘이 빈 안내문 — 이들이 먼저 밀려난다.
+        repeat(2) { record(instruction = "   ") }
+        repeat(8) { record(instruction = "안내 $it") }
+        assertEquals(10, steps().size)
+
+        repeat(3) { record(instruction = "추가 안내 $it") }
+
+        // 밀려난 셋 중 둘은 빈 안내문이라 하나만 센다.
+        assertEquals(1, GuideSession.active()!!.earlierSteps)
+    }
+
+    /** 개수도 이력의 일부다 — 세대가 갈리면 스텝과 함께 비운다. */
+    @Test
+    fun `세션을 다시 시작하면 밀려난 수도 비워진다`() {
+        GuideSession.start("카카오톡 열기")
+        repeat(12) { record(instruction = "안내 $it") }
+        assertEquals(2, GuideSession.active()!!.earlierSteps)
+
+        GuideSession.start("사진 보기")
+
+        assertEquals(0, GuideSession.active()!!.earlierSteps)
+        assertTrue(steps().isEmpty())
+    }
+
     @Test
     fun `안내 이력이 순서대로 쌓인다`() {
         GuideSession.start("카카오톡 열기")

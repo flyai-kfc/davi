@@ -3,6 +3,7 @@
 여기가 깨지면 앱·eval도 같이 깨진다는 뜻이므로, 실패를 무시하고 넘어가지 말 것.
 """
 
+import pytest
 from app.gemini_schema import build_response_schema
 from app.llm import GUIDE_ACTION_SCHEMA, LlmError, StubLlmClient
 from app.schemas import (
@@ -17,6 +18,7 @@ from app.schemas import (
     SwipeDirection,
     UiElement,
 )
+from pydantic import ValidationError
 
 # --- C1: propertyOrdering이 선언 순서에서 실제로 생성되는가 -------------------
 
@@ -151,6 +153,20 @@ def test_input_state_deserializes_without_input_text():
 
 
 # --- C7 / C8: 요청·에러 ------------------------------------------------------
+
+
+def test_request_carries_how_many_guides_fell_out_of_the_window():
+    """창 밖으로 밀려난 안내 수(#418). 개수만 나르고 내용은 나르지 않는다.
+
+    **기본값 0이 곧 낡은 앱 호환이다** — 이 값을 안 채우는 빌드도 0으로 오고, 프롬프트는 0에
+    침묵하므로 "밀려난 것이 없다"와 "말할 근거가 없다"를 구분할 필요가 없다.
+    """
+
+    assert NextStepRequest(goal="x", screen=Screen()).earlier_steps == 0
+    assert NextStepRequest(goal="x", screen=Screen(), earlier_steps=23).earlier_steps == 23
+
+    with pytest.raises(ValidationError):
+        NextStepRequest(goal="x", screen=Screen(), earlier_steps=-1)
 
 
 def test_request_carries_client_version():

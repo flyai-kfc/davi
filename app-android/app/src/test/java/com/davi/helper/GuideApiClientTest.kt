@@ -88,6 +88,9 @@ class GuideApiClientTest {
         // 값이 없는 스텝은 performed와 같은 침묵 규약으로 키째 빠진다. 현재 화면·스텝·완료
         // 부정 feedback 세 자리가 각각 같은 wire 이름을 쓴다.
         assertEquals(3, Regex("\"content_signature\"").findAll(body).count())
+        // wire 이름이 어긋나면 서버 Pydantic이 모르는 키를 **조용히 무시**하고 프롬프트가
+        // 침묵한다(C24 · #418) — 다른 테스트는 전부 초록인 채로 기능만 죽으므로 여기서 고정한다.
+        assertTrue(body.contains("\"earlier_steps\":7"))
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -302,6 +305,8 @@ class GuideApiClientTest {
             imeVisible = true,
             contentSignature = "d".repeat(64),
         ),
+        // 0이면 `encodeDefaults=false`라 키째 안 나가므로 wire 이름을 고정할 수 없다.
+        earlierSteps = 7,
         steps = listOf(
             GuideStep(
                 instruction = "'설정'을 눌러 주세요.",
