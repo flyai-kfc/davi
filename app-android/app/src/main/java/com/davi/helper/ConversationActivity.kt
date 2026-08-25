@@ -1053,7 +1053,13 @@ class ConversationActivity : AppCompatActivity() {
             is ConversationUiState.Listening -> state.clarification
             else -> null
         }
-        binding.questionProgress.isVisible(model.stepChipVisible)
+        // **칩이 없어도 칩의 자리는 남는다**(#452) — 판정과 그 근거는 [stepChipSlotOf]에 있다.
+        // INVISIBLE은 자리를 먹으면서 **접근성 트리에서는 빠진다** — 「질문 1/1」이 읽히지 않는다.
+        binding.questionProgress.visibility = when (stepChipSlotOf(model)) {
+            StepChipSlot.SHOWN -> View.VISIBLE
+            StepChipSlot.RESERVED -> View.INVISIBLE
+            StepChipSlot.GONE -> View.GONE
+        }
         if (stepOutcome != null) {
             binding.questionProgress.text = getString(
                 R.string.clarification_progress,
@@ -1100,19 +1106,16 @@ class ConversationActivity : AppCompatActivity() {
                     // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
                     // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
                     // 밀어 카드가 102dp 내려간다.
-                    // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
-                    // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
-                    model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
-                    // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
-                    // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
-                    // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
-                    // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
+                    //
+                    // **칩이 서든 안 서든 한 값이다**(#452). 칩 줄은 질문이 하나여도 자리가
+                    // 남으므로([StepChipSlot.RESERVED]) 갈릴 이유가 없어졌다. 예전의
+                    // 「칩 없음 = 44dp」는 63dp를 손으로 상쇄한 값이었고 −19 + 63 = 44로
+                    // 지금 구조가 만드는 값과 정확히 같다 — 청취 화면의 카드 위치는 안 바뀐다.
                     //
                     // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
                     // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
                     // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
-                    model.inClarificationFlow ->
-                        R.dimen.davi_badge_margin_top_clarification_nochip
+                    model.inClarificationFlow -> R.dimen.davi_badge_margin_top_clarification
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
                     // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
@@ -1689,9 +1692,15 @@ class ConversationActivity : AppCompatActivity() {
         // ✕는 카드 상단선에 **중심**을 맞춘다 — 카드에 걸린 것으로 읽힌다.
         val closeTop = if (close.isShown && close.height > 0) {
             val topNow = IntArray(2).also { close.getLocationInWindow(it) }[1].toFloat()
-            val wanted = (cardTop - close.height / 2f) - (topNow - close.translationY)
+            val resting = topNow - close.translationY
+            // **✕는 제자리보다 위로는 안 간다**(#452). 제자리는 인셋 아래 davi_spacing_lg라
+            // 이 바닥이 곧 「상태바를 파고들지 않는다」다. 걸치기는 원래 ✕를 **내리는**
+            // 동작이고, 올리려 드는 순간이 곧 카드가 있으면 안 될 곳까지 올라간 순간이다 —
+            // 그때는 걸치기를 포기하고 나가는 길을 남긴다. 위 questionProgress의 자리
+            // 비우기가 그 순간 자체를 없애지만, **하나가 무너져도 ✕는 남아야 한다.**
+            val wanted = ((cardTop - close.height / 2f) - resting).coerceAtLeast(0f)
             if (close.translationY != wanted) close.translationY = wanted
-            cardTop - close.height / 2f
+            resting + wanted
         } else {
             null
         }
