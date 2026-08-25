@@ -153,7 +153,7 @@ SM-S921N(Android 15 / One UI 7.0), 기본 개인정보 마스킹, 로컬 실제 
 
 ## 2026-08-25 · #209 관측 실패 분류 경계
 
-별도 SM-S921N(Android 16 / One UI 8.5)에서 debug driver와 test APK를 설치하고
+SM-S921N(Android 15 / One UI 7.0)에서 debug driver와 test APK를 설치하고
 `GuideDecisionQueueDiagnosticTest`를 실행했다. 화면·목표·서버 원문 없이 서명 보호 broadcast로
 root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를 확인했다.
 
@@ -168,9 +168,30 @@ root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를
 오래된 진단을 지우므로 이전 오류가 다음 단계의 원인으로 남지 않는다. `target_node_id` 불일치와
 UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 8건으로 고정했다.
 
-실제 Gemini·삼성 시계 관통은 이 문서의 2026-08-13 실행 4가 이미 같은 Davi 요청/action 채널을
-검증한다. #209는 그 채널의 누락된 실패 분류와 회귀 관문을 보완하며 서버 API나 시나리오는 바꾸지
-않는다.
+리뷰 수정 커밋 `bfea9fb`으로 같은 기기에서 `samsung-clock-create-alarm-full-journey`도 다시 실행했다.
+기본 개인정보 마스킹과 실제 `gemini-3.5-flash-lite`를 사용했고, 런처에서 삼성 시계로 이동해
+14개의 HTTP 200 결정을 수행했다. 14단계 `done`은 서버가 `verified`로 판정했으며 앱이 bounds를
+publish하지 않아 `target=false`였지만, bounds를 쓰지 않는 action이므로
+`target_node_id_mismatch` 오탐 없이 완료 분기까지 도달했다. 독립 robot이 최종 알람 상태 불일치를
+확인해 실행 결과는 의도대로 `done_before_goal` / `model_quality_failure`였고 테스트 데이터 정리는
+성공했다.
+
+아래는 화면·목표·안내 원문과 request id를 제외한 같은 실행의 `GuideSvc`·`DaviE2e` 발췌다.
+
+```text
+GuideSvc: event=request_started attempt=1
+GuideSvc: event=request_finished attempt=1 outcome=success status_code=200
+GuideSvc: action=done target=- direction=- history=10
+GuideSvc: done verified, asking user
+DaviE2e: step=14 action=done package=com.sec.android.app.clockpackage target=false verified=true verdict=verified
+DaviE2e: cleanup=success
+```
+
+첫 준비 실행은 로컬 `.env`의 `DAVI_GEMINI_THINKING_BUDGET=0` 때문에 모델 요청이 HTTP 400으로
+거부돼 `server_error` / `infra_failure`로 종료됐다. 민감정보 없는 최소 실호출에서 같은 모델은
+thinking budget 0일 때 400, 800일 때 200임을 다시 확인했고, 위 최종 실행은 프로세스 환경에서만
+800을 명시했다. 이 준비 실패와 실제 모델 품질 실패가 공유 보고서에서 서로 다른 범주로 보이는 것도
+함께 확인했다.
 
 ## 이후 실행 결과 확인
 
