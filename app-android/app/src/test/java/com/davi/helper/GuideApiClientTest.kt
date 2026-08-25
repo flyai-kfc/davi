@@ -70,12 +70,17 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"screen_hint\":\"런처 홈 화면\""))
         assertTrue(body.contains("\"screen_changed\":true"))
         assertTrue(body.contains("\"performed\":true"))
+        assertTrue(body.contains("\"target_node_id\":\"n7\""))
         // null인 performed(귀속 미확인)는 explicitNulls=false라 키째 생략된다 — 서버 기본값
         // None과 맞물리는 침묵 규약이다. 두 번째 스텝이 그 생략을 고정한다(값이 있는 스텝은
         // 하나뿐이므로 키도 한 번만 나타나야 한다).
         assertEquals(1, Regex("\"performed\"").findAll(body).count())
-        // 아직 관측하지 않는 content_signature도 같은 규칙으로 실리지 않는다(#270 서브 4).
-        assertFalse(body.contains("\"content_signature\""))
+        // 내용 서명은 현재 화면과 이력 양쪽에 실린다(#410). 서버의 이력 간 대조가 두 자리를
+        // 맞대는 것이라 한쪽만 실리면 판정이 성립하지 않는다.
+        assertTrue(body.contains("\"content_signature\":\"${"d".repeat(64)}\""))
+        assertTrue(body.contains("\"content_signature\":\"${"e".repeat(64)}\""))
+        // 값이 없는 스텝은 performed와 같은 침묵 규약으로 키째 빠진다 — 화면 1 + 스텝 1뿐이다.
+        assertEquals(2, Regex("\"content_signature\"").findAll(body).count())
         assertFalse(body.contains("secret@example.com"))
     }
 
@@ -288,16 +293,19 @@ class GuideApiClientTest {
                 ),
             ),
             imeVisible = true,
+            contentSignature = "d".repeat(64),
         ),
         steps = listOf(
             GuideStep(
                 instruction = "'설정'을 눌러 주세요.",
                 actionType = ActionType.TAP,
                 targetLabel = "설정",
+                targetNodeId = "n7",
                 screenHint = "런처 홈 화면",
                 structureSignature = "b".repeat(64),
                 screenChanged = true,
                 performed = true,
+                contentSignature = "e".repeat(64),
             ),
             GuideStep(
                 instruction = "'연결'을 눌러 주세요.",

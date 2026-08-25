@@ -91,7 +91,8 @@ UIAutomator는 화면 조회·조작 때 기본 `UiAutomation`을 반복해서 �
 준비한다.
 
 실제 Gemini 호출은 비용·비결정성이 있으므로 `-e davi.liveGemini true` 없이는 테스트가 skip된다.
-일반 CI는 `assembleDebugAndroidTest`로 라이브러리와 test APK만 키 없이 컴파일한다.
+일반 CI는 `:app:assembleDebugAndroidTest`와 `:e2e-driver:assembleDebugAndroidTest`로 앱 계측 test APK와
+E2E driver test APK 둘을 키 없이 컴파일한다. 실제 계측·Gemini 시나리오는 실행하지 않는다(#385).
 
 ## 결과 문서
 

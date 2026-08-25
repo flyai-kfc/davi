@@ -115,7 +115,10 @@ class PrivacyMaskerTest {
      *
      * 자바는 기본이 ASCII라 전각 숫자·NBSP를 놓쳤고, 파이썬 `re`는 유니코드가 기본이라 서버만
      * 잡았다. **앱이 놓치면 원본이 그대로 기기를 떠난다**(`SPEC.md` §2). `PrivacyMasker`가
-     * 본문 앞에 `(?U)`를 붙여 넓은 쪽으로 맞췄고, 이 줄들이 그 결정을 고정한다.
+     * 컴파일 플래그로 넓은 쪽에 맞췄고, 이 줄들이 그 결정을 고정한다.
+     *
+     * **이 테스트는 OpenJDK 정규식만 잰다.** 기기(Android 14+)는 ICU라 플래그를 얹는 방법부터
+     * 다르다 — 같은 결과가 거기서도 나오는지는 `PrivacyMaskerDeviceTest`가 본다(#400).
      */
     @Test
     fun masksUnicodeDigitAndSpaceVariants() {
@@ -168,6 +171,7 @@ class PrivacyMaskerTest {
             "내 갤럭시 버즈",
             "2만 3000원",
             "재생목록 1-2-3",
+            "2 페이지 중 1 페이지입니다.",
             "오후 3:45",
             "배터리 85%",
             "12:34",

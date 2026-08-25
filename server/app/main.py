@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from ipaddress import ip_address
 
 from fastapi import FastAPI, Request, Response, status
@@ -13,7 +16,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .app_resolution import resolve_app_request
+from .app_resolution import get_app_candidate_resolver, resolve_app_request
 from .config import settings
 from .dev_access import (
     MultiWindowRateLimiter,
@@ -24,7 +27,12 @@ from .dev_access import (
     token_matches,
 )
 from .errors import LlmError, api_error_for, http_status_for, retry_after_header
-from .intent_resolution import resolve_intent
+from .inference_lifecycle import (
+    CoordinatedExecution,
+    InferenceCoordinator,
+    LogicalRequestConflict,
+)
+from .intent_resolution import get_intent_resolver, resolve_intent
 from .kakao_auth import (
     AuthError,
     KakaoLoginRequest,
@@ -57,6 +65,28 @@ from .schemas import (
     SlotFillState,
 )
 
+
+def _initialize_llm_providers() -> None:
+    """실모델의 세 operation 공급자를 기동 중에 만들고 설정 오류를 요청 전에 드러낸다.
+
+    `DAVI_MAX_OUTPUT_TOKENS` 하한은 operation 계약마다 달라 Settings 하나만으로 검증할 수 없다.
+    첫 요청에서 지연 생성하면 next-step은 되고 slot-fill만 계속 500인 부분 고장이 되므로,
+    Uvicorn이 준비 완료를 알리기 전에 세 캐시를 모두 채운다. 네트워크 호출은 하지 않는다.
+    """
+
+    if settings.davi_use_stub_llm:
+        return
+    get_llm_client()
+    get_intent_resolver()
+    get_app_candidate_resolver()
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    _initialize_llm_providers()
+    yield
+
+
 # 외부 공개 프로필에서 FastAPI의 기본 문서·스키마 endpoint를 등록하지 않는다. 테스트는 모듈
 # import 뒤 프로필을 바꾸므로 아래 middleware에서도 같은 경계를 한 번 더 적용한다.
 _DEVELOPMENT_DOCS_ENABLED = settings.davi_env == "development"
@@ -66,6 +96,7 @@ app = FastAPI(
     docs_url="/docs" if _DEVELOPMENT_DOCS_ENABLED else None,
     redoc_url="/redoc" if _DEVELOPMENT_DOCS_ENABLED else None,
     openapi_url="/openapi.json" if _DEVELOPMENT_DOCS_ENABLED else None,
+    lifespan=_lifespan,
 )
 request_logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
@@ -85,6 +116,10 @@ _APP_RESOLUTION_PATH = "/v1/intent/app-resolution"
 _AUTH_KAKAO_PATH = "/v1/auth/kakao"
 _HEALTH_PATH = "/health"
 _DOCUMENTATION_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
+# `/health`는 의도적으로 여기서 뺀다(#67). 공용 개발 서버의 배포·기기 진단이 토큰 없이
+# provider/model/stub 배선을 확인해야 하고, 비밀값·사용자 데이터는 응답에 없다. 이 집합의
+# 추론 endpoint는 development 토큰·요청 제한을 모두 거치고, 로그인은 토큰 검사 뒤 전용 로그인
+# 리미터만 거친다. production health는 status 하나로 좁힌다.
 _TRACED_API_PATHS = frozenset(
     {_NEXT_STEP_PATH, _SLOT_FILL_PATH, _APP_RESOLUTION_PATH, _AUTH_KAKAO_PATH}
 )
@@ -108,6 +143,7 @@ auth_rate_limiter = SourceAndGlobalRateLimiter()
 # 짧은 창과 하루 창을 한 lock에서 먼저 모두 판정한 뒤 함께 기록한다. 둘을 순차 호출하면
 # 하루 창이 거부한 요청도 짧은 창의 슬롯을 먼저 소모해 다른 사용자를 막는다.
 external_rate_limiter = MultiWindowRateLimiter()
+inference_coordinator = InferenceCoordinator()
 
 
 def _request_route(path: str) -> str:
@@ -150,6 +186,13 @@ def _logical_request_headers(request: Request) -> tuple[str | None, int | None, 
     return logical_request_id, attempt, True
 
 
+def _private_inference_scope(kind: str, credential: str) -> str:
+    """인증 원문을 보관·로그하지 않고 서로 다른 권한 범위의 dedupe cache를 격리한다."""
+
+    digest = hashlib.sha256(credential.encode("utf-8")).hexdigest()
+    return f"{kind}:{digest}"
+
+
 def _attach_trace_headers(response: JSONResponse, context: TraceContext) -> None:
     response.headers[REQUEST_ID_HEADER] = context.request_id
     if context.logical_request_id is not None and context.attempt is not None:
@@ -185,6 +228,7 @@ def _development_access_error(request: Request) -> JSONResponse | None:
         except ValueError:
             is_loopback = False
         if is_loopback:
+            request.state.inference_scope = "development:loopback"
             return None
         return _development_auth_error(request)
 
@@ -203,6 +247,10 @@ def _development_access_error(request: Request) -> JSONResponse | None:
     # 어느 토큰이 들어왔는지만 남긴다(값은 남기지 않는다). 테스트 기간에 참가자 트래픽과
     # 팀 트래픽을 로그에서 갈라 보기 위한 것이다.
     request.state.access_token_kind = matched_kind
+    request.state.inference_scope = _private_inference_scope(
+        f"development:{matched_kind}",
+        supplied or "",
+    )
 
     if request.url.path == _AUTH_KAKAO_PATH:
         # 로그인은 전용 리미터가 모든 프로필에서 따로 제한한다. dev 창은 팀 추론 쿼터
@@ -210,6 +258,10 @@ def _development_access_error(request: Request) -> JSONResponse | None:
         # 잠그면 안 된다 — 토큰 검사까지만 적용하고 dev 창은 건너뛴다.
         return None
 
+    # 토큰 검사를 통과한 **요청 시도**를 body 검증보다 먼저 센다(#67). 따라서 인증 실패 401은
+    # 팀 창을 소모하지 않지만, 인증된 422와 정상 200은 모두 소모한다. 형식 오류를 무제한으로
+    # 보내 개발 endpoint의 검증 자원을 점유하는 길을 닫고, 상태 코드를 추측해 슬롯을 되돌리는
+    # 복잡한 후처리도 두지 않는다. 이 순서는 test_health.py가 401·422·200으로 고정한다.
     decision = dev_rate_limiter.check(
         settings.davi_dev_rate_limit_requests,
         settings.davi_dev_rate_limit_window_seconds,
@@ -281,6 +333,10 @@ def _external_access_error(request: Request) -> JSONResponse | None:
             request_id=request.state.request_id,
         )
         return JSONResponse(status_code=error.http_status, content=body.model_dump())
+
+    # 같은 logical ID를 다른 로그인 사용자가 우연히 또는 의도적으로 재사용해도 결과가 섞이지
+    # 않게 한다. 회원번호는 인메모리 key에만 쓰고 운영 로그에는 내보내지 않는다.
+    request.state.inference_scope = f"external:{kakao_user_id}"
 
     # 출처는 카카오 회원번호다 — device_id·IP가 아니라 인증된 사용자 단위로 제한한다.
     source = str(kakao_user_id)
@@ -394,6 +450,44 @@ def _store_raw_if_dogfood(
         )
 
 
+def _execute_inference(
+    request: Request,
+    endpoint: str,
+    body: NextStepRequest | SlotFillRequest | AppResolutionRequest,
+    work,
+) -> CoordinatedExecution:
+    """검증된 추론 본문을 현재 HTTP trace·인증 범위의 논리 작업에 연결한다."""
+
+    trace: TraceContext = request.state.trace_context
+    scope = getattr(request.state, "inference_scope", None)
+    if not isinstance(scope, str) or not scope:
+        # 인증 middleware가 새 프로필·경로에서 scope 설정을 빠뜨렸을 때 서로 다른 사용자를
+        # "unscoped" 하나로 합치는 것보다 요청을 닫는 편이 안전하다.
+        raise RuntimeError("추론 요청의 인증 범위가 설정되지 않았습니다")
+    execution = inference_coordinator.execute(
+        scope=scope,
+        endpoint=endpoint,
+        logical_request_id=trace.logical_request_id,
+        request=body,
+        work=work,
+    )
+    request.state.dedupe_outcome = execution.role.value
+    return execution
+
+
+def _logical_request_conflict_response(request: Request) -> JSONResponse:
+    """같은 logical ID로 다른 본문을 보내는 오용을 안전한 공개 오류로 닫는다."""
+
+    request.state.error_kind = ErrorKind.BAD_REQUEST.value
+    request.state.dedupe_outcome = "conflict"
+    error = ApiError(
+        kind=ErrorKind.BAD_REQUEST,
+        message="logical request id was reused with a different request body",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     request.state.error_kind = "VALIDATION"
@@ -490,6 +584,7 @@ async def observe_request(request: Request, call_next):
                 retry_after_seconds=getattr(request.state, "retry_after_seconds", None),
                 validation_error_count=getattr(request.state, "validation_error_count", None),
                 exception_class=getattr(request.state, "exception_class", None),
+                dedupe_outcome=getattr(request.state, "dedupe_outcome", None),
             )
         reset_trace_context(context_token)
 
@@ -522,21 +617,32 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         "element_count": len(req.screen.elements),
         "client_version": req.client_version,
     }
+    execution: CoordinatedExecution | None = None
     try:
-        response = next_step(req, get_llm_client())
+        execution = _execute_inference(
+            request,
+            _NEXT_STEP_PATH,
+            req,
+            lambda: next_step(req, get_llm_client()),
+        )
+        response = execution.unwrap()
+    except LogicalRequestConflict:
+        return _logical_request_conflict_response(request)
     except LlmError as e:
         # 앱이 사용자에게 다르게 안내하도록 kind를 그대로 전달(HANDOFF §5, LlmException).
         # message는 디버그용이며 시니어에게 그대로 보여주지 않는다(C8).
         error = api_error_for(e, request.state.request_id)
         request.state.error_kind = e.kind.value
         request.state.retry_after_seconds = e.retry_after_seconds
-        _store_raw_if_dogfood(req, http_status_for(e), error, request)
+        if execution is None or execution.owns_work:
+            _store_raw_if_dogfood(req, http_status_for(e), error, request)
         return JSONResponse(
             status_code=http_status_for(e),
             content=error.model_dump(),
             headers=retry_after_header(e) or None,
         )
-    _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
+    if execution.owns_work:
+        _store_raw_if_dogfood(req, status.HTTP_200_OK, response, request)
     return response
 
 
@@ -562,6 +668,44 @@ def _auth_rate_limit_response(
     )
 
 
+def _login_rate_limit_source(request: Request) -> str | None:
+    """로그인 레이트리밋의 비식별 네트워크 출처를 반환한다.
+
+    Azure Container Apps HTTP ingress는 클라이언트가 보낸 X-Forwarded-For 뒤에 자신이
+    관측한 IP를 붙이고, 그중 가장 오른쪽 값만 플랫폼 제공값으로 보장한다. 따라서 ACA
+    프로필에서는 왼쪽 값을 전부 버린다. 이 값은 로그인 폭주 제한에만 쓰며 인증·권한이나
+    로그에는 사용하지 않는다.
+    """
+
+    if settings.davi_auth_source == "peer":
+        return request.client.host if request.client else None
+
+    forwarded_values = request.headers.getlist("X-Forwarded-For")
+    if not forwarded_values:
+        return None
+    candidates = [part.strip() for value in forwarded_values for part in value.split(",")]
+    candidate = candidates[-1] if candidates else ""
+    try:
+        return str(ip_address(candidate))
+    except ValueError:
+        return None
+
+
+def _auth_source_unavailable_response(request: Request) -> JSONResponse:
+    """신뢰할 로그인 출처가 없으면 카카오 API를 소모하지 않고 닫는다."""
+
+    request.state.error_kind = "AUTH_SOURCE_UNAVAILABLE"
+    error = ApiError(
+        kind=ErrorKind.SERVER,
+        message="login request source unavailable",
+        request_id=request.state.request_id,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=error.model_dump(),
+    )
+
+
 @app.post("/v1/auth/kakao", response_model=SessionTokenResponse)
 def post_kakao_login(
     req: KakaoLoginRequest,
@@ -574,10 +718,9 @@ def post_kakao_login(
     """
 
     request.state.request_metadata = {"client_version": req.client_version}
-    # 출처는 직접 연결 peer IP만 쓴다. X-Forwarded-For는 클라이언트가 임의로 채울 수 있어
-    # 여기서 파싱하지 않는다 — 프록시 뒤 배포에서는 uvicorn --proxy-headers와
-    # --forwarded-allow-ips로 신뢰 프록시가 request.client를 재작성한 값이 그대로 들어온다.
-    source = request.client.host if request.client else "unknown"
+    source = _login_rate_limit_source(request)
+    if source is None:
+        return _auth_source_unavailable_response(request)
     decision = auth_rate_limiter.check(
         source,
         source_limit=settings.davi_auth_rate_limit_per_source_requests,
@@ -609,7 +752,15 @@ def post_slot_fill(req: SlotFillRequest, request: Request) -> SlotFillState | JS
         "intent_phase": "finalize" if req.clarification_answers else "plan",
     }
     try:
-        return resolve_intent(req)
+        execution = _execute_inference(
+            request,
+            _SLOT_FILL_PATH,
+            req,
+            lambda: resolve_intent(req),
+        )
+        return execution.unwrap()
+    except LogicalRequestConflict:
+        return _logical_request_conflict_response(request)
     except LlmError as error:
         api_error = api_error_for(error, request.state.request_id)
         request.state.error_kind = error.kind.value
@@ -634,7 +785,15 @@ def post_app_resolution(
         "candidate_count": len(req.feedback.plan.candidates) if req.feedback else None,
     }
     try:
-        state = resolve_app_request(req)
+        execution = _execute_inference(
+            request,
+            _APP_RESOLUTION_PATH,
+            req,
+            lambda: resolve_app_request(req),
+        )
+        state = execution.unwrap()
+    except LogicalRequestConflict:
+        return _logical_request_conflict_response(request)
     except LlmError as error:
         api_error = api_error_for(error, request.state.request_id)
         request.state.error_kind = error.kind.value

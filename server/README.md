@@ -38,8 +38,11 @@ Android는 `/v1/next-step`과 `/v1/auth/kakao` 요청에 무작위 UUID `X-Davi-
 JSON 요청·응답 본문 계약에는 이 전송 메타데이터를 추가하지 않는다.
 
 같은 화면·세션의 network/timeout 및 retryable 429/502 재전송만 Logical Request ID를 유지한다.
-화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. #81은 검증·echo·로그 연결만 하며,
-같은 ID의 dedupe·결과 cache·timeout budget은 #82 범위다.
+화면·목표·세션 변경과 정상 응답 뒤의 새 추론은 새 ID다. 추론 endpoint는 인증 범위+endpoint+ID가
+같은 검증 본문을 진행 중 작업 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다. 같은 key에
+다른 본문이 오면 `409 BAD_REQUEST`로 닫고 실패는 저장하지 않는다. 따라서 retryable 실패의 다음
+attempt는 같은 ID로 실제 실행된다. 이 인메모리 경계는 아래 worker 1개·replica 1개 불변식에
+의존한다.
 Android 같은 네이티브·직접 HTTP 클라이언트는 헤더를 읽을 수 있다. 현재 서버는 브라우저
 origin을 허용하는 CORS 계약이 없으므로 웹 클라이언트에서 읽을 수 있다고 가정하지 않는다.
 향후 웹 지원을 추가할 때 허용 origin과 함께 `X-Request-ID`를 명시적으로 expose해야 한다.
@@ -172,17 +175,19 @@ profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`
   (`../docs/development/azure-dev-server.md`). 손으로 배선하면 다음 배포가 조용히 지운다.
 - 세션 토큰이 담긴 성공 응답은 `Cache-Control: no-store`로 캐시를 금지한다.
 - 인증 전 공개 endpoint이므로 로그인 리미터가 dev 게이트와 별개로 **모든 프로필**에서 돈다.
-  출처(직접 연결 peer IP)별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
+  출처별 제한(`DAVI_AUTH_RATE_LIMIT_PER_SOURCE_*`)이 한 출처의 폭주로부터
   정상 사용자를 지키고, 전역 상한(`DAVI_AUTH_RATE_LIMIT_*`)이 카카오 API 소모 총량을 지킨다.
   두 판정은 한 리미터 안에서 원자적으로 내려지고 **허용된 요청만 기록**하므로, 거부된
   요청은 출처 키를 남기지 않고 활성 출처 키 수는 전역 상한으로 묶인다. 이 상한 보장을
   위해 출처 창은 전역 창 이하여야 하며, 위반 조합은 기동 시 설정 검증이 거부한다.
-  초과하면 429와 `Retry-After`를 돌려준다. 출처 구분은 peer IP 단위이므로 주소를 대량
+  초과하면 429와 `Retry-After`를 돌려준다. 출처 구분은 네트워크 IP 단위이므로 주소를 대량
   순환하는 분산 폭주로부터의 가용성 방어는 애플리케이션 밖 신뢰 ingress의 몫이다.
 - development 게이트의 **토큰 검사는 로그인에도 그대로** 적용되지만, 팀 추론 쿼터(Gemini)를
-  보호하는 dev 요청 제한은 로그인이 **소모하지 않는다** — 로그인 제한은 전용 리미터 몫이다. `X-Forwarded-For`는 애플리케이션에서 파싱하지
-  않는다 — 프록시 뒤 배포는 uvicorn `--proxy-headers`와 `--forwarded-allow-ips`로 신뢰
-  프록시가 재작성한 client 주소를 쓴다.
+  보호하는 dev 요청 제한은 로그인이 **소모하지 않는다** — 로그인 제한은 전용 리미터 몫이다.
+- `DAVI_AUTH_SOURCE=peer`가 기본이며 직접 연결 주소를 쓴다. release Azure Container Apps는
+  `azure_container_apps`를 명시하고, ACA가 덧붙여 보장하는 `X-Forwarded-For`의 **가장 오른쪽
+  IP 하나만** 쓴다. 왼쪽 값은 클라이언트가 위조할 수 있어 전부 버린다. 헤더 누락·오형식은
+  카카오 API 호출 전에 503으로 닫고, 이 IP를 인증·권한·로그에는 사용하지 않는다.
 - 카카오 access token 원문·세션 토큰·서명 비밀은 로그에 남기지 않는다(테스트로 고정).
 
 ## 실행 프로필
@@ -198,16 +203,27 @@ rate limit을 쓰는 `development`를 유지한다.
 | `DAVI_USE_STUB_LLM=false` | `DAVI_LLM_PROVIDER`가 고른 공급자 키 필수 | 같음 |
 | `DAVI_DEV_ACCESS_TOKEN` | 선택. LAN 바인딩이면 32자 이상 필수 | 설정 시 기동 실패 |
 | `DAVI_TEST_ACCESS_TOKEN` | 선택. 개발 토큰과 **병행**(둘 중 하나만 맞으면 통과) | 설정 시 기동 실패 |
+| `DAVI_AUTH_SOURCE` | `peer`만 허용 | beta는 `peer`; production release ACA만 `azure_container_apps` |
 | `DAVI_BIND_HOST` | 기본 `127.0.0.1`; LAN은 접근 토큰 필요 | 제한 없음(`0.0.0.0` 포함) |
 | `/v1/next-step` 등 추론 endpoint | dev·test 토큰 또는 loopback | 카카오 세션 토큰(`Authorization: Bearer`) 필수 |
+| `/health` | 토큰 없이 development 진단값 | 토큰 없이 `{"status":"ok"}`만 |
 | `/docs`·`/redoc`·`/openapi.json` | 로컬 개발 문서 노출 | 404(등록·노출 안 함) |
 | 알 수 없는 `DAVI_ENV` | 기동 실패 | 기동 실패 |
 
-검증은 설정을 import할 때 실행되므로 잘못된 조합은 첫 요청이 아니라 Uvicorn 기동 전에 실패한다.
+프로필·키·음수 예산 같은 공통 검증은 설정을 import할 때 실행된다. operation마다 다른 출력 예산
+하한은 FastAPI startup에서 next-step·slot-fill·app-resolution 공급자를 모두 미리 만들며 검증한다.
+따라서 어느 경우든 잘못된 조합은 첫 요청의 부분적인 500이 아니라 Uvicorn 기동 전에 실패한다.
 beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`도 둘 다 필수다.
 또한 development의 실제 원격 client 요청은 토큰이 비어 있으면 401로 차단한다. 따라서
 `DAVI_BIND_HOST`를 loopback으로 둔 채 `uvicorn --host 0.0.0.0`으로 스크립트를 우회해도
-토큰 없는 LAN 요청이 통과하지 않는다. beta·production은 바인딩 자체를 막지 않는 대신,
+토큰 없는 LAN 요청이 통과하지 않는다.
+
+development 요청 제한은 **토큰 검사를 통과한 요청 시도**를 body 검증보다 먼저 센다(#67).
+따라서 인증 실패 `401`은 팀 전체 창을 소비하지 않고, 인증된 형식 오류 `422`와 정상 `200`은
+각각 한 칸을 소비한다. 형식 오류도 서버의 검증 자원을 쓰므로 인증된 클라이언트가 잘못된 요청을
+무제한 반복하는 길을 열지 않는다. 이 순서는 상태 코드별 회귀 테스트로 고정한다.
+
+beta·production은 바인딩 자체를 막지 않는 대신,
 세션 토큰이 없거나 무효한 요청과 카카오 회원번호별·전역 요청 제한(짧은 창 + 하루 상한)을
 `main.py` `_external_access_error`가 막는다 — 로그인(`/v1/auth/kakao`)만 이 검사 밖이며
 별도 리미터가 프로필과 무관하게 로그인 폭주를 막는다.
@@ -219,6 +235,20 @@ beta·production은 `DAVI_KAKAO_APP_ID`와 32자 이상 `DAVI_AUTH_JWT_SECRET`�
 초기화된다.** 영속적인 production 일일 상한이 필요하면 공유 저장소 기반 제한기로 교체해야 하며,
 그 전까지 공급자 자체 일일 쿼터가 최종 비용 경계다.
 키와 접근 토큰은 저장소 밖의 환경변수 또는 `.env`에만 둔다.
+
+### 추론 timeout·중복 처리
+
+공급자 HTTP 한 번은 최대 20초, schema·계약 복구를 포함한 논리 작업 전체는 최대 40초다.
+실제 공급자 호출은 next-step 3회, app-resolution 2회, slot-fill 1회가 상한이다. Android의 세
+추론 client는 연결·쓰기·읽기를 모두 포함한 45초 call timeout으로 서버보다 5초 늦게 끝난다.
+첫 HTTP 연결이 끊겨도 진행 중 작업은 즉시 취소하지 않는다. 같은 ID retry가 합류하거나 성공
+결과를 받을 수 있게 40초까지만 계속하고, 그 뒤 결과는 버린다. 동기식 공급자 호출을 Python에서
+강제로 종료할 수 없는 구간은 provider timeout이 닫는다. 내부 실행 pool은 FastAPI sync 기본
+수용량과 같은 40개라 기존 동시 처리량을 조용히 줄이지 않는다. dogfood raw 봉투는 공유 작업
+owner만 기록하고 replay 전송은 중복 저장하지 않는다.
+next-step retry는 화면의 label·window title·node id·bounds·스크롤 위치 메타와 마지막 step의
+`screen_changed`·`performed`·`content_signature`가 달라져도 같은 논리 작업에 합류한다. 과거
+step과 안내 내용은 계속 비교해 같은 ID의 다른 작업은 409로 닫는다.
 
 ### LLM 공급자 교체
 
@@ -250,7 +280,11 @@ Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모�
 next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
 추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
 OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
-모델을 바꿨는데 잘리거나 너무 비싸면 `DAVI_MAX_OUTPUT_TOKENS`로 통째로 덮는다.
+slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 최대 2문항·문항별 3보기를 담는
+`needs_clarification`의 최대 유효 compact JSON 문자 수를 현재 Pydantic `maxLength`·`maxItems`에서
+파생하고 더 큰 쪽을 쓴다. 실제 공급자 토크나이저의 정확한 토큰 수를 흉내 내는 테스트는 두지
+않는다. `DAVI_MAX_OUTPUT_TOKENS`는 자동 계산된 합보다 더 큰 예산이 필요할 때만 통째로 덮는다.
+그보다 작으면 정상 계약 응답 또는 추론 자리를 훼손하므로 공급자 생성 시 설정 오류로 거부한다.
 
 #### #316 목표 구체화 모델·예산 결정 (2026-08-21)
 
@@ -270,10 +304,11 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
 **Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
-상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실리고 출력 상한이
-1824/1312/1824가 된다. 대가로 thinking이 있는 모델의 dynamic thinking이
-`DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼
-느슨해진다. 아직 측정하지 않았다 — 값을 조정하려면 이 환경변수를 쓴다.
+상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실린다. next-step과
+app-resolution은 기본 1824이고, slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다.
+대가로 thinking이 있는 모델의 dynamic thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로
+하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼 느슨해진다. 아직 측정하지 않았다 —
+추론 몫을 조정하려면 이 환경변수를 쓴다.
 
 ### 테스트 참가자 토큰
 
@@ -290,6 +325,11 @@ OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic�
 토큰 값 자체는 어떤 프로필에서도 로그에 남기지 않는다.
 
 `/health` 응답도 프로필에 따라 다르다.
+
+development `/health`는 **loopback·LAN·Azure에서 토큰 없이 유지한다**(#67). 시작/배포 스크립트와
+기기 E2E가 provider·model·stub·마스킹 우회·카카오 배선 상태를 진단하는 경로이고, 응답에는 키·토큰·
+사용자 데이터가 없다. 대신 beta·production은 외부 공개 범위를 `status` 하나로 좁힌다. 같은 LAN의
+추론 endpoint는 이 예외에 포함되지 않으며 계속 dev·test 토큰을 요구한다.
 
 development:
 
@@ -400,6 +440,11 @@ cd server
 ./scripts/stop-shared-dev.sh
 ```
 
+종료 스크립트는 PID가 살아 있다는 사실만 믿지 않는다. 그 PID의 command에
+`uvicorn app.main:app`과 공유 포트가 있고 cwd가 이 `server/`일 때만 `SIGTERM`을 보낸다. 셋 중
+하나라도 다르면 프로세스를 보존하고 실패한다(#67). 이 경계는 임시 프로세스를 실제로 띄우는
+통합 테스트로 고정한다.
+
 PID와 로그는 `server/.shared-dev/` 아래에만 생기며 gitignore된다. 디렉터리는 700,
 PID·로그 파일은 600이다. 로그는 일 단위 JSON Lines로 이어 쓰고 시작 시 7일보다 오래된 파일을
 정리한다. 정상 추론은 `request_received` → `llm_attempt_started` →
@@ -435,6 +480,32 @@ Key Vault의 versionless secret으로만 보관하며 Container App의 user-assi
 화면 데이터를 저장하지 않는다. 최초 권한·GitHub OIDC 연결과 장애 확인은
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
 
+## Azure Container Apps release 수동 배포
+
+release 서버는 `main`의 서버 변경에 자동 배포되지 않는다. 검증한 `main`을 release로 승격할 때는
+저장소 루트에서 아래 실행기를 사용한다.
+
+```bash
+infra/azure/deploy-release.sh
+```
+
+실행 전 GitHub CLI(`gh`)를 설치하고 저장소의 Actions workflow를 실행할 수 있는 계정으로 로그인해야
+한다. 실행기는 현재 로컬 브랜치나 커밋을 직접 배포하지 않고, 항상 원격 `main`의
+`azure-release-deploy.yml`을 고유한 request ID로 시작한다. 이후 해당 workflow run을 찾아 완료까지
+기다리며, 배포 또는 검증 실패 시 0이 아닌 종료 코드로 끝난다. 로컬에서 Docker image를 만들거나
+Azure 배포 명령을 직접 실행하지 않는다.
+
+Windows처럼 Bash 실행기를 사용하지 않는 환경에서는 GitHub의
+**Actions → Azure release deploy → Run workflow**에서 `main`을 선택해 같은 workflow를 실행한다.
+GitHub environment 승인 대기 상태라면 Actions에서 승인한 뒤 실행이 끝날 때까지 기다린다.
+
+workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, release 인증 출처,
+개발·테스트 토큰 미배선 및 `/health`를 검증한다. 실행기가 workflow를 찾지 못했다고 끝난 경우에는
+곧바로 재실행하지 말고 출력된 request ID로 Actions run을 먼저 확인해 중복 배포를 피한다. 성공 후에는
+더미 로그인 probe와 release APK의 로그인·next-step 실기기 확인까지 수행한다. 최초 Azure/GitHub
+설정, 실행 결과 확인 명령, probe 및 장애 대응은
+[`../docs/deployment/azure-release-server.md`](../docs/deployment/azure-release-server.md)를 따른다.
+
 ## 도그푸딩 raw 보존 (#41)
 
 `DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만
@@ -465,6 +536,7 @@ pytest
 | 파일 | 역할 |
 |---|---|
 | `app/main.py` | FastAPI 라우터(얇게). 에러 분류만. |
+| `app/inference_lifecycle.py` | 추론 40초 deadline·3/2/1회 호출 상한·in-flight dedupe·성공 replay. |
 | `app/errors.py` | 추론 오류 → HTTP 상태·응답·재시도 헤더 변환. |
 | `app/kakao_auth.py` | 카카오 access token 검증과 세션 JWT 발급·검증. 토큰 원문 비로그. |
 | `app/schemas.py` | 앱↔서버 계약. 근거 필드가 action보다 앞(추론 순서). |
@@ -522,8 +594,10 @@ pytest
   `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 5건. 위 "도그푸딩 raw 보존" 절.
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
-- `reasoning._verify_done` — evidence가 현재 화면 label과 실제로 맞물리는지 대조한다(#62,
-  SPEC §4 — §11에서 이동). 부분 문자열·한 글자 label 오탐의 측정·보강은 #71.
+- `reasoning._verify_done` — evidence가 현재 화면의 최소 두 글자 label을 어절 경계로 인용했는지
+  대조한다(#62·#71, SPEC §4). 프롬프트는 label을 작은따옴표로 정확히 인용하게 하고, 기존
+  무따옴표 출력은 제한된 한국어 조사·서술격 어미만 허용한다. `사용 중`/`사용 중지` 같은 어휘
+  연장과 동사형 `저장하고`, 한 글자 label은 완료 근거로 받지 않는다.
 - `reasoning._apply_guardrails` — 단일 결정 지점. `scroll`의 대상을 요구한다(#202): 화면의
   스크롤 요소로 교정하거나, 런처처럼 대체 행동이 있는 화면은 `open_app_drawer`로 돌리거나,
   둘 다 없으면 SERVER 오류로 닫는다. 정책은 `CLAUDE.md` "scroll 대상 정책".

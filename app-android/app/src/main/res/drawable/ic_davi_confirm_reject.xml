@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MA-4 ③의 글리프 ✕(#396 · 08-22 시안). 시안 18x18 선 w3.5.
+
+  **시안보다 키웠다** — 시안은 ①의 O(22)보다 ✕(18)를 작게 그렸는데, 실기기에서 ✕만
+  작아 보여 셋이 같은 꼴이라는 인상이 깨졌다(2026-08-24 실측). **O와 같은 26dp**로 맞춘다.
+
+  ⚠ **viewport를 width와 같은 26으로 둔다.** 한때 22로 두었는데, VectorDrawable은 viewport를
+  뷰 경계로 확대하면서 **획 두께까지 함께 늘린다** — `strokeWidth 4.2`가 실제로는
+  4.2 x 26/22 = **4.96dp**로 나가 ①의 O(4.2dp)와 18% 어긋났다. **선 두께는 환산 규칙에서
+  1:1**이라 그러면 안 된다. 걷어낸 `ic_davi_chevron_right`가 같은 함정을 적어 두고 있었다.
+  색은 `davi_highlight`(#F2001C) — 아이콘 칸 #F7DFE6 위에서 3.47:1로 A2를 넘는다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="26"
+    android:viewportHeight="26">
+    <path
+        android:pathData="M4.73,4.73 L21.27,21.27 M21.27,4.73 L4.73,21.27"
+        android:strokeColor="@color/davi_highlight"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round" />
+</vector>

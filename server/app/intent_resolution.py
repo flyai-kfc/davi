@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from functools import cache
 from typing import Any, Never, Self
 
@@ -31,6 +32,7 @@ from .schemas import (
     MAX_VOICE_TEXT_LENGTH,
     ClarificationAnswerSource,
     ClarificationPlan,
+    ClarificationQuestion,
     ErrorKind,
     IntentDialogueStatus,
     SlotFillRequest,
@@ -38,10 +40,6 @@ from .schemas import (
 )
 
 _OPERATION = "intent_dialogue"
-# 정상 응답 하나에 필요한 출력 토큰. 공급자가 보이지 않는 추론(Gemini thinking, OpenAI
-# reasoning)에 쓰는 몫은 `llm_provider.build_provider`가 여기에 더한다 — 그 몫이 예산을 다
-# 먹어 응답이 잘리고 PARSE로 실패하는 게 이 경로에서 실기기 재현됐다(2026-08-18).
-_RESPONSE_HEADROOM_TOKENS = 512
 llm_logger = logging.getLogger(LLM_LOGGER_NAME)
 
 
@@ -112,6 +110,112 @@ class _IntentDialogueDecision(BaseModel):
             goal=self.goal,
             clarification=self.clarification,
         )
+
+
+@dataclass(frozen=True)
+class IntentDialogueResponseBudgets:
+    """상태별 최대 계약 응답의 compact JSON 문자 예산.
+
+    Pydantic의 `max_length`는 토큰이 아니라 Unicode 문자 수다. 실제 토큰 수는 공급자와 모델마다
+    달라 이 값이 정확한 토큰 수라고 주장하지 않는다. 다만 계약 상한으로 만든 유효 응답의
+    compact JSON 문자 수보다 작은 토큰 상한은 명백히 위험하므로, 공급자 중립 최소선으로 쓴다.
+    보이지 않는 thinking/reasoning 몫은 `build_provider()`가 이 값 위에 따로 더한다.
+    """
+
+    ready: int
+    needs_clarification: int
+
+    @property
+    def required(self) -> int:
+        return max(self.ready, self.needs_clarification)
+
+
+def _schema_limit(model: type[BaseModel], field: str, keyword: str) -> int:
+    """Pydantic JSON Schema에서 필드 제약 하나를 읽는다. Optional의 anyOf도 따라간다."""
+
+    field_schema = model.model_json_schema()["properties"][field]
+    candidates = [field_schema, *field_schema.get("anyOf", [])]
+    for candidate in candidates:
+        value = candidate.get(keyword)
+        if isinstance(value, int) and value > 0:
+            return value
+    raise RuntimeError(f"{model.__name__}.{field}에 {keyword} 양의 상한이 필요합니다")
+
+
+def _maximum_text(length: int, variant: int = 0) -> str:
+    """길이 상한을 정확히 채우면서 같은 목록 안에서는 구분 가능한 테스트 문자열."""
+
+    return "가" * (length - 1) + chr(ord("나") + variant)
+
+
+def _contract_maximum_decisions() -> dict[IntentDialogueStatus, _IntentDialogueDecision]:
+    """필드·배열 상한에서 ready와 needs_clarification 최대 유효 응답을 만든다."""
+
+    basis = _maximum_text(_schema_limit(_IntentDialogueDecision, "decision_basis", "maxLength"))
+
+    ready = _IntentDialogueDecision(
+        decision_basis=basis,
+        status=IntentDialogueStatus.READY,
+        message=_maximum_text(_schema_limit(_IntentDialogueDecision, "message", "maxLength")),
+        goal=_maximum_text(_schema_limit(_IntentDialogueDecision, "goal", "maxLength")),
+    )
+
+    question_schema = ClarificationQuestion.model_json_schema()["properties"]
+    option_schema = question_schema["options"]
+    option_length = option_schema["items"]["maxLength"]
+    option_count = option_schema["maxItems"]
+    question_count = _schema_limit(ClarificationPlan, "questions", "maxItems")
+    id_length = _schema_limit(ClarificationQuestion, "id", "maxLength")
+    prompt_length = _schema_limit(ClarificationQuestion, "prompt", "maxLength")
+
+    questions = [
+        ClarificationQuestion(
+            id=_maximum_text(id_length, question_index),
+            prompt=_maximum_text(prompt_length, question_index),
+            options=[
+                _maximum_text(option_length, option_index) for option_index in range(option_count)
+            ],
+            allow_freeform=True,
+        )
+        for question_index in range(question_count)
+    ]
+    needs_clarification = _IntentDialogueDecision(
+        decision_basis=basis,
+        status=IntentDialogueStatus.NEEDS_CLARIFICATION,
+        message=questions[0].prompt,
+        clarification=ClarificationPlan(questions=questions),
+    )
+    return {
+        IntentDialogueStatus.READY: ready,
+        IntentDialogueStatus.NEEDS_CLARIFICATION: needs_clarification,
+    }
+
+
+def _compact_json_character_count(decision: _IntentDialogueDecision) -> int:
+    """Gemini(선택 필드 생략)와 strict(null 포함) 표현 중 더 긴 compact JSON 길이."""
+
+    return max(
+        len(
+            json.dumps(
+                decision.model_dump(mode="json", exclude_none=exclude_none),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+        for exclude_none in (True, False)
+    )
+
+
+_MAXIMUM_DECISIONS = _contract_maximum_decisions()
+INTENT_DIALOGUE_RESPONSE_BUDGETS = IntentDialogueResponseBudgets(
+    ready=_compact_json_character_count(_MAXIMUM_DECISIONS[IntentDialogueStatus.READY]),
+    needs_clarification=_compact_json_character_count(
+        _MAXIMUM_DECISIONS[IntentDialogueStatus.NEEDS_CLARIFICATION]
+    ),
+)
+# 손으로 쓰는 512 같은 수치가 아니라 현재 Pydantic 계약에서 매번 파생한다. 공급자가 보이지 않는
+# 추론에 쓰는 몫은 build_provider()가 이 최소선 위에 더한다.
+_RESPONSE_HEADROOM_TOKENS = INTENT_DIALOGUE_RESPONSE_BUDGETS.required
 
 
 INTENT_DIALOGUE_CONTRACT = ResponseContract.of(_OPERATION, _IntentDialogueDecision)

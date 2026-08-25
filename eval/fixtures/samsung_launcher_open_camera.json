@@ -6,8 +6,8 @@
     "captured_at": "2026-07-27",
     "issue": 28,
     "device_model": "SM-S921N",
-    "os_version": "Android 16",
-    "ui_version": "One UI 8.5",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
     "anonymization": [
       "n3과 n4의 식별 가능한 커스텀 앱 label만 일반 label로 치환",
       "device_id와 모델 원문 응답은 포함하지 않음"

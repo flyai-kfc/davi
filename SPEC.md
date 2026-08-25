@@ -48,7 +48,12 @@
 | 기기 | 성격 | 용도 |
 |---|---|---|
 | **SM-S918N** (Galaxy S23 Ultra, One UI 8.5) | 개인 기기 | HANDOFF의 모든 실측이 이 기기 기준이다. **개인 데이터가 있으므로 로그·픽스처 취급에 주의.** |
-| **SM-S921N** (Galaxy S24, One UI 8.5) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+| **SM-S921N** (Galaxy S24, Android 15 / One UI 7.0) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+
+**SM-S921N 버전 정정(2026-08-24):** 같은 실기기에서 `getprop ro.build.version.release=15`,
+`ro.build.version.oneui=70000`을 다시 읽었다. 2026-08-13의 Android 15 실기기 결과와도 일치한다.
+기존 문서·fixture의 Android 16 / One UI 8.x 표기는 이를 뒷받침하는 속성 기록 없이 같은 기기에
+붙어 있어 Android 15 / One UI 7.0으로 정정했다. 동작 관측의 날짜·내용·기기 모델은 바꾸지 않았다.
 
 둘 다 삼성·One UI라 **제조사 차이는 여전히 검증되지 않는다.** 다기기 매트릭스는 비목표 그대로다(§5-6).
 
@@ -125,7 +130,7 @@
 |---|---|
 | 같은 안내 반복 (앱이 안내 이력 미전송) | #31 — 이력을 실으니 문구가 고정됐다 |
 | 앱 진입 직후 덜 그려진 트리로 요청이 나감 | #32 — 3단계에서 오안내까지 갔다 |
-| 화면이 안 바뀌면 다음 안내가 영영 안 옴 | #39 — 시간 기반 폴링을 넣어 이벤트 없이도 돈다 |
+| 화면이 안 바뀌면 다음 안내가 영영 안 옴 | #39 — 시간 기반 폴링을 넣어 이벤트 없이도 돈다. 다만 구현에서 이벤트가 그 폴링을 계속 되감고 있었고, 이벤트가 **너무 많은** 화면에서 샘플이 영영 밀리는 것을 #380이 실기기로 확인해 예약에 기한을 씌웠다 |
 | 안내 상자가 대상이 속한 다이얼로그 본문을 덮음 | #38 |
 | 홈에만 스크롤·페이지 정보가 없음 (앱서랍엔 `page=2/2`가 잡힘) | #37 |
 
@@ -220,12 +225,12 @@
   문제(선행 조건 처리 — "앱이 없으면 먼저 설치")는 이번 사이클 목표에 없다.
   `reasoning.py`의 `_plan` 스텁과 TODO는 **#251이 걷었다**(2026-08-19) — 규칙대로 그 파일을
   여는 사람이 함께 지웠다.
-- 제품용 관리형 클라우드 호스팅·계정 인프라. #94의 Azure Container Apps는 **debug·release APK가
-  함께 바라보는 개발 인프라**이며(#248), 이 비목표를 해제하지 않는다 — 서버는 development
-  프로필이고 접근 토큰으로 닫혀 있다(§7).
+- 제품용 계정 DB·계정 수명주기 인프라. #94의 Azure Container Apps development endpoint는
+  **debug APK용**으로 유지하고, release APK는 같은 resource group의 별도 Container App에서
+  `production` 프로필과 무상태 카카오 세션 JWT를 쓴다(#214). 별도 사용자 DB는 만들지 않는다.
   **카카오 로그인 자체는 §2 범위다**(ON-1) — 여기서 비목표인 것은 그것을 떠받치는 제품용
   호스팅·사용자 DB이고, 개발 서버에서 로그인을 켜는 것은 **빌드 검증 수단**이다(#279).
-  debug만이 아니라 release도 같은 서버로 로그인한다(#248·#219 — `releaseLoginEnabled`).
+  debug와 release는 각자의 서버에서 같은 무상태 로그인 계약을 쓴다(#219 — `releaseLoginEnabled`).
 
 ---
 
@@ -240,7 +245,7 @@
 │  ├─ 화면 트리 직렬화 (UiTreeSerializer)  ── 클릭노드에 자손 텍스트 합쳐 label      │
 │  │    + 편집 가능/입력 포커스/IME 표시 상태 (입력 원문·IME 키 트리는 제외)         │
 │  ├─ 1차 마스킹  ── 전화·계좌·주민·카드·이메일·MAC 치환 (원본은 여기서 안 떠남)    │
-│  ├─ 폴링/정체 감지 (시간 기반)  ── 목록 끝에서 스크롤 이벤트가 안 오는 문제 대응    │
+│  ├─ 폴링/정체 감지 (시간 기반)  ── 이벤트가 안 오는 화면·너무 많은 화면 양쪽 대응  │
 │  └─ 오버레이 렌더링 (좌표 매핑, FLAG_LAYOUT_IN_SCREEN, IME 위 배치)             │
 │       표시 오버레이(하이라이트, 터치 통과) + 조작 오버레이(안내창·칩, 터치 받음)  │
 │  SpeechRecognizer + TTS  ── 음성 목표 청취 + 구체화 계획의 첫 질문만 읽기         │
@@ -256,7 +261,7 @@
 │  │    next-step·앱 후보는 스키마 400 폴백, 음성 목표는 요청당 1콜·폴백 없음       │
 │  ├─ 음성 목표 정리  ── 추가 질문 필요/목표 준비 완료를 구조화 출력으로 판정       │
 │  ├─ 목표 앱 후보  ── 실행 가능성 사전 점검용 일반 후보 최대 5개 생성             │
-│  └─ 완료 검증 (expected_result / evidence 비교)  ── 조기 종료 방지               │
+│  └─ 완료 검증 (expected_result 선작성 + evidence 화면 대조) ─ 조기 종료 완화      │
 │                         │  다음 안내 하나 {action, target, instruction}          │
 │                         ▼  (모델은 마스킹된 내용을 본다 — 온보딩에 명시)          │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -349,11 +354,19 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 파일과 `EdgeGestureTest`만 움직이는 것이 격리가 지켜졌다는 증거다. 확인은 베타 다기기
 매트릭스로 넘긴다(§3 비목표).
 
-**요청 관측 계약(#81):** 앱은 한 화면에서 유효한 안내 하나를 얻는 논리 요청마다 무작위 UUID와
+**요청 수명주기 계약(#81·#82):** 앱은 한 화면에서 유효한 안내 하나를 얻는 논리 요청마다 무작위 UUID와
 전송 시도 번호를 HTTP header로 보낸다. timeout·retryable 오류의 재전송만 같은 UUID를 유지하고,
 화면·목표·세션 변경 또는 정상 응답 뒤의 새 추론은 새 UUID를 쓴다. UUID는 goal·label·화면 서명·
-`device_id`에서 파생하지 않고 프로세스 밖에 저장하지 않는다. 서버는 이 값을 검증·echo·로그 연결에만
-사용하며, 중복 제거·결과 캐시·timeout budget은 #82에서 별도로 적용한다. JSON 본문 계약은 유지한다.
+`device_id`에서 파생하지 않고 프로세스 밖에 저장하지 않는다. 서버는 인증 범위+endpoint+UUID를
+key로 같은 검증 본문의 진행 중 작업을 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다.
+next-step 본문의 동일성은 앱 화면 구조 축과 맞추고 label·window title·node id·bounds·스크롤 위치
+메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
+내용·과도기 값만 달라진 정상 network retry를 본문 충돌로 오판하지 않기 위해서다.
+같은 key의 다른 본문은 409로 닫고 실패 결과는 저장하지 않는다. 공급자 HTTP는 호출당 최대 20초,
+논리 작업은 복구 호출을 모두 합쳐 최대 40초이고 Android 추론 호출 전체 상한은 45초다. 연결이
+끊겨도 공유 작업은 즉시 취소하지 않고 hard deadline까지만 계속해 재전송이 합류하게 하며, deadline
+뒤 결과는 버린다. 현재 인메모리 경계는 worker 1개·replica 1개 배포 불변식에 의존한다. JSON 본문
+계약은 유지한다.
 
 **음성 목표 계약(#90·#91·#316):** `POST /v1/intent/slot-fill`은 이름을 호환성 때문에 유지하지만
 고정 슬롯이나 문자열 조건표를 API에 노출하지 않는다. 첫 요청은 무작위 `session_id`와 최초 발화다.
@@ -408,18 +421,37 @@ API·HTTP·network·parse 실패도 이미 완성된 goal을 폐기하지 않고
 Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자가 오디오를 처리하는 방식과 베타 사용자
 고지·동의는 베타 진입 전 별도 결정이며, 가능한 기기에서는 온디바이스 인식을 우선한다.
 
-### 완료 검증 — "화면에 있는 근거인가"만 본다 (2026-07-28 결정, §11에서 이동)
+### 완료 검증 — "화면에 있는 근거인가"만 본다 (2026-08-24 #71 개정)
 
 `expected_result`·`evidence`는 둘 다 `GuideAction`의 필수 필드라 구조화 출력이 **항상** 채운다.
 비었는지만 보는 검사는 `done`이면 언제나 통과했다.
 
-**결정: evidence가 현재 화면의 label과 실제로 맞물리는지 코드로 검사한다. 다만 "충분한 근거인가"는
-판정하지 않는다.**
+**결정: evidence가 현재 화면의 label을 최소 두 글자짜리 어절 연속으로 인용했는지 코드로 검사한다.
+다만 "목표 달성에 충분한 근거인가"는 판정하지 않는다.**
 
 - 화면에 없는 문장을 지어낸 근거는 label 대조로 객관적으로 걸러진다.
-- 반대로 `evidence='지도'`처럼 **흔한 단어 하나로 형식만 채우는** 성의 없는 근거는(`HANDOFF.md` §9 실측)
-  그 단어가 실제 화면에 있으면 통과시킨다. 최소 길이·단어 수 같은 임계값은 근거 없이 정할 수 없고,
-  느슨하면 조기 종료·빡빡하면 안 끝나는 양쪽 실패가 다 있다. 실사용 로그가 쌓이면 다시 본다.
+- 구두점 차이는 어절 토큰화로 흡수하고, label 마지막 어절에는 정해 둔 한국어 조사·서술격 어미만
+  허용한다. 받침 유무의 짝(`이라고/라고`, `이었습니다/였습니다`)과 복수 `들` 뒤 조사를 받으며,
+  `에서는`·`에도`·`에서도`·`으로는` 같은 복합조사는 완성형 목록이 아니라 **격조사 + 보조사 한
+  개**로 조합한다. `카카오톡`과 `카카오톡이`, `사용 중`과
+  `사용 중입니다`는 통과하지만 `사용 중`과 `사용 중지했습니다`는 어휘가 이어진 부분 문자열이라
+  거부한다. 일반 동사 접미사는 허용하지 않는다 — 버튼 `저장`이 보인다는 이유만으로
+  `저장되었습니다`를 완료 근거로 만들 수 있어서다.
+- 모델에는 label을 **작은따옴표로 감싸 글자 그대로 인용**하고 조사·설명은 닫는 따옴표 뒤에
+  쓰게 한다. 그러면 `'카메라'라는`·`'설정'에서도`처럼 목록에 없는 자연스러운 조사도 label 끝이
+  명확한 어절 경계라 통과한다. 따옴표 없는 기존 출력은 위의 제한된 조사 목록으로 호환하되,
+  조사이면서 동사 활용이기도 한 `하고`는 받지 않는다 — `저장하고 목록으로 돌아왔습니다`가 저장
+  버튼만 보이는 미완료 화면을 통과시키기 때문이다.
+- 정규화한 label이 두 글자보다 짧으면 대조에서 제외한다. 화면 전체가 숫자 키패드처럼 한 글자
+  label뿐이어도 폴백하지 않고 `verified=false`로 둔다.
+- 기준은 개인정보 없는 실기기 참조·eval 18사례의 결정론적 비교로 정했다(#71). 기존 부분 문자열은
+  `TP 9 / TN 2 / FP 6 / FN 1`, 채택한 어절+두 글자는 `9 / 5 / 3 / 1`이었다. clickable label을
+  제외하면 `7 / 7 / 1 / 3`, 인용 label과 goal/expected_result의 어절 겹침을 요구하면
+  `6 / 7 / 1 / 4`라 부정문 FP는 남기면서 정상 완료를 더 막아 채택하지 않았다. fixture와 혼동행렬은
+  `eval/completion-fixtures/evidence_cases.json`과 `eval/tests/test_completion_verify.py`가 고정한다.
+- 이 검사는 인용의 존재만 보므로 부정 의미를 이해하지 않는다. 예를 들어 label `연결`을 정확히
+  인용한 `'연결'이 끊겼습니다`도 통과한다. `negation` 축의 알려진 FP로 fixture에 남겨 다음 정책
+  논의가 이 비용을 수치로 보게 한다.
 - 대조 대상은 **2차 마스킹을 거친 label**이다. 모델이 본 것과 같은 값이어야 한다.
 - 대조할 label이 화면에 하나도 없으면 **검사할 수 없다고 보고 `verified=false`로 둔다**
   (2026-08-21 개정). 원래 결정은 "통과시킨다"였고 근거는 *없는 것을 근거로 거짓 판정을 만들지
@@ -447,19 +479,20 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 - 근거는 label을 **그대로 옮겨 적게** 프롬프트와 필드 설명에서 요구한다. 검사가 글자 그대로의
   포함을 보는데 프롬프트가 "인용 등"이라고만 하면, 풀어 쓴 정당한 근거가 거짓 실패한다.
 
-**이 검사가 못 막는 것 (알고 받아들인 한계).**
+**이 검사가 못 막는 것과 보수적으로 실패하는 것 (fixture에 이름을 붙여 남긴 한계).**
 
 - **화면에 있는 단어를 인용하면서 결론만 틀린 `done`.** 목표가 "카메라 열기"인데 런처 홈에서
   `evidence='카메라가 열렸습니다'`라고 하면 label `카메라`가 실제로 있어 통과한다. **#54의 동기였던
   조기 종료가 이 구멍에 그대로 들어간다** — 지어낸 근거만 걸러질 뿐이다. 조일 후보는 목표를 세운
   뒤 `package_name`이 바뀌었는지를 같이 보는 것인데, 화면 전환 없이 끝나는 목표를 잘못 막을 수
   있어 실사용 로그를 보고 정한다.
-- **어절을 넘는 부분 문자열 일치.** label `사용 중`은 근거 `사용 중지했습니다`에 들어 있다 —
-  인용한 것처럼 보이면서 정반대 상태를 말하는 근거가 통과한다. 공백을 접어도 막히지 않고,
-  단어 경계로 끊으면 조사가 붙는 한국어에서 정당한 근거가 깨진다.
-- **한 글자 label만 있는 화면에서는 사실상 무력하다.** 숫자 키패드처럼 대조 대상이 `0`~`9`뿐이면
-  숫자가 들어간 문장은 대부분 통과한다(`비밀번호 4자리를 입력해 잠금이 풀렸습니다`). 검사가 아예
-  꺼지는 것보다는 낫다는 정도로 받아들인다.
+- **목표와 무관한 긴 label 하나를 인용한 `done`.** 화면에 `전화`가 있다는 말은 카메라가 열렸다는
+  근거가 아니지만 형식 검사는 통과한다. role/clickable 필터는 홈 항목·완료 상태 스위치처럼 정상
+  근거도 버렸고, 목표 문자열 겹침은 열린 앱의 내부 탭명이 목표 문장에 없는 정상 사례를 버려
+  적용하지 않았다.
+- **label을 풀어 쓴 정당한 근거의 `verified=false`.** label `Wi-Fi 사용 중`을 그대로 옮기지 않고
+  `무선 인터넷이 켜져 있습니다`라고만 쓰면 의미는 맞아도 실패한다. 프롬프트가 label 그대로의
+  인용을 요구하고 앱의 미검증 완료 복구 경로가 있으므로, 의미 유사도를 코드로 추측하지 않는다.
 
 ---
 
@@ -467,7 +500,7 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 `app-android/scripts/dev-install.ps1`(CLI). Gradle CLI가 loopback 오류로 죽는 PC가 있으나 스크립트가 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
+| 앱 | **Kotlin / Android**, Gradle 9.5 + AGP 9.3.1 + Kotlin 2.2.10 (버전 카탈로그, wrapper 포함) | 빌드·설치는 Windows `app-android/scripts/dev-install.ps1`, macOS `app-android/scripts/dev-install.sh`(CLI). Windows Gradle CLI의 AF_UNIX 오류는 PowerShell판이 흡수한다(`app-android/README.md`). Android Studio는 디버거·Layout Inspector용. |
 | 앱 식별자 | `applicationId` = **`com.davi.helper`** (debug는 `.debug` 접미어) | PoC의 `com.davipoc.mvp` 재사용 안 함(poc/mvp가 영구히 박힘). Play 내부 테스트 시작(2026-08-19)으로 release ID는 영구 확정됐다. debug 접미어는 두 빌드를 한 기기에 함께 깔기 위한 것(#58). |
 | 앱 SDK | **minSdk 26** (Android 8.0) / target·compileSdk **36** | 26은 접근성·오버레이·알림 채널이 모두 안정적인 하한. 구형 시니어 폰까지 포괄. |
 | 서버 | **Python 3.12 / FastAPI** | `py -3.12` 고정. 원래 근거는 litellm(3.11+)이었으나 그건 빠졌고, 지금은 코드가 `StrEnum`·`typing.Self`(3.11+)를 쓴다. |
@@ -536,12 +569,18 @@ davi/
   팀용 `DAVI_DEV_ACCESS_TOKEN`과 외부 테스트 참가자용 `DAVI_TEST_ACCESS_TOKEN`이 같은
   `X-Davi-Dev-Token` 헤더를 쓰고 **둘 중 하나만 맞으면 통과**한다(둘 다 32자 이상). 저녁에는
   PID 기반 스크립트로 명시 종료한다.
-- Azure 서버도 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
+- Azure 공유 개발 Container App은 `DAVI_ENV=development`를 유지한다. `main`의 서버·인프라 변경만 GitHub Actions가
   digest 고정 base와 Docker 전용 의존성 lock으로 build한다. commit SHA와 Actions run ID/attempt로
   식별되는 불변 image/revision을 배포하고, 정확한 revision/image가 active·healthy·traffic 100%인지
   대조한 뒤 `/health`를 검사한다. PR은 공유 서버를 바꾸지 않는다. 최소/최대 replica와 Uvicorn
   worker는 각각 1이다.
-- Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
+- release APK는 같은 resource group의 별도 `davi-server-release` Container App을 사용하고
+  `DAVI_ENV=production`으로 수동 승격한다(#214). release에는 개발·테스트 토큰을 배선하지 않고,
+  카카오 로그인과 세션 JWT로 공개 추론 endpoint를 보호한다. 로그인 레이트리밋 출처는
+  `DAVI_AUTH_SOURCE=azure_container_apps`일 때 ACA가 보장하는 `X-Forwarded-For`의 가장 오른쪽
+  IP만 사용한다. 이 값은 인증·권한·로그에 쓰지 않으며, 누락·오형식이면 카카오 API 호출 전에
+  닫는다. `beta`는 아래와 같이 코드 수준 경계로만 남고 이 release 배포의 별칭이 아니다.
+- 공유 개발 Azure Container App은 외부 HTTPS ingress만 열고 평문 ingress를 거부한다. API는 32자 이상 개발
   토큰과 기존 전역 rate limit으로 보호한다. 공급자 API 키·개발 토큰·세션 JWT 서명 비밀은 Key Vault의
   versionless secret을 user-assigned Managed Identity로만 읽으며 Git·image·GitHub Actions 변수에는
   넣지 않는다. GitHub 변수가 다루는 것은 secret **이름**과 비밀이 아닌 배포 설정(카카오 앱 ID,
@@ -579,24 +618,17 @@ davi/
   채 pin만 남은 상태는 설정 검증도 `/health` 대조도 통과하고 실제 호출에서만 깨지므로, 배포
   전에 끊는다.
 - 사설 Wi-Fi 평문 HTTP는 **debug APK에만** 허용한다. 빌드는 URL을 RFC1918 사설 IPv4로 제한한다.
-  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용하고 원격 접근 토큰을
-  요구한다. **release APK도 그 Azure endpoint와 접근 토큰을 포함한다**(2026-08-19, #248) — 평문
-  통신은 그대로 거부한다. 사설 Wi-Fi 평문 URL과 debug 전용 토큰(`DAVI_DEBUG_*`)은 여전히 release에
-  들어가지 않는다.
+  Azure 경로는 기본 443 포트와 `*.azurecontainerapps.io`의 **HTTPS**만 허용한다. development
+  Container App은 개발 접근 토큰을, release Container App은 카카오 세션 JWT를 요구한다.
+  사설 Wi-Fi URL과 debug 전용 값(`DAVI_DEBUG_*`)은 release에 들어가지 않는다.
 - Azure 로그는 기존 비식별 JSON Lines만 Log Analytics에 30일 보존한다. 클라우드에서는
   `DAVI_DOGFOOD_DEVICE_IDS`를 비워 원본 도그푸딩 raw를 저장하지 않는다.
-- ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 공용 개발 서버에 쓰지 않는다. #94의
-  Azure endpoint는 **debug APK와 release APK가 함께 바라보는 개발 서버**다(#248). **release가 붙는
-  것이 이 서버를 제품 인프라로 만들지는 않는다** — 서버는 development 프로필이고 모든 원격 요청이
-  접근 토큰을 요구하며, 제품 사용자 인증을 대신하지 않는다. **여기에 붙는 주체는 셋이다** —
-  팀 debug APK · release APK · 외부 테스트 참가자(#257). 사설 Wi-Fi LAN 서버에는 debug만 붙는다.
-- **release에 실리는 접근 토큰은 비밀이 아니다.** APK에서 추출되므로 기밀이 아니라 **회전**으로
-  다룬다 — 기간 제한 임시 capability로 보고 내부 테스트 시작 직전에 적용, 종료 즉시 서버에서
-  무효화한다(`local.properties` 삭제는 폐기가 아니다). 팀 전체가 공유하는 공급자 쿼터에 물려
-  있다는 것이 그 이유다. beta·production의 세션 접근 통제·비용 상한·로그 정책은 위 #214
-  규칙으로 확정한다.
+- ngrok / Cloudflare Tunnel 같은 임의 인터넷 공개 경로는 쓰지 않는다. #94 development endpoint에는
+  팀 debug APK와 외부 테스트 참가자만 붙고(#257), release APK는 #214의 release endpoint에 붙는다.
+  release APK에는 개발 접근 토큰을 싣지 않으며 로그인으로 발급한 세션 JWT만 사용한다.
 - API 키는 서버 환경변수/Key Vault. **앱 APK에는 키를 넣지 않는다**(§5-2 이행).
-- 제품용 클라우드 관리형 호스팅으로의 이전은 **베타 진입 전** 별도 작업으로 미룬다.
+- release Container App은 기존 ACR·Key Vault·managed environment·identity를 재사용하되 revision과
+  secrets 배선은 별도 Bicep/수동 승격 workflow로 관리한다. 사용자 DB 등 계정 인프라는 여전히 별도다.
 
 ---
 
@@ -672,6 +704,3 @@ HANDOFF §5 중 **이 사이클에서 이행할 항목**을 추적하던 절이�
   **재표시 기계는 함께 걷지 않는다.** 앱 진입이 필요 없어져도 `root == null` 청소는 "읽을 창이
   없음"과 `onInterrupt`에도 걸리고, 회복 경로가 없으면 화면이 안 바뀌는 구간에서 오버레이가
   영구히 빈다(PR #63 3차 리뷰 실측). 걷으려면 그 청소 경로부터 재설계해야 한다.
-- **서버 상수 첫 추정치 재조정** — #81의 앱→서버→Gemini 단계별 `duration_ms`가 쌓이면
-  Android read timeout과 서버 전체 Gemini budget을 #82에서 함께 정한다. 앱이 먼저 포기해
-  동일 화면 호출이 겹친 2026-08-04 실측이 근거다.

@@ -18,10 +18,23 @@ Kotlin 파일을 정규식으로 읽는 방식이 투박하다는 것은 안다.
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
-from app.schemas import ActionType, ErrorKind, RateLimitScope, ScrollAxis, SwipeDirection
+from app import schemas
+from app.schemas import (
+    ActionType,
+    AppCandidateAvailability,
+    AppResolutionStatus,
+    ClarificationAnswerSource,
+    ConversationRole,
+    ErrorKind,
+    IntentDialogueStatus,
+    RateLimitScope,
+    ScrollAxis,
+    SwipeDirection,
+)
 
 CONTRACT_KT = (
     Path(__file__).resolve().parents[2]
@@ -36,6 +49,19 @@ CONTRACT_KT = (
     / "Contract.kt"
 )
 ANDROID_MANIFEST = CONTRACT_KT.parents[4] / "AndroidManifest.xml"
+
+_ENUM_PAIRS = (
+    ("ActionType", ActionType),
+    ("SwipeDirection", SwipeDirection),
+    ("ScrollAxis", ScrollAxis),
+    ("ApiErrorKind", ErrorKind),
+    ("RateLimitScope", RateLimitScope),
+    ("ConversationRole", ConversationRole),
+    ("ClarificationAnswerSource", ClarificationAnswerSource),
+    ("IntentDialogueStatus", IntentDialogueStatus),
+    ("AppCandidateAvailability", AppCandidateAvailability),
+    ("AppResolutionStatus", AppResolutionStatus),
+)
 
 
 def _kotlin_enum_values(source: str, enum_name: str) -> set[str]:
@@ -59,13 +85,7 @@ def contract_source() -> str:
 
 @pytest.mark.parametrize(
     ("kotlin_enum", "python_enum"),
-    [
-        ("ActionType", ActionType),
-        ("SwipeDirection", SwipeDirection),
-        ("ScrollAxis", ScrollAxis),
-        ("ApiErrorKind", ErrorKind),
-        ("RateLimitScope", RateLimitScope),
-    ],
+    _ENUM_PAIRS,
 )
 def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_enum) -> None:
     app_values = _kotlin_enum_values(contract_source, kotlin_enum)
@@ -80,6 +100,39 @@ def test_app_enum_matches_server(contract_source: str, kotlin_enum: str, python_
         f"  서버에만 있음: {sorted(only_server) or '없음'}\n"
         "계약은 앱·서버·평가 셋이 동시에 무는 지점이다. 한쪽만 고치지 말 것 "
         "(server/CLAUDE.md 'API 계약 결정')."
+    )
+
+
+def test_every_kotlin_contract_enum_is_in_the_drift_check(contract_source: str) -> None:
+    """앱에 wire enum을 추가하면서 값 대조 목록을 빼먹으면 그 커밋에서 바로 실패한다."""
+
+    declared = set(re.findall(r"^\s*enum\s+class\s+(\w+)", contract_source, re.MULTILINE))
+    checked = {kotlin_enum for kotlin_enum, _ in _ENUM_PAIRS}
+
+    assert declared == checked, (
+        f"Contract.kt enum과 드리프트 검사 목록이 다르다. "
+        f"검사 누락: {sorted(declared - checked) or '없음'}, "
+        f"선언 누락: {sorted(checked - declared) or '없음'}"
+    )
+
+
+def test_every_server_wire_enum_is_in_the_drift_check() -> None:
+    """서버 schemas.py에 enum을 먼저 추가해도 앱 대응·값 대조 없이는 통과하지 못한다."""
+
+    declared = {
+        value
+        for value in vars(schemas).values()
+        if isinstance(value, type)
+        and issubclass(value, StrEnum)
+        and value is not StrEnum
+        and value.__module__ == schemas.__name__
+    }
+    checked = {python_enum for _, python_enum in _ENUM_PAIRS}
+
+    assert declared == checked, (
+        "schemas.py wire enum과 드리프트 검사 목록이 다르다. "
+        f"검사 누락: {sorted(item.__name__ for item in declared - checked) or '없음'}, "
+        f"선언 누락: {sorted(item.__name__ for item in checked - declared) or '없음'}"
     )
 
 
@@ -100,6 +153,7 @@ def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
         "action_type",
         "direction",
         "target_label",
+        "target_node_id",
         "screen_hint",
         "structure_signature",
         "screen_changed",
@@ -125,6 +179,51 @@ def test_step_wire_names_match_the_kotlin_serial_names(contract_source: str) -> 
         assert expected in step_block, f"GuideStep.{name}이 Kotlin 쪽에 없다"
 
 
+# **앱이 아직 안 받는 응답 필드.** 여기 있는 이름은 서버가 보내지만 Kotlin `GuideAction`에
+# 없어도 된다 — `ignoreUnknownKeys=true`라 파싱은 살아 있고, 값만 안 넘어간다.
+# **비워 두는 것이 정상이고, 채워 두는 것은 빚이다.** 소비자 PR이 Kotlin 필드를 넣으면서 함께
+# 지운다. 늘리려면 "왜 앱이 아직 못 받는가"를 이슈로 적을 것 — 조용히 늘면 이 테스트는 드리프트
+# 테스트가 아니라 드리프트 목록이 된다.
+_ACTION_FIELDS_APP_DOES_NOT_READ_YET = {
+    # C21 복사 신호(#404). 소비자는 「바로 입력」 버튼(#405)이고 그 PR이 이 줄을 지운다.
+    "input_text",
+}
+
+
+def test_action_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:
+    """응답의 action도 `GuideStep`과 같은 전수 대조를 받는다(PR #406 리뷰).
+
+    스팟체크만 있던 자리다. 서버가 필드를 늘렸는데 Kotlin이 안 따라오면 **디코딩은 조용히
+    성공하고 값만 안 넘어가므로**, 소비자 PR이 필드 추가를 빠뜨려도 아무 테스트도 울지 않았다.
+    """
+
+    from app.schemas import GuideAction
+
+    action_block = _kotlin_class_body(contract_source, "GuideAction")
+    for name in GuideAction.model_fields:
+        if name in _ACTION_FIELDS_APP_DOES_NOT_READ_YET:
+            continue
+        expected = f'@SerialName("{name}")' if "_" in name else f"val {name}"
+        assert expected in action_block, f"GuideAction.{name}이 Kotlin 쪽에 없다"
+
+
+def test_pending_action_fields_are_really_absent_from_kotlin(contract_source: str) -> None:
+    """위 목록이 **낡지 않게** 한다.
+
+    Kotlin이 필드를 받기 시작했는데 목록에 이름이 남아 있으면, 그때부터 그 필드는 전수 대조
+    **밖**이라 이름이 어긋나도 안 잡힌다. 목록을 지우는 일을 사람 기억에 맡기지 않는다.
+    """
+
+    from app.schemas import GuideAction
+
+    action_block = _kotlin_class_body(contract_source, "GuideAction")
+    for name in _ACTION_FIELDS_APP_DOES_NOT_READ_YET:
+        assert name in GuideAction.model_fields, f"{name}은 서버에도 없다 — 목록에서 지울 것"
+        assert f'@SerialName("{name}")' not in action_block, (
+            f"Kotlin이 {name}을 받기 시작했다 — _ACTION_FIELDS_APP_DOES_NOT_READ_YET에서 지울 것"
+        )
+
+
 def _kotlin_class_body(source: str, name: str) -> str:
     """`data class <name>(...)`의 괄호 안만 돌려준다. 없으면 그 자체가 드리프트다."""
 
@@ -148,10 +247,25 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
     assert "ime_visible" in Screen.model_fields
 
 
+def test_screen_content_signature_exists_on_both_sides(contract_source: str) -> None:
+    """#410의 내용 서명이 `Screen`에서 한쪽에만 생기지 않게 한다.
+
+    스텝 쪽은 위 두 테스트가 이미 덮는다(필드 집합 동등 비교 + wire 이름 대조). 여기서 새로
+    막는 것은 `Screen`이다 — **서버의 판정이 두 자리를 맞대는 것이라** 현재 화면 쪽이 빠지면
+    이력에 값이 흐르는데 비교 상대가 없다.
+    """
+
+    from app.schemas import Screen
+
+    assert (
+        '@SerialName("content_signature") val contentSignature: String? = null'
+        in _kotlin_class_body(contract_source, "Screen")
+    )
+    assert "content_signature" in Screen.model_fields
+
+
 def test_app_resolution_contract_exists_on_both_sides(contract_source: str) -> None:
     """#128의 후보·대조 상태가 Kotlin/Python 중 한쪽에만 생기지 않게 한다."""
-
-    from app.schemas import AppCandidateAvailability, AppResolutionStatus
 
     assert _kotlin_enum_values(contract_source, "AppCandidateAvailability") == {
         member.value for member in AppCandidateAvailability

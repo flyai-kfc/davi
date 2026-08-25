@@ -258,7 +258,14 @@ def test_every_provider_produces_the_same_guide_action(cls, body_factory):
 
     action = RemoteLlmClient(_provider(cls, handler)).reason(_request())
 
-    assert action.model_dump() == {**_ACTION, "action_type": "tap", "direction": None}
+    # `input_text`는 응답 본문에 없다 — 값이 없는 선택 필드를 생략하는 Gemini 규약이 다른
+    # 공급자에서도 같은 계약(None)으로 도착하는지 함께 본다(C21).
+    assert action.model_dump() == {
+        **_ACTION,
+        "action_type": "tap",
+        "direction": None,
+        "input_text": None,
+    }
 
 
 @pytest.mark.parametrize("cls", [OpenAiProvider, AnthropicProvider])
@@ -405,7 +412,7 @@ def test_output_budget_leaves_room_for_hidden_reasoning_tokens(set_runtime_profi
     assert _built().max_output_tokens == 1024
 
     # Anthropic은 thinking을 끌 수 없는 모델이 있어(sonnet-5·opus-5는 생략해도 adaptive
-    # thinking이 켜진다) 추론 몫을 미리 얹는다. 이게 없으면 slot-fill의 512를 thinking이 먹고
+    # thinking이 켜진다) 추론 몫을 미리 얹는다. 이게 없으면 정상 응답 최소선을 thinking이 먹고
     # stop_reason=max_tokens로 끝난다.
     set_runtime_profile(
         davi_use_stub_llm=False,

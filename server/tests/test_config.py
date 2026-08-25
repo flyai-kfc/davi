@@ -67,6 +67,34 @@ def test_development_stub_starts_without_api_key():
     assert configured.davi_dev_access_token.get_secret_value() == "d" * 32
 
 
+@pytest.mark.parametrize("profile", ["development", "beta"])
+def test_non_production_rejects_azure_container_apps_auth_source(profile):
+    values = {"davi_env": profile, "davi_auth_source": "azure_container_apps"}
+    if profile == "beta":
+        values.update(
+            davi_use_stub_llm=False,
+            gemini_api_key="server-side-key",
+            davi_kakao_app_id=777,
+            davi_auth_jwt_secret="s" * 32,
+        )
+
+    with pytest.raises(ValidationError, match="production에서만"):
+        _settings(**values)
+
+
+def test_production_accepts_azure_container_apps_auth_source():
+    configured = _settings(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        gemini_api_key="server-side-key",
+        davi_kakao_app_id=777,
+        davi_auth_jwt_secret="s" * 32,
+        davi_auth_source="azure_container_apps",
+    )
+
+    assert configured.davi_auth_source == "azure_container_apps"
+
+
 def test_development_real_llm_requires_api_key():
     with pytest.raises(ValidationError, match="GEMINI_API_KEY"):
         _settings(davi_use_stub_llm=False)

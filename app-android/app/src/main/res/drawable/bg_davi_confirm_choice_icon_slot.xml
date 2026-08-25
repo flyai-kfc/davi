@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ①③의 글리프 칸(#396 · 08-22 시안). 40x40 r12 -> 48dp · r12(반지름은 1:1).
+  위에 ①은 O(davi_success), ③은 ✕(davi_highlight)가 얹힌다 — 각각 4.07:1 · 3.47:1로 A2를 넘는다.
+  ②의 같은 자리에는 색 대신 **기기 앱 아이콘**이 들어가므로 이 배경을 쓰지 않는다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/davi_confirm_choice_icon_slot" />
+    <corners android:radius="@dimen/davi_shortcut_icon_radius" />
+</shape>

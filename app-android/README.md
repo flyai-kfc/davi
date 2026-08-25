@@ -13,15 +13,38 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 
 ## 빌드·설치 (CLI 한 줄)
 
+Windows PowerShell:
+
 ```powershell
 ./scripts/dev-install.ps1
+```
+
+macOS Bash:
+
+```bash
+./scripts/dev-install.sh
 ```
 
 빌드 → 기기 설치 → **접근성 서비스 재활성화**까지 한 번에 한다.
 재설치하면 접근성 권한이 꺼지는 문제(`HANDOFF.md` §12)를 스크립트가 흡수하므로 매번 설정에
 들어갈 필요가 없다.
 
-이후 로그: `adb logcat -s GuideSvc`
+macOS에서는 다음을 준비한다.
+
+- Android Studio 설치본의 JBR 또는 실행 가능한 Java가 있는 `JAVA_HOME`
+- Android SDK. `ANDROID_HOME`/`ANDROID_SDK_ROOT` → `local.properties`의 `sdk.dir` →
+  `~/Library/Android/sdk` → `PATH`의 `adb` 순서로 찾는다.
+- `adb devices`에서 `device` 상태로 보이는 승인된 기기 한 대. 여러 대면 `--serial`로 고른다.
+
+스크립트 실패는 0이 아닌 exit code로 돌아오므로 다른 Bash 실행기는 `set -e`나 `$?`로 받는다.
+실기기 로그는 `adb -s <serial> logcat -s GuideSvc`로 본다. `-t N`은 태그 필터 전에 버퍼를
+잘라 필요한 로그가 0줄이 될 수 있으므로 구간이 필요하면 `-T '<MM-DD HH:MM:SS.mmm>'`를 쓴다.
+
+2026-08-24 macOS 기본 Bash 3.2.57과 SM-S921N(Android 15,
+`ro.build.version.oneui=70000`)에서 기본 명령의 debug 빌드·설치, 일부러 접근성을 끈 뒤
+`--a11y-only` 복구, `--status`의 목록 등록·실제 바인딩 판정을 확인했다. 복구 뒤 전역
+`accessibility_enabled=1`, `Crashed services:{}`였고 `GuideSvc`의 연결 로그와
+`privacyMasking=on`도 확인했다. 서버 주소와 기기 식별자는 기록하지 않았다.
 
 ### 지금 상태만 보고 싶다면
 
@@ -31,17 +54,23 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 ./scripts/dev-install.ps1 -Status
 ```
 
+```bash
+./scripts/dev-install.sh --status
 ```
+
+```text
 기기      : SM-S921N [R3CX...] 
 패키지    : com.davi.helper.debug 0.2.0-debug 설치됨
-접근성    : 목록엔 있으나 바인딩 없음 — -A11yOnly로 복구
+접근성    : 목록엔 있으나 바인딩 없음 — --a11y-only로 복구
 ```
+
+위는 Bash판 출력 예시다. PowerShell판은 같은 판정의 복구 명령을 `-A11yOnly`로 표시한다.
 
 오버레이 줄은 없다 — `SYSTEM_ALERT_WINDOW`를 걷어내면서 확인 코드도 함께 걷었다(#212).
 
 **목록 등록과 실제 바인딩은 다르다.** `settings`에 값이 들어가 있어도 서비스가 붙지 않은 상태가
-있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. `-Status`는 그
-둘을 구분해서 보여준다.
+있고(`dumpsys`의 `Bound services:{}`), 그때 앱은 조용히 아무 안내도 내지 않는다. 두 스크립트의
+상태 명령은 목록·바인딩·전역 `accessibility_enabled`를 구분해서 보여준다.
 
 ### Android Studio로 빌드했다면 권한만 되살린다
 
@@ -52,22 +81,33 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 전용 규칙은
 ./scripts/dev-install.ps1 -A11yOnly
 ```
 
+```bash
+./scripts/dev-install.sh --a11y-only
+```
+
+Bash판이 자동 복구 뒤에도 `bound`를 확인하지 못하면 접근성 설정 화면을 연다. 기기에서
+`설정 → 접근성 → 설치된 앱 → 다비(개발)`을 직접 켠 뒤 `--status`로 다시 확인한다. 토글 사이클은
+기존 TalkBack 등 다른 서비스 목록을 보존하며, 중간에 실패·중단되면 진입 시점 목록을 복원하고
+전역 접근성을 켠다.
+
 옵션 정리
 
-| 옵션 | 뜻 |
-|---|---|
-| `-Status` | 아무것도 바꾸지 않고 상태만 출력. 다른 옵션은 무시 |
-| `-A11yOnly` (= `-SkipBuild`) | 빌드·설치 없이 권한만 복구 |
-| `-ClearLog` | 끝나고 logcat 버퍼 비우기 |
-| `-SkipAccessibility` | 접근성 권한을 건드리지 않음 |
-| `-Serial <serial>` | 기기가 여러 대일 때 대상 지정 (`ANDROID_SERIAL`도 됨) |
-| `-PackageName <pkg>` | debug 패키지명을 직접 지정 |
+| PowerShell | macOS Bash | 뜻 |
+|---|---|---|
+| `-Status` | `--status` | 아무것도 바꾸지 않고 상태만 출력. 다른 옵션은 무시 |
+| `-A11yOnly` (= `-SkipBuild`) | `--a11y-only` (= `--skip-build`) | 빌드·설치 없이 권한만 복구 |
+| `-ClearLog` | `--clear-log` | 끝나고 logcat 버퍼 비우기 |
+| `-SkipAccessibility` | `--skip-accessibility` | 접근성 권한을 건드리지 않음 |
+| `-Serial <serial>` | `--serial <serial>` | 기기가 여러 대일 때 대상 지정 (`ANDROID_SERIAL`도 됨) |
+| `-PackageName <pkg>` | `--package-name <pkg>` | debug 패키지명을 직접 지정 |
 
-기기가 **없거나 여러 대**면 설치하지 않고 멈춘다. 여러 대일 때는 `-Serial`로 대상을 지정한다.
+기기가 **없거나 여러 대**면 설치하지 않고 멈춘다. 단 상태 명령은 아무것도 바꾸지 않고 원인을
+한 줄로 출력한다.
 
 패키지명은 `app/build/outputs/apk/debug/output-metadata.json`의 `applicationId`에서 읽는다.
 debug 앱 ID에 접미어가 붙어도 올바른 접근성 서비스를 켜기 위해서다. 산출물이 없으면
 `com.davi.helper.debug`로 떨어지고, `-PackageName`으로 덮어쓸 수 있다.
+macOS에서는 같은 값을 `--package-name`으로 넘긴다.
 
 ### 특수 권한은 접근성 하나뿐이다
 
@@ -98,6 +138,8 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 ### Gradle
 
 - **Gradle Wrapper가 있다.** `./gradlew test assembleDebug`로 단위 테스트와 디버그 APK를 함께 검증한다(CI도 이 기준을 쓴다). Gradle 9.5.0.
+- next-step·slot-fill·app-resolution은 공용 45초 call timeout을 쓴다. 서버의 40초 논리 작업
+  deadline보다 먼저 끊지 않으며, 실패 재시도 백오프는 요청 시작이 아니라 실패 완료부터 센다(#82).
 - `gradle/gradle-daemon-jvm.properties`가 데몬 JVM을 **Java 21 / JetBrains**로 고정한다.
   다른 JDK로 열면 Gradle이 해당 JDK를 자동으로 내려받는다.
 - `gradlew`는 실행 비트(100755)와 LF 줄바꿈으로 커밋돼 있다(`.gitattributes`). Windows에서 편집해도
@@ -118,8 +160,9 @@ JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<저장소>/.gradle-afunix-tmp
 닫힌 루프를 처음부터 끝까지 한 번 돌리는 절차다. **USB로 붙은 기기는 터널이 필요 없다.**
 
 > **Windows라면 `scripts/dev-driver.ps1`이 아래 절차를 감싼다** — `env`로 전제조건을 한 번에
-> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 안 돌므로
-> **아래 수동 절차가 그대로 유효하다**(이식은 #72). `scripts/README.md` 참고.
+> 판정하고, `server`·`install`·`url set`·`step`이 각 단계를 대신한다. 맥에서는 설치·접근성
+> 복구만 `dev-install.sh`가 맡고 세션 오케스트레이션은 제공하지 않으므로 **아래 수동 절차가
+> 그대로 유효하다**. `scripts/README.md` 참고.
 
 ```powershell
 # 1) 서버 (스텁으로 먼저)
@@ -130,6 +173,12 @@ adb reverse tcp:8000 tcp:8000
 
 # 3) local.properties 에 DAVI_DEBUG_SERVER_URL=http://127.0.0.1:8000 을 넣고 설치
 cd app-android; ./scripts/dev-install.ps1 -ClearLog
+```
+
+macOS의 3번은 다음과 같다.
+
+```bash
+cd app-android && ./scripts/dev-install.sh --clear-log
 ```
 
 앱에서 목표를 입력(또는 **말로 입력**) → **안내 시작** → 홈으로 이동 → 화면 위 강조·안내문 확인 → 따라 하면 다음 안내.
@@ -189,7 +238,7 @@ loopback 또는 RFC1918 사설 IPv4 host 하나에만 `domain-config` 평문 예
 Container Apps HTTPS endpoint를 쓰면 이 예외 자체를 만들지 않고 일반 TLS로 연결한다.
 **릴리스 빌드는 개발 endpoint 설정을 거부하며 평문도 계속 막혀 있다.**
 
-### 관통 로그 (2026-07-27, SM-S921N / Android 16 / One UI 8.5)
+### 관통 로그 (2026-07-27, SM-S921N / Android 15 / One UI 7.0)
 
 ```
 GuideSvc: event=screen_stable package=com.sec.android.app.launcher element_count=8 clickable_count=8
@@ -230,12 +279,10 @@ DAVI_DISABLE_PRIVACY_MASKING=false
 `local.properties`가 있으면 그 값이 우선하며, 환경변수도 debug 전용이고 release 검증에서는
 개발 설정으로 취급한다.
 
-**release는 Azure 개발 서버를 바라본다**(2026-08-19, #248). URL은 공개 식별자라 상수이고
-(`build.gradle.kts`의 `releaseServerUrl`), 접근 토큰은 `local.properties`의
-`DAVI_RELEASE_ACCESS_TOKEN`을 **`localSetting`으로** 읽는다 — release가 정당하게 쓰는 값이라
-`debugSetting`이 막는 대상에 넣으면 안 된다. **값이 비면 `verifyReleaseConfiguration`이 빌드를
-실패시킨다.** 토큰은 APK에서 추출되므로 비밀이 아니고 **회전으로 다룬다**(내부 테스트 종료 즉시
-서버에서 무효화). 평문 HTTP는 그대로 거부한다.
+**release는 Azure release 전용 Container App을 바라본다**(#214). URL은 공개 식별자라
+`build.gradle.kts`의 `releaseServerUrl` 상수로 두며, 서버는 `production` 프로필로 실행한다.
+개발 접근 토큰은 release APK에 넣지 않는다. 로그인으로 받은 세션 JWT가 추론 endpoint 접근을
+통제하며, 평문 HTTP는 그대로 거부한다.
 
 `local.properties`에 `DAVI_DEBUG_SERVER_URL` 또는 `DAVI_DEBUG_ACCESS_TOKEN`이 남아 있으면
 release 빌드 자체가 실패한다. 이전 `DAVI_SERVER_URL`은 사용하지 않는다.
@@ -320,6 +367,8 @@ sha1 -binary | base64` 한 줄로도 같은 값이 나온다.
 같은 Wi-Fi 공용 서버의 기동·방화벽·DHCP 예약·종료 절차는 `../server/README.md`를 따른다.
 Azure 공유 개발 서버의 최초 설정과 팀 전달 절차는
 [`../docs/development/azure-dev-server.md`](../docs/development/azure-dev-server.md)를 따른다.
+release Container App의 준비·수동 승격 절차는
+[`../docs/deployment/azure-release-server.md`](../docs/deployment/azure-release-server.md)를 따른다.
 
 ## Play Console 제출 선언 — 대조표
 
@@ -383,6 +432,7 @@ Play는 공개적으로 접근 가능한 URL을 요구한다. **이 저장소는
 | `.../GuideApiClient.kt` | `/v1/next-step` 호출 및 API/네트워크 오류 분류 |
 | `.../SlotFillApiClient.kt` | `/v1/intent/slot-fill` 계약·추적 header·오류 분류 |
 | `.../AppResolutionApiClient.kt` | `/v1/intent/app-resolution` 계약·추적 header·오류 분류 |
+| `.../InferenceHttpClient.kt` | 세 추론 endpoint의 공용 45초 call timeout |
 | `.../RequestTracing.kt` | 화면·세션 수명주기의 Logical Request ID와 HTTP attempt 계약 |
 | `.../GuideTelemetry.kt` | 원문을 받지 않는 비식별 `screen/request/response` 이벤트 |
 | **경계가 되는 판정 단위** (여기 없는 것도 JVM 테스트가 있다 — `app/src/test/` 참고) | |
@@ -401,13 +451,13 @@ Play는 공개적으로 접근 가능한 URL을 요구한다. **이 저장소는
 
 ## 지금 무엇이 진짜인가
 
-> **닫힌 루프가 실기기에서 한 번 관통됐다** (2026-07-27, SM-S921N / Android 16 / One UI 8.5).
+> **닫힌 루프가 실기기에서 한 번 관통됐다** (2026-07-27, SM-S921N / Android 15 / One UI 7.0).
 > 목표 입력 → 안내 → 사용자가 따라 함 → 화면 변화 감지 → `done`까지. 스텁 1회, Gemini 실호출 1회.
 > API 키는 앱에 넣지 않는다 — 서버만 안다.
 
 **동작하는 구현**
-- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL·접근 토큰 주입 — debug는 `DAVI_DEBUG_*`,
-  release는 Azure 상수 + `DAVI_RELEASE_ACCESS_TOKEN`), 매니페스트, 접근성 서비스 등록.
+- Gradle 구성(버전 카탈로그, viewBinding, 빌드 타입별 서버 URL — debug는 `DAVI_DEBUG_*`와
+  개발 접근 토큰, release는 Azure release 상수와 세션 JWT), 매니페스트, 접근성 서비스 등록.
 - `OnboardingActivity` → `ConversationActivity` + `GuideSession` — 접근성 권한이 갖춰지면 대화 화면으로
   넘어가고, 거기서 목표를 정해 안내를 시작·중지한다(#123). 밖에서 권한이 꺼지면 세션을 끊고
   온보딩으로 되돌린다. 세션은 인메모리라 앱이 죽으면 함께 끝난다.
@@ -450,5 +500,5 @@ Play는 공개적으로 접근 가능한 URL을 요구한다. **이 저장소는
 - 정상 왕복: 같은 `logical_request_id`의 `request_started` → `request_finished outcome=success`.
 - 서버가 꺼짐: `request_finished outcome=network_error`만 남고 서비스는 계속 실행된다.
 - 속성 확인: `adb shell uiautomator dump` (UTF-8로 읽기). **우리 서비스가 보는 트리의 대용은 아니다** —
-  덤프는 `visibleToUser=false`에서 서브트리를 끊는다(`CLAUDE.md` 도구 함정).
+  덤프는 `visibleToUser=false` 노드 하나에서 바로 서브트리를 끊는다(`CLAUDE.md` 도구 함정).
 - adb 충돌 시: `taskkill /F /IM adb.exe` → `adb start-server`.

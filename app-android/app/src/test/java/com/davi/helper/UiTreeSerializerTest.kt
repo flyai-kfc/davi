@@ -55,6 +55,74 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `상한은 안 보임이 연속된 길이에만 걸린다`() {
+        // 실측이 정한 상한은 4다. **1은 안 된다** — #358이 되찾은 요소가 깊이 1에 있어
+        // (배민 메뉴 상세 7개·가게 11개), 거기서 끊으면 그 요소들이 통째로 사라진다.
+        // 손실 0의 하한이 1이고 세 겹을 여유로 얹었다(근거는 `MAX_HIDDEN_RUN` KDoc).
+        // **상한을 올리거나 내리면 이 세 줄도 함께 고친다.**
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(1))
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(4))
+        assertTrue(UiTreeSerializer.exceedsHiddenChain(5))
+
+        // 경계가 `>=`로 밀리는 것을 막는다. cap을 받는 형태라 값과 규칙을 따로 고정할 수 있다.
+        assertFalse(UiTreeSerializer.exceedsHiddenChain(run = 5, cap = 5))
+        assertTrue(UiTreeSerializer.exceedsHiddenChain(run = 6, cap = 5))
+    }
+
+    @Test
+    fun `보이는 노드를 만나면 사슬이 0으로 되돌아간다`() {
+        // **리셋이 빠지는 것이 이 상한의 진짜 실패 방식이다.** 값 판정만 고정하면 못 잡는다 —
+        // 리셋이 없으면 사슬이 화면 전체에 누적돼 깊은 트리의 아래쪽이 통째로 사라진다.
+        assertEquals(0, UiTreeSerializer.nextHiddenRun(visibleToUser = true, previousRun = 7))
+        assertEquals(0, UiTreeSerializer.nextHiddenRun(visibleToUser = true, previousRun = 0))
+
+        // 안 보이면 한 칸씩만 는다.
+        assertEquals(1, UiTreeSerializer.nextHiddenRun(visibleToUser = false, previousRun = 0))
+        assertEquals(3, UiTreeSerializer.nextHiddenRun(visibleToUser = false, previousRun = 2))
+    }
+
+    @Test
+    fun `가림 스윕을 건너뛰는 형제는 덮개 판정이 버리던 형제와 같다`() {
+        // **이 동치가 「화면 밖 형제는 스윕하지 않는다」의 근거 전부다**(#367).
+        // `RectCover.isCovered`가 화면으로 자른 뒤 빈 조각을 버리므로(`clip.isEmpty` → continue),
+        // 그 형제의 가림 판정 결과는 결과에 닿지 못한다. 한쪽 식이 바뀌면 여기서 갈린다.
+        val screen = RectCover.Box(0, 0, 1080, 2340)
+        val boxes = listOf(
+            // #358의 배민 메뉴 상세 하단 바. 안 보인다고 보고하면서 화면 안에 면적을 갖는다 —
+            // 이런 형제는 계속 스윕한다.
+            RectCover.Box(0, 1928, 1080, 2178),
+            // 오프스크린 ViewPager 페이지의 두 얼굴: 폭 0과 화면 오른쪽 밖(실측, #359 표본).
+            RectCover.Box(540, 0, 540, 2340),
+            RectCover.Box(1080, 0, 2160, 2340),
+            // 화면 안이어도 빈 사각형은 덮개가 될 수 없다.
+            RectCover.Box(100, 200, 100, 400),
+            RectCover.Box(100, 200, 400, 200),
+            // 화면 위·아래로 완전히 벗어난 것.
+            RectCover.Box(0, -500, 1080, -100),
+            RectCover.Box(0, 2340, 1080, 2800),
+            // 변이 맞닿기만 한 것 — 좌·상 양쪽.
+            RectCover.Box(-100, 0, 0, 2340),
+            RectCover.Box(0, -100, 1080, 0),
+            // 목록의 첫 행처럼 화면 위로 걸친 것은 살아 있다.
+            RectCover.Box(0, -80, 1080, 40),
+            // 화면을 통째로 덮는 것.
+            RectCover.Box(-10, -10, 1090, 2350),
+        )
+        for (box in boxes) {
+            assertEquals(
+                "box=$box",
+                !box.intersect(screen).isEmpty,
+                UiTreeSerializer.boxIntersects(box.left, box.top, box.right, box.bottom, screen),
+            )
+        }
+
+        // 위 동치와 별개로 값 자체도 못박는다 — 두 식이 함께 틀리는 것을 막는다.
+        assertTrue(UiTreeSerializer.boxIntersects(0, 1928, 1080, 2178, screen))
+        assertFalse(UiTreeSerializer.boxIntersects(540, 0, 540, 2340, screen))
+        assertFalse(UiTreeSerializer.boxIntersects(1080, 0, 2160, 2340, screen))
+    }
+
+    @Test
     fun `방향 액션이 있으면 그것으로 축을 정한다`() {
         // 모양과 반대여도 액션이 이긴다. 가로로 넓은 세로 스크롤러가 실제로 있다.
         assertEquals(
@@ -184,7 +252,7 @@ class UiTreeSerializerTest {
 
     @Test
     fun `이름 없는 클릭 노드는 상태를 조상에 맡긴다`() {
-        // 실측(One UI 8.5 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
+        // 실측(SM-S921N / One UI 7.0 SwitchPreference): Switch가 clickable인데 text·desc가 둘 다 없어
         // 자기 요소로 못 나간다. 조상이 안 올리면 켬/끔이 화면에서 사라진다(#288 리뷰).
         assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "", editable = false))
         assertEquals(false, UiTreeSerializer.emitsOwnElement(label = "   ", editable = false))

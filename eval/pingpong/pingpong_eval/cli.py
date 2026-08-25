@@ -18,9 +18,9 @@ from pathlib import Path
 
 from .judge import judge as run_judge
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
-from .metrics import in_batch, transcript_metrics
+from .metrics import batch_of, in_batch, summarize, transcript_metrics
 from .models import JudgeBatch, ScenarioFile, ScenarioResult, StopReason, Transcript
-from .report import write_run
+from .report import render_completion_comparison, write_run
 from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
 from .user_sim import UserSimulator
@@ -41,6 +41,23 @@ def scenario_digest(path: Path) -> str:
     """
 
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
+
+def _load_results(path: Path) -> list[ScenarioResult]:
+    """저장된 transcript를 정본으로 코드 지표를 다시 계산한다.
+
+    #316 지표가 생기기 전 run의 ``metrics``는 새 키가 없다. 예전 dict를
+    그대로 쓰면 compare가 관측하지 않은 값을 0으로 보여 준다.
+    """
+
+    results = [
+        ScenarioResult.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    for result in results:
+        result.metrics = transcript_metrics(result.transcript)
+    return results
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -93,11 +110,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         )
         return 1
     scenarios = {s.id: s for s in load_scenarios(args.scenarios).scenarios}
-    results = [
-        ScenarioResult.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    results = _load_results(path)
 
     picked = results
     if args.difficulty:
@@ -213,7 +226,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"준비 실패: {error}", file=sys.stderr)
         return 1
 
-    user = UserSimulator(user_client, rng=random.Random(args.seed))
+    # Random(None)은 고정된 None 시드가 아니라 매번 새 시스템 엔트로피를 쓴다.
+    # None을 meta에 남기면 다른 난수열 두 실행이 같은 입력으로 비교되므로,
+    # 실제로 쓴 정수를 한 번 확정해 RNG와 기록에 같이 쓴다.
+    seed = (
+        args.seed
+        if args.seed is not None
+        else random.SystemRandom().randrange(0, 2**63)
+    )
+    user = UserSimulator(user_client, rng=random.Random(seed))
     results = []
     openings: list[str] = []
     digest = scenario_digest(args.scenarios)
@@ -292,7 +313,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         ),
         "핑퐁": args.base_url,
         "davi_sha": _davi_sha(args.davi_repo),
-        "seed": args.seed,
+        "seed": seed,
         "max_requests": args.max_requests,
     }
     out_dir = Path(args.out) / datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
@@ -312,6 +333,98 @@ def cmd_run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    return 0
+
+
+def _load_run(run_dir: Path) -> tuple[list[ScenarioResult], dict]:
+    transcript_path = run_dir / "transcripts.jsonl"
+    meta_path = run_dir / "meta.json"
+    if not transcript_path.is_file() or not meta_path.is_file():
+        raise ValueError(f"{run_dir} 는 실행 디렉터리가 아니다")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    results = _load_results(transcript_path)
+    return results, meta
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    """두 실행에서 #316 완료 지표만 비교한다."""
+
+    try:
+        baseline_results, baseline_meta = _load_run(Path(args.baseline))
+        candidate_results, candidate_meta = _load_run(Path(args.candidate))
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+    input_mismatches = []
+    baseline_digest = baseline_meta.get("시나리오해시")
+    candidate_digest = candidate_meta.get("시나리오해시")
+    if (
+        not baseline_digest
+        or not candidate_digest
+        or baseline_digest != candidate_digest
+    ):
+        input_mismatches.append("시나리오 파일 해시")
+    if [r.scenario_id for r in baseline_results] != [
+        r.scenario_id for r in candidate_results
+    ]:
+        input_mismatches.append("실행한 시나리오 id·순서")
+    for key in ("seed", "max_requests"):
+        baseline_value = baseline_meta.get(key)
+        candidate_value = candidate_meta.get(key)
+        if (
+            baseline_value is None
+            or candidate_value is None
+            or baseline_value != candidate_value
+        ):
+            input_mismatches.append(key)
+    if input_mismatches and not args.allow_scenario_drift:
+        print(
+            f"A/B 입력 조건이 다르거나 기록되지 않았다: {', '.join(input_mismatches)}. "
+            "알고 비교하려면 --allow-scenario-drift 를 쓴다.",
+            file=sys.stderr,
+        )
+        return 1
+    if input_mismatches:
+        print(
+            f"⚠️ A/B 입력 조건 불일치를 알고 비교했다: {', '.join(input_mismatches)}",
+            file=sys.stderr,
+        )
+
+    baseline_batch = batch_of(baseline_meta)
+    candidate_batch = batch_of(candidate_meta)
+    if (
+        baseline_batch is not None
+        and candidate_batch is not None
+        and baseline_batch != candidate_batch
+    ):
+        print(
+            "평가자 모델·채점 시나리오 배치가 다르다 — goal·환각·선택 강요를 A/B로 "
+            "묶을 수 없다. 같은 배치로 다시 채점한다.",
+            file=sys.stderr,
+        )
+        return 1
+
+    baseline = summarize(
+        baseline_results,
+        batch=baseline_batch,
+    )["전체"]
+    candidate = summarize(
+        candidate_results,
+        batch=candidate_batch,
+    )["전체"]
+    report = render_completion_comparison(
+        args.baseline_name,
+        baseline,
+        args.candidate_name,
+        candidate,
+        input_mismatches=input_mismatches,
+    )
+    if args.out:
+        Path(args.out).write_text(report, encoding="utf-8")
+        print(f"비교 보고서: {args.out}")
+    else:
+        print(report)
     return 0
 
 
@@ -384,6 +497,19 @@ def main(argv: list[str] | None = None) -> int:
         help="시나리오 파일이 실행 당시와 달라도 알고 채점한다(수치 비교 불가)",
     )
     judge_cmd.set_defaults(func=cmd_judge)
+
+    compare = sub.add_parser("compare", help="#316 완료 지표로 두 실행을 A/B 비교한다")
+    compare.add_argument("baseline", help="기준 runs/<타임스탬프>")
+    compare.add_argument("candidate", help="후보 runs/<타임스탬프>")
+    compare.add_argument("--baseline-name", default="기존 자유 발화")
+    compare.add_argument("--candidate-name", default="#316 질문 계획")
+    compare.add_argument("--out", help="Markdown 출력 경로")
+    compare.add_argument(
+        "--allow-scenario-drift",
+        action="store_true",
+        help="해시·실행 id·seed·요청 상한이 달라도 알고 비교한다",
+    )
+    compare.set_defaults(func=cmd_compare)
 
     args = parser.parse_args(argv)
     return args.func(args)

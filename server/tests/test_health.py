@@ -3,7 +3,9 @@ import logging
 import re
 
 import app.main as main_module
+import pytest
 from app.config import settings
+from app.intent_resolution import INTENT_DIALOGUE_RESPONSE_BUDGETS
 from app.kakao_auth import issue_session_token
 from app.llm import StubLlmClient
 from app.main import app
@@ -51,6 +53,54 @@ def test_development_health_includes_diagnostics():
         "privacy_masking_disabled": False,
         "kakao_auth_configured": False,
     }
+
+
+def test_invalid_operation_output_budget_stops_startup_before_health(set_runtime_profile):
+    """한 operation만 작은 전역 상한도 첫 요청의 500이 아니라 서버 기동 실패여야 한다."""
+
+    thinking_budget = 800
+    intent_required = thinking_budget + INTENT_DIALOGUE_RESPONSE_BUDGETS.required
+    override = intent_required - 1
+    # next-step·app-resolution의 기존 1024 여유분은 통과하지만 intent만 실패하는 조합이다.
+    assert override >= thinking_budget + 1024
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider="gemini",
+        gemini_api_key="server-side-key",
+        davi_gemini_thinking_budget=thinking_budget,
+        davi_max_output_tokens=override,
+    )
+
+    with (
+        pytest.raises(ValueError, match=r"DAVI_MAX_OUTPUT_TOKENS.*intent_dialogue"),
+        TestClient(app, client=("127.0.0.1", 50000)),
+    ):
+        pytest.fail("잘못된 출력 예산으로 서버 startup이 완료되면 안 됩니다")
+
+
+def test_development_health_is_public_on_lan_but_inference_requires_token(monkeypatch):
+    """공용 개발 진단만 무토큰으로 열고 추론 API는 같은 LAN에서도 닫는다(#67)."""
+
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+    remote_client = TestClient(app, client=("192.168.1.23", 50000))
+
+    health = remote_client.get("/health")
+    inference = remote_client.post("/v1/next-step", json=_next_step_payload())
+
+    assert health.status_code == 200
+    health_body = health.json()
+    assert health_body["status"] == "ok"
+    assert {
+        "environment",
+        "provider",
+        "model",
+        "stub_llm",
+        "privacy_masking_disabled",
+        "kakao_auth_configured",
+    }.issubset(health_body)
+    assert inference.status_code == 401
+    assert inference.json()["kind"] == "AUTH"
 
 
 def test_development_health_reports_the_masking_bypass(set_runtime_profile):
@@ -215,6 +265,43 @@ def test_development_rate_limit_is_global_and_returns_retry_after(monkeypatch):
     assert limited.json()["request_id"]
     assert limited.headers["X-Request-ID"] == limited.json()["request_id"]
     assert limited.headers["Retry-After"] == str(limited.json()["retry_after_seconds"])
+
+
+def test_development_rate_limit_counts_authenticated_attempts(monkeypatch):
+    """401은 팀 창을 쓰지 않고, 토큰을 통과한 422·200은 각각 한 칸을 쓴다(#67)."""
+
+    token = "t" * 32
+    monkeypatch.setattr(settings, "davi_dev_access_token", SecretStr(token))
+    monkeypatch.setattr(settings, "davi_dev_rate_limit_requests", 1)
+    headers = {"X-Davi-Dev-Token": token}
+
+    unauthorized = client.post("/v1/next-step", json=_next_step_payload())
+    allowed_after_401 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+    limited_after_200 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+
+    assert unauthorized.status_code == 401
+    assert allowed_after_401.status_code == 200
+    assert limited_after_200.status_code == 429
+
+    main_module.dev_rate_limiter.reset()
+
+    invalid = client.post("/v1/next-step", json={}, headers=headers)
+    limited_after_422 = client.post(
+        "/v1/next-step",
+        json=_next_step_payload(),
+        headers=headers,
+    )
+
+    assert invalid.status_code == 422
+    assert limited_after_422.status_code == 429
 
 
 def test_development_access_token_is_not_logged(caplog, monkeypatch):

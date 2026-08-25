@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「보기」/「닫기」 캡슐(#389). 시안 60x48(raw) x1.2 -> 72x58, 반지름은 1:1(24) —
+  davi_consent_view_button_min_height(48dp)와 정확히 절반은 아니지만(24 vs 29), 반지름은
+  환산 규칙상 절대값이라 그대로 쓴다(MA-4 사선 판정과 같은 결).
+
+  카드 자체가 이미 ripple을 갖고 있어(bg_davi_consent_card) 이 버튼은 별도 ripple 없이
+  테두리만 그린다 — 겹치면 두 겹 눌림 표시가 생긴다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="@dimen/davi_button_stroke" android:color="@color/davi_button_primary" />
+    <corners android:radius="@dimen/davi_consent_view_button_radius" />
+</shape>

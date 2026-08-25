@@ -43,11 +43,21 @@ shared_dev_process_cwd() {
     fi
 }
 
+shared_dev_process_command() {
+    local pid="$1"
+    if [[ -r "/proc/$pid/cmdline" ]]; then
+        tr '\0' ' ' < "/proc/$pid/cmdline"
+        return
+    fi
+    # BSD ps(macOS)와 GNU ps 모두 `-ww`로 긴 command line의 잘림을 막는다.
+    ps -ww -p "$pid" -o command= 2>/dev/null
+}
+
 shared_dev_is_managed_process() {
     local pid="$1"
     kill -0 "$pid" 2>/dev/null || return 1
     local command_line process_cwd
-    command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    command_line="$(shared_dev_process_command "$pid" || true)"
     process_cwd="$(shared_dev_process_cwd "$pid")"
     [[ "$command_line" == *"uvicorn app.main:app"* ]] || return 1
     [[ "$command_line" == *"--port ${SHARED_DEV_PORT}"* ]] || return 1

@@ -18,7 +18,7 @@
       "id": "kakaotalk-photo-presend-full-journey",
       "test_class": "com.davi.helper.e2e.KakaoTalkPhotoPreSendGeminiTest",
       "description": "실제 Gemini 안내로 카카오톡 나와의 채팅방에서 사진 한 장을 골라 전송 직전 상태까지 가고, 전송은 하드 경계로 막는다.",
-      "requirements": "카카오톡 26.7.1 설치·로그인 필요. 2026-08-21 실기기(SM-S921N/Android 16) 실측 — 전송 컨트롤·선택 표시로 pre-send 판정을 양성·음성 양쪽에서 확인했다."
+      "requirements": "카카오톡 26.7.1 설치·로그인 필요. 2026-08-21 실기기(SM-S921N/Android 15 / One UI 7.0) 실측 — 전송 컨트롤·선택 표시로 pre-send 판정을 양성·음성 양쪽에서 확인했다."
     },
     {
       "id": "kakaot-taxi-precall-full-journey",

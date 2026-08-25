@@ -461,7 +461,8 @@ class GuideDisplayStateTest {
         state.onCleared()
 
         fun sync(signature: String, at: Long, labeled: Boolean): GuideDisplayState.Content? {
-            val decision = tracker.onSample(signature, at, hasLabeledElement = labeled)
+            // 표시 상태는 구조 축 문자열만 받고, 추적기는 2계층 쌍을 받는다(#380 — 서비스 배선 그대로).
+            val decision = tracker.onSample(ScreenSig(signature, ""), at, hasLabeledElement = labeled)
             val redisplayed = redisplayContent(signature, decision.isStableForGuideRedisplay())
             return if (decision == ScreenStabilityTracker.Decision.UNREADABLE) {
                 state.showUnreadableNotice(signature, errorText) ?: redisplayed
@@ -507,14 +508,14 @@ class GuideDisplayStateTest {
         val tracker = ScreenStabilityTracker()
         // 서비스 sampleScreen의 배선 그대로: 판정을 먼저 얻고, WAIT가 아닐 때만 재표시/폐기.
         fun sync(signature: String, at: Long): GuideDisplayState.Content? {
-            val decision = tracker.onSample(signature, at, hasLabeledElement = true)
+            val decision = tracker.onSample(ScreenSig(signature, ""), at, hasLabeledElement = true)
             return redisplayContent(signature, decision.isStableForGuideRedisplay())
         }
 
         // A 안정 → 요청 → 응답으로 상한 안내 표시(서비스의 SEND→applyAction에 해당)
-        tracker.onSample(sigA, 0, hasLabeledElement = true)
-        tracker.onSample(sigA, 100, hasLabeledElement = true)
-        tracker.markSent(sigA, 100)
+        tracker.onSample(ScreenSig(sigA, ""), 0, hasLabeledElement = true)
+        tracker.onSample(ScreenSig(sigA, ""), 100, hasLabeledElement = true)
+        tracker.markSent(ScreenSig(sigA, ""), 100)
         tracker.markFinished()
         state.showCapNotice(sigA, capNotice)
 

@@ -58,6 +58,30 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private var guidedTargetClickable = false
 
+    /**
+     * 타깃 앵커(#380) — 지금 안내가 가리키는 슬롯의 node id와, 응답 시점의 정규화 label.
+     * 구조가 같은 채 목록이 재정렬되면(새 메시지로 순서가 밀리는 대화방 목록) 강조가 엉뚱한
+     * 줄을 가리키게 되는데, 그 순간 이 슬롯의 label이 달라지므로 조작 이벤트 없이도 재질의를
+     * 연다. node id는 직렬화 순서 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다 — 앵커를
+     * 쓰는 자리도 정확히 그 경우뿐이다(구조가 다르면 어차피 구조 축이 재질의를 연다).
+     */
+    private var guidedTargetNodeId: String? = null
+    private var guidedTargetStableLabel: String? = null
+
+    /**
+     * 앵커를 잡은 화면의 **구조 축**. node id는 구조가 같은 동안만 같은 슬롯을 뜻하므로
+     * (`Screen.guidedSlotLabelChanged`), 구조가 다르면 앵커를 아예 보지 않는다.
+     */
+    private var guidedTargetStructure: String? = null
+
+    /**
+     * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
+     * 클릭만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
+     * 중지 칩과 IME 키 클릭이 게이트를 여는 것을 막는다([guidedScreenPackage]와 같은 이유).
+     * 응답이 아직 없는 화면에서도 게이트가 서도록 응답이 아니라 샘플에서 채운다.
+     */
+    private var currentScreenPackage: String? = null
+
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
 
@@ -70,8 +94,15 @@ class GuideAccessibilityService : AccessibilityService() {
     private var lastReading: Boolean? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val logicalRequests = LogicalRequestTracker()
-    private var lastLoggedScreenSignature: String? = null
+    private var lastLoggedScreenSignature: ScreenSig? = null
     private var rootUnavailable = false
+
+    /**
+     * [ScreenStabilityTracker]에 넣는 시각은 전부 같은 clock이어야 한다. uptime은 deep sleep을
+     * 제외하므로 화면 샘플·상호작용·실패 완료 사이의 "깨어 있는 동안" 간격을 일관되게 잰다.
+     * 요청 소요시간 telemetry만 deep sleep을 포함하는 elapsedRealtime을 별도로 쓴다.
+     */
+    private fun stabilityNowMs(): Long = SystemClock.uptimeMillis()
 
     /**
      * 화면이 꺼져 있는가. **꺼진 동안 오버레이를 걷고 샘플러를 재운다. 세션은 유지한다**(#56).
@@ -130,8 +161,15 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 직전 샘플의 판정. null이면 세션 시작 후 첫 샘플 전이다([ReadingBorder.isReading]). */
     private var lastDecision: ScreenStabilityTracker.Decision? = null
 
+    /** 미루기의 기한을 들고 있다 — 폭주하는 화면에서 샘플이 영원히 밀리지 않게 한다(#380). */
+    private val sampleSchedule = SampleSchedule()
+
     /** 이벤트가 없어도 도는 샘플러. 세션이 있는 동안에만 스스로 다시 예약한다(#39). */
-    private val sampleRunnable = Runnable { sampleScreen() }
+    private val sampleRunnable = Runnable {
+        // 예약이 소진됐다. 다음 예약은 기한을 새로 연다.
+        sampleSchedule.reset()
+        sampleScreen()
+    }
 
     /**
      * 세션이 끝나는 순간 화면에서 지운다. 다음 접근성 이벤트를 기다리면, 사용자가 중지를 눌러도
@@ -144,6 +182,9 @@ class GuideAccessibilityService : AccessibilityService() {
         mainHandler.post {
             stability.reset()
             logicalRequests.reset()
+            // 새 세션의 첫 예약은 기한을 새로 받는다 — 직전 세션이 열어 둔 기한이 그사이
+            // 지났으면 settle 없이 곧바로 뜬다(#380).
+            sampleSchedule.reset()
             lastLoggedScreenSignature = null
             rootUnavailable = false
             display.reset()
@@ -151,10 +192,14 @@ class GuideAccessibilityService : AccessibilityService() {
             guidedTargetLabel = null
             guidedScreenPackage = null
             guidedTargetClickable = false
+            guidedTargetNodeId = null
+            guidedTargetStableLabel = null
+            guidedTargetStructure = null
+            currentScreenPackage = null
             errorNotice.reset()
             lastDecision = null
             if (goal == null) {
-                mainHandler.removeCallbacks(sampleRunnable)
+                cancelSample()
                 overlay?.clear()
             } else {
                 // 안내가 다시 도는데 "멈췄어요" 알림이 남아 있으면 서로 어긋난다(#212).
@@ -208,12 +253,12 @@ class GuideAccessibilityService : AccessibilityService() {
                         // 완료 확인의 × 가 하는 것과 같은 처리다.
                         GuideDisplayState.ConfirmKind.QUIT -> {
                             GuideSession.quitRejected()
-                            val restored = display.dismissQuitConfirm(stability.currentSignature())
+                            val restored = display.dismissQuitConfirm(stability.currentSignature()?.structure)
                             if (restored != null) {
                                 draw(restored)
                             } else {
                                 overlay?.clear()
-                                stability.markFailed()
+                                stability.markFailed(stabilityNowMs())
                             }
                         }
 
@@ -227,9 +272,12 @@ class GuideAccessibilityService : AccessibilityService() {
                             guidedTargetLabel = null
                             guidedScreenPackage = null
                             guidedTargetClickable = false
+                            guidedTargetNodeId = null
+                            guidedTargetStableLabel = null
+                            guidedTargetStructure = null
                             // 그 화면을 '안 보낸 것'으로 되돌려 다음 샘플이 다시 묻게 한다
                             // (RETRY와 같은 경로).
-                            stability.markFailed()
+                            stability.markFailed(stabilityNowMs())
                         }
                     }
                     updateReading()
@@ -307,21 +355,45 @@ class GuideAccessibilityService : AccessibilityService() {
      * (`HANDOFF.md` §3-4 실측, SPEC §4). 반대로 전환 직후에는 이벤트가 몰아쳐서
      * 덜 그려진 트리가 그대로 나간다(#32). 그래서 이벤트는 샘플을 **미루면서** 예약한다 —
      * 연속된 이벤트는 한 번으로 합쳐지고, 마지막 이벤트 뒤 [SETTLE_MS]가 지나야 샘플을 뜬다.
+     *
+     * **다만 무한정 미루지는 않는다**(#380). 스스로 움직이는 화면은 이벤트를 [SETTLE_MS]보다
+     * 촘촘히 쏘아 조용해지는 순간이 오지 않는다 — [SampleSchedule]이 그 기한을 쥔다.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         // 세션이 없으면 화면을 읽지 않는다. 직렬화 이전에 끊는 것이 중요하다 —
         // 사용자가 안내를 요청하지 않은 동안에는 화면 내용이 프로세스 안에서도 만들어지지 않는다.
-        // **필터보다 먼저 본다** — 계측이 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다.
+        // **필터보다 먼저 본다** — 계측이 걸러진 이벤트까지 봐야 "안 왔다"와 "걸렀다"가 갈린다(#336).
         if (GuideSession.active() == null) return
 
         val interesting = isInteresting(event.eventType)
-        // 계측(임시). release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
+        // 계측. release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
+        // 위 필터 앞이라는 자리가 감당 가능한 이유는 이 호출이 `event.source`를 읽지 않기 때문이다(#356).
         GuideScreenLog.event(event, interesting)
         if (!interesting) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) onTargetPressed(event)
+        // 인과 게이트의 **폴백 축**(#380). 판정에 쓰는 것은 타입과 package뿐이라, 부하 시
+        // source가 회수되는 함정(#238)과 무관하게 동작한다.
+        //
+        // **스크롤은 여기 없다.** 2026-08-24 SM-S921N 실측 — 인기 검색어가 자동으로 도는
+        // 검색 화면에서 사용자가 손대지 않은 50초 동안 `TYPE_VIEW_SCROLLED`가 92건(초당
+        // 1.8건) 왔다. 게이트가 영구히 열려 로테이션마다 재질의가 나갔다 — 이 이슈가
+        // 막으려던 바로 그 폭주다.
+        //
+        // 자동 스크롤과 사용자 스크롤은 접근성 이벤트만으로 구분되지 않는다. **진짜 터치를
+        // 보는 길(`FLAG_SEND_MOTION_EVENTS` + `setMotionEventSources`, API 34+)은 시도했다가
+        // 걷었다** — 그 플래그가 접근성 입력 필터를 세우고 터치가 아래 앱으로 내려가지 않아
+        // 기기 조작이 통째로 막혔다(2026-08-24 SM-S921N 실측: `dumpsys input`의
+        // `InputFilterEnabled: true`, 서비스는 down/move/up을 받는데 앱은 아무 반응 없음).
+        // 되살리려면 필터가 이벤트를 통과시키는 방법부터 확인해야 한다 — #394.
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val pkg = event.packageName?.toString()
+            if (pkg != null && pkg == currentScreenPackage) {
+                stability.markInteraction(stabilityNowMs())
+            }
+            onTargetPressed(event)
+        }
         scheduleSample(SETTLE_MS)
     }
 
@@ -333,7 +405,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun pauseForScreenOff() {
         if (screenOff) return
         screenOff = true
-        mainHandler.removeCallbacks(sampleRunnable)
+        cancelSample()
         overlay?.clear()
         display.onCleared()
         lastDecision = null
@@ -350,7 +422,7 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun resumeAfterScreenOn() {
         if (!screenOff) return
         screenOff = false
-        stability.markResumed(SystemClock.uptimeMillis(), requery = droppedWhileScreenOff)
+        stability.markResumed(stabilityNowMs(), requery = droppedWhileScreenOff)
         val requeried = droppedWhileScreenOff
         droppedWhileScreenOff = false
         // 읽는 중 판정은 첫 샘플이 lastDecision을 채운 뒤에 한다. 여기서 먼저 부르면 null을
@@ -396,7 +468,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 GuideSession.active()?.generation?.let { generation ->
                     GuideSession.observePress(generation, onTarget = true)
                     // "안내 후 화면 그대로 7초"는 방금 조작한 시점부터 다시 센다.
-                    stability.markPressed(SystemClock.uptimeMillis())
+                    stability.markPressed(stabilityNowMs())
                 }
             }
 
@@ -423,6 +495,12 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun pressVerdict(event: AccessibilityEvent, bounds: List<Int>): PressMatch.Verdict {
         val clicked = Rect()
+        // **여기의 `event.source`는 남긴다.** #356이 계측에서 걷은 것은 `isInteresting` 앞에서
+        // 모든 이벤트에 붙던 호출이고, 이 자리는 게이트 다섯을 지난 `TYPE_VIEW_CLICKED`뿐이다.
+        // 텍스트 폴백은 `ON_TARGET`만 낼 수 있어 `OFF_TARGET`을 대체하지 못하고
+        // ([PressMatch.Verdict]), 좌표를 버리면 **매 판정이 위 KDoc이 피하는 원본 텍스트 경로로
+        // 내려간다.** 회수는 안 한다 — `recycle()`이 no-op이 되는 것은 API 33부터라 minSdk 26이
+        // 대상에 들지만, 이 빈도에서는 감수한다.
         event.source?.getBoundsInScreen(clicked)
         if (!clicked.isEmpty) {
             return PressMatch.judge(
@@ -442,8 +520,19 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun scheduleSample(delayMs: Long) {
         // 꺼진 화면에는 그릴 것도 물을 것도 없다. 되살리는 것은 [resumeAfterScreenOn]뿐이다.
         if (screenOff) return
+        // 이벤트가 폭주해도 [SampleSchedule.MAX_DEFER_MS] 안에는 한 번 뜬다(#380).
+        val delay = sampleSchedule.delayFor(delayMs, SystemClock.uptimeMillis())
         mainHandler.removeCallbacks(sampleRunnable)
-        mainHandler.postDelayed(sampleRunnable, delayMs)
+        mainHandler.postDelayed(sampleRunnable, delay)
+    }
+
+    /**
+     * 예약을 걷는다. **기한도 함께 닫아야 한다** — 남겨 두면 걷혀 있는 동안 기한이 지나 버려,
+     * 다시 예약될 때 지연 0으로 계산돼 settle 없이 곧바로 뜬다.
+     */
+    private fun cancelSample() {
+        mainHandler.removeCallbacks(sampleRunnable)
+        sampleSchedule.reset()
     }
 
     /**
@@ -479,7 +568,7 @@ class GuideAccessibilityService : AccessibilityService() {
             rootUnavailable = false
             // root가 없던 시간은 화면을 관측한 시간이 아니다. 정체·읽기 불가 타이머 양쪽에서
             // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
-            stability.markResumed(SystemClock.uptimeMillis(), requery = false)
+            stability.markResumed(stabilityNowMs(), requery = false)
             GuideTelemetry.rootState("recovered")
         }
 
@@ -488,20 +577,49 @@ class GuideAccessibilityService : AccessibilityService() {
         val windowTypes = runCatching { windows.map { it.type } }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
+        // 직렬화에 든 시간(#367). **`SystemClock.uptimeMillis`를 쓴다** — 벽시계는 시각 동기화로
+        // 뒤로 갈 수 있고, 이 값은 `postDelayed`가 쓰는 시간축과 같아야 한다.
+        // 무엇이 이 구간 밖인지는 아래 로그 자리에 적었다.
+        val serializeStart = SystemClock.uptimeMillis()
         val result = runCatching {
             UiTreeSerializer.serialize(root, windowTypes, windowTitle)
         }.getOrElse {
-            Log.e(TAG, "serialize failed", it)
+            // 실패한 순회에도 소요를 남긴다. 안 남기면 **오래 끌다 던진 폴링이 통째로 빠져**
+            // #367이 찾는 p90·최대가 낮은 쪽으로 치우친다.
+            // **키를 `ms=`로 맞춘다** — 아래 `poll=` 줄과 같은 이름이라야 한 번의 grep으로 집계된다.
+            Log.e(TAG, "serialize failed ms=${SystemClock.uptimeMillis() - serializeStart}", it)
             scheduleSample(POLL_MS)
             return
         }
+        val serializeMs = SystemClock.uptimeMillis() - serializeStart
 
         val signature = ScreenSignature.of(result.screen)
-        val now = SystemClock.uptimeMillis()
+        val now = stabilityNowMs()
         val hasLabeledElement = result.screen.hasLabeledElement()
-        val decision = stability.onSample(signature, now, hasLabeledElement)
-        // 계측(임시). IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
-        GuideScreenLog.sample(decision.name, result.screen.elements.size, signature)
+        currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
+        // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
+        val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
+        val decision = stability.onSample(
+            signature,
+            now,
+            hasLabeledElement,
+            guidedTargetChanged = targetSlotChanged,
+        )
+        // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
+        // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
+        // 밖에 남는 것: `ActiveWindowResolver.resolve()`의 창·root IPC, 직렬화 앞의 `windows.map`,
+        // 직렬화 뒤의 `ScreenSignature.of`. 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 때 이 값은 **하한**이다.
+        // 폴링마다 찍혀야 p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
+        GuideScreenLog.sample(
+            decision.name,
+            result.screen.elements.size,
+            signature,
+            serializeMs,
+            stability.interactionGateOpen(now),
+            targetSlotChanged,
+            stability.anchorRequerySpent(),
+            result.cost,
+        )
         lastDecision = decision
         updateReading()
 
@@ -511,7 +629,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // 같은 화면(서명 일치)에서만 되살리고, 다른 화면이면 폐기해 새 요청에 맡긴다(2차 리뷰 P1).
         // 단 **안정 판정 뒤에만** — 과도기(WAIT)나 label 없는 UNREADABLE의 서명으로 폐기하면
         // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
-        when (val redisplay = display.redisplay(signature, decision.isStableForGuideRedisplay())) {
+        when (val redisplay = display.redisplay(signature.structure, decision.isStableForGuideRedisplay())) {
             GuideDisplayState.RedisplayResult.Unchanged -> Unit
             GuideDisplayState.RedisplayResult.Clear -> {
                 Log.i(TAG, "clear unreadable guide")
@@ -531,8 +649,21 @@ class GuideAccessibilityService : AccessibilityService() {
                 Log.i(TAG, "hide target")
                 draw(it)
             }
+        } else if (targetSlotChanged) {
+            // 구조가 같은 채 목록만 밀린 화면이다(#380). 소속 판정이 구조 축이라 여기까지
+            // 오는데, 강조는 **다른 줄**을 가리키고 있다. 되돌리는 것만 막으면 이미 떠 있는
+            // 강조가 그대로 남으므로 **내린다** — `hideTarget`의 계약 그대로(자리만 내리고
+            // 문구는 남긴다, #225). 눌림 재무장도 함께 막힌다(`restoreTarget`이 푸는 것을
+            // 안 부르므로), 그 자리를 누른 사용자가 `performed=true`로 오귀속되지 않는다.
+            //
+            // [GuideDisplayState.hideTarget]이 이미 내려간 강조에는 null을 돌려주므로
+            // 로그도 전이에서만 나간다 — 따로 래치를 둘 필요가 없다.
+            display.hideTarget()?.let {
+                Log.i(TAG, "target slot moved, hide target")
+                draw(it)
+            }
         } else {
-            display.restoreTarget(signature)?.let {
+            display.restoreTarget(signature.structure)?.let {
                 Log.i(TAG, "restore target")
                 draw(it)
             }
@@ -579,7 +710,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 완료·종료 확인은 화면을 따라다니는 더 강한 상태라 덮지 않는다.
                 if (!GuideSession.awaitingConfirm) {
                     display.showUnreadableNotice(
-                        signature,
+                        signature.structure,
                         getString(R.string.guide_screen_unreadable),
                     )?.let {
                         Log.w(
@@ -611,7 +742,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         Log.i(TAG, "press requery")
                     } else {
                         Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
-                        showStuckNotice(signature)
+                        showStuckNotice(signature.structure)
                     }
                 }
                 scheduleSample(POLL_MS)
@@ -634,13 +765,21 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun sendStableScreen(
         screen: Screen,
-        signature: String,
+        signature: ScreenSig,
         now: Long,
         generation: Long,
     ): Boolean {
-        GuideSession.observeScreen(generation, signature)
+        // 스텝의 screen_changed는 구조 축 + **인과 있는 내용 변화**다(#380). 내용을 통째로
+        // 대조하면 눌림 확인 재질의가 "화면 그대로"를 전제하는 화면에서 배너 한 번에
+        // changed=true가 적혀 서버가 모순된 이력을 읽고, 반대로 구조만 보면 균일 목록
+        // 스크롤이 "안 바뀜"으로 적힌다. 재질의를 연 것과 **같은 판정**을 옮겨 적는다.
+        GuideSession.observeScreen(
+            generation,
+            signature.structure,
+            contentChangedCausally = stability.lastSendWasContentOnly(),
+        )
         val sending = GuideSession.active() ?: return false
-        if (!requestNextStep(screen, signature, sending)) return false
+        if (!requestNextStep(screen, signature, now, sending)) return false
         stability.markSent(signature, now)
         return true
     }
@@ -653,9 +792,22 @@ class GuideAccessibilityService : AccessibilityService() {
      *
      * 최종 문구는 안내 상태 표시(#29)에서 다시 정한다.
      */
-    private fun showStuckNotice(signature: String) {
-        display.stuckContent(getString(R.string.guide_stuck), signature)?.let { draw(it) }
+    private fun showStuckNotice(structureSignature: String) {
+        display.stuckContent(getString(R.string.guide_stuck), structureSignature)?.let { draw(it) }
     }
+
+    /**
+     * 타깃 앵커(#380) — 안내가 가리키는 슬롯의 label이 응답 시점과 달라졌는가. 구조가 같은
+     * 목록 재정렬(새 메시지가 대화방 순서를 미는 경우)을 조작 이벤트 없이 잡는 트리거다.
+     * 슬롯이 사라진 경우는 false다 — 그건 구조 변화라 구조 축이 이미 재질의를 연다.
+     */
+    private fun guidedTargetSlotChanged(screen: Screen, structure: String): Boolean =
+        screen.guidedSlotLabelChanged(
+            guidedTargetNodeId,
+            guidedTargetStableLabel,
+            guidedTargetStructure,
+            structure,
+        )
 
     /**
      * 읽는 중 테두리를 지금 상태에 맞춘다(GD-1·GD-2r). 판정은 [ReadingBorder]에 있고 여기서는
@@ -743,7 +895,8 @@ class GuideAccessibilityService : AccessibilityService() {
     /** @return 요청이 실제로 시작됐는가. 시작하지 못했으면 호출자가 "보냈다"고 기록하면 안 된다. */
     private fun requestNextStep(
         screen: Screen,
-        signature: String,
+        signature: ScreenSig,
+        sentAtMs: Long,
         session: GuideSession.Active,
     ): Boolean {
         if (!requestInFlight.compareAndSet(false, true)) return false
@@ -751,7 +904,19 @@ class GuideAccessibilityService : AccessibilityService() {
             requestInFlight.set(false)
             return false
         }
-        val logicalRequest = logicalRequests.next(signature, session.generation)
+        // 논리 요청의 "같은 화면" 판정도 구조 축이다(#380) — 내용까지 넣으면 배너 로테이션이
+        // network 재전송을 새 논리 요청으로 쪼개 재시도 추적(#81)이 끊긴다.
+        val logicalRequest = logicalRequests.next(signature.structure, session.generation)
+        // 내용 서명은 **여기서 한 번만** 만든다(#410). 이 요청이 싣는 두 자리 — 현재 화면
+        // (`Screen`)과 그 화면에서 나간 안내(`steps[]`) — 가 같은 값을 써야 서버의 이력 간
+        // 대조가 성립한다. 스텝 쪽은 [applyAction]이 `request.screen`에서 도로 읽는다.
+        val requestScreen = screen.copy(
+            contentSignature = GuideSession.contentSignature(
+                session.generation,
+                signature,
+                screen.hasLabeledElement(),
+            ),
+        )
 
         apiExecutor.execute {
             val startedAt = SystemClock.elapsedRealtime()
@@ -759,7 +924,7 @@ class GuideAccessibilityService : AccessibilityService() {
             try {
                 val request = NextStepRequest(
                     goal = session.goal,
-                    screen = screen,
+                    screen = requestScreen,
                     // 화이트리스트 판정은 서버가 한다. debug가 아니면 null이라 안 실린다(#41).
                     deviceId = dogfoodDeviceId,
                     // 직전에 무엇을 안내했고 그래서 화면이 바뀌었는지 모르면 모델이 같은 말을
@@ -801,7 +966,7 @@ class GuideAccessibilityService : AccessibilityService() {
                                 GuideTelemetry.responseDropped(logicalRequest, "screen_off")
                                 return@post
                             }
-                            applyAction(request, signature, result.response, session, logicalRequest)
+                            applyAction(request, signature, sentAtMs, result.response, session, logicalRequest)
                         }
                     }
 
@@ -821,7 +986,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             GuideApiFailureAction.STOP_DAILY_LIMIT ->
                                 stopForDailyLimit(session.generation)
                             GuideApiFailureAction.RETRY ->
-                                retryThisScreen(signature, session.generation, result)
+                                retryThisScreen(signature.structure, session.generation, result)
                         }
                     }
 
@@ -834,7 +999,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             statusCode = result.statusCode,
                             serverRequestId = result.trace.requestId,
                         )
-                        retryThisScreen(signature, session.generation, result)
+                        retryThisScreen(signature.structure, session.generation, result)
                     }
 
                     is NextStepResult.NetworkFailure -> {
@@ -845,7 +1010,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             errorKind = "NETWORK",
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen(signature, session.generation, result)
+                        retryThisScreen(signature.structure, session.generation, result)
                     }
 
                     is NextStepResult.ParseFailure -> {
@@ -860,7 +1025,7 @@ class GuideAccessibilityService : AccessibilityService() {
                             serverRequestId = result.trace?.requestId,
                             exceptionClass = result.exception.javaClass.simpleName,
                         )
-                        retryThisScreen(signature, session.generation, result)
+                        retryThisScreen(signature.structure, session.generation, result)
                     }
                 }
             } finally {
@@ -916,13 +1081,13 @@ class GuideAccessibilityService : AccessibilityService() {
      * 오류는 기존 안내를 **덮는다**. 되살릴 것을 기억하지 않는 이유는 오류가 걷히는 순간
      * 성공 응답이 새 안내를 그리기 때문이다 — 걷힌 뒤 옛 안내를 되살리면 오히려 낡은 지시가 뜬다.
      *
-     * [signature]는 **요청을 보낸 시점의 화면**이다. 그 사이 화면이 바뀌고 오버레이가 한 번
+     * [structureSignature]는 **요청을 보낸 시점의 화면**(구조 축, #380)이다. 그 사이 화면이 바뀌고 오버레이가 한 번
      * 걷히면(우리 앱 왕복 등) 재표시가 서명 불일치로 폐기해 백오프가 끝날 때까지 화면이 빈다.
      * 수용한다 — 되살릴 대상은 **떠난 화면의** 오류이고, 새 화면의 요청은 백오프가 지나면
      * 어차피 나간다. 그때 성공하면 안내가, 또 실패하면 오류가 새 서명으로 다시 뜬다
      * (PR #189 리뷰 관찰).
      */
-    private fun retryThisScreen(signature: String, generation: Long, result: NextStepResult) {
+    private fun retryThisScreen(structureSignature: String, generation: Long, result: NextStepResult) {
         mainHandler.post {
             // QUOTA는 서버가 Gemini의 Retry-After를 그대로 넘긴 실제 재개 시각이다. 이걸 무시하고
             // 지수 백오프(최대 30초)만 쓰면, 아직 안 풀린 rate limit 창에 다시 걸려 같은 429가
@@ -930,7 +1095,7 @@ class GuideAccessibilityService : AccessibilityService() {
             val retryAfterMs = (result as? NextStepResult.ApiFailure)
                 ?.error?.retryAfterSeconds
                 ?.let { it * 1_000L }
-            stability.markFailed(retryAfterMs)
+            stability.markFailed(stabilityNowMs(), retryAfterMs)
             val notify = errorNotice.record(result)
             Log.i(
                 TAG,
@@ -948,7 +1113,7 @@ class GuideAccessibilityService : AccessibilityService() {
             if (GuideSession.awaitingConfirm) return@post
             // showError가 null이면 같은 오류가 이미 떠 있다. 다시 그리면 우리 창을 만져
             // 스스로를 깨운다(#153에서 정체 알림이 실제로 그랬다).
-            display.showError(signature, getString(messageRes))?.let {
+            display.showError(structureSignature, getString(messageRes))?.let {
                 Log.i(TAG, "server error shown")
                 draw(it)
             }
@@ -965,7 +1130,8 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun applyAction(
         request: NextStepRequest,
-        requestSignature: String,
+        requestSignature: ScreenSig,
+        requestSentAtMs: Long,
         response: NextStepResponse,
         session: GuideSession.Active,
         logicalRequest: LogicalRequestAttempt,
@@ -997,9 +1163,25 @@ class GuideAccessibilityService : AccessibilityService() {
 
         // 세대만 보면 같은 세션 안에서 A 화면의 안내가 B 화면 위에 붙는다(PR #61 리뷰 P1).
         // 버리면 다음 샘플이 B를 새로 물어본다.
+        //
+        // 대조는 구조 축이다(#380). 내용까지 대조하면 응답 대기 2~5초 사이 광고 배너가 한 번
+        // 도는 것만으로 정상 응답이 버려지고, 버린 자리에 재질의가 또 나가 "돈 내고 버리는"
+        // 루프가 된다(배민 홈에서 로테이션 3~5초 < 응답 지연이라 영영 안내가 못 뜰 수 있다).
+        // 단 요청과 응답 사이 조작이 관측됐으면 내용 차이도 폐기 사유다 — 같은 구조의 **다른**
+        // 화면(다른 상품 상세, 다른 대화방)으로 이동한 늦은 응답을 그 화면에 붙이면 안 된다.
         val current = stability.currentSignature()
-        if (current != null && current != requestSignature) {
+        if (current != null && current.structure != requestSignature.structure) {
             GuideTelemetry.responseDropped(logicalRequest, "screen_changed")
+            return
+        }
+        if (
+            current != null && current.content != requestSignature.content &&
+            stability.interactionAfter(requestSentAtMs)
+        ) {
+            GuideTelemetry.responseDropped(logicalRequest, "content_changed_after_interaction")
+            // 옮겨 간 그 화면을 다시 묻게 한다. 버리기만 하면 인과 창이 닫힌 뒤라 다음 샘플이
+            // 새 상황이 못 되고, 사용자는 7초 뒤 정체 문구만 본다(#380 리뷰).
+            stability.markResponseDiscarded()
             return
         }
 
@@ -1007,7 +1189,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (action.actionType == ActionType.DONE) {
             e2ePublisher?.displayed(
                 generation = session.generation,
-                requestSignature = requestSignature,
+                requestSignature = requestSignature.structure,
                 request = request,
                 response = response,
                 target = null,
@@ -1016,7 +1198,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 검증된 완료도 여기서 끝내지 않는다(#139) — 성공 오탐을 사용자에게 한 번 묻는다.
                 GuideSession.DoneOutcome.CONFIRM_CONFIDENT -> {
                     Log.i(TAG, "done verified, asking user")
-                    draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_confident)))
+                    draw(display.showConfirm(requestSignature.structure, getString(R.string.overlay_confirm_confident)))
                     // 확인 대기로 들어갔으니 읽는 중은 여기서 끈다. 다음 샘플을 기다리면 그때까지
                     // 브리딩 애니메이터가 헛돈다 — 성공 tone이 먼저 그려져 보이지는 않는다(PR #153 리뷰).
                     updateReading()
@@ -1031,7 +1213,7 @@ class GuideAccessibilityService : AccessibilityService() {
                         "done retry cap perScreen=${GuideSession.MAX_UNVERIFIED_DONE} " +
                             "total=${GuideSession.MAX_UNVERIFIED_DONE_TOTAL}, asking user",
                     )
-                    draw(display.showConfirm(requestSignature, getString(R.string.overlay_confirm_unsure)))
+                    draw(display.showConfirm(requestSignature.structure, getString(R.string.overlay_confirm_unsure)))
                     updateReading()
                 }
 
@@ -1039,7 +1221,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 사용자가 이미 아니라고 답한 화면인데 완료 신호가 상한까지 반복됐다.
                     // 같은 질문을 다시 하지 않으면서 재질의도 멈춘다 — 문구만 남기고 칩으로 넘긴다.
                     Log.w(TAG, "done retry cap after reject, notice only")
-                    draw(display.showCapNotice(requestSignature, getString(R.string.guide_done_unconfirmed)))
+                    draw(display.showCapNotice(requestSignature.structure, getString(R.string.guide_done_unconfirmed)))
                 }
 
                 GuideSession.DoneOutcome.RETRY -> {
@@ -1050,12 +1232,17 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
                     // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
                     // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
-                    stability.markFailed()
+                    stability.markFailed(stabilityNowMs())
                     Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }
 
                 null -> GuideTelemetry.responseDropped(logicalRequest, "session_changed")
             }
+            // 이 화면의 조작 안내는 끝났다. 앵커를 남기면 다음 안내가 나기 전까지 낡은
+            // 슬롯을 가리켜, 강조 복원을 엉뚱하게 막는다(#380).
+            guidedTargetNodeId = null
+            guidedTargetStableLabel = null
+            guidedTargetStructure = null
             return
         }
 
@@ -1064,6 +1251,11 @@ class GuideAccessibilityService : AccessibilityService() {
         }
         val bounds = target?.bounds?.takeIf { it.size == 4 }
         guidedTargetLabel = target?.label?.takeIf { it.isNotBlank() }
+        // 타깃 앵커(#380). 응답 시점의 슬롯 label을 기억해 두고, 이후 샘플에서 같은 슬롯의
+        // label이 달라지면(구조 보존 재정렬) 조작 이벤트 없이도 재질의를 연다.
+        guidedTargetNodeId = target?.nodeId
+        guidedTargetStableLabel = target?.let { ScreenSignature.stableLabelOf(it) }
+        guidedTargetStructure = if (target != null) requestSignature.structure else null
         // 미관측 package는 `null`이 아니라 `""`로 온다(`Screen.packageName` 기본값). 그 화면의
         // 눌림은 판정하지 않는다 — "안내가 없다"와 같은 뜻으로 읽히게 값에 담아 둔다.
         guidedScreenPackage = screen.packageName.takeIf { it.isNotBlank() }
@@ -1073,14 +1265,21 @@ class GuideAccessibilityService : AccessibilityService() {
         // 전부 응답 echo이고, 화면이 바뀌었는지는 다음 샘플이 채운다.
         GuideSession.recordStep(
             session.generation,
-            requestSignature,
+            requestSignature.structure,
             GuideStep(
                 instruction = action.instruction,
                 actionType = action.actionType,
                 direction = action.direction,
                 targetLabel = guidedTargetLabel,
+                // label과 같은 조회 결과를 쓴다 — 응답 원문을 그대로 넣으면 대상이 현재
+                // 화면에서 안 잡혔을 때 label은 null인데 id만 남아 두 자리가 어긋난다.
+                targetNodeId = target?.nodeId,
                 screenHint = action.screenSummary.takeIf { it.isNotBlank() },
                 structureSignature = response.screenSignature,
+                // 이 안내가 나간 화면의 내용 축(#410). 요청을 만들 때 계산한 값을 도로 읽어
+                // 현재 화면과 스텝이 같은 값을 들게 한다 — 여기서 다시 만들면 그사이 화면이
+                // 흔들린 경우 두 자리가 갈린다.
+                contentSignature = screen.contentSignature,
             ),
         )
 
@@ -1102,10 +1301,11 @@ class GuideAccessibilityService : AccessibilityService() {
         // 이미 손가락 방향이며 뷰는 그대로 그린다 — 뷰에서 또 뒤집으면 보정이 두 번 걸린다.
         val fingerDirection = action.direction?.let { GestureMotion.fingerDirectionFor(it) }
         // 응답은 위 서명 대조로 requestSignature 화면에만 반영되므로, 안내도 그 화면 소속이다.
-        draw(display.show(requestSignature, bounds, action.instruction, action.actionType, fingerDirection))
+        // 소속도 구조 축이다(#380) — 내용까지 묶으면 배너가 도는 화면에서 재표시·복원이 죽는다.
+        draw(display.show(requestSignature.structure, bounds, action.instruction, action.actionType, fingerDirection))
         e2ePublisher?.displayed(
             generation = session.generation,
-            requestSignature = requestSignature,
+            requestSignature = requestSignature.structure,
             request = request,
             response = response,
             target = target,
@@ -1156,7 +1356,7 @@ class GuideAccessibilityService : AccessibilityService() {
         // **창 제거(destroy)는 여기로 올리지 않는다** — 아래 when이 `GuideSession.isActive`를
         // 읽으므로 stop()은 뒤여야 하고, 창을 미리 걷으면 복귀가 기대는
         // `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`를 스스로 없앤다(4차 리뷰).
-        mainHandler.removeCallbacks(sampleRunnable)
+        cancelSample()
         runCatching { unregisterReceiver(screenReceiver) }
             .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
 
@@ -1192,14 +1392,16 @@ class GuideAccessibilityService : AccessibilityService() {
         /**
          * 이벤트가 몰아친 뒤 이만큼 조용해야 화면을 뜬다. 전환 애니메이션 중에는 샘플이 계속
          * 달라지므로 이 값이 곧 "안정 판정 간격"이 된다(#32).
+         *
+         * **조용해지지 않는 화면이 있다** — 그때는 [SampleSchedule.MAX_DEFER_MS]가 이긴다(#380).
          */
-        private const val SETTLE_MS = 350L
+        internal const val SETTLE_MS = 350L
 
         /**
          * 안정된 뒤의 감시 주기. **폴링이 곧 호출량은 아니다** — 화면이 그대로면 서버를 부르지 않고
          * 트리만 다시 뜬다(#39). HANDOFF의 첫 추정치와 같은 값이며 근거를 갖고 다시 정할 것.
          */
-        private const val POLL_MS = 700L
+        internal const val POLL_MS = 700L
 
 
         /** 포커스·IME 창 이벤트도 같은 settle 예약 경로로 합친다(#112). */

@@ -139,6 +139,12 @@ class Screen(BaseModel):
     has_scrollable_element: bool | None = None
     # True = IME 창 관측 / False = 정상 window 목록에 없음 / None = 낡은 앱·window 미관측.
     ime_visible: bool | None = None
+    # 지금 이 화면의 내용 축 서명(#410 · C11). 앱이 기기 시그니처의 내용 축을 **세션 salt로
+    # 해시한** 값이라 원문 label은 여기로 오지 않는다. 이력의 `GuideStep.content_signature`와
+    # 대조해 "구조는 같고 내용만 다른 화면"과 A→B→A 회귀를 가른다.
+    # **서버가 스스로 계산할 수 없다** — salt가 기기 안에만 있고 프로세스 밖으로 나가지 않는다.
+    # None은 label 없는 화면이거나 이 값을 아직 안 채우는 낡은 앱이다.
+    content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 MAX_STEPS = 10
@@ -152,10 +158,11 @@ class GuideStep(BaseModel):
     구조 쪽은 소비자가 사라져 빈 계약으로 남아 있었다(#251).
 
     값의 출처는 두 가지뿐이다 — **서버 응답의 echo**(``instruction``·``action_type``·
-    ``direction``·``target_label``·``screen_hint``·``structure_signature``)와 **앱의 관측**
-    (``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
-    해석하지 않는다. ``target_label``만은 앱이 ``target_node_id``로 현재 화면 요소에서 찾아
-    붙이는데, 강조를 그리려고 어차피 하는 조회라 새 해석이 아니다.
+    ``direction``·``target_label``·``target_node_id``·``screen_hint``·``structure_signature``)와
+    **앱의 관측**(``screen_changed``·``performed``·``content_signature``). 앱은 값을 나르기만 하고
+    해석하지 않는다. ``target_label``과 ``target_node_id`` 둘만은 앱이 응답의
+    ``target_node_id``로 **현재 화면 요소에서 찾은 결과**다 — 강조를 그리려고 어차피 하는
+    조회라 새 해석이 아니다. 그래서 모델이 화면에 없는 id를 고른 스텝에는 둘 다 실리지 않는다.
 
     **wire는 구조화, 프롬프트는 문장이다.** 서버가 매 요청 스텝당 한 문장으로 편다
     (``prompt._step_line``, #305).
@@ -170,6 +177,13 @@ class GuideStep(BaseModel):
     direction: SwipeDirection | None = None
     # 안내 대상 요소의 label(1차 마스킹된 값). 대상이 없는 동작에는 없다.
     target_label: str | None = None
+    # 안내 대상 요소의 node id. 응답 `GuideAction.target_node_id`의 echo다.
+    #
+    # **화면마다 다시 매겨지는 값이라 `structure_signature`와 짝으로만 쓴다.** 서명이 그 id를
+    # 포함하므로(`signature.screen_signature`) 서명이 같으면 같은 요소를 가리킨다. 이 짝이
+    # 필요한 이유는 label이 요소 신원으로 못 쓰이기 때문이다 — 한 화면에 같은 label이 여럿이고
+    # (목록의 '삭제' 버튼들), 부제목이 값이라 같은 행의 label이 바뀌며, scroll 대상에는 아예 없다.
+    target_node_id: str | None = None
     # 그 안내가 나간 화면이 무엇이었는지. 응답 `GuideAction.screen_summary`의 echo다.
     screen_hint: str | None = None
     structure_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -187,9 +201,11 @@ class GuideStep(BaseModel):
     # 또는 미탐), source 없는 텍스트 불일치거나, 판정 밖 액션(TAP·TYPE 외)이다 —
     # **None을 "안 누름"으로 읽지 않는다.**
     performed: bool | None = None
-    # 구조가 같고 내용만 바뀐 화면과 A→B→A 회귀를 서버가 이력 간 비교로 가르기 위한 값
-    # (기기 시그니처 + 세션 salt 해시). **아직 앱이 채우지 않는다** — #270 서브이슈 4.
-    content_signature: str | None = None
+    # 그 안내가 나간 화면의 내용 축 서명(#410). 출처는 같은 요청의 `Screen.content_signature`다 —
+    # 앱이 보낼 때 한 번 계산해 두 자리에 같은 값을 싣는다. `structure_signature`와 형식을
+    # 맞춘다: 한 레코드에 나란히 서는 두 값이라 한쪽만 다르면 읽는 눈이 갈린다.
+    # None은 label 없는 화면이거나 이 값을 아직 안 채우는 낡은 앱이다.
+    content_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_scroll_direction(self) -> Self:
@@ -239,7 +255,10 @@ class GuideAction(BaseModel):
     # JSON이 프롬프트 본문에 통째로 붙으므로, `prompt.EVIDENCE_INSTRUCTION`과 **같은 뜻**이어야
     # 한다. 한쪽이 "짧게 적어라"가 되면 한 프롬프트에 정반대 지시가 둘 들어간다(PR #62 리뷰).
     evidence: str = Field(
-        description="현재 화면 요소의 label 하나를 그대로 포함하고, 그것이 왜 근거인지 이어 쓴 문장"
+        description=(
+            "현재 화면 요소의 label 하나를 작은따옴표로 감싸 글자 그대로 인용하고, "
+            "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장"
+        )
     )
     action_type: ActionType = Field(description="다음에 할 동작")
     # 기준을 여기서도 말하는 이유는 `SwipeDirection` **클래스 docstring이 스키마에 실리지
@@ -263,6 +282,29 @@ class GuideAction(BaseModel):
     target_node_id: str | None = Field(
         default=None,
         description="동작 대상 요소의 node_id. 대상이 없는 동작에는 값이 없다.",
+    )
+    # 복사 신호(C21). **필드만 늘고 제품 동작은 그대로다** — 앱은 모르는 키를 무시하므로
+    # (`GuideApiClient`의 `ignoreUnknownKeys`) 이 값을 읽는 소비자가 생기기 전까지 안내는 지금과
+    # 같다. 소비자는 안내창의 「바로 입력」 버튼이다(#405 — 누르면 앱이 `ACTION_SET_TEXT`로
+    # 대상 입력칸에 채운다. 2026-08-24 팀 합의).
+    #
+    # **자리는 `instruction` 앞이다.** 넣을 글자를 먼저 확정하고 그 위에 사용자 문구를 쓰게
+    # 하려는 것이고, 사용자 문구를 마지막에 만든다는 C1 순서와도 맞는다.
+    #
+    # 값은 화면 label이 아니라 **모델이 쓴 말**이라 마스킹을 거치지 않는다(SPEC §4).
+    # 로그·저장 경계에서는 `instruction`과 같은 값으로 다룬다 — 실제로 같은 말이 두 필드에 있다.
+    input_text: str | None = Field(
+        default=None,
+        description=(
+            "type일 때 입력칸에 넣을 글자. **instruction에 적은 말과 같아야 한다** — "
+            "사용자는 그 문장을 읽고 버튼을 누르므로, 채워지는 값이 방금 읽은 말과 달라서는 "
+            "안 된다. 검색어는 목표 문장을 그대로 옮기지 않고 사람이 실제로 칠 말로 쓴다"
+            "(목표 「한국이랑 미국의 시차를 알고 싶어」 -> 「한국 미국 시차」). "
+            "무엇을 칠지 목표만으로 정할 수 없으면 예시를 지어내지 말고 값을 비운다. "
+            "검색어처럼 입력한 뒤 결과에서 사용자가 다시 고르는 자리에서만 쓰고, 입력한 값이 "
+            "곧바로 확정되는 칸이거나 사용자가 지금 정해야 하는 값이면 값이 없다. "
+            "type이 아니면 값이 없다."
+        ),
     )
     # 문장은 `direction`과 **같은 말**로 쓴다. 손가락 동작은 앱이 그림으로 보여주므로 문장까지
     # 손가락으로 쓰면 시니어가 읽는 말이 부자연스러워진다(C17).

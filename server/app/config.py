@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     # 실행 프로필. 미설정 로컬/테스트는 development로 유지한다.
-    # beta는 카카오 로그인으로 실사용자를 받는 외부 공개 endpoint다(#214) — production과
-    # 마찬가지로 stub/개발 토큰을 금지하고 세션 인증을 요구하지만(main.py), 별도 Azure
-    # Container App·시크릿으로 운영해 앞으로 올 정식 production과 구분한다.
+    # beta는 카카오 로그인으로 실사용자를 받는 외부 공개 코드 경계다(#214) — production과
+    # 마찬가지로 stub/개발 토큰을 금지하고 세션 인증을 요구한다(main.py). 현재 별도 관리형
+    # beta 배포는 없고, release Container App은 가장 엄격한 production을 명시한다(SPEC §7).
     davi_env: Literal["development", "beta", "production"] = "development"
 
     # LLM 공급자. 셋 다 같은 구조화 JSON 계약을 쓰고, 교체는 이 값 하나다(`llm_provider.py`).
@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     # gemini id가 Anthropic으로 나가는 사고를 막으려고 이렇게 뒀다.
     davi_model: str = ""
     # 출력 토큰 상한 강제값. 0이면 공급자별로 계산한다(`llm_provider.build_provider`).
-    # 모델을 바꿨는데 답이 잘리거나 너무 비쌀 때만 손댄다.
+    # 정상 계약 응답 + 보이지 않는 추론 몫보다 작은 값은 공급자를 만들 때 거부한다. 따라서
+    # 이 값은 모델을 바꿔 자동 계산보다 더 큰 예산이 필요할 때만 올리는 안전한 상향 override다.
     davi_max_output_tokens: int = 0
 
     # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는
@@ -90,6 +91,10 @@ class Settings(BaseSettings):
     davi_auth_jwt_secret: SecretStr = SecretStr("")
     # 세션 토큰 수명(초). 기본 30일 — 시니어 사용자가 자주 재로그인하지 않게 길게 둔다.
     davi_auth_session_ttl_seconds: int = 60 * 60 * 24 * 30
+    # 로그인 레이트리밋의 네트워크 출처를 어디서 읽을지 정한다. 기본 peer는 로컬·LAN의
+    # 직접 연결 주소다. Azure Container Apps HTTP ingress에서는 플랫폼이 보장하는
+    # X-Forwarded-For의 가장 오른쪽 IP만 쓴다(main.py). 사용자 식별·권한에는 쓰지 않는다.
+    davi_auth_source: Literal["peer", "azure_container_apps"] = "peer"
     # 로그인 endpoint 인프로세스 제한(#167 리뷰 P1). 인증 전 공개 endpoint가 요청마다
     # 카카오 API를 소모하므로 dev 전용이 아니라 **모든 프로필**에 적용한다. dev 리미터와 별도 창.
     # 이 두 값은 카카오 API 소모를 막는 **전체 상한**이다. 정상 사용자 보호는 아래 출처별
@@ -97,8 +102,7 @@ class Settings(BaseSettings):
     davi_auth_rate_limit_requests: int = 100
     davi_auth_rate_limit_window_seconds: int = 60
     # 출처별 제한(#167 재리뷰 P1). 전체 창 하나만 있으면 한 출처의 폭주가 버킷을 소모해
-    # 모든 정상 사용자의 로그인을 막는다. 출처는 직접 연결 peer IP다 — X-Forwarded-For를
-    # 애플리케이션에서 파싱하지 않고, 프록시 뒤에서는 uvicorn --proxy-headers 경로를 쓴다.
+    # 모든 정상 사용자의 로그인을 막는다. 출처 선택은 위 DAVI_AUTH_SOURCE가 맡는다.
     davi_auth_rate_limit_per_source_requests: int = 10
     davi_auth_rate_limit_per_source_window_seconds: int = 60
 
@@ -190,6 +194,10 @@ class Settings(BaseSettings):
             raise ValueError("beta·production에서는 DAVI_DEV_ACCESS_TOKEN을 설정할 수 없습니다")
         if self.davi_env != "development" and test_access_token:
             raise ValueError("beta·production에서는 DAVI_TEST_ACCESS_TOKEN을 설정할 수 없습니다")
+        if self.davi_env != "production" and self.davi_auth_source != "peer":
+            raise ValueError(
+                "DAVI_AUTH_SOURCE=azure_container_apps는 production에서만 사용할 수 있습니다"
+            )
         if dev_access_token and len(dev_access_token) < 32:
             raise ValueError("DAVI_DEV_ACCESS_TOKEN은 32자 이상이어야 합니다")
         if test_access_token and len(test_access_token) < 32:

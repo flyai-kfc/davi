@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import pytest
 from app.llm import LlmClient
 from app.reasoning import next_step
 from app.schemas import (
@@ -65,6 +66,55 @@ def test_korean_particles_do_not_break_the_match():
     assert _verified("카카오톡이 열렸습니다", _screen("카카오톡", "전화"))
 
 
+@pytest.mark.parametrize(
+    ("label", "evidence"),
+    [
+        ("사진", "사진들이 보입니다"),
+        ("카메라", "카메라라고 표시되어 있습니다"),
+        ("바다", "바다라 판단했습니다"),
+        ("지도", "지도고 다른 화면은 아닙니다"),
+        ("시계", "시계며 일정 화면입니다"),
+        ("시계", "시계였습니다"),
+        ("설정", "설정에서는 확인했습니다"),
+        ("설정", "설정에서도 확인했습니다"),
+        ("설정", "설정에는 값이 있습니다"),
+        ("설정", "설정에도 같은 값이 보입니다"),
+        ("설정", "설정으로는 확인했습니다"),
+        ("설정", "설정까지는 확인했습니다"),
+        ("사진", "사진들에서는 확인했습니다"),
+    ],
+)
+def test_common_korean_particle_and_copula_pairs_are_verified(label, evidence):
+    assert _verified(evidence, _screen(label))
+
+
+def test_compound_particle_does_not_accept_unbounded_auxiliary_chains():
+    assert not _verified("설정에서만도 확인했습니다", _screen("설정"))
+    assert not _verified("설정까지까지 확인했습니다", _screen("설정"))
+    assert not _verified("사진들들이 보입니다", _screen("사진"))
+
+
+@pytest.mark.parametrize(
+    ("label", "evidence"),
+    [
+        ("카메라", "'카메라'라는 앱이 열렸습니다"),
+        ("설정", "'설정'에만 값이 보입니다"),
+        ("설정", "'설정'에서도 확인했습니다"),
+        ("설정", "'설정'까지는 확인했습니다"),
+        ("설정", "'설정'이지만 다른 화면은 아닙니다"),
+    ],
+)
+def test_quoted_label_accepts_particles_outside_the_quote(label, evidence):
+    """프롬프트가 요구하는 따옴표가 checker의 어절 경계를 명확하게 만든다."""
+    assert _verified(evidence, _screen(label))
+
+
+def test_verbal_connective_is_not_mistaken_for_a_particle():
+    """`하고`는 조사일 수도 있지만 동사 활용도 되어 저장 전 버튼 오탐을 만든다."""
+    assert not _verified("저장하고 목록으로 돌아왔습니다", _screen("저장"))
+    assert _verified("'저장'하고 목록으로 돌아왔습니다", _screen("저장"))
+
+
 def test_punctuation_and_spacing_differences_are_absorbed():
     """실측된 좋은 근거는 쉼표만 다르고 label과 같은 문자열이다(HANDOFF §9)."""
 
@@ -72,15 +122,24 @@ def test_punctuation_and_spacing_differences_are_absorbed():
         "Wi-Fi, 사용 중, AITECHLAB 연결됨",
         _screen("Wi-Fi 사용 중 AITECHLAB 연결됨"),
     )
+    assert _verified("WiFi가 연결됨", _screen("Wi-Fi"))
 
 
-def test_lazy_but_real_evidence_still_passes():
-    """`evidence='지도'` 같은 성의 없는 근거는 **의도적으로** 통과시킨다(SPEC §4).
-
-    임계값을 근거 없이 정하면 정당한 완료를 막는다. 실사용 로그를 보고 다시 연다.
-    """
+def test_short_but_two_character_evidence_still_passes():
+    """두 글자 label은 짧아도 화면에서 정확한 어절로 인용했으면 통과한다."""
 
     assert _verified("지도", _screen("지도", "사진", "설정"))
+
+
+def test_partial_word_with_opposite_state_is_not_verified():
+    """`사용 중`은 `사용 중지`의 부분 문자열이지만 정반대 상태다(#71)."""
+
+    assert not _verified("사용 중지했습니다", _screen("사용 중"))
+    assert _verified("현재 사용 중입니다", _screen("사용 중"))
+
+
+def test_lexical_continuation_is_not_a_quoted_label():
+    assert not _verified("Mapping 작업을 마쳤습니다", _screen("Map"))
 
 
 def test_screen_without_any_label_is_not_verified():
@@ -135,13 +194,13 @@ def test_non_latin_labels_are_still_compared():
     assert _verified("設定 화면이 보임", _screen("微信", "設定"))
 
 
-def test_screen_of_single_character_labels_is_still_compared():
-    """숫자 키패드처럼 전부 한 글자면, 검사를 끄는 대신 그것들로 대조한다."""
+def test_screen_of_single_character_labels_is_not_enough_to_verify_done():
+    """숫자 키패드의 한 글자는 대부분의 문장에 우연히 들어가므로 근거로 쓰지 않는다(#71)."""
 
     keypad = _screen("1", "2", "3", "0")
 
     assert not _verified("결제가 완료되었습니다", keypad)
-    assert _verified("3을 눌렀습니다", keypad)
+    assert not _verified("3을 눌렀습니다", keypad)
 
 
 def test_empty_evidence_is_not_verified():
@@ -179,3 +238,33 @@ def test_non_done_action_is_never_verified():
             )
 
     assert not next_step(request, _TapClient()).verified
+
+
+# ── 값 연결자 경계(C21 리팩터의 부수효과, PR #406 재리뷰) ─────────────
+
+# `_contains_quoted_phrase`를 복사 문구 대조와 공유하면서 이 가드도 **값 연결자 경계 배제**를
+# 함께 물려받았다. C21 스코프 밖에서 조용히 바뀐 동작이라 여기 회귀로 박아 둔다.
+# (대조 방향은 "화면 label이 근거 문장 안에 있는가"다 — 반대가 아니다.)
+
+
+def test_evidence_quoting_a_whole_connected_label_is_verified():
+    """온전한 값은 그대로 통과한다 — 좁힌 것이 정상 인용을 먹으면 안 된다."""
+
+    assert _verified("화면에 앱 정보/권한이 보임", _screen("앱 정보/권한", "저장공간"))
+
+
+def test_evidence_quoting_only_part_of_a_connected_value_is_not_verified():
+    """**이번에 좁아진 자리다.** 근거가 `앱 정보/권한`이라고 썼는데 label은 `앱 정보`뿐이면,
+    그 label은 근거가 가리킨 것의 조각이라 인용으로 보지 않는다.
+
+    `-./:`로만 이어진 자리는 원문에 없던 어절 경계라서다. 잘린 전화번호가 복사 문구로 나가던
+    것을 막으려는 규칙인데, 같은 함수를 쓰는 이 가드에도 걸린다.
+    """
+
+    assert not _verified("화면에 앱 정보/권한이 보임", _screen("앱 정보", "저장공간"))
+
+
+def test_grouping_punctuation_still_matches():
+    """괄호는 값을 잇는 자리가 아니다 — `설정` label을 `설정(Settings)`으로 쓴 근거가 통과한다."""
+
+    assert _verified("화면에 설정(Settings)이 보임", _screen("설정", "정보"))

@@ -85,6 +85,49 @@ UIAutomator는 런처에서 검색을 거쳐 Samsung Clock으로 이동하고 �
 - 삼성 시계 알람 생성 시나리오가 성공한다고 아직 주장할 수 없다.
 - 테스트가 Gemini 결정을 정답 selector로 보정하지 않았기 때문에 이 실패는 그대로 보존해야 한다.
 
+## 2026-08-24 · #316 목표 구체화 실기기 관통
+
+SM-S921N(Android 15 / One UI 7.0)에 최신 main 기반 debug 앱과 app 계측 APK를 설치하고, 로컬
+서버(`stub_llm=false`, OpenAI `gpt-5.6-luna`)로 `ClarificationFlowDeviceTest`의 두 live test를
+실행했다. 둘 다 최종 확인 화면의 goal 조각까지 통과했다.
+
+아래는 debug 앱과 app 계측 APK를 설치하고 로컬 8000 서버를 켠 뒤 실제로 쓴 실행 경계다.
+`davi.liveGemini=true`를 빼면 두 live test가 assume skip되므로 명령에서 이 인자를 유지한다.
+별도 worktree처럼 `local.properties`가 없는 곳은 에뮬레이터 기본값 `10.0.2.2`로 빌드되므로,
+실기기 APK를 만들 때 `daviE2eServerUrl`도 명시한다.
+
+```bash
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest \
+  -PdaviE2eServerUrl=http://127.0.0.1:8000
+adb reverse tcp:8000 tcp:8000
+adb shell am instrument -w -r \
+  -e davi.liveGemini true \
+  -e class com.davi.helper.ClarificationFlowDeviceTest \
+  com.davi.helper.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+| eval 시나리오 | 실기기 입력 | 실제로 지난 경계 | 결과 |
+|---|---|---|---|
+| `e01` 사진 공유 | 첫 질문 계획 fixture + 보기 선택 | Android View click → `clarification_answers` 두 번째 서버 호출 → 앱 후보 판정 → Confirm | 통과 |
+| `h07` 강수 확인 | 첫 질문 계획 fixture + 「직접 말하기」 + 성공 STT callback | Listening 화면 → freeform 답 → 두 번째 서버 호출 → 앱 후보 판정 → Confirm | 통과 |
+
+첫 질문 계획은 모델의 비결정성을 섞지 않도록 eval 목표 조각으로 고정했다. 그 뒤의 보기 click,
+직접 말하기 화면 전환, 앱의 로컬 답 누적, 실제 서버 최종화와 goal 렌더는 제품 경로다. 직접 말하기
+테스트는 **성공한 STT callback부터** 관통하므로 마이크 음향 인식 품질을 통과했다고 주장하지 않는다.
+음향 인식기는 #106의 별도 복구 범위다.
+
+같은 날 `25c35c1`을 유선 SM-S921N에 다시 설치해 두 live test를 각각 단독 실행했고 둘 다
+`OK (1 test)`였다. 첫 시도는 `local.properties` 없는 worktree의 `10.0.2.2` 기본값 때문에
+서버에 도달하지 못해 실패했으며, 위 Gradle 속성으로 `BuildConfig.SERVER_URL`이
+`http://127.0.0.1:8000`임을 확인한 뒤 재실행한 결과만 제품 관측으로 쓴다.
+
+고정 계획을 택하기 전에 실제 첫 호출도 관측했다. `e01` 계열 입력은 세 번 모두 질문을 만들었지만
+보기는 0개였고, `h07` 계열 입력은 지역이 빠졌는데도 즉시 `ready`였다. 이 값은 표본이 작아 품질
+결론으로 쓰지 않고, `eval/pingpong`의 보기 선택률·goal 유효성 지표로 다시 재게 남긴다.
+
+두 계측 실행은 발화·선택·goal 원문을 logcat에 쓰지 않았다. 서버 로그에도 요청 id, 단계
+(`plan`/`finalize`), 답 개수, status와 지연만 남는 것을 확인했다.
+
 ## 이후 실행 결과 확인
 
 OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매번 타임스탬프 문서가

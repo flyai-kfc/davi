@@ -4,10 +4,8 @@
       시스템 다크에서 검증 안 된 M3 다크 팔레트를 적용해 B3와 충돌했다(#97 리뷰 → #100).
       다크 대응은 토큰에 다크 값을 설계하는 시점에 착수한다.
     -->
-    <style name="Theme.Davi" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.Davi.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@color/davi_bg</item>
-        <!-- 라이트 고정을 시스템 강제 다크에서도 지킨다(B3). Material은 이 값을 설정하지 않는다. -->
-        <item name="android:forceDarkAllowed">false</item>
         <!-- Pretendard 전역 적용 (C1). textStyle=bold가 700 파일로 해석된다. -->
         <item name="android:fontFamily">@font/pretendard</item>
         <item name="fontFamily">@font/pretendard</item>
@@ -20,6 +18,11 @@
         <item name="android:textColorPrimary">@color/davi_text_primary</item>
         <item name="android:textColorSecondary">@color/davi_text_secondary</item>
     </style>
+    <!--
+      API 29 전용 forceDarkAllowed는 values-v29의 같은 이름 테마가 덧붙인다(#385).
+      그 정의는 이 빈 Theme.Davi를 대체하므로 공통 item은 항상 Theme.Davi.Base에만 추가한다.
+    -->
+    <style name="Theme.Davi" parent="Theme.Davi.Base" />
 
     <!--
       타입 램프 (C2) — Figma davi/* 텍스트 스타일과 1:1.
@@ -273,6 +276,18 @@
         <item name="android:textColor">@color/davi_button_on_primary</item>
     </style>
     <!--
+      MA-4 (3)「아니요」의 흰 라벨(#396). **위 「직접 말하기」와 같은 사안이다** — 둘 다
+      반투명 채움 위 흰 라벨이고, `DESIGN-CONVENTIONS.md`의
+      「A1 예외 — 반투명 채움 위 흰 라벨 둘」에 **함께 등록돼 있다.**
+
+      **인라인 textColor로 두지 않는 이유가 그것이다** — 대비를 손볼 사람이 스타일을 grep하면
+      한쪽만 걸려, A1 예외라는 사실과의 연결이 끊긴 채 남는다. 잰 값과 결정 근거는
+      `colors.xml`의 `davi_confirm_choice_reject_fill`에 있다. **여기 수치를 적지 않는다.**
+    -->
+    <style name="TextAppearance.Davi.ConfirmChoice.OnFill">
+        <item name="android:textColor">@color/davi_button_on_primary</item>
+    </style>
+    <!--
       질문 칩 `v2/chip/step`(#374). 13 Pretendard/ExtraBold `button/primary`.
       **ExtraBold는 서체 패밀리에 없으면 bold로 떨어진다** — 크기가 작아 굵기가 곧 가독성이다.
     -->
@@ -310,6 +325,32 @@
     </style>
     <style name="Widget.Davi.ButtonPair.Secondary">
         <item name="android:background">@drawable/bg_davi_button_pair_secondary</item>
+        <item name="android:textColor">@color/davi_button_primary</item>
+    </style>
+
+    <!--
+      ON-1.5 개인정보 동의 (#389). 제목·부제·항목 요약은 기존 스타일을 그대로 재사용한다
+      (제목=Title 28sp, 부제=OnboardingBody 17sp, 요약=Caption 14sp) — 새로 만들면 값이
+      같은데 이름만 다른 토큰이 하나 더 생긴다.
+    -->
+    <style name="TextAppearance.Davi.ConsentBadge.Required" parent="TextAppearance.Davi.Caption">
+        <item name="android:textSize">@dimen/davi_type_consent_badge</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/davi_highlight</item>
+    </style>
+    <style name="TextAppearance.Davi.ConsentBadge.Optional" parent="TextAppearance.Davi.ConsentBadge.Required">
+        <item name="android:textColor">@color/davi_text_secondary</item>
+    </style>
+    <style name="TextAppearance.Davi.ConsentItemLabel" parent="TextAppearance.Davi.Body">
+        <item name="android:textSize">@dimen/davi_type_consent_label</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <!-- 「보기」/「닫기」 캡슐 라벨. 다비의 말이 아니라 조작 버튼이지만, 시안이 Cafe24를 쓴다. -->
+    <style name="TextAppearance.Davi.ConsentViewButton" parent="TextAppearance.Davi.Caption">
+        <item name="android:fontFamily">@font/cafe24_ssurround</item>
+        <item name="fontFamily">@font/cafe24_ssurround</item>
+        <item name="android:textSize">@dimen/davi_type_consent_view_button</item>
+        <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/davi_button_primary</item>
     </style>
 </resources>

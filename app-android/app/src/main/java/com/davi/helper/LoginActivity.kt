@@ -198,8 +198,19 @@ class LoginActivity : AppCompatActivity() {
         binding.loginStatus.isVisible = true
     }
 
+    /**
+     * ON-2(권한 설정)로 가기 전에 **ON-1.5(개인정보 동의)를 거쳐야 하는지** 판정한다(#389).
+     * 지금 문안(`consent_version`)에 이미 동의했으면 건너뛴다 — 문안이 바뀌면 버전이 올라가
+     * 다시 이 화면을 보게 된다([ConsentGate.needsConsent]).
+     */
     private fun proceedToOnboarding() {
-        startActivity(Intent(this, OnboardingActivity::class.java))
+        val currentVersion = getString(R.string.consent_version)
+        val next = if (ConsentStore(this).hasAgreedCurrentVersion(currentVersion)) {
+            OnboardingActivity::class.java
+        } else {
+            ConsentActivity::class.java
+        }
+        startActivity(Intent(this, next))
         finish()
     }
 
