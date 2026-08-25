@@ -213,7 +213,10 @@ class CompletionEvidence(BaseModel):
 
     node_id: str = Field(description="현재 화면에서 완료 판단의 직접 근거인 요소 node_id")
     kind: CompletionEvidenceKind = Field(
-        description="그 요소가 목표의 직접 성공 근거인지 명시 실패·거절·취소 근거인지"
+        description=(
+            "그 요소가 목표의 직접 성공 근거인지 명시 실패·거절·취소 근거인지. failure는 "
+            "요소 label 자체가 그 실패 상태를 명시할 때만 사용"
+        )
     )
     state: ExpectedTargetState | None = Field(
         default=None,
@@ -337,14 +340,16 @@ class GuideAction(BaseModel):
     evidence: str = Field(
         description=(
             "현재 화면 요소의 label 하나를 작은따옴표로 감싸 글자 그대로 인용하고, "
-            "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장"
+            "조사나 설명은 닫는 따옴표 뒤에 붙인 뒤 그것이 판단 근거인 이유까지 쓴 문장. "
+            "completion_evidence가 있으면 그 node_id와 같은 요소의 label을 인용한다."
         )
     )
     completion_evidence: CompletionEvidence | None = Field(
         default=None,
         description=(
             "현재 화면에서 목표 성공을 직접 증명하거나 명시적으로 반박하는 구조화 근거. "
-            "node_id는 현재 요소 중 하나이고 상태에 의존하면 state도 채운다. 성공 근거는 done을 "
+            "node_id는 현재 요소 중 하나이고 evidence는 같은 node의 label을 인용한다. 상태에 "
+            "의존하면 state도 채운다. 성공 근거는 done을 "
             "고를 때 쓰고, 명시 실패 근거는 복구 행동을 고를 때도 쓸 수 있다. 화면만으로 "
             "성공·실패를 정할 수 없으면 값이 없다."
         ),

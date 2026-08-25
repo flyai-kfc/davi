@@ -180,6 +180,14 @@ data class ExpectedTargetState(
     val value: Boolean,
 )
 
+/**
+ * 기대 상태는 서버 응답 원문의 id가 아니라, 앱이 현재 화면에서 실제로 찾은 tap 대상과 함께
+ * 기록한다. 대상 조회가 실패했거나 다른 액션이면 id·label과 같은 자리에서 함께 비운다(#424).
+ * 상태 의미는 서버가 검증하고 앱은 해석하지 않는다.
+ */
+internal fun GuideAction.expectedTargetStateFor(target: UiElement?): ExpectedTargetState? =
+    expectedTargetState?.takeIf { actionType == ActionType.TAP && target != null }
+
 @Serializable
 data class CompletionEvidence(
     @SerialName("node_id") val nodeId: String,
@@ -219,7 +227,7 @@ data class GuideStep(
      * 있다. 화면마다 다시 매겨지는 값이라 서버가 [structureSignature]와 짝으로만 쓴다.
      */
     @SerialName("target_node_id") val targetNodeId: String? = null,
-    /** 응답의 기대 상태를 앱이 해석하지 않고 다음 요청에 echo한다. */
+    /** 실제로 조회된 tap 대상의 기대 상태. 상태의 의미는 해석하지 않고 다음 요청에 echo한다. */
     @SerialName("expected_target_state") val expectedTargetState: ExpectedTargetState? = null,
     /** 그 안내가 나간 화면이 무엇이었는지. 응답 [GuideAction.screenSummary]의 echo. */
     @SerialName("screen_hint") val screenHint: String? = null,

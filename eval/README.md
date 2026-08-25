@@ -173,7 +173,8 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 `expected_verdict` 판정 규칙은 다음과 같다.
 
 - `verified`: 현재 package·화면 요소·상태가 목표 달성을 직접 뒷받침한다.
-- `contradicted`: 현재 node에 묶인 명시 실패·거절 근거, 동일 화면에서의 사용자 부정, 또는
+- `contradicted`: 현재 node의 label 자체에 서버가 확인할 수 있는 명시 실패·거절 근거,
+  동일 화면에서의 사용자 부정, 또는
   수행된 직전 조작 뒤 같은 대상에서 관측된 반대 boolean 상태처럼 직접 반대 사실이 있다.
 - `inconclusive`: 빈 화면, 다른 package, 아직 눌러야 할 버튼, 비동기 대기, 일반 제목·상태 없는
   label처럼 현재 관측만으로 성공·실패 어느 쪽도 안전하게 정할 수 없다. 목표 값이나 예상 node가
@@ -208,8 +209,10 @@ candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가
 #424 이후에도 baseline은 착수 시점의 화면 근거 정책을 `completion_baseline.py`에 독립 snapshot으로
 보존한다. candidate는 현재 서버의 구조화 완료 근거·현재 접근성 상태·직전 수행 결과·동일 화면
 사용자 거절을 사용해 `verified|inconclusive|contradicted`를 직접 분류한다. 24개 결정론적 사례에서
-baseline/candidate의 false success는 8/12 → 0/12, verified recall은 10/12 → 10/12,
-contradiction recall은 0/5 → 5/5이고, candidate의 inconclusive는 9/24다.
+baseline/candidate의 false success는 9/13 → 1/13, verified recall은 9/11 → 9/11,
+contradiction recall은 0/4 → 4/4이고, candidate의 inconclusive는 10/24다. 남은 false success는
+일반 `설정` label을 모델이 success 근거로 주장한 사례다. 사람 정답을 candidate에 맞추지 않고
+현재 정책의 의미 한계를 그대로 보존한다.
 
 #71에서 조사·동사 활용·부정 표현 위험을 포함한 기존 18사례를 비교한 결과는 다음과 같다. 이 수치는
 실제 사용 성공률이 아니라 정책 후보를 같은 작은 표본에서 비교한 결정론적 회귀값이다.

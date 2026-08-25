@@ -69,9 +69,13 @@ class CompletionCase(BaseModel):
     expected_result: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
     evidence_label: str = Field(min_length=1)
-    expected_verified: bool
+    expected_verified: bool = Field(
+        description="#71 근거-label 인용 이진축. expected_verdict와 독립이다."
+    )
     completion_evidence: CompletionEvidence | None = None
-    expected_verdict: CompletionVerdict
+    expected_verdict: CompletionVerdict = Field(
+        description="#425 현재 화면 완료 상태 3단계 정답. expected_verified와 독립이다."
+    )
 
     @model_validator(mode="after")
     def validate_source(self) -> CompletionCase:

@@ -20,6 +20,7 @@ from .masking import MaskingPolicy, active_masking_policy, mask_text
 from .schemas import (
     ActionType,
     CompletionEvidenceKind,
+    CompletionFeedbackStatus,
     CompletionVerdict,
     ErrorKind,
     GuideAction,
@@ -59,6 +60,45 @@ _VALUE_CONNECTORS = frozenset("-./:")
 # 한 글자 label(아이콘·숫자)은 우연 일치가 잦고, 숫자 키패드에서는 거의 모든 문장에 걸린다.
 # 대조할 긴 label이 없더라도 한 글자로 폴백하지 않는다(#71 fixture 평가).
 _MIN_EVIDENCE_LABEL_CHARS = 2
+
+# `CompletionEvidence.kind`는 모델 출력이라 그 값만으로 hard contradiction을 만들 수 없다(#424).
+# failure는 **현재 node의 label 자체**가 아래처럼 명시적인 실패 상태를 말할 때만 받는다.
+# 일반 label(`연결`, `저장`)을 evidence 문장이 실패라고 해석한 것은 모델 가설일 뿐이다.
+#
+# 취소·거부의 기본형은 버튼 label일 수 있어 넣지 않고, 완료된 상태형만 둔다. 새 표현을 넓힐
+# 때는 실제 익명화 관측과 false-positive fixture를 함께 추가한다.
+_EXPLICIT_FAILURE_LABEL_MARKERS = (
+    "실패",
+    "오류",
+    "에러",
+    "권한필요",
+    "권한이필요",
+    "거부됨",
+    "거부되었습니다",
+    "거절됨",
+    "거절되었습니다",
+    "취소됨",
+    "취소되었습니다",
+    "취소됐",
+    "permissionrequired",
+)
+_EXPLICIT_FAILURE_ENGLISH_WORDS = frozenset(
+    {"failed", "failure", "error", "errors", "denied", "rejected", "cancelled", "canceled"}
+)
+_EXPLICIT_FAILURE_LABEL_NEGATIONS = (
+    "실패하지않",
+    "실패없",
+    "오류없",
+    "오류가없",
+    "에러없",
+    "에러가없",
+    "notfailed",
+    "nofailure",
+    "noerror",
+)
+_EXPLICIT_FAILURE_NEGATION_PATTERN = re.compile(
+    r"(?:실패|오류|에러)(?:한)?(?:항목|작업|내용)?(?:이|가|는)?없"
+)
 
 # 복사 문구의 하한. 근거는 매칭이 아니라 **버튼이 아끼는 타이핑**이다 — 한 글자를 대신 쳐 주는
 # 버튼은 사용자가 지우고 다시 치는 것보다 낫지 않다(`_instruction_quotes_input_text`).
@@ -160,6 +200,26 @@ def _apply_guardrails(action: GuideAction, req: NextStepRequest) -> GuideAction:
     elif action.action_type is ActionType.SCROLL:
         # 대상 없는 scroll은 안내를 그 자리에서 죽인다(#202).
         action = _resolve_scroll(action, req.screen)
+
+    # 3. 기대 상태는 **현재 화면에서 확인 가능한 tap 대상**과만 한 묶음으로 남긴다(#424).
+    #    scroll 가드가 넓은 스크롤 영역으로 대상을 바꾼 뒤 모델 원문의 상태만 남으면, 다음
+    #    요청에서 전혀 다른 요소의 반대 상태를 직전 조작 실패로 오인할 수 있다.
+    return _keep_observable_expected_target_state(action, req.screen)
+
+
+def _keep_observable_expected_target_state(action: GuideAction, screen: Screen) -> GuideAction:
+    """현재 tap 대상에서 실제로 관측되는 기대 상태만 보존한다."""
+    expected = action.expected_target_state
+    if expected is None:
+        return action
+    target = _element_by_id(screen, action.target_node_id)
+    if (
+        action.action_type is not ActionType.TAP
+        or target is None
+        or target not in visible_elements(screen.elements)
+        or getattr(target, expected.attribute.value) is None
+    ):
+        return action.model_copy(update={"expected_target_state": None})
     return action
 
 
@@ -619,7 +679,11 @@ def _classify_completion(
             return CompletionVerdict.INCONCLUSIVE
 
     if claim.kind is CompletionEvidenceKind.FAILURE:
-        return CompletionVerdict.CONTRADICTED
+        return (
+            CompletionVerdict.CONTRADICTED
+            if _is_explicit_failure_observation(element)
+            else CompletionVerdict.INCONCLUSIVE
+        )
     if action.action_type is ActionType.DONE:
         return CompletionVerdict.VERIFIED
     return CompletionVerdict.INCONCLUSIVE
@@ -631,7 +695,8 @@ def _feedback_rejects_current_screen(req: NextStepRequest) -> bool:
     if feedback is None:
         return False
     return (
-        feedback.structure_signature == screen_signature(req.screen)
+        feedback.status is CompletionFeedbackStatus.USER_REJECTED
+        and feedback.structure_signature == screen_signature(req.screen)
         and feedback.content_signature == req.screen.content_signature
     )
 
@@ -679,34 +744,21 @@ def _evidence_quotes_element(evidence: str, element: UiElement) -> bool:
     return bool(phrases.compact) and _contains_quoted_phrase(phrases, normalized)
 
 
-def _evidence_quotes_screen(evidence: str, screen: Screen) -> bool:
-    """근거가 화면 label 중 하나를 실제로 물고 있는가.
+def _is_explicit_failure_observation(element: UiElement) -> bool:
+    """현재 label 자체가 검증 가능한 명시 실패 상태인가.
 
-    label은 2차 마스킹을 거친 값이다 — 모델이 본 것과 같은 값으로 비교해야 한다.
-    구두점 차이는 어절 토큰화로 흡수하고, 한국어 조사·서술격 어미만 label의 마지막 어절 뒤에
-    허용한다(`카카오톡` vs `카카오톡이`). 임의의 접두 일치는 허용하지 않는다: label `사용 중`을
-    근거 `사용 중지했습니다`에서 찾으면 정반대 상태가 통과한다(#71).
+    evidence의 설명과 구조화 ``kind``는 둘 다 같은 모델 응답에서 왔으므로 서로를 검증하지
+    못한다. 서버가 보는 화면 사실인 node label에 보수적인 상태 표지가 있어야만 failure 주장을
+    hard contradiction으로 올린다. 목록 밖 표현은 성공이 아니라 ``inconclusive``로 퇴화한다.
     """
-    phrases = _phrase_offsets(evidence)
-    if not phrases.compact:
-        return False
-
-    # **모델이 본 목록으로만 대조한다.** 가려진 요소는 프롬프트에 실리지 않으므로
-    # (`prompt._visible_elements`) 그 label에 걸리는 근거는 모델이 볼 수 없었던 것이고,
-    # 대조에 넣으면 지어낸 근거를 통과시키는 쪽으로만 작용한다 — 검증이 느슨해진다.
-    comparable = [
-        normalized
-        for element in visible_elements(screen.elements)
-        if len(normalized := _normalize_for_evidence(element.label)) >= _MIN_EVIDENCE_LABEL_CHARS
-    ]
-    if not comparable:
-        # 화면에 비교 가능한 label이 하나도 없으면 대조할 것이 없다. 검사할 수 없는 것을 통과로
-        # 돌리면 앱 전환 직후 스플래시에서 온 `done`이 그대로 세션을 끝낸다(#331 실측 2건).
-        # 한 글자 label도 아이콘·숫자라 아무 문장에나 걸리므로 폴백하지 않는다(#71).
-        # `verified=false`는 안내를 막지 않고 앱의 재시도 예산이 받는다(SPEC §4 2026-08-21 개정).
-        return False
-
-    return any(_contains_quoted_phrase(phrases, label) for label in comparable)
+    normalized = _normalize_for_evidence(element.label)
+    negated = any(marker in normalized for marker in _EXPLICIT_FAILURE_LABEL_NEGATIONS) or bool(
+        _EXPLICIT_FAILURE_NEGATION_PATTERN.search(normalized)
+    )
+    return not negated and (
+        any(marker in normalized for marker in _EXPLICIT_FAILURE_LABEL_MARKERS)
+        or bool(set(_evidence_words(element.label)) & _EXPLICIT_FAILURE_ENGLISH_WORDS)
+    )
 
 
 class _Phrases(NamedTuple):
@@ -754,8 +806,8 @@ def _contains_quoted_phrase(phrases: _Phrases, normalized_phrase: str) -> bool:
     한국어 조사·서술격 어미만 남아야 한다. 그래서 `Wi-Fi`/`WiFi` 차이는 받으면서도 어휘가 이어진
     부분 문자열은 받지 않는다.
 
-    **대조 둘이 이 규칙을 공유한다** — 완료 근거가 화면 label을 물었는지
-    (`_evidence_quotes_screen`)와 복사 문구가 안내문에 있는 말인지
+    **대조 둘이 이 규칙을 공유한다** — 완료 근거가 구조화 근거와 같은 node의 label을 물었는지
+    (`_evidence_quotes_element`)와 복사 문구가 안내문에 있는 말인지
     (`_instruction_quotes_input_text`)다. 이름에 evidence·label이 없는 이유가 그것이고,
     경계를 이렇게 정한 근거는 #71 fixture 평가다.
     """

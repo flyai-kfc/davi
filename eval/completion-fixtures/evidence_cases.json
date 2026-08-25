@@ -173,7 +173,7 @@
       "evidence_label": "설정",
       "expected_verified": true,
       "completion_evidence": {"node_id": "n1", "kind": "success"},
-      "expected_verdict": "verified"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "valid-paraphrase-without-exact-label",
@@ -288,7 +288,7 @@
       "evidence_label": "연결",
       "expected_verified": false,
       "completion_evidence": {"node_id": "n1", "kind": "failure"},
-      "expected_verdict": "contradicted"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-single-character-keypad",

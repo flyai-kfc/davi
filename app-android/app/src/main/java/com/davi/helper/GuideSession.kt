@@ -256,15 +256,6 @@ object GuideSession {
         return DoneOutcome.CONFIRM_UNSURE
     }
 
-    /** 구버전 bool 호출부와 기존 JVM 회귀의 호환 경계. */
-    fun onDone(generation: Long, verified: Boolean, screenSignature: String): DoneOutcome? =
-        onDone(
-            generation,
-            if (verified) CompletionVerdict.VERIFIED else CompletionVerdict.INCONCLUSIVE,
-            screenSignature,
-            contentSignature = null,
-        )
-
     private fun incrementUnverifiedDone(screenSignature: String): Int {
         if (
             screenSignature !in unverifiedDonesBySignature &&

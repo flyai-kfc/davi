@@ -1331,31 +1331,30 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 사용자가 이미 아니라고 답한 화면인데 완료 신호가 상한까지 반복됐다.
                     // 같은 질문을 다시 하지 않으면서 재질의도 멈춘다 — 문구만 남기고 칩으로 넘긴다.
                     Log.w(TAG, "done retry cap after reject, notice only")
-                    draw(display.showCapNotice(requestSignature.structure, getString(R.string.guide_done_unconfirmed)))
+                    display.showCapNotice(
+                        requestSignature.structure,
+                        getString(R.string.guide_done_unconfirmed),
+                    )?.let(::draw)
                 }
 
                 GuideSession.DoneOutcome.RECOVER_CONTRADICTED -> {
                     // 명시 오류·사용자 부정·검증 가능한 반대 상태는 성공 확인으로 올리지 않는다.
                     // 고정 문구만 잠시 남기고 같은 화면을 다시 탐색한다. 원문 근거는 로그에 쓰지 않는다.
                     Log.i(TAG, "done contradicted, retrying")
-                    draw(
-                        display.showCapNotice(
-                            requestSignature.structure,
-                            getString(R.string.guide_done_contradicted),
-                        ),
-                    )
+                    display.showCapNotice(
+                        requestSignature.structure,
+                        getString(R.string.guide_done_contradicted),
+                    )?.let(::draw)
                     stability.markFailed(stabilityNowMs())
                 }
 
                 GuideSession.DoneOutcome.NOTICE_CONTRADICTED -> {
                     // 재시도 예산이 끝나도 명시 반대를 성공·불확실 확인 UI로 올리지 않는다.
                     Log.w(TAG, "done contradicted retry cap, notice only")
-                    draw(
-                        display.showCapNotice(
-                            requestSignature.structure,
-                            getString(R.string.guide_done_contradicted),
-                        ),
-                    )
+                    display.showCapNotice(
+                        requestSignature.structure,
+                        getString(R.string.guide_done_contradicted),
+                    )?.let(::draw)
                 }
 
                 GuideSession.DoneOutcome.RETRY -> {
@@ -1408,7 +1407,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 // label과 같은 조회 결과를 쓴다 — 응답 원문을 그대로 넣으면 대상이 현재
                 // 화면에서 안 잡혔을 때 label은 null인데 id만 남아 두 자리가 어긋난다.
                 targetNodeId = target?.nodeId,
-                expectedTargetState = action.expectedTargetState,
+                // 기대 상태도 id·label과 같은 실제 조회 결과에 묶는다. 응답 원문만 echo하면
+                // 대상을 못 찾았을 때 상태만 남아 다음 완료 판정의 다른 요소와 결합된다(#424).
+                expectedTargetState = action.expectedTargetStateFor(target),
                 screenHint = action.screenSummary.takeIf { it.isNotBlank() },
                 structureSignature = response.screenSignature,
                 // 이 안내가 나간 화면의 내용 축(#410). 요청을 만들 때 계산한 값을 도로 읽어

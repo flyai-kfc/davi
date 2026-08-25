@@ -323,14 +323,34 @@ def test_unobserved_or_mismatched_claimed_state_is_inconclusive():
         assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
 
 
-def test_grounded_explicit_failure_is_contradicted():
-    request = NextStepRequest(goal="항목 저장", screen=_screen("저장 실패"))
+@pytest.mark.parametrize(
+    "label",
+    ["저장 실패", "네트워크 오류", "권한이 필요합니다", "주문 취소됨", "Permission denied"],
+)
+def test_grounded_explicit_failure_is_contradicted(label: str):
+    request = NextStepRequest(goal="항목 저장", screen=_screen(label))
     action = _done_with_claim(
-        evidence="화면에 '저장 실패' 오류가 보입니다",
+        evidence=f"화면에 '{label}' 상태가 보입니다",
         kind=CompletionEvidenceKind.FAILURE,
     )
 
     assert _classify_completion(action, request) is CompletionVerdict.CONTRADICTED
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["연결", "저장", "오류 없음", "실패한 항목 없음", "No error"],
+)
+def test_model_failure_kind_without_an_explicit_failure_label_is_inconclusive(
+    label: str,
+):
+    request = NextStepRequest(goal="연결 상태 확인", screen=_screen(label))
+    action = _done_with_claim(
+        evidence=f"화면에 '{label}'이 보입니다",
+        kind=CompletionEvidenceKind.FAILURE,
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
 
 
 def test_user_rejection_is_bound_to_current_structure_and_content():

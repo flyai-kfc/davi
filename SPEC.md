@@ -436,8 +436,9 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 - `inconclusive` — 성공과 실패 중 어느 쪽도 현재 화면으로 안전하게 검증할 수 없다. 빈 트리,
   label 없는 화면, 같은 화면 유지, 예상 문구·node 부재, 로딩·전송 중·외부 결과, 모델 가설과
   다른 UI는 모두 여기다. 실패로 추측하지 않는다.
-- `contradicted` — 현재 node에 고정된 명시 오류·거절·취소, 같은 구조+내용 화면에서 받은 사용자
-  “아직요”, 또는 실제 눌림 뒤 화면이 변하지 않고 같은 대상의 관측 상태가 기대값과 반대인 경우다.
+- `contradicted` — 현재 node의 label 자체에 서버가 확인할 수 있는 명시 오류·거절·취소 상태,
+  같은 구조+내용 화면에서 받은 사용자 “아직요”, 또는 실제 눌림 뒤 화면이 변하지 않고 같은
+  대상의 관측 상태가 기대값과 반대인 경우다.
   부재나 패키지·문구 일부 일치만으로는 만들지 않는다.
 
 응답은 가산적으로 `completion_verdict`와 기존 `verified`를 함께 보낸다. `verified`는 verdict가
@@ -446,13 +447,17 @@ bool로 폴백한다. `done`은 계속 성공 종료 의미다. `contradicted`�
 앱은 완료 확인을 띄우지 않은 채 고정 문구를 보여 준 뒤 재탐색한다. `inconclusive`는 화면별 3회·
 세션 전체 6회 재시도 뒤 확신 없는 사용자 확인으로 넘긴다.
 
-직전 안내의 검증 가능한 기대 상태는 `expected_target_state`로 앱이 해석 없이 `GuideStep`에 echo한다.
+직전 안내의 검증 가능한 기대 상태는 `expected_target_state`로 보낸다. 서버는 현재 화면에서 그
+상태가 관측되는 `tap` 대상에만 값을 남기고, 앱은 실제 대상 조회에 성공했을 때만 node·label과
+함께 `GuideStep`에 기록한다. 상태의 의미 자체는 앱이 해석하지 않는다.
 사용자 부정은 `completion_feedback`에 구조·내용 서명만 싣고, goal·label·세션 식별자는 추가하지
 않는다. 두 서명이 현재 요청과 다르면 서버는 그 피드백을 판정과 프롬프트에서 모두 무시한다.
 
-키 없는 A/B corpus 24건에서 #71 기준선은 false success `8/13`, verified recall `10/11`,
-contradiction recall `0/5`였다. 구조화 근거 정책은 각각 `0/13`, `10/11`, `5/5`이며
-inconclusive는 `6/24`에서 `9/24`로 늘었다. 깨끗한 합성·익명화 fixture의 낙관적 상한이고,
+키 없는 A/B corpus 24건에서 #71 기준선은 false success `9/13`, verified recall `9/11`,
+contradiction recall `0/4`였다. 구조화 근거 정책은 각각 `1/13`, `9/11`, `4/4`이며
+inconclusive는 `6/24`에서 `10/24`로 늘었다. candidate의 남은 false success 한 건은 일반
+`설정` label에 대한 모델의 success 주장을 화면 의미로 반증할 수 없는 현재 정책 한계다.
+깨끗한 합성·익명화 fixture의 낙관적 상한이고,
 실제 모델 의미 판단의 정확도는 별도 관측 대상이다(#425).
 
 #### #71 기준선 — 화면 label 인용 존재 검사
