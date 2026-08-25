@@ -164,10 +164,23 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 ### 완료 근거 판정 fixture
 
 `completion-fixtures/evidence_cases.json`은 일반 화면 fixture와 목적이 다르다. fake LLM이 각
-사례의 `expected_result`·`evidence`로 `done`을 내게 하고, 사람이 정한
-`expected_verdict=verified|inconclusive|contradicted`와 비교한다. 실기기 기반 사례는
-`fixtures/*.json`을 파일명으로 참조하고, 합성 사례는 `source=eval_case`와 최소 화면을 직접
-넣는다. 두 종류 모두 하니스의 PII·스키마 검사를 먼저 통과한다.
+사례의 `expected_result`·`evidence`로 `done`을 낸다. 한 사례에는 서로 다른 축의 사람 기대값이
+둘 있다. 기존 `expected_verified`는 **근거 문장이 화면 label을 올바르게 인용했는지**를 재는 #71
+이진 회귀값이고, `expected_verdict`는 **현재 화면이 목표 상태를 뒷받침하는지**를 재는 #425의
+3단계 정답이다. 근거 문장이 틀려도 화면이 목표 상태라면 전자는 `false`, 후자는 `verified`일 수
+있다(`invalid-opposite-state-prefix`). 둘을 서로 파생하지 않는다.
+
+`expected_verdict` 판정 규칙은 다음과 같다.
+
+- `verified`: 현재 package·화면 요소·상태가 목표 달성을 직접 뒷받침한다.
+- `contradicted`: 현재 화면이 다른 앱/잠금 화면이거나 아직 눌러야 할 저장 버튼처럼 목표와 양립할
+  수 없는 상태를 직접 보여 준다.
+- `inconclusive`: 빈 화면, 일반 제목·상태 없는 label처럼 현재 관측만으로 성공·실패 어느 쪽도
+  안전하게 정할 수 없다.
+
+모델의 `evidence` 문장 품질은 이 셋을 정하는 근거가 아니다. 실기기 기반 사례는
+`fixtures/*.json`을 파일명으로 참조하고, 합성 사례는 `source=eval_case`와 최소 화면을 직접 넣는다.
+두 종류 모두 하니스의 PII·스키마 검사를 먼저 통과한다.
 
 로컬 실행은 다음 한 줄이다. stdout에는 fixture 원문 없이 JSON 보고서만 나간다.
 
@@ -176,16 +189,26 @@ cd eval
 python3.12 completion_ab.py
 ```
 
+저장한 보고서와 현재 실행의 호환성을 실제로 검사하려면 다음처럼 실행한다.
+
+```bash
+python3.12 completion_ab.py > previous.json
+python3.12 completion_ab.py --compare previous.json
+```
+
 보고서는 fixture 파일과 참조한 화면 fixture를 함께 묶은 `corpus_sha256`, baseline/candidate
-`policy_id`, 현재 `git_sha`를 남긴다. 이 셋으로 만든 실험·실행 ID도 함께 남기며, 저장한 보고서를
-코드에서 대조할 때 corpus 해시나 정책 식별자가 다르면 `assert_same_experiment()`가 거부한다.
+`policy_id`, 현재 `git_sha`를 남긴다. baseline id에는 고정 snapshot 파일 해시, candidate id에는
+현재 서버 추론 파일 해시가 붙어 구현 변경을 식별한다. 이 값과 보고서 schema로 만든 실험·실행
+ID도 함께 남긴다. `--compare`는 JSON을 스키마·지표·식별자까지 검증해 되읽고, schema·corpus
+해시·정책 식별자 중 하나라도 다르면 거부한다.
 candidate의 false success 수가 baseline보다 늘면 JSON의 gate가 false가 되고 프로세스도 종료
 코드 1로 실패한다.
 
 #424가 신뢰도 판정을 확정하기 전까지 baseline은 착수 시점의 화면 근거 정책을 명시적으로
-보존하고, candidate는 현재 서버의 bool 결과에서 false를 `inconclusive`로 옮긴다. 따라서 지금
-두 adapter의 판정은 의도적으로 같다. `contradicted`를 추측해 넣는 것은 #424와 겹치므로 하지
-않으며, #424 구현에서 candidate adapter와 정책 식별자만 교체해 같은 보고서로 채택 근거를 낸다.
+`completion_baseline.py`에 복사해 보존하고, candidate는 현재 서버의 bool 결과에서 false를
+`inconclusive`로 옮긴다. 따라서 지금 두 adapter의 판정은 의도적으로 같다. `contradicted`를
+추측해 넣는 것은 #424와 겹치므로 하지 않으며, #424 구현에서 candidate adapter만 교체해 같은
+보고서로 채택 근거를 낸다.
 
 #71에서 조사·동사 활용·부정 표현 위험을 포함한 18사례를 비교한 결과는 다음과 같다. 이 수치는
 실제 사용 성공률이 아니라 정책 후보를 같은 작은 표본에서 비교한 결정론적 회귀값이다.

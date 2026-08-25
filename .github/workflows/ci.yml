@@ -622,12 +622,12 @@ jobs:
       - name: eval 린트
         if: needs.changes.outputs.backend == 'true'
         working-directory: eval
-        run: ruff check harness.py judge.py completion_ab.py tests pingpong
+        run: ruff check harness.py judge.py completion_ab.py completion_baseline.py tests pingpong
 
       - name: eval 포맷 검사
         if: needs.changes.outputs.backend == 'true'
         working-directory: eval
-        run: ruff format --check harness.py judge.py completion_ab.py tests pingpong
+        run: ruff format --check harness.py judge.py completion_ab.py completion_baseline.py tests pingpong
 
       - name: eval 테스트
         if: needs.changes.outputs.backend == 'true'

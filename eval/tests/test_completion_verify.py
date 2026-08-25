@@ -23,7 +23,6 @@ from app.screen_view import visible_elements
 
 from completion_ab import (
     CompletionCase,
-    CompletionVerdict,
     load_completion_dataset,
 )
 from harness import FIXTURES, load_fixture
@@ -163,7 +162,7 @@ def _confusion_matrix(policy) -> Counter[str]:
     matrix: Counter[str] = Counter()
     for case, request in _load_completion_cases():
         actual = policy(case, request)
-        if case.expected_verdict is CompletionVerdict.VERIFIED:
+        if case.expected_verified:
             matrix["tp" if actual else "fn"] += 1
         else:
             matrix["fp" if actual else "tn"] += 1
@@ -186,7 +185,7 @@ def test_completion_policy_fixture_is_valid_and_measures_candidates():
 def test_remaining_false_results_are_named_instead_of_hidden():
     results = {
         case.id: (
-            case.expected_verdict is CompletionVerdict.VERIFIED,
+            case.expected_verified,
             _new_policy(case, request),
         )
         for case, request in _load_completion_cases()

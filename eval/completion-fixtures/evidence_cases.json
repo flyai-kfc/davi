@@ -18,6 +18,7 @@
       "expected_result": "카카오톡이 열려 있다",
       "evidence": "카카오톡이 열렸습니다",
       "evidence_label": "카카오톡",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -36,6 +37,7 @@
       "expected_result": "무선 인터넷이 연결되어 있다",
       "evidence": "Wi-Fi, 사용 중, 테스트망 연결됨",
       "evidence_label": "Wi-Fi 사용 중 테스트망 연결됨",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -47,6 +49,7 @@
       "expected_result": "홈 화면이 보인다",
       "evidence": "홈 화면에 전화가 보입니다",
       "evidence_label": "전화",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -65,6 +68,7 @@
       "expected_result": "카카오톡이 열려 있다",
       "evidence": "화면에 채팅 목록이 보입니다",
       "evidence_label": "채팅",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -83,6 +87,7 @@
       "expected_result": "오전 8시 알람이 켜져 있다",
       "evidence": "오전 8시 알람 사용 중입니다",
       "evidence_label": "오전 8시 알람 사용 중",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -101,6 +106,7 @@
       "expected_result": "사진 목록이 보인다",
       "evidence": "사진들이 보입니다",
       "evidence_label": "사진",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -119,6 +125,7 @@
       "expected_result": "카메라 화면이 보인다",
       "evidence": "카메라라고 표시되어 있습니다",
       "evidence_label": "카메라",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -137,6 +144,7 @@
       "expected_result": "시계 화면이 보인다",
       "evidence": "직전 화면은 시계였습니다",
       "evidence_label": "시계",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -155,7 +163,8 @@
       "expected_result": "설정 화면에 상태가 보인다",
       "evidence": "설정에서는 상태를 확인했습니다",
       "evidence_label": "설정",
-      "expected_verdict": "verified"
+      "expected_verified": true,
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "valid-paraphrase-without-exact-label",
@@ -173,6 +182,7 @@
       "expected_result": "무선 인터넷이 켜져 있다",
       "evidence": "무선 인터넷이 켜져 있습니다",
       "evidence_label": "Wi-Fi 사용 중",
+      "expected_verified": true,
       "expected_verdict": "verified"
     },
     {
@@ -192,6 +202,7 @@
       "expected_result": "채팅방 목록이 보인다",
       "evidence": "채팅방 목록이 보입니다",
       "evidence_label": "채팅방 목록",
+      "expected_verified": false,
       "expected_verdict": "contradicted"
     },
     {
@@ -208,6 +219,7 @@
       "expected_result": "일정이 저장되어 있다",
       "evidence": "일정이 저장되었습니다",
       "evidence_label": "일정",
+      "expected_verified": false,
       "expected_verdict": "inconclusive"
     },
     {
@@ -226,7 +238,8 @@
       "expected_result": "기능이 켜져 있다",
       "evidence": "사용 중지했습니다",
       "evidence_label": "사용 중",
-      "expected_verdict": "contradicted"
+      "expected_verified": false,
+      "expected_verdict": "verified"
     },
     {
       "id": "invalid-verbal-connective",
@@ -244,6 +257,7 @@
       "expected_result": "항목이 저장되어 있다",
       "evidence": "저장하고 목록으로 돌아왔습니다",
       "evidence_label": "저장",
+      "expected_verified": false,
       "expected_verdict": "contradicted"
     },
     {
@@ -262,7 +276,8 @@
       "expected_result": "연결되어 있다",
       "evidence": "'연결'이 끊겼습니다",
       "evidence_label": "연결",
-      "expected_verdict": "contradicted"
+      "expected_verified": false,
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-single-character-keypad",
@@ -283,6 +298,7 @@
       "expected_result": "잠금이 풀려 있다",
       "evidence": "3을 눌러 잠금이 풀렸습니다",
       "evidence_label": "3",
+      "expected_verified": false,
       "expected_verdict": "contradicted"
     },
     {
@@ -293,6 +309,7 @@
       "expected_result": "카메라가 열려 있다",
       "evidence": "화면에 전화가 보이므로 완료됐습니다",
       "evidence_label": "전화",
+      "expected_verified": false,
       "expected_verdict": "contradicted"
     },
     {
@@ -303,6 +320,7 @@
       "expected_result": "카메라가 열려 있다",
       "evidence": "카메라가 열렸습니다",
       "evidence_label": "카메라",
+      "expected_verified": false,
       "expected_verdict": "contradicted"
     }
   ]

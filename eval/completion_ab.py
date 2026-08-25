@@ -1,7 +1,7 @@
 """완료 판정 정책을 같은 fixture corpus에서 비교하는 keyless A/B runner(#425).
 
 #424가 제품의 신뢰도 상태와 종료 UX를 확정하기 전에도 측정 경계는 독립적으로 유지한다.
-baseline은 현재 화면 근거 정책을 이 모듈에 명시적으로 보존하고, candidate는 현재 서버의 순수
+baseline은 현재 화면 근거 정책을 별도 snapshot 모듈에 명시적으로 보존하고, candidate는 현재 서버의 순수
 완료 검증 경계를 호출한다. 지금 두 정책의 의미는 같지만 adapter는 분리되어 있으므로 #424가
 candidate만 교체해도 같은 corpus와 보고서 계약으로 전후 비용을 비교할 수 있다.
 
@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -24,10 +26,11 @@ ROOT = Path(__file__).resolve().parent.parent
 _SERVER = ROOT / "server"
 sys.path.insert(0, str(_SERVER))
 
-from app.reasoning import _evidence_quotes_screen, _verify_done
+from app.reasoning import _verify_done
 from app.schemas import ActionType, GuideAction, NextStepRequest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from completion_baseline import BASELINE_POLICY_ID, baseline_verified
 from harness import (
     FIXTURES,
     FixtureError,
@@ -39,6 +42,10 @@ from harness import (
 COMPLETION_CASES = (
     Path(__file__).resolve().parent / "completion-fixtures" / "evidence_cases.json"
 )
+_CANDIDATE_SOURCE_SHA256 = hashlib.sha256(
+    (ROOT / "server" / "app" / "reasoning.py").read_bytes()
+).hexdigest()
+_SAFE_CASE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 class CompletionVerdict(StrEnum):
@@ -54,7 +61,7 @@ class CompletionCase(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    id: str = Field(pattern=_SAFE_CASE_ID.pattern)
     axis: str = Field(min_length=1)
     source: Literal["eval_case", "anonymized_real_device_fixture"]
     request: dict[str, Any] | None = None
@@ -63,6 +70,7 @@ class CompletionCase(BaseModel):
     expected_result: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
     evidence_label: str = Field(min_length=1)
+    expected_verified: bool
     expected_verdict: CompletionVerdict
 
     @model_validator(mode="after")
@@ -122,16 +130,14 @@ class BaselineCompletionPolicy:
     남아야 하며, baseline 자체를 바꾸면 policy_id도 함께 올려야 한다.
     """
 
-    policy_id = "screen-evidence-baseline-v1"
+    policy_id = BASELINE_POLICY_ID
 
     def evaluate(
         self,
         case: CompletionCase,
         request: NextStepRequest,
     ) -> CompletionVerdict:
-        if not case.evidence.strip() or not case.expected_result.strip():
-            return CompletionVerdict.INCONCLUSIVE
-        if _evidence_quotes_screen(case.evidence, request.screen):
+        if baseline_verified(case.evidence, case.expected_result, request.screen):
             return CompletionVerdict.VERIFIED
         return CompletionVerdict.INCONCLUSIVE
 
@@ -144,7 +150,7 @@ class CurrentServerCandidatePolicy:
     않는다.
     """
 
-    policy_id = "current-server-candidate-v1"
+    policy_id = f"current-server-candidate-v1-{_CANDIDATE_SOURCE_SHA256[:12]}"
 
     def evaluate(
         self,
@@ -198,6 +204,151 @@ class PolicyReport:
         }
 
 
+class _MetricDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int = Field(ge=0)
+    denominator: int = Field(ge=0)
+    rate: float | None
+
+    @model_validator(mode="after")
+    def validate_rate(self) -> _MetricDocument:
+        expected = self.count / self.denominator if self.denominator else None
+        if expected is None:
+            if self.rate is not None:
+                raise ValueError("분모가 0인 지표의 rate는 null이어야 한다")
+        elif self.rate is None or not math.isclose(
+            self.rate,
+            expected,
+            rel_tol=0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError("지표 count/denominator/rate가 일치하지 않는다")
+        return self
+
+
+class _PolicyMetricsDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    false_success: _MetricDocument
+    verified_recall: _MetricDocument
+    contradiction_recall: _MetricDocument
+    inconclusive_rate: _MetricDocument
+
+
+class _PolicyReportDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._:-]+$")
+    confusion_matrix: dict[str, dict[str, int]]
+    metrics: _PolicyMetricsDocument
+    verdicts: dict[str, CompletionVerdict]
+
+    @model_validator(mode="after")
+    def validate_matrix_and_metrics(self) -> _PolicyReportDocument:
+        verdict_names = {verdict.value for verdict in CompletionVerdict}
+        if set(self.confusion_matrix) != verdict_names or any(
+            set(row) != verdict_names for row in self.confusion_matrix.values()
+        ):
+            raise ValueError("혼동 행렬의 verdict 축이 완전하지 않다")
+        if any(
+            count < 0
+            for row in self.confusion_matrix.values()
+            for count in row.values()
+        ):
+            raise ValueError("혼동 행렬 count는 음수일 수 없다")
+        if any(not _SAFE_CASE_ID.fullmatch(case_id) for case_id in self.verdicts):
+            raise ValueError("보고서 case id 형식이 잘못됐다")
+
+        matrix = self.confusion_matrix
+        expected_non_verified = sum(
+            sum(matrix[expected].values())
+            for expected in verdict_names
+            if expected != CompletionVerdict.VERIFIED.value
+        )
+        expected_verified = sum(matrix[CompletionVerdict.VERIFIED.value].values())
+        expected_contradicted = sum(
+            matrix[CompletionVerdict.CONTRADICTED.value].values()
+        )
+        total = sum(sum(row.values()) for row in matrix.values())
+        expected_metrics = {
+            "false_success": (
+                sum(
+                    matrix[expected][CompletionVerdict.VERIFIED.value]
+                    for expected in verdict_names
+                    if expected != CompletionVerdict.VERIFIED.value
+                ),
+                expected_non_verified,
+            ),
+            "verified_recall": (
+                matrix[CompletionVerdict.VERIFIED.value][
+                    CompletionVerdict.VERIFIED.value
+                ],
+                expected_verified,
+            ),
+            "contradiction_recall": (
+                matrix[CompletionVerdict.CONTRADICTED.value][
+                    CompletionVerdict.CONTRADICTED.value
+                ],
+                expected_contradicted,
+            ),
+            "inconclusive_rate": (
+                sum(
+                    row[CompletionVerdict.INCONCLUSIVE.value] for row in matrix.values()
+                ),
+                total,
+            ),
+        }
+        for name, expected in expected_metrics.items():
+            metric = getattr(self.metrics, name)
+            if (metric.count, metric.denominator) != expected:
+                raise ValueError(f"{name} 지표가 혼동 행렬과 일치하지 않는다")
+        return self
+
+
+class _GateDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    false_success_not_increased: bool
+
+
+class _ComparisonReportDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    experiment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    run_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    corpus_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    git_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    case_count: int = Field(gt=0)
+    baseline: _PolicyReportDocument
+    candidate: _PolicyReportDocument
+    gate: _GateDocument
+
+    @model_validator(mode="after")
+    def validate_cross_report_invariants(self) -> _ComparisonReportDocument:
+        baseline_total = sum(
+            sum(row.values()) for row in self.baseline.confusion_matrix.values()
+        )
+        candidate_total = sum(
+            sum(row.values()) for row in self.candidate.confusion_matrix.values()
+        )
+        if baseline_total != self.case_count or candidate_total != self.case_count:
+            raise ValueError("case_count와 혼동 행렬 합계가 일치하지 않는다")
+        if (
+            set(self.baseline.verdicts) != set(self.candidate.verdicts)
+            or len(self.baseline.verdicts) != self.case_count
+        ):
+            raise ValueError("두 정책의 case id 집합이 일치하지 않는다")
+        expected_gate = (
+            self.candidate.metrics.false_success.count
+            <= self.baseline.metrics.false_success.count
+        )
+        if self.gate.false_success_not_increased is not expected_gate:
+            raise ValueError("false success gate가 지표와 일치하지 않는다")
+        return self
+
+
 class IncompatibleComparisonError(ValueError):
     """서로 다른 corpus·정책의 수치를 같은 실험으로 비교하려 한 오류."""
 
@@ -214,8 +365,54 @@ class ComparisonReport:
     candidate: PolicyReport
     false_success_regression: bool
 
+    @classmethod
+    def from_dict(cls, value: Any) -> ComparisonReport:
+        """CLI JSON을 검증해 다시 비교 가능한 보고서로 복원한다."""
+        document = _ComparisonReportDocument.model_validate(value)
+
+        def metric(item: _MetricDocument) -> Metric:
+            return Metric(numerator=item.count, denominator=item.denominator)
+
+        def policy(item: _PolicyReportDocument) -> PolicyReport:
+            return PolicyReport(
+                policy_id=item.policy_id,
+                confusion_matrix=item.confusion_matrix,
+                false_success=metric(item.metrics.false_success),
+                verified_recall=metric(item.metrics.verified_recall),
+                contradiction_recall=metric(item.metrics.contradiction_recall),
+                inconclusive_rate=metric(item.metrics.inconclusive_rate),
+                verdicts={
+                    case_id: verdict.value for case_id, verdict in item.verdicts.items()
+                },
+            )
+
+        report = cls(
+            schema_version=document.schema_version,
+            experiment_id=document.experiment_id,
+            run_id=document.run_id,
+            corpus_sha256=document.corpus_sha256,
+            git_sha=document.git_sha,
+            case_count=document.case_count,
+            baseline=policy(document.baseline),
+            candidate=policy(document.candidate),
+            false_success_regression=(not document.gate.false_success_not_increased),
+        )
+        experiment_id, run_id = _report_ids(
+            corpus_sha256=report.corpus_sha256,
+            baseline_policy_id=report.baseline.policy_id,
+            candidate_policy_id=report.candidate.policy_id,
+            git_sha=report.git_sha,
+        )
+        if report.experiment_id != experiment_id or report.run_id != run_id:
+            raise IncompatibleComparisonError(
+                "보고서 식별자가 corpus·정책·git 메타데이터와 일치하지 않는다"
+            )
+        return report
+
     def assert_same_experiment(self, other: ComparisonReport) -> None:
         mismatches: list[str] = []
+        if self.schema_version != other.schema_version:
+            mismatches.append("schema_version")
         if self.corpus_sha256 != other.corpus_sha256:
             mismatches.append("corpus_sha256")
         if self.baseline.policy_id != other.baseline.policy_id:
@@ -257,6 +454,20 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise FixtureError(f"{path.name}: JSON을 읽을 수 없음 (원문 생략)") from error
+
+
+def load_comparison_report(path: Path) -> ComparisonReport:
+    """저장한 CLI 보고서를 원문 노출 없이 검증하고 복원한다."""
+    raw = _read_json(path)
+    try:
+        return ComparisonReport.from_dict(raw)
+    except ValidationError as error:
+        locations = _validation_locations(error)
+        raise FixtureError(
+            f"{path.name}: completion A/B 보고서 형식 오류: {locations} (입력값 생략)"
+        ) from error
+    except IncompatibleComparisonError as error:
+        raise FixtureError(f"{path.name}: {error}") from error
 
 
 def _corpus_hash(
@@ -399,6 +610,26 @@ def _evaluate_policy(
     )
 
 
+def _report_ids(
+    *,
+    corpus_sha256: str,
+    baseline_policy_id: str,
+    candidate_policy_id: str,
+    git_sha: str,
+) -> tuple[str, str]:
+    identity = {
+        "schema_version": 1,
+        "corpus_sha256": corpus_sha256,
+        "baseline_policy_id": baseline_policy_id,
+        "candidate_policy_id": candidate_policy_id,
+    }
+    experiment_id = hashlib.sha256(_canonical_json(identity)).hexdigest()
+    run_id = hashlib.sha256(
+        _canonical_json({**identity, "git_sha": git_sha})
+    ).hexdigest()
+    return experiment_id, run_id
+
+
 def run_comparison(
     loaded: LoadedCompletionDataset,
     *,
@@ -412,15 +643,12 @@ def run_comparison(
     baseline_report = _evaluate_policy(loaded, baseline_policy)
     candidate_report = _evaluate_policy(loaded, candidate_policy)
 
-    identity = {
-        "corpus_sha256": loaded.corpus_sha256,
-        "baseline_policy_id": baseline_report.policy_id,
-        "candidate_policy_id": candidate_report.policy_id,
-    }
-    experiment_id = hashlib.sha256(_canonical_json(identity)).hexdigest()
-    run_id = hashlib.sha256(
-        _canonical_json({**identity, "git_sha": git_sha})
-    ).hexdigest()
+    experiment_id, run_id = _report_ids(
+        corpus_sha256=loaded.corpus_sha256,
+        baseline_policy_id=baseline_report.policy_id,
+        candidate_policy_id=candidate_report.policy_id,
+        git_sha=git_sha,
+    )
 
     return ComparisonReport(
         schema_version=1,
@@ -462,12 +690,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="들여쓰기 없는 JSON으로 출력한다.",
     )
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        metavar="REPORT.json",
+        help="저장한 보고서를 읽어 현재 실행과 같은 corpus·정책·스키마인지 검사한다.",
+    )
     args = parser.parse_args(argv)
 
     try:
         loaded = load_completion_dataset()
         report = run_comparison(loaded, git_sha=current_git_sha())
-    except (FixtureError, RuntimeError, subprocess.SubprocessError) as error:
+        if args.compare is not None:
+            previous = load_comparison_report(args.compare)
+            previous.assert_same_experiment(report)
+    except (
+        FixtureError,
+        IncompatibleComparisonError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
         print(f"completion A/B 실행 실패: {error}", file=sys.stderr)
         return 1
 
