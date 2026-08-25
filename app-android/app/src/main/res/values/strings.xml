@@ -298,10 +298,17 @@
       아직 없고, 그동안 **눌러도 아무 일 없는 링크가 나가는 쪽이 더 나쁘다**고 봤다.
       앱 안에서 여는 화면을 만들 거라면 주소가 정해질 때 함께 만든다.
 
-      `consent_policy_url`은 게시 주소가 정해지면 채운다. 비어 있으면 링크를 감춘다.
+      **게시 주소가 정해져 채웠다**(#371). 비어 있으면 링크를 감추는 처리는 그대로 둔다 —
+      주소가 죽으면 감추는 쪽이 눌러도 아무 일 없는 링크보다 낫다.
+
+      **이 주소가 가리키는 페이지의 원본은 `docs/PRIVACY-POLICY.md`다.** 게시본은 공개
+      저장소 `flyai-kfc/davi-privacy`의 사본이며 GitHub Pages로 선다. 원본을 고치면
+      게시본도 밀어 넣는다 — Play Console에 등록하는 주소도 같은 값이다.
+
+      **이 화면의 문구와 그 문서는 같은 사실을 말해야 한다.** 한쪽만 고치지 않는다.
     -->
     <string name="consent_privacy_policy_link">개인정보 처리방침 전문 보기</string>
-    <string name="consent_policy_url" translatable="false"></string>
+    <string name="consent_policy_url" translatable="false">https://flyai-kfc.github.io/davi-privacy/</string>
 
     <!--
       철회 방법 안내. **여기서 미리 말해 둔다** — 동의를 받을 때 그만두는 방법을 함께 알리는

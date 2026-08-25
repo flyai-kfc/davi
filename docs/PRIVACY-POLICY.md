@@ -2,6 +2,9 @@
 
 - **문서 버전** `v1` — 앱의 `consent_version`과 **같은 값을 센다**(현재 `1`,
   `app-android/app/src/main/res/values/strings.xml`). 한쪽만 올리지 않는다.
+- **게시 주소** <https://flyai-kfc.github.io/davi-privacy/>
+  (공개 저장소 `flyai-kfc/davi-privacy`의 GitHub Pages. **이 파일이 원본이고 그쪽이 사본이다** —
+  고칠 때는 여기를 먼저 고치고 결과를 밀어 넣는다.)
 - **최초 작성** 2026-08-24
 - **적용 단계** 내부 도그푸딩. 외부 베타 진입 전에 §9·§11을 다시 연다(#375, `SPEC.md` §11).
 

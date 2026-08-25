@@ -414,8 +414,16 @@ Data safety는 앱이 *수집하는 항목*을 유형별로 묻는데, 우리가
 
 ### 처리방침 URL
 
-Play는 공개적으로 접근 가능한 URL을 요구한다. **이 저장소는 private이라 저장소 URL을 쓸 수
-없다.** 게시 위치가 정해지면 여기와 앱의 `consent_policy_url`에 같은 값을 넣는다.
+    https://flyai-kfc.github.io/davi-privacy/
+
+Play는 공개적으로 접근 가능한 URL을 요구하는데 **이 저장소는 private이라 저장소 URL을 쓸 수
+없다.** 그래서 게시에 필요한 것만 담은 공개 저장소 `flyai-kfc/davi-privacy`를 따로 두고
+GitHub Pages로 띄웠다. **코드는 넣지 않는다.**
+
+같은 값이 세 자리에 있다 — 이 표 · 앱의 `consent_policy_url` · Play Console 스토어 등록정보.
+**원본 문서는 `docs/PRIVACY-POLICY.md`이고 게시본은 그 사본이다.** 원본을 고치면 게시
+저장소의 `index.md`에도 같은 내용을 밀어 넣는다. 반대 방향으로 고치면 「코드가 근거」라는
+규칙이 끊긴다.
 
 ## 구성
 
