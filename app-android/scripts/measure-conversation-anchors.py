@@ -20,6 +20,12 @@
 온보딩으로 튕겨, 재려던 화면 대신 ON-2가 찍힌다(app-android/CLAUDE.md 기기 함정 절).
 글꼴 배율을 바꾸면 액티비티가 알아서 다시 만들어지므로 재시작이 필요 없다.
 
+**고정 대기로 재지 않는다.** 칸마다 「맨 위에 설 뷰」를 정해 두고 그것이 덤프에 뜰 때까지
+다시 잰다([Case.expect]) — 느린 기기에서는 전이 중간이 찍혀 칸이 통째로 빈다(실측
+S23 Ultra: MA-1·MA-4가 그랬고, 같은 격자가 S24에서는 멀쩡했다). 그래도 못 보면 표에
+`-`를 남기고 **판정이 「못 잼」으로 부른다** — 재는 데 실패한 것과 이상이 없는 것은
+표에서 구분돼야 한다.
+
 사용법:
 
     ./scripts/measure-conversation-anchors.py                    # 기본 격자, 표를 stdout에
@@ -34,6 +40,7 @@
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -62,8 +69,14 @@ TRACKED_IDS = (
 )
 
 DEFAULT_PACKAGE = "com.davi.helper.debug"
-ACTIVITY = f"{DEFAULT_PACKAGE}/com.davi.helper.ConversationActivity"
 E = "com.davi.helper.extra"
+
+
+def activity_for(package: str) -> str:
+    """띄울 대상. **덤프를 뒤지는 접두어와 같은 값에서 나와야 한다** — 예전에는 이것이
+    상수라, `--package`를 주면 debug 앱을 띄워 놓고 **다른 접두어로 덤프를 뒤져** 표가
+    통째로 비었다."""
+    return f"{package}/com.davi.helper.ConversationActivity"
 
 OPTION_LABELS = ("카카오톡", "문자 메시지", "인스타그램")
 PROMPT_WITH_OPTIONS = "어느 앱으로 사진을 보낼까요?"
@@ -82,6 +95,10 @@ class Case:
     chip: str = "-"
     #: 시작선을 카드 상단이 아니라 「칩·✕의 윗변」으로 읽는 화면(MA-3).
     perched: bool = False
+    #: **이 뷰가 덤프에 뜰 때까지 기다린다.** 고정 대기로는 느린 기기에서 전이 중간이
+    #: 찍힌다(실측 S23 Ultra: MA-1·MA-4 칸이 통째로 비었다). 화면마다 맨 위에 서는
+    #: 것이 다르므로 칸이 스스로 무엇을 기다릴지 안다.
+    expect: str = "card_question_wrap"
     #: 띄운 뒤 스스로 사라지는 화면은 캡처를 서둘러야 한다(메인 8은 자동 복귀한다).
     settle_s: float = 1.2
 
@@ -101,6 +118,7 @@ def clarification_case(option_count: int, question_count: int) -> Case:
         options=str(option_count),
         chip="있음" if question_count > 1 else "없음",
         perched=True,
+        expect="btn_close",
     )
 
 
@@ -110,7 +128,7 @@ def default_cases() -> list:
         for questions in (2, 1)
         for options in (3, 2, 1, 0)
     ]
-    cases.append(Case(screen="MA-1 홈", label="기본"))
+    cases.append(Case(screen="MA-1 홈", label="기본", expect="home_title"))
     cases.append(
         Case(
             screen="MA-4 최종 확인",
@@ -184,7 +202,9 @@ def parse_dump(xml_text: str, package: str = DEFAULT_PACKAGE) -> dict:
         if name not in TRACKED_IDS:
             continue
         bounds = parse_bounds(node.get("bounds") or "")
-        # 같은 id가 두 번 나오면 **먼저 나온 것**을 쓴다 — 트리 순서가 곧 z축 순서다.
+        # 같은 id가 두 번 나오면 **먼저 나온 것**을 쓴다. 이 화면에서 그럴 일이 없어서
+        # 고른 규칙일 뿐이고 **z축과는 무관하다** — 트리 순서로 z를 읽으면 틀린다(같은 부모
+        # 아래서는 뒤에 오는 노드가 위에 그려지고, 칩은 elevation까지 갖고 있어 아예 따로 논다).
         if bounds is not None and name not in found:
             found[name] = bounds
     return found
@@ -206,6 +226,11 @@ class Row:
     button_h_dp: str = "-"
     clipped: str = "-"
     missing: tuple = ()
+    #: 이 칸이 뜨기를 기다린 뷰. 「못 잼」 줄이 무엇을 못 봤는지 말해 준다.
+    expected: str = None
+    #: 마지막 덤프에서 실제로 본 뷰들. **못 잰 칸에서 이게 없으면 다음 사람도 똑같이
+    #: 추측만 한다** — 다른 화면이 찍혔는지, 트리가 덜 만들어졌는지가 여기서 갈린다.
+    seen: tuple = ()
     notes: list = field(default_factory=list)
 
 
@@ -260,6 +285,7 @@ def measure(
     perched: bool,
     close_circle_inset_px: int = 0,
     fixed_heights_px: dict = None,
+    inset_bottom_px: int = 0,
 ) -> dict:
     """한 조합의 덤프에서 시작선과 잘림 여부를 뽑는다.
 
@@ -306,8 +332,10 @@ def measure(
         (b.bottom for name, b in nodes.items() if name.startswith("btn_")),
         default=None,
     )
-    if bottom_most is not None and bottom_most > screen_height_px:
-        reasons.append(f"버튼이 화면 아래로 {dp(bottom_most - screen_height_px, density)}dp")
+    # **아래도 인셋으로 잰다** — 내비게이션 바에 깔린 버튼은 화면 안에 있지만 안 보인다.
+    floor_px = screen_height_px - inset_bottom_px
+    if bottom_most is not None and bottom_most > floor_px:
+        reasons.append(f"버튼이 인셋 아래로 {dp(bottom_most - floor_px, density)}dp")
 
     heights = [
         nodes[name].height
@@ -325,6 +353,11 @@ def measure(
         "button_h_dp": "/".join(str(dp(h, density)) for h in heights) if heights else "-",
         "clipped": " · ".join(reasons) if reasons else "아니오",
     }
+
+
+#: 3x 기기에서 1px = 0.33dp다. **레이아웃 반올림까지 흔들림으로 부르지 않는다** — 칸마다
+#: 1px씩 갈리는 것은 결함이 아니고, 그것을 흔들림으로 세면 다 고치고도 초록이 안 뜬다.
+SPREAD_TOLERANCE_DP = 0.5
 
 
 def start_line_groups(rows: list) -> dict:
@@ -346,9 +379,19 @@ def verdict_lines(rows: list) -> list:
     lines = []
     for (screen, scale), values in sorted(start_line_groups(rows).items()):
         spread = round(max(values) - min(values), 2)
-        mark = "OK" if spread == 0 else "흔들림"
+        mark = "OK" if spread <= SPREAD_TOLERANCE_DP else "흔들림"
         joined = ", ".join(f"{v}dp" for v in sorted(values))
         lines.append(f"- [{mark}] {screen} · 배율 {scale} — 시작선 {joined} (폭 {spread}dp)")
+    # **못 잰 칸을 판정에서 빼지 않는다.** 빼면 표에 `-`만 한 줄 남고 판정은 조용해서,
+    # 「재는 데 실패했다」가 「이상 없다」와 구분되지 않는다. `am start`는 화면을 못 띄우고도
+    # 종료코드 0을 준다.
+    for row in rows:
+        if row.start_line_dp is None:
+            seen = ", ".join(row.seen) if row.seen else "아무것도"
+            lines.append(
+                f"- [못 잼] {row.screen} · {row.label} · 배율 {row.scale} — "
+                f"시작선을 못 찾았다 (기다린 뷰: {row.expected or '-'} · 본 것: {seen})"
+            )
     clipped = [r for r in rows if r.clipped not in ("아니오", "-")]
     for row in clipped:
         lines.append(f"- [잘림] {row.screen} · {row.label} · 배율 {row.scale} — {row.clipped}")
@@ -358,16 +401,16 @@ def verdict_lines(rows: list) -> list:
     return lines
 
 
-def launch_args(case: Case) -> list:
+def launch_args(case: Case, package: str = DEFAULT_PACKAGE) -> list:
     """`am start` 인자. **문자열 값을 작은따옴표로 한 번 더 감싼다.**
 
     adb가 argv를 공백으로 이어 붙여 기기 셸에 넘기므로, 감싸지 않으면 `|`가 파이프로
     읽히고(「문자 메시지」가 갈라진다) 빈 문자열은 **인자 자체가 사라진다** — 보기 0개를
     재려던 칸이 조용히 보기 3개로 뜬다.
     """
-    args = ["am", "start", "-n", ACTIVITY]
+    args = ["am", "start", "-n", activity_for(package)]
     for flag, key, value in case.extras:
-        args.extend([flag, key, f"'{value}'"] if flag == "--es" else [flag, key, value])
+        args.extend([flag, key, shlex.quote(value)] if flag == "--es" else [flag, key, value])
     return args
 
 
@@ -435,23 +478,34 @@ class Device:
         lines = [line for line in raw.splitlines() if "size" in line.lower()]
         return int(lines[-1].split(":")[1].strip().split("x")[1])
 
-    def status_bar_height_px(self) -> int:
-        """상태바 높이 = 화면이 물러나야 하는 위쪽 인셋.
+    def system_bar_height_px(self, bar: str) -> int:
+        """시스템 바 하나의 높이 = 화면이 그만큼 물러나야 하는 인셋.
 
-        `dumpsys window`의 InsetsSource 중 statusBars 프레임을 읽는다. 못 읽으면 0을
-        돌려주지 않고 예외로 세운다 — 인셋을 0으로 두면 「잘림 아니오」가 거짓으로 나온다.
+        **위아래를 같은 자로 잰다.** 예전에는 위만 인셋으로 보고 아래는 화면 물리 높이로
+        봐서, **내비게이션 바에 깔린 버튼이 「잘림 아니오」로 나왔다** — 상태바에 덮인 ✕와
+        똑같이 안 보이는데도. 「바로 말하기」가 맨 아래 버튼이라 실제로 걸릴 자리다.
+
+        못 읽으면 0을 돌려주지 않고 예외로 세운다 — 인셋을 0으로 두면 잘림이 사라진다.
         """
         raw = self.shell("dumpsys", "window")
         # `type=statusBars frame=[0,0][1080,103]` — 안드로이드 판본마다 `mFrame=`으로도 쓴다.
-        pattern = re.compile(r"[Tt]ype=statusBars\b.*?[Ff]rame=(\[[^\]]*\]\[[^\]]*\])")
+        pattern = re.compile(rf"[Tt]ype={bar}\b.*?[Ff]rame=(\[[^\]]*\]\[[^\]]*\])")
         for line in raw.splitlines():
             found = pattern.search(line)
             if not found:
                 continue
             bounds = parse_bounds(found.group(1))
             if bounds is not None and bounds.height > 0:
-                return bounds.bottom
-        raise RuntimeError("dumpsys window에서 statusBars 인셋을 못 찾았다")
+                return bounds
+        raise RuntimeError(f"dumpsys window에서 {bar} 인셋을 못 찾았다")
+
+    def status_bar_height_px(self) -> int:
+        """위쪽 인셋 — 상태바 **아래**가 내용이 시작할 수 있는 첫 줄이다."""
+        return self.system_bar_height_px("statusBars").bottom
+
+    def navigation_bar_height_px(self) -> int:
+        """아래쪽 인셋 — 내비게이션 바 **높이**만큼 화면 바닥에서 물러나야 한다."""
+        return self.system_bar_height_px("navigationBars").height
 
     def font_scale(self) -> str:
         return (self.shell("settings", "get", "system", "font_scale") or "").strip()
@@ -459,15 +513,69 @@ class Device:
     def set_font_scale(self, scale: str) -> None:
         self.shell("settings", "put", "system", "font_scale", scale)
 
-    def launch(self, case: Case) -> None:
-        self.shell(*launch_args(case))
+    def restore_font_scale(self, original: str) -> None:
+        """스크립트가 끝나면 기기를 원래대로 돌려놓는다.
+
+        **한 번도 배율을 바꾼 적 없는 기기는 `null`을 돌려준다** — 그리고 그 기기가 정확히
+        「기본 1.0」인 기기다. 그때 복원을 건너뛰면 기기가 `--scales`의 마지막 값(2.0)에
+        남아, 다음 사람이 원인 모를 배율에서 딴 걸 잰다. **1.0을 박지 말고 지운다.**
+        """
+        if original and original != "null":
+            self.set_font_scale(original)
+        else:
+            self.shell("settings", "delete", "system", "font_scale")
+
+    def launch(self, case: Case, package: str = DEFAULT_PACKAGE) -> None:
+        self.shell(*launch_args(case, package))
 
     def dump(self, local_path: str) -> str:
+        """화면 하나를 덤프해서 XML 문자열로.
+
+        **먼저 지운다.** `uiautomator dump`는 idle을 못 잡으면
+        `ERROR: could not get idle state.`를 찍고 **종료코드 0으로 끝난다** — 지우지 않으면
+        옛 파일이 그대로 남아 `pull`이 성공하고, **이번 칸에 직전 칸의 숫자가 적힌다.**
+        흔들림을 재는 표에서 그것은 「못 쟀다」보다 나쁘다: 두 칸이 같은 값으로 나와 **OK가 뜬다.**
+        애니메이션이 도는 화면(메인 8은 자동 복귀 중이다)이 가장 걸리기 쉽다.
+        """
         remote = "/sdcard/davi-anchors.xml"
-        self.shell("uiautomator", "dump", remote)
+        self.shell("rm", "-f", remote)
+        out = self.shell("uiautomator", "dump", remote)
+        if "dumped to" not in out:
+            raise RuntimeError(f"uiautomator dump가 실패했다: {out.strip()}")
         self.pull(remote, local_path)
         with open(local_path, encoding="utf-8") as handle:
             return handle.read()
+
+
+#: 한 칸을 다시 띄워 볼 횟수와, 한 번 띄운 뒤 다시 덤프할 횟수·간격.
+LAUNCH_ATTEMPTS = 3
+READY_DUMPS = 4
+READY_INTERVAL_S = 0.4
+
+
+def launch_until_ready(device, case: Case, tmp_path: str, package: str) -> dict:
+    """칸을 띄우고 [Case.expect]가 덤프에 뜰 때까지 기다린다. 안 뜨면 **다시 띄운다.**
+
+    **고정 대기로는 느린 기기에서 전이 중간이 찍힌다** — S23 Ultra에서 MA-1·MA-4 칸이
+    통째로 비었다(같은 격자가 S24에서는 멀쩡했다). 「몇 초면 되겠지」를 기기마다 다시
+    고르는 대신, 화면이 실제로 섰는지를 본다.
+
+    **기다리기만 해서는 모자란다.** 글꼴 배율을 바꾸면 액티비티가 다시 만들어지는데, 그
+    사이에 넣은 `am start`는 삼켜질 수 있다 — 그러면 아무리 기다려도 옛 화면이다(실측:
+    배율을 바꾼 직후 첫 칸이 그랬다). 그래서 기다림이 헛돌면 주입을 다시 넣는다.
+
+    끝내 못 보면 **마지막 덤프를 그대로 돌려준다** — 여기서 예외를 던지면 나머지 칸을
+    못 재고, 표에서 빈 칸은 [verdict_lines]가 「못 잼」으로 세운다.
+    """
+    nodes = {}
+    for _ in range(LAUNCH_ATTEMPTS):
+        device.launch(case, package)
+        for attempt in range(READY_DUMPS):
+            time.sleep(case.settle_s if attempt == 0 else READY_INTERVAL_S)
+            nodes = parse_dump(device.dump(tmp_path), package)
+            if case.expect in nodes:
+                return nodes
+    return nodes
 
 
 def resolve_adb() -> str:
@@ -487,6 +595,7 @@ def run(args) -> int:
     density = device.density()
     screen_height = device.screen_height_px()
     inset_top = device.status_bar_height_px()
+    inset_bottom = device.navigation_bar_height_px()
     close_circle_inset_px = round(read_dimen_dp("davi_close_circle_inset") * density / 160.0)
     fixed_heights_px = {
         view: round(read_dimen_dp(token) * density / 160.0)
@@ -503,9 +612,7 @@ def run(args) -> int:
             # 배율 변경은 액티비티를 다시 만든다 — 다음 주입이 옛 배율에서 재지 않게 기다린다.
             time.sleep(1.0)
             for case in cases:
-                device.launch(case)
-                time.sleep(case.settle_s)
-                nodes = parse_dump(device.dump(tmp), args.package)
+                nodes = launch_until_ready(device, case, tmp, args.package)
                 metrics = measure(
                     nodes,
                     density,
@@ -514,6 +621,7 @@ def run(args) -> int:
                     case.perched,
                     close_circle_inset_px,
                     fixed_heights_px,
+                    inset_bottom,
                 )
                 rows.append(
                     Row(
@@ -523,6 +631,8 @@ def run(args) -> int:
                         chip=case.chip,
                         scale=scale,
                         inset_top_dp=dp(inset_top, density),
+                        expected=case.expect,
+                        seen=tuple(sorted(nodes)),
                         # **그 화면에 원래 있는 뷰만 「못 찾음」으로 센다** — MA-4에는 ✕가
                         # 없고 홈에는 질문 카드가 없다. 없는 것을 못 찾았다고 적으면
                         # 경고가 매번 떠서 **진짜 못 찾은 날에 아무도 안 본다.**
@@ -535,13 +645,13 @@ def run(args) -> int:
                     )
                 )
     finally:
-        if original_scale and original_scale != "null":
-            device.set_font_scale(original_scale)
+        device.restore_font_scale(original_scale)
 
     header = (
         f"# 대화 화면 시작선 실측 (#452)\n\n"
         f"기기 `{args.serial or 'default'}` · 밀도 {density}dpi · "
-        f"화면 높이 {dp(screen_height, density)}dp · 위 인셋 {dp(inset_top, density)}dp"
+        f"화면 높이 {dp(screen_height, density)}dp · "
+        f"인셋 위 {dp(inset_top, density)}dp · 아래 {dp(inset_bottom, density)}dp"
     )
     report = format_report(rows, header)
     print(report)
