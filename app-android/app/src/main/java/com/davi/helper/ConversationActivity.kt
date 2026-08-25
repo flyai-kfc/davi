@@ -91,8 +91,8 @@ internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
  *
  * 이 문구의 길이는 서버·오류 상황이 정하고 앱이 못 정한다. 그런데 「길어지면 말풍선이
  * 마이크를 덮는다」가 실제 결함이라, **길어진 화면을 띄울 길이 없으면 고쳤는지 확인할 수
- * 없다.** 줄바꿈은 `
-`으로 넣는다.
+ * 없다.** 줄바꿈은 **따옴표 안에서 줄을 바꿔서** 넣는다 — `am`은 `--es` 값의 이스케이프를
+ * 풀지 않는다.
  *
  *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
  *     --es com.davi.helper.extra.DEBUG_HOME_STATUS "'인터넷 연결이 원활하지 않아요.
@@ -323,9 +323,16 @@ class ConversationActivity : AppCompatActivity() {
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
         // 말풍선 높이는 문구 길이 x 글꼴 배율로 정해져 배치가 끝나야 알 수 있다.
-        binding.homeBubble.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        // **둘 다에 단다**(2026-08-25 리뷰). 루트는 자식을 순서대로 놓는데 card_column이
+        // mic_slot보다 앞이라, 말풍선 콜백에서 잰 마이크 자리는 **이번 패스가 아직 안 옮긴
+        // 옛 자리**다. 마이크는 홈이냐 아니냐로 50dp 움직여서(davi_mic_margin_bottom 32 <->
+        // davi_home_mic_margin_bottom 82), 청취에서 홈으로 돌아오는 렌더에서 겹침이 50dp
+        // 작게 읽힌다 — 그러면 shrink가 0이 되고 **값이 안 바뀌니 다음 패스도 없어 굳는다.**
+        val caneWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateCaneShrink()
         }
+        binding.homeBubble.addOnLayoutChangeListener(caneWatch)
+        binding.micSlot.addOnLayoutChangeListener(caneWatch)
         // 제목 폭은 글꼴 배율을 따라 자란다 — 배치가 끝나야 화살표를 침범하는지 알 수 있다.
         // **둘 다에 단다.** 제목에만 달았더니 화살표가 아직 안 재진 첫 배치에서 빠져나온 뒤
         // 제목이 다시 안 바뀌어 판정이 영영 안 돌았다.
@@ -500,7 +507,13 @@ class ConversationActivity : AppCompatActivity() {
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         intent = newIntent
-        debugInjectedState()?.let { setState(it) }
+        // **주입이 아니어도 다시 그린다**(2026-08-25 리뷰). DEBUG_HOME_STATUS는 상태를 안
+        // 만들고 문구만 갈아 끼우는 extra라 debugInjectedState()가 null을 준다 — 그러면 두
+        // 번째 am start가 render를 못 돌려 화면이 옛 문구 그대로다. 그런데 intent는 갱신돼
+        // 있어 나중에 상관없는 render가 돌 때 새 문구가 뒤늦게 튀어나온다. 아무 일도 안
+        // 일어나는 것보다 나쁘다.
+        val injected = debugInjectedState()
+        if (injected != null) setState(injected) else render(uiState)
     }
 
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
@@ -635,6 +648,11 @@ class ConversationActivity : AppCompatActivity() {
      *
      * **줄인 만큼을 되돌려 「줄이기 전」 기준으로 잰다** — 안 그러면 줄여서 겹침이 사라진 다음
      * 판정에서 되돌리고, 되돌리면 또 겹쳐 무한히 오간다.
+     *
+     * **한 번에 수렴하는 것은 홈 열의 사정 덕이다** — 홈은 아래 여백(space_home_mid)이 걷혀
+     * 있고(#231) 겹치는 구간에서는 위 여백(space_flex_top)이 0에 눌려 있어, 캐릭터를 X 줄이면
+     * 말풍선이 정확히 X 올라온다. **홈 열에 weight를 가진 자식이 하나라도 살아나면** 그
+     * 전제가 깨져 한 번에 안 맞고 여러 프레임에 걸쳐 수렴한다 — 그때는 이 계산을 다시 본다.
      */
     private fun updateCaneShrink() {
         val cane = binding.homeCane
@@ -652,7 +670,11 @@ class ConversationActivity : AppCompatActivity() {
         val bubbleAt = IntArray(2).also { binding.homeBubble.getLocationInWindow(it) }
         val micAt = IntArray(2).also { binding.micSlot.getLocationInWindow(it) }
         val bubbleBottomAtBase = bubbleAt[1] + binding.homeBubble.height + caneShrink
-        val overflow = bubbleBottomAtBase - micAt[1]
+        // **말풍선 아래 여백을 지키고 잰다**(2026-08-25 리뷰). 마이크 윗변만 기준으로 삼으면
+        // 둘이 딱 붙어 davi_home_bubble_margin_bottom이 통째로 0이 된다 — 여유가 있는데도
+        // 붙일 이유가 없다. 여유가 없을 때만 하한이 걸려 이 여백부터 먹힌다.
+        val gap = resources.getDimensionPixelSize(R.dimen.davi_home_bubble_margin_bottom)
+        val overflow = bubbleBottomAtBase + gap - micAt[1]
         val floor = resources.getDimensionPixelSize(R.dimen.davi_home_cane_min_height)
         applyCaneShrink(overflow.coerceIn(0, (caneBaseHeight - floor).coerceAtLeast(0)))
     }
