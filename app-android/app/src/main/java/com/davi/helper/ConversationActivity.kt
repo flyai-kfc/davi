@@ -497,7 +497,7 @@ class ConversationActivity : AppCompatActivity() {
         // 보는** 자리라 서비스가 필요 없다 — [debugClarificationState]가 상태를 통째로 만든다.
         //
         // **release에는 두 진입점 모두 없다** — BuildConfig.DEBUG가 앞에 선다.
-        val layoutProbe = BuildConfig.DEBUG && intent.hasExtra(EXTRA_DEBUG_CLARIFICATION)
+        val layoutProbe = debugInjectionRequested()
         if (!canStartGuide() && !instrumentationUiTest && !layoutProbe) {
             // 접근성 회수는 onUnbind도 정리하지만, 그 콜백보다 이 화면이 먼저 살아나는 경합이
             // 있어 여기서도 끊는다. 두 번 불려도 GuideSession.stop()은 멱등이다.
@@ -556,6 +556,20 @@ class ConversationActivity : AppCompatActivity() {
         voiceExecutor.shutdownNow()
         super.onDestroy()
     }
+
+    /**
+     * debug 주입이 붙어 왔는가. **[debugInjectedState]와 달리 상태를 만들지도 기록을 남기지도
+     * 않는다** — 그쪽은 부르면 텔레메트리가 찍혀서, 판정에만 쓰면 같은 주입이 두 번 기록된다.
+     *
+     * **실패 화면 주입도 함께 본다** — 그쪽도 안내를 안 돌리는 순수 배치 확인이라 근거가 같다.
+     * 키 유무(`hasExtra`)가 아니라 **값의 형태**를 본다. 문자열이 아닌 값을 같은 키로 넣으면
+     * 게이트만 열리고 주입은 안 돼, 권한이 없는 기기에서 빈 화면이 뜬다.
+     */
+    private fun debugInjectionRequested(): Boolean =
+        BuildConfig.DEBUG && (
+            intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
+                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null
+            )
 
     /**
      * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
