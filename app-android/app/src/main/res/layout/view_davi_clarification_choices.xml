@@ -14,6 +14,11 @@
   넘칠 때(2.0x 배율·긴 질문)만 이 ScrollView가 스크롤한다 — 질문 카드의 176dp 하한과
   한 줄을 먼저 보존한다는 결정(#326)의 구현이다.
 
+  **자기 경계로 잘라낸다**(clipToOutline, 2026-08-25). 버튼에 elevation이 있고 조상
+  card_column이 clipChildren="false"라, 그대로 두면 스크롤한 버튼이 **자기 영역 위로 빠져나가
+  질문 카드 뒤에 비친다** — 카드가 유리라 그대로 보인다(실측). 위로 밀려 사라져야 할 것이
+  카드 안에 겹쳐 보이면 화면이 뒤엉킨 것으로 읽힌다.
+
   **라벨은 왼쪽 정렬이고 좌우 여백이 다르다**(2026-08-25). 가운데 정렬은 여백이 좌우 대칭이라야
   성립하는데, 그러면 아이콘 폭(76dp)을 **양쪽에서** 빼게 돼 글자가 쓸 폭이 120dp만 남는다.
   20sp가 배율 2.0이면 한 글자 36dp라 **세 글자**가 한계다 — 「문자 메시지」·「인스타그램」·
@@ -38,6 +43,8 @@
     android:layout_height="match_parent"
     android:fillViewport="true"
     android:clipToPadding="false"
+    android:outlineProvider="bounds"
+    android:clipToOutline="true"
     android:scrollbars="vertical">
 
     <LinearLayout

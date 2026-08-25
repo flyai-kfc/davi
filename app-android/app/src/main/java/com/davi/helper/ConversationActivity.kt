@@ -333,14 +333,15 @@ class ConversationActivity : AppCompatActivity() {
         }
         binding.homeBubble.addOnLayoutChangeListener(caneWatch)
         binding.micSlot.addOnLayoutChangeListener(caneWatch)
-        // **그리기 직전마다 다시 잡는다.** 레이아웃 리스너로는 모자랐다 — 카드 높이가 접기로
-        // 바뀌는 화면이라 마지막 배치 뒤에 한 번 더 움직이는 경우가 있고, 그러면 걸침이
-        // 이전 프레임 값에 묶여 칩과 ✕가 카드 위로 떠 버린다(실측). 그리기 직전은 배치가
-        // 확정된 시점이라 항상 맞다. 값이 같으면 아무것도 안 하므로 다시 그리지 않는다.
-        binding.root.viewTreeObserver.addOnPreDrawListener {
+        // **배치가 바뀔 때만 다시 잡는다.** 그리기 직전마다 부르는 방식을 썼다가 걷었다 —
+        // 화면이 idle에 못 들어가 측정 도구(uiautomator)까지 막혔고, 배터리도 그만큼 쓴다.
+        // 카드·칩·✕ 셋 중 하나라도 자리가 바뀌면 다시 잡으면 충분하다.
+        val perchWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             perchTopControlsOnCard(renderModelOf(uiState, guideActive = GuideSession.isActive))
-            true
         }
+        binding.cardQuestionWrap.addOnLayoutChangeListener(perchWatch)
+        binding.questionProgress.addOnLayoutChangeListener(perchWatch)
+        binding.btnClose.addOnLayoutChangeListener(perchWatch)
         // 제목 폭은 글꼴 배율을 따라 자란다 — 배치가 끝나야 화살표를 침범하는지 알 수 있다.
         // **둘 다에 단다.** 제목에만 달았더니 화살표가 아직 안 재진 첫 배치에서 빠져나온 뒤
         // 제목이 다시 안 바뀌어 판정이 영영 안 돌았다.
@@ -973,6 +974,8 @@ class ConversationActivity : AppCompatActivity() {
         }
         renderQuestionFold(state, model)
         perchTopControlsOnCard(model)
+        // 이번 render가 만든 배치가 끝난 뒤에 한 번 더 — 위 호출은 직전 프레임 값을 본다.
+        binding.root.post { perchTopControlsOnCard(model) }
         if (state is ConversationUiState.Clarifying) {
             renderClarificationOptions(state)
         }
