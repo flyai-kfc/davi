@@ -33,8 +33,14 @@ data class UiElement(
      * 기본값을 `false`로 두지 않는다(C10의 세 상태와 같은 이유).
      */
     val enabled: Boolean? = null,
-    /** 켬/끔 상태. 켤 수 없는(`checkable`이 아닌) 요소는 `null`이다 — 그 `false`는 "꺼짐"이 아니다. */
-    val checked: Boolean? = null,
+    /**
+     * 체크 상태(#297 · C24). Android 16의 `partial`을 잃지 않고 그대로 관측한다.
+     *
+     * `unavailable`은 checkable이 아니거나 플랫폼이 상태를 알려 주지 못한 경우다. `partial`은
+     * **관측 전용**이라, 탭 뒤의 기대 상태는 여전히 [ExpectedTargetState]의 checked=true/false만
+     * 쓴다. 부분 선택 요소를 누르면 checked와 unchecked 중 어느 쪽이 될지는 이 값으로 추측하지 않는다.
+     */
+    @SerialName("check_state") val checkState: CheckState = CheckState.UNAVAILABLE,
     /** 목록·탭에서 지금 선택된 항목인가. */
     val selected: Boolean? = null,
     /**
@@ -297,6 +303,15 @@ enum class ObservableState {
     @SerialName("selected") SELECTED,
     @SerialName("enabled") ENABLED,
     @SerialName("showing_hint_text") SHOWING_HINT_TEXT,
+}
+
+/** 현재 접근성 노드에서 관측한 체크 상태(#297 · C24). */
+@Serializable
+enum class CheckState {
+    @SerialName("checked") CHECKED,
+    @SerialName("unchecked") UNCHECKED,
+    @SerialName("partial") PARTIAL,
+    @SerialName("unavailable") UNAVAILABLE,
 }
 
 @Serializable

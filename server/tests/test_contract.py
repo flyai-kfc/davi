@@ -8,6 +8,7 @@ from app.llm import GUIDE_ACTION_SCHEMA, LlmError, StubLlmClient
 from app.schemas import (
     ActionType,
     ApiError,
+    CheckState,
     ErrorKind,
     GuideAction,
     GuideStep,
@@ -17,6 +18,15 @@ from app.schemas import (
     SwipeDirection,
     UiElement,
 )
+
+
+def test_partial_check_state_round_trips_without_boolean_loss():
+    element = UiElement.model_validate(
+        {"node_id": "n1", "label": "일부 선택", "check_state": "partial"}
+    )
+
+    assert element.check_state is CheckState.PARTIAL
+    assert element.model_dump(mode="json")["check_state"] == "partial"
 
 # --- C1: propertyOrdering이 선언 순서에서 실제로 생성되는가 -------------------
 

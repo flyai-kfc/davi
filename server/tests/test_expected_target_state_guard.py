@@ -3,6 +3,7 @@
 from app.reasoning import _apply_guardrails
 from app.schemas import (
     ActionType,
+    CheckState,
     ExpectedTargetState,
     GuideAction,
     NextStepRequest,
@@ -37,7 +38,12 @@ def _guard(action: GuideAction, *elements: UiElement) -> GuideAction:
 def test_observable_tap_target_keeps_expected_state():
     action = _guard(
         _action(ActionType.TAP),
-        UiElement(node_id="n1", label="기능", clickable=True, checked=False),
+        UiElement(
+            node_id="n1",
+            label="기능",
+            clickable=True,
+            check_state=CheckState.UNCHECKED,
+        ),
     )
 
     assert action.expected_target_state is not None
@@ -45,8 +51,19 @@ def test_observable_tap_target_keeps_expected_state():
 
 def test_missing_or_unobserved_tap_target_clears_expected_state():
     for element in (
-        UiElement(node_id="n2", label="다른 기능", clickable=True, checked=False),
-        UiElement(node_id="n1", label="기능", clickable=True, checked=None),
+        UiElement(
+            node_id="n2",
+            label="다른 기능",
+            clickable=True,
+            check_state=CheckState.UNCHECKED,
+        ),
+        UiElement(node_id="n1", label="기능", clickable=True),
+        UiElement(
+            node_id="n1",
+            label="기능",
+            clickable=True,
+            check_state=CheckState.PARTIAL,
+        ),
     ):
         action = _guard(_action(ActionType.TAP), element)
         assert action.expected_target_state is None
@@ -55,7 +72,7 @@ def test_missing_or_unobserved_tap_target_clears_expected_state():
 def test_scroll_target_replacement_cannot_keep_model_expected_state():
     action = _guard(
         _action(ActionType.SCROLL, target="n1"),
-        UiElement(node_id="n1", label="기능", checked=False),
+        UiElement(node_id="n1", label="기능", check_state=CheckState.UNCHECKED),
         UiElement(
             node_id="n2",
             label="목록",

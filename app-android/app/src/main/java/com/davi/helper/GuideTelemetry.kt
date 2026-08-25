@@ -82,8 +82,8 @@ object GuideTelemetry {
                 // label이 있어야 알 수 있고 그건 비식별 로그에 넣지 않는다.
                 // 비활성 tap 가드레일을 넣을지는 이 수치를 실측한 뒤에 정한다.
                 "disabled_count" to screen.elements.count { it.enabled == false },
-                "checkable_count" to screen.elements.count { it.checked != null },
-                "checked_count" to screen.elements.count { it.checked == true },
+                "checkable_count" to screen.elements.count { it.checkState != CheckState.UNAVAILABLE },
+                "checked_count" to screen.elements.count { it.checkState == CheckState.CHECKED },
                 "selected_count" to screen.elements.count { it.selected == true },
                 "empty_input_count" to screen.elements.count { it.showingHintText == true },
                 // 모달 뒤에 깔려 사용자가 조작할 수 없는 요소 수. 개수만 남기는 이유는 위와 같다.

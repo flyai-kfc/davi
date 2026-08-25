@@ -97,6 +97,19 @@ class ObservableState(StrEnum):
     SHOWING_HINT_TEXT = "showing_hint_text"
 
 
+class CheckState(StrEnum):
+    """현재 접근성 요소에서 관측한 체크 상태(#297 · C24).
+
+    ``partial``은 관측 전용이다. 조작 뒤의 기대 상태는 ``ExpectedTargetState``가 계속
+    ``checked``의 bool만 허용하므로 부분 선택을 목표 상태로 표현할 수 없다.
+    """
+
+    CHECKED = "checked"
+    UNCHECKED = "unchecked"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
 class CompletionFeedbackStatus(StrEnum):
     """완료 확인 UI에서 사용자가 서버에 돌려주는 명시적 판정."""
 
@@ -122,8 +135,8 @@ class UiElement(BaseModel):
     #   None = 낡은 앱이 안 보냄(미관측). **False로 기본값을 두지 않는다** — 침묵을
     #   "비활성/꺼짐"으로 읽으면 안내가 통째로 막힌다(C10과 같은 세 상태 규약).
     enabled: bool | None = None
-    # 켤 수 없는 요소는 None이다. 그 False는 "꺼짐"이 아니라 해당 없음이다.
-    checked: bool | None = None
+    # Android 16의 부분 선택을 보존한다(C24). unavailable은 비-checkable·미관측이다.
+    check_state: CheckState = CheckState.UNAVAILABLE
     selected: bool | None = None
     # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
     showing_hint_text: bool | None = None

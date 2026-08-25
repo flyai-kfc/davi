@@ -426,7 +426,7 @@ Davi 서버가 받거나 저장하지 않는다. Android 음성인식 제공자�
 ### 완료 검증 — 현재 관측에 근거한 3상태 신뢰도 판정 (2026-08-25 #424 개정)
 
 모델은 목표와 UI의 의미 관계를 제안하되, 서버는 그 결론을 그대로 믿지 않는다. 모델이 현재
-화면의 `node_id`와 성공/실패 방향, 필요하면 `checked`·`selected`·`enabled`·
+화면의 `node_id`와 성공/실패 방향, 필요하면 `check_state`·`selected`·`enabled`·
 `showing_hint_text` 관측값을 구조화해 내고, 서버가 같은 node와 상태가 현재 트리에 실제로 있는지
 다시 검증한다. 자연어 `evidence`도 그 **같은 node**의 최소 두 글자 label을 어절 경계로 인용해야
 한다. 서버는 모델 주장을 유지하거나 `inconclusive`로 내릴 수만 있고 더 강한 상태로 올리지 않는다.
@@ -451,9 +451,12 @@ non-`done` 응답은 화면에 반대 근거가 있어도 항상 `inconclusive`�
 
 직전 안내의 검증 가능한 기대 상태는 `expected_target_state`로 보낸다. 서버는 현재 화면에서 그
 상태가 관측되는 `tap` 대상에만 값을 남기고, 앱은 실제 대상 조회에 성공했을 때만 node·label과
-함께 `GuideStep`에 기록한다. 상태의 의미 자체는 앱이 해석하지 않는다.
+함께 `GuideStep`에 기록한다. `check_state=checked/unchecked`는 이 bool과 대조할 수 있지만,
+`partial`은 관측 전용이고 `unavailable`은 미관측이므로 둘 다 기대 상태를 보존하거나 완료·반대
+근거로 쓰지 않는다. 부분 선택 요소의 탭 결과를 checked/unchecked 어느 쪽으로도 추측하지 않는다.
+상태의 의미 자체는 앱이 해석하지 않는다.
 SM-S921N 삼성 시계 알람 스위치 1회 실측(2026-08-25)에서는 탭 주입 시작 285ms 뒤 완료된 첫
-`rootInActiveWindow` 직접 조회가 이미 바뀐 `checked`를 보였다(탭 호출 반환 155ms, root 조회
+`rootInActiveWindow` 직접 조회가 이미 바뀐 `check_state`를 보였다(탭 호출 반환 155ms, root 조회
 130ms). 서비스는 마지막 접근성 이벤트 뒤 350ms를 기다려 샘플하므로 이 측정에서는 낡은 반대
 상태가 다음 요청에 실리지 않았다. 한 기기·한 번의 하한 관측이므로 지연이 없다는 일반 보장은
 아니며, 실제 오탐이 관측되기 전에는 `performed + same screen + same label + opposite state` 조건을

@@ -12,7 +12,7 @@ from app.prompt import (
     TOGGLE_STATE_INSTRUCTION,
     build_prompt,
 )
-from app.schemas import NextStepRequest, Screen, UiElement
+from app.schemas import CheckState, NextStepRequest, Screen, UiElement
 from app.signature import screen_signature
 
 
@@ -52,17 +52,44 @@ def test_toggle_state_is_carried_for_checkable_elements():
         _request(
             elements=[
                 UiElement(
-                    node_id="n1", label="Wi-Fi", role="Switch", clickable=True, checked=False
+                    node_id="n1",
+                    label="Wi-Fi",
+                    role="Switch",
+                    clickable=True,
+                    check_state=CheckState.UNCHECKED,
                 ),
                 UiElement(
-                    node_id="n2", label="블루투스", role="Switch", clickable=True, checked=True
+                    node_id="n2",
+                    label="블루투스",
+                    role="Switch",
+                    clickable=True,
+                    check_state=CheckState.CHECKED,
                 ),
             ]
         )
     )
-    assert "checked=False" in prompt
-    assert "checked=True" in prompt
+    assert "check_state=unchecked" in prompt
+    assert "check_state=checked" in prompt
     assert TOGGLE_STATE_INSTRUCTION in prompt
+
+
+def test_partial_check_state_is_carried_as_observation_only():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="일부 항목",
+                    role="CheckBox",
+                    clickable=True,
+                    check_state=CheckState.PARTIAL,
+                )
+            ]
+        )
+    )
+
+    assert "check_state=partial" in prompt
+    assert "partial을 기대 상태로 만들지 마세요" in prompt
 
 
 def test_selected_is_carried_only_when_it_marks_the_current_item():
@@ -149,20 +176,27 @@ def test_missing_window_title_survives_masking():
     assert mask_screen_model(Screen(package_name="p")).window_title is None
 
 
-def _switch_screen(checked: bool) -> Screen:
+def _switch_screen(check_state: CheckState) -> Screen:
     return Screen(
         package_name="com.android.settings",
         window_title="Wi-Fi",
         elements=[
-            UiElement(node_id="n1", label="Wi-Fi", role="Switch", clickable=True, checked=checked)
+            UiElement(
+                node_id="n1",
+                label="Wi-Fi",
+                role="Switch",
+                clickable=True,
+                check_state=check_state,
+            )
         ],
     )
 
 
 def test_signature_changes_when_only_the_switch_flips():
-    """이 화면에서 바뀌는 것은 checked 하나뿐이다 — label도 role도 그대로다."""
+    """이 화면에서 바뀌는 것은 check_state 하나뿐이다 — label도 role도 그대로다."""
 
-    assert screen_signature(_switch_screen(False)) != screen_signature(_switch_screen(True))
+    signatures = {screen_signature(_switch_screen(state)) for state in CheckState}
+    assert len(signatures) == len(CheckState)
 
 
 def test_signature_changes_when_only_the_button_becomes_enabled():

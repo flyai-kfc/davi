@@ -13,6 +13,7 @@ from typing import Any
 from .schemas import (
     MAX_STEPS,
     ActionType,
+    CheckState,
     CompletionFeedbackStatus,
     GuideStep,
     NextStepRequest,
@@ -211,7 +212,9 @@ DISABLED_ELEMENT_INSTRUCTION = (
     "누를 수 있게 되는 데 필요한 다른 단계를 고르세요."
 )
 TOGGLE_STATE_INSTRUCTION = (
-    "checked는 그 요소의 켜짐/꺼짐 상태이고, selected=True는 지금 선택되어 있는 항목입니다. "
+    "check_state=checked/unchecked는 그 요소의 켜짐/꺼짐 관측이고, "
+    "check_state=partial은 부분 선택 관측입니다. partial 요소를 누른 뒤 어느 상태가 될지 "
+    "추측하거나 partial을 기대 상태로 만들지 마세요. selected=True는 지금 선택된 항목입니다. "
     "목표한 상태가 이미 되어 있는 요소를 다시 누르라고 안내하지 마세요."
 )
 # C14와 같은 경계를 여기서도 지킨다 — 상태 하나로 입력 완료나 목표 달성을 추론하지 않는다.
@@ -694,7 +697,10 @@ def _state_context(req: NextStepRequest) -> str:
     context = ""
     if any(element.enabled is False for element in elements):
         context += f"{DISABLED_ELEMENT_INSTRUCTION}\n"
-    if any(element.checked is not None or element.selected for element in elements):
+    if any(
+        element.check_state is not CheckState.UNAVAILABLE or element.selected
+        for element in elements
+    ):
         context += f"{TOGGLE_STATE_INSTRUCTION}\n"
     if any(element.showing_hint_text for element in elements):
         context += f"{HINT_TEXT_INSTRUCTION}\n"
@@ -950,8 +956,9 @@ def _format_element(element: UiElement, tried: dict[str, int]) -> str:
         details.append("selected=True")
     if element.showing_hint_text:
         details.append("showing_hint_text=True")
+    if element.check_state is not CheckState.UNAVAILABLE:
+        details.append(f"check_state={element.check_state.value}")
     optional_fields = (
-        ("checked", element.checked),
         ("bounds", element.bounds),
         ("can_scroll_forward", element.can_scroll_forward),
         ("can_scroll_backward", element.can_scroll_backward),
