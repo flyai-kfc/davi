@@ -307,11 +307,6 @@ class ConversationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        // 칩은 글꼴 배율에 따라 넓어진다 — 넓어진 만큼 가운데 배지를 옆에서 가린다.
-        // 배치가 끝난 뒤에야 실제 폭을 알 수 있어 레이아웃마다 다시 판정한다.
-        binding.questionProgress.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updateBadgeOcclusion()
-        }
         // 파형 계산을 미리 해 둔다 — 처음 울릴 때 메인 스레드에서 하면 소리가 늦다(#313).
         micTone.prepare()
         launchableAppIndex.start()
@@ -497,9 +492,9 @@ class ConversationActivity : AppCompatActivity() {
         val instrumentationUiTest = BuildConfig.DEBUG &&
             intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, false)
         // **레이아웃만 재는 디버그 주입도 같은 예외다**(2026-08-25). 접근성 서비스를 담은 앱을
-        // 다시 깔면 안드로이드가 바인딩을 끊어서, 화면을 한 번 고칠 때마다 사람이 토글을
-        // 껐다 켜야 했다(하루에 세 번 겪었다). 이 주입은 안내를 돌리지 않고 **모양만 보는**
-        // 자리라 서비스가 필요 없다 — [debugClarificationState]가 상태를 통째로 만들어 준다.
+        // 다시 깔면 안드로이드가 바인딩을 끊어서, 화면을 한 번 고칠 때마다 사람이 설정에서
+        // 스위치를 껐다 켜야 했다(하루에 네 번 겪었다). 이 주입은 안내를 돌리지 않고 **모양만
+        // 보는** 자리라 서비스가 필요 없다 — [debugClarificationState]가 상태를 통째로 만든다.
         //
         // **release에는 두 진입점 모두 없다** — BuildConfig.DEBUG가 앞에 선다.
         val layoutProbe = BuildConfig.DEBUG && intent.hasExtra(EXTRA_DEBUG_CLARIFICATION)
@@ -752,17 +747,7 @@ class ConversationActivity : AppCompatActivity() {
                 R.drawable.bg_davi_card_utterance
             },
         )
-        // **구체화에서는 상한을 풀고 화면이 스크롤을 받는다**(2026-08-25). 상한을 두면 긴
-        // 질문이 카드 안에서만 스크롤되고 **아래 보기들이 화면 밖으로 밀린다** — 눌러야 할
-        // 것이 안 보이는 모양이라 카드가 잘리는 것보다 나쁘다(실측: 「직접 말하기」가 사라졌다).
-        //
-        // **최종 확인의 상한은 그대로 둔다**(#396에서 실측으로 맞춘 값이다). 그 화면은 카드
-        // 아래 버튼이 열 안에 있어 사정이 다르고, 근거 없이 건드리면 맞춰 둔 것이 틀어진다.
-        binding.cardQuestion.maxHeight = if (model.inClarificationFlow) {
-            Int.MAX_VALUE
-        } else {
-            resources.getDimensionPixelSize(model.questionMaxHeightRes)
-        }
+        binding.cardQuestion.maxHeight = resources.getDimensionPixelSize(model.questionMaxHeightRes)
         when {
             model.questionRes != null -> binding.cardQuestion.setText(model.questionRes)
             model.questionText != null -> binding.cardQuestion.text = model.questionText
@@ -804,7 +789,6 @@ class ConversationActivity : AppCompatActivity() {
                 stepOutcome.questionCount,
             )
         }
-        updateBadgeOcclusion()
         if (state is ConversationUiState.Clarifying) {
             renderClarificationOptions(state)
         }
@@ -834,36 +818,33 @@ class ConversationActivity : AppCompatActivity() {
         // 세로 조작을 쌓는 안내·구체화 화면은 배지 위 여백이 얕다. 구체화는 세 보기와
         // 직접 말하기를 기본 글꼴에서 한 화면에 모두 보여야 하므로, 일반 72dp를 쓰면
         // 선택 영역 전체가 실기기 화면 아래로 밀린다(#316 리뷰).
-        // **기준 위 마진은 상태가 정하고, 겹침 회피분은 그 위에 더한다**(updateBadgeOcclusion).
-        // 여기서 기준만 다시 계산해야 상태가 바뀌어도 회피분이 살아남아 배지가 안 튄다.
-        badgeBaseTopMargin = resources.getDimensionPixelSize(
-            when {
-                // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
-                // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
-                // 밀어 카드가 102dp 내려간다.
-                // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
-                // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
-                model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
-                // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
-                // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
-                // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
-                // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
-                //
-                // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
-                // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
-                // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
-                model.inClarificationFlow ->
-                    R.dimen.davi_badge_margin_top_clarification_nochip
-                model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
-                // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
-                // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
-                // **이 화면에는 전역 ✕가 없어** 위를 내줘도 파고들 것이 없다.
-                model.confirmVisible -> R.dimen.davi_badge_margin_top_confirm
-                else -> R.dimen.davi_badge_margin_top
-            },
-        )
         binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
-            topMargin = badgeBaseTopMargin + badgePushApplied
+            topMargin = resources.getDimensionPixelSize(
+                when {
+                    // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
+                    // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
+                    // 밀어 카드가 102dp 내려간다.
+                    // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
+                    // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
+                    model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
+                    // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
+                    // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
+                    // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
+                    // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
+                    //
+                    // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
+                    // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
+                    // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
+                    model.inClarificationFlow ->
+                        R.dimen.davi_badge_margin_top_clarification_nochip
+                    model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
+                    // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
+                    // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
+                    // **이 화면에는 전역 ✕가 없어** 위를 내줘도 파고들 것이 없다.
+                    model.confirmVisible -> R.dimen.davi_badge_margin_top_confirm
+                    else -> R.dimen.davi_badge_margin_top
+                },
+            )
         }
         // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
         // **stepChipVisible을 함께 본다** — clarificationVisible만 보면 「직접 말하기」로
@@ -932,113 +913,6 @@ class ConversationActivity : AppCompatActivity() {
         // (#148 MotionView.onMotionLifecycleChanged) — 여기서는 가시성만 넘긴다. render()가
         // 한 대기 구간에서 여러 번 불려도 전이가 아니면 지연이 다시 시작되지 않는다.
         binding.loadingDots.isVisible(model.loadingDotsVisible)
-    }
-
-    /**
-     * 칩이 배지를 침범하면 **배지를 숨긴다**(2026-08-25).
-     *
-     * 칩·배지·✕는 화면 위쪽 한 줄을 나눠 쓰는데, 배지만 가로 가운데 고정이다. 글꼴 배율이
-     * 커지면 칩 문구가 넓어져 왼쪽에서 배지를 파고든다 — 320dp 폭·배율 2.0에서 23.7dp
-     * 침범을 실기기로 쟀다. 셋 중 **배지만 장식**이라(스크린리더에서도 이미 빠져 있다)
-     * 양보할 것은 배지다.
-     *
-     * **배율 숫자로 걸지 않는다.** 화면이 좁으면 더 낮은 배율에서도 부딪히고 넓으면 2.0에서도
-     * 안 부딪힌다 — 임계값을 박으면 기기마다 틀린다. 실제로 겹치는지를 재는 규칙이라야
-     * 어느 기기·배율에서도 맞는다(D4: 「양보 순서는 구조로」).
-     *
-     * **GONE이 아니라 INVISIBLE이다.** 배지가 자리를 비우면 질문 카드의 음수 위 마진
-     * (davi_badge_overlap_negative)이 파고들 대상을 잃어 카드가 칩 밑으로 딸려 올라간다.
-     * 자리는 그대로 두고 그림만 지우면 나머지 배치가 한 픽셀도 안 움직인다.
-     */
-    /** 배지의 상태별 기준 위 마진(px). render가 채운다. */
-    private var badgeBaseTopMargin = 0
-
-    /** 겹침을 피하려고 기준에서 추가로 민 거리(px). 0이면 안 민 상태다. */
-    private var badgePushApplied = 0
-
-    private fun updateBadgeOcclusion() {
-        val chip = binding.questionProgress
-        val badge = binding.logo
-        // 상태가 배지를 아예 끈 화면(실패 화면의 전신 캐릭터 등)은 건드리지 않는다.
-        if (badge.visibility == View.GONE) return
-        if (chip.visibility != View.VISIBLE || chip.width == 0 || badge.width == 0) {
-            applyBadgePush(0)
-            if (badge.visibility != View.VISIBLE) badge.visibility = View.VISIBLE
-            return
-        }
-        val chipAt = IntArray(2).also { chip.getLocationInWindow(it) }
-        val badgeAt = IntArray(2).also { badge.getLocationInWindow(it) }
-        val overlapsX = chipAt[0] + chip.width > badgeAt[0] &&
-            badgeAt[0] + badge.width > chipAt[0]
-        if (!overlapsX) {
-            // 가로로 안 부딪히면 밀 이유도 숨길 이유도 없다.
-            applyBadgePush(0)
-            if (badge.visibility != View.VISIBLE) badge.visibility = View.VISIBLE
-            return
-        }
-        // **이미 민 만큼을 되돌려 「밀기 전」 기준으로 잰다.** 안 그러면 밀어서 겹침이
-        // 사라진 다음 판정에서 다시 되돌리고, 되돌리면 또 겹쳐 무한히 오간다.
-        val badgeTopAtBase = badgeAt[1] - badgePushApplied
-        val push = chipAt[1] + chip.height - badgeTopAtBase
-        if (push <= 0) {
-            applyBadgePush(0)
-            if (badge.visibility != View.VISIBLE) badge.visibility = View.VISIBLE
-            return
-        }
-        // 아래 자유 여백에서 꺼내 온다. 밀어 놓은 만큼은 이미 여백에서 빠져 있으니 되돌려 더한다.
-        val slackAtBase = columnSlackPx() + badgePushApplied
-        if (slackAtBase >= push) {
-            applyBadgePush(push)
-            if (badge.visibility != View.VISIBLE) badge.visibility = View.VISIBLE
-        } else {
-            applyBadgePush(0)
-            if (badge.visibility != View.INVISIBLE) badge.visibility = View.INVISIBLE
-        }
-    }
-
-    /**
-     * 열 아래에 남은 자유 여백(px). 배지를 아래로 밀 여력이 있는지 재는 값이다.
-     *
-     * **space_home_mid를 보지 않는다.** 그 칸은 안내 화면 전용이라(#231) 구체화에서는 0이고,
-     * 보기가 하나뿐일 때 실제로 남는 200dp는 `clarification_choices`가 weight 1로 받아 자기
-     * 안쪽에 품고 있다 — 컨테이너 높이만 보면 그 여백이 안 보인다(2026-08-25 실측: 여백이
-     * 넉넉한데도 배지를 숨겼다). 그래서 **컨테이너가 아니라 가장 아래 조작의 바닥**을 잰다.
-     *
-     * 아래 조작을 못 찾으면 0을 돌려 **미는 쪽이 아니라 숨기는 쪽으로 안전하게 넘어간다** —
-     * 잘못 밀면 버튼이 화면 밖으로 나가지만, 잘못 숨기면 장식 하나가 빠질 뿐이다.
-     */
-    private fun columnSlackPx(): Int {
-        val column = binding.cardColumn
-        val candidates = listOf(
-            binding.clarificationChoices.btnDirectSpeak,
-            binding.cardUtteranceWrap,
-        )
-        val columnAt = IntArray(2).also { column.getLocationInWindow(it) }
-        val contentBottom = columnAt[1] + column.height - column.paddingBottom
-        var lowest = Int.MIN_VALUE
-        for (view in candidates) {
-            // **높이 0은 「자리를 안 쓴다」가 아니라 「아직 못 쟀다」이다.** 첫 배치에서는
-            // 보기들이 아직 안 재져 있어, 이걸 안 거르면 여유가 무한한 것처럼 보여 배지를
-            // 밀어 버리고 — 그 다음엔 이미 민 상태라 되돌릴 기회가 없다.
-            if (view.visibility != View.VISIBLE || view.height == 0) continue
-            val at = IntArray(2).also { view.getLocationInWindow(it) }
-            lowest = maxOf(lowest, at[1] + view.height)
-        }
-        // 잴 것이 없으면 0 — 미는 쪽이 아니라 숨기는 쪽으로 간다.
-        if (lowest == Int.MIN_VALUE) return 0
-        // **0으로 깎지 않는다.** 이미 넘친 화면에서 여유를 0으로 보고하면, 밀어 둔 값을
-        // 되돌려 더하는 순간 「딱 맞는다」가 돼 배지가 영영 안 물러난다 — 보기 넷 중
-        // 넷째가 화면 밖으로 나갔다(2026-08-25 실측). 넘친 양은 음수로 그대로 돌려준다.
-        return contentBottom - lowest
-    }
-
-    /** 배지를 기준 위치에서 [push]px 아래로 민다. 값이 같으면 아무것도 하지 않는다. */
-    private fun applyBadgePush(push: Int) {
-        if (push == badgePushApplied) return
-        badgePushApplied = push
-        binding.logo.updateLayoutParams<LinearLayout.LayoutParams> {
-            topMargin = badgeBaseTopMargin + push
-        }
     }
 
     private fun renderVoiceMotion(model: ConversationRenderModel) {

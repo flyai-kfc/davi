@@ -75,677 +75,681 @@
         android:layout_marginBottom="@dimen/davi_glow_mic_margin_bottom"
         android:importantForAccessibility="no" />
 
-    <!--
-      **넘치면 화면이 스크롤된다 — 카드가 아니라**(2026-08-25 결정). 예전에는 질문 카드를
-      maxHeight로 묶고 카드 안에서 스크롤했는데, 글꼴 배율 2.0에서 긴 질문이 오면 카드가
-      상한까지 차서 **아래 보기들이 화면 밖으로 밀렸다** — 「직접 말하기」가 통째로 사라졌다.
-      카드만 팝업처럼 스크롤되고 정작 눌러야 할 것이 안 보이는 모양이었다.
-
-      D4 ③ 그대로다(ON-1과 같은 수법) — **fillViewport는 남을 때만 준다.** 내용이 뷰포트보다
-      작으면 EXACTLY로 다시 재서 열의 weight 배분이 그대로 살고, 넘칠 때만 스크롤이 생긴다.
-      그래서 짧은 화면의 배치는 한 픽셀도 안 바뀐다.
-
-      **칩과 ✕는 여기 안 들어온다** — 둘은 스크롤과 무관하게 위에 붙어 있어야 한다.
-    -->
-    <ScrollView
-        android:id="@+id/card_scroll"
+    <LinearLayout
+        android:id="@+id/card_column"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:fillViewport="true"
-        android:scrollbars="none"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingLeft="@dimen/davi_spacing_xl"
+        android:paddingRight="@dimen/davi_spacing_xl"
+        android:paddingBottom="@dimen/davi_conversation_control_reserve"
         android:clipChildren="false"
         android:clipToPadding="false">
 
-        <LinearLayout
-            android:id="@+id/card_column"
+        <!--
+          **남는 세로 공간은 전부 여기가 먹는다 — 열이 아래에 붙는다**(2026-08-17 결정).
+          의미를 지닌 겹침이 아래에 몰려 있기 때문이다.
+
+            마이크 <-> 시니어 카드   42%  깨지면 마이크가 허공에 뜬다
+            배지   <-> 다비 카드     50%  배지가 카드에 앵커돼 있어 안 깨진다
+
+          위로 벌어지는 건 X 버튼과 배지 사이인데 그건 배경(분홍 메시)일 뿐이다.
+          아래로 벌어지면 마이크가 카드에서 떨어져 나와 겹침 규칙이 화면마다 달라진다.
+
+          **홈에서는 아래 짝(space_home_mid)이 없다**(#231) — 마이크가 바닥에 못 박혀 있고
+          열 아래 여백이 그 자리를 대신한다. 지금 이 뷰와 짝을 이루는 것은 안내(메인 9)뿐이다.
+        -->
+        <!--
+          MA-3 질문 칩(#374 · 시안 24,46). **카드 아래가 아니라 여기 있다** — 진행도는
+          「지금 어디쯤인가」라 **묻기 전에** 보여야 한다. 답을 고른 뒤 아래에서 읽으면 늦다.
+
+          **종료 ✕는 여기 없다.** 시안은 칩과 ✕를 한 줄로 그렸지만, ✕는 **모든 화면에서
+          자리와 크기가 같아야 한다**(2026-08-23) — 화면마다 다르면 어르신이 나가는 길을
+          매번 새로 찾는다. 그래서 이 화면도 **전역 btn_close를 그대로 쓴다**(우상단 56dp).
+          한때 이 줄 안에 전용 ✕(원 38dp)를 뒀다가 걷었다 — 자리도 크기도 전역과 달랐다.
+
+          **칩의 세로 위치는 그 전역 ✕에 맞춘다** — 아래 토큰 주석에 계산이 있다.
+        -->
+        <!--
+          **폭은 wrap_content, 높이만 고정이다.** 시안 92x32(=110x38dp)를 둘 다 고정으로
+          두면 2.0 위 배율(삼성은 더 있다)에서 「질문 1/2」가 잘린다 — 진행도는 짧은 글자라
+          최소 폭만 지키면 되고, **높이는 전역 ✕와 중심을 맞추는 입력**이라 고정이어야 한다
+          (davi_step_row_margin_top 주석의 계산).
+        -->
+        <TextView
+            android:id="@+id/question_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/davi_step_chip_height"
+            android:minWidth="@dimen/davi_step_chip_width"
+            android:paddingLeft="@dimen/davi_spacing_md"
+            android:paddingRight="@dimen/davi_spacing_md"
+            android:maxLines="1"
+            android:layout_gravity="start"
+            android:layout_marginTop="@dimen/davi_step_row_margin_top"
+            android:gravity="center"
+            android:background="@drawable/bg_davi_step_chip"
+            android:textAppearance="@style/TextAppearance.Davi.StepChip"
+            android:visibility="gone" />
+
+        <Space
+            android:id="@+id/space_flex_top"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2" />
+
+        <!--
+          다비 배지. **카드 상단 경계를 파고든다**(시안 메인 2~6: 배지 하단 138, 카드 상단 108).
+          겹침은 배지 자체가 아니라 **아래 질문 카드의 음수 위 마진**이 만든다 — FrameLayout으로
+          싸서 z축을 다루는 대신 세로 흐름을 그대로 두고 카드를 끌어올리는 쪽이 단순하다.
+          배지가 카드보다 먼저 오므로 카드가 배지 위에 그려지는데, 카드가 반투명이라 겹친
+          부분에서 배지가 비쳐 보인다 — 그래서 카드 위 패딩(davi_card_padding_top_davi)이
+          글자를 배지 아래로 밀어낸다.
+        -->
+        <ImageView
+            android:id="@+id/logo"
+            android:layout_width="@dimen/davi_logo_size"
+            android:layout_height="@dimen/davi_logo_size"
+            android:layout_marginTop="@dimen/davi_badge_margin_top"
+            android:src="@drawable/ic_davi_logo"
+            android:elevation="@dimen/davi_badge_elevation"
+            android:importantForAccessibility="no" />
+
+        <!--
+          실패 화면의 전신 캐릭터(메인 8, #208). **배지와 배타적이다** — 이 화면만 위를
+          캐릭터가 차지하고 카드가 그 하단을 파고든다.
+
+          겹침은 캐릭터가 아니라 **아래 질문 카드의 음수 위 마진**이 만든다(배지와 같은 수법).
+          그 마진은 상태에 따라 달라서 코드가 준다 — 배지일 때 -36dp, 캐릭터일 때 -53dp.
+
+          장식이라 스크린리더에서 뺀다. 오류 안내 화면이라 **문구만 읽혀야** 한다.
+        -->
+        <ImageView
+            android:id="@+id/stand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_stand_margin_top"
+            android:maxWidth="@dimen/davi_stand_width"
+            android:maxHeight="@dimen/davi_stand_height"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_davi_stand"
+            android:importantForAccessibility="no" />
+
+        <!--
+          메인 1 제목(#231). **두 줄이 색만 다르다** — 한 TextView로는 색을 가를 수 없어
+          뷰를 둘로 나눴다. 폭죽이 둘째 줄 오른쪽 위에 붙으므로 셋을 FrameLayout으로 싼다.
+
+          폭죽은 **글자가 아니라 화면 오른쪽 가장자리에 붙인다** — 제목이 가운데 정렬이라
+          글자의 오른쪽 끝이 문구마다 달라진다. 장식이라 스크린리더에서 뺀다.
+          제목은 두 줄이 이어진 한 문장이라 **첫 줄에 `contentDescription`으로 전체를
+          물리고** 둘째 줄을 트리에서 뺀다. 둘째 줄만 빼고 끝내면 TalkBack이 "어려운 건"만
+          읽고 "물어보세요"가 통째로 사라진다(PR #235 리뷰).
+        -->
+        <FrameLayout
+            android:id="@+id/home_head"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:clipChildren="false">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:id="@+id/home_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_home_title"
+                    android:contentDescription="@string/voice_home_title_desc"
+                    android:textAppearance="@style/TextAppearance.Davi.HomeTitle"
+                    android:fontFamily="@font/cafe24_ssurround"
+                    app:fontFamily="@font/cafe24_ssurround"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/home_title_accent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_home_title_accent"
+                    android:textAppearance="@style/TextAppearance.Davi.HomeTitle"
+                    android:textColor="@color/davi_home_title_accent"
+                    android:fontFamily="@font/cafe24_ssurround"
+                    app:fontFamily="@font/cafe24_ssurround"
+                    android:importantForAccessibility="no"
+                    android:gravity="center" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/home_sparkle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="@dimen/davi_home_sparkle_margin_top"
+                android:layout_marginEnd="@dimen/davi_home_sparkle_margin_end"
+                android:src="@drawable/ic_davi_sparkle"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/home_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_home_subtitle_margin_top"
+            android:gravity="center"
+            android:text="@string/voice_home_subtitle"
+            android:textAppearance="@style/TextAppearance.Davi.HomeSubtitle" />
+
+        <!--
+          홈 캐릭터(#231, 지휘봉 자세). **메인 8의 `stand`와 다른 에셋이다.**
+          장식이라 스크린리더에서 뺀다 — 이 화면에서 읽혀야 하는 것은 제목과 말풍선이다.
+
+          아래 말풍선이 **음수 위 마진**으로 이 캐릭터를 파고든다(시안 20 → 24dp, 겹침 깊이는 x1.2).
+          배지·메인 8 캐릭터와 같은 수법이라 세로 흐름을 그대로 둔 채 겹침만 만든다.
+        -->
+        <ImageView
+            android:id="@+id/home_cane"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/davi_home_cane_height"
+            android:layout_marginTop="@dimen/davi_home_cane_margin_top"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_davi_cane"
+            android:importantForAccessibility="no" />
+
+        <!--
+          말풍선(#231). **가로 여백을 주지 않는다** — 열 패딩(24dp)만 받아 카드와 같은 폭이 된다.
+          정적 문구라 아래 질문 카드(서버 되묻기)와 **다른 뷰**다 — 같은 뷰를
+          나눠 쓰면 상태 전환에서 문구가 갈린다. 채움이 불투명인 이유는 배경 드로어블 주석 참고.
+        -->
+        <FrameLayout
+            android:id="@+id/home_bubble"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_home_bubble_overlap"
+            android:layout_marginBottom="@dimen/davi_home_bubble_margin_bottom"
+            android:minHeight="@dimen/davi_home_bubble_min_height"
+            android:background="@drawable/bg_davi_home_bubble">
+
+            <TextView
+                android:id="@+id/home_bubble_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingStart="@dimen/davi_spacing_lg"
+                android:paddingEnd="@dimen/davi_spacing_lg"
+                android:gravity="center"
+                android:accessibilityLiveRegion="polite"
+                android:lineSpacingMultiplier="1.3"
+                android:text="@string/voice_home_bubble"
+                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:textSize="@dimen/davi_type_body_lg"
+                android:textColor="@color/davi_text_primary" />
+        </FrameLayout>
+
+
+
+        <!--
+          질문 카드. **배경·여백이 컨테이너로 올라와 있다**(#142) — 응답 대기 점이 문구
+          아래, 카드 안에 놓이기 때문이다(시안 메인 6). 문구를 대체하지 않고 함께 보인다.
+
+          높이 상한과 내부 스크롤은 TextView에 그대로 남는다 — 긴 문구를 사용자가 스크롤해
+          읽는 동작(PR #125 리뷰)이 컨테이너를 감싼 뒤에도 유지돼야 한다.
+        -->
+        <!--
+          다비 카드와 그 뒤 글로우. 글로우가 카드보다 사방 blur만큼 넓어야 번질 자리가 생겨
+          FrameLayout으로 싸고 음수 마진으로 넓힌다. 글로우는 첫 자식이라 카드 아래에 깔린다.
+        -->
+        <!--
+          **카드 두 장이 남는 세로 공간을 나눠 갖는다**(시안 176:196).
+
+          고정 높이로 쌓으면 화면 높이에 따라 위나 아래가 빈다 — 시안은 배지가 X 바로 아래에
+          붙으면서 **동시에** 시니어 카드가 마이크에 닿는데, 프레임 620과 실기기 높이가 달라
+          한쪽에 앵커하면 반대쪽이 벌어진다(실기기에서 양쪽 다 겪었다).
+
+          글자 배율이 커져도 **스크롤하지 않고 박스가 유동적으로 화면을 채운다**는 결정
+          (2026-08-16)의 구현이기도 하다.
+
+          **카드는 wrap_content + weight다** — 각자 minHeight를 먼저 확보하고 **남는 공간만**
+          비율로 나눈다(2026-08-17 결정). 0dp+weight로 두면 내용과 무관하게 화면을 다 채워
+          "무엇을 도와드릴까요?" 한 줄에도 상자가 화면 높이만큼 늘어난다.
+
+          **열은 아래에 붙는다.** 의미를 지닌 겹침이 전부 아래에 있기 때문이다 —
+          마이크와 시니어 카드의 42% 겹침은 깨지면 마이크가 허공에 뜨고, 배지와 다비 카드의
+          50% 겹침은 배지가 카드에 앵커돼 있어 카드가 어디로 가든 안 깨진다. 위로 벌어지는
+          건 X 버튼과 배지 사이의 배경뿐이고, 그 자리는 davi_badge_margin_top이 고정으로 잡는다.
+
+          **넘칠 때 줄이는 것은 다비 카드다**(우선순위: 마이크 위치 > 마이크·시니어 겹침 >
+          시니어 전체 표시 > 다비 표시). 시니어 카드는 사용자가 방금 말한 내용이라 잘리면
+          안 되고 받아쓰기라 원래 짧다. 다비 카드는 card_question의 maxHeight와 내부 스크롤이 받는다.
+
+          **glow_card가 wrap_content 래퍼를 부풀리지 않는 것이 이 구조의 전제다** —
+          CardGlowView.onMeasure가 1차 측정에서 0을 보고한다. 그 장치 없이 wrap_content로
+          두면 발화 상태에서 다비 카드가 시니어 카드를 화면 밖으로 밀어낸다(실기기 실측).
+        -->
+        <FrameLayout
+            android:id="@+id/card_question_wrap"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_card_min_height_davi"
+            android:layout_weight="176"
+            android:layout_marginTop="@dimen/davi_badge_overlap_negative"
+            android:clipChildren="false">
+
+            <!--
+              **네 방향 마진을 따로 준다.** android:layout_margin 축약형에 음수 dimen을 주면
+              적용되지 않아 글로우 뷰가 카드와 같은 크기가 됐고, 그러면 CardGlowView가
+              뷰에서 blur만큼 안쪽에 그리는 도형이 카드 안에 들어가 번짐이 흰 카드 밑에
+              깔려 보이지 않는다(2026-08-17 실기기 실측: 도형이 카드 x80~1010보다 안쪽인
+              x170~925에 그려졌다). 소프트웨어 레이어는 뷰 밖으로 못 그리므로
+              clipChildren을 열어도 소용이 없다 — 뷰 자체가 커져야 한다.
+            -->
+            <com.davi.helper.CardGlowView
+                android:id="@+id/glow_card"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="@dimen/davi_glow_card_bleed"
+                android:layout_marginTop="@dimen/davi_glow_card_bleed"
+                android:layout_marginRight="@dimen/davi_glow_card_bleed"
+                android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
+                android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:id="@+id/card_question_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:minHeight="@dimen/davi_card_min_height_davi"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingLeft="@dimen/davi_spacing_xl"
-            android:paddingRight="@dimen/davi_spacing_xl"
-            android:paddingBottom="@dimen/davi_conversation_control_reserve"
-            android:clipChildren="false"
-            android:clipToPadding="false">
+            android:paddingLeft="@dimen/davi_card_padding_horizontal"
+            android:paddingRight="@dimen/davi_card_padding_horizontal"
+            android:paddingTop="@dimen/davi_card_padding_top_davi"
+            android:paddingBottom="@dimen/davi_card_padding_bottom_davi"
+            android:background="@drawable/bg_davi_card">
 
             <!--
-              **남는 세로 공간은 전부 여기가 먹는다 — 열이 아래에 붙는다**(2026-08-17 결정).
-              의미를 지닌 겹침이 아래에 몰려 있기 때문이다.
+              **넘칠 때 스크롤한다는 것이 보여야 한다**(2026-08-22 실기기). 배율 2.0에서 긴
+              goal이 maxHeight에 닿으면 뒷부분이 잘린 것처럼 보인다 — 실제로는 스크롤되지만
+              **어르신이 「끌면 더 있다」를 알 길이 없다.** 잘린 화면은 「앱이 고장났다」로 읽힌다.
 
-                마이크 <-> 시니어 카드   42%  깨지면 마이크가 허공에 뜬다
-                배지   <-> 다비 카드     50%  배지가 카드에 앵커돼 있어 안 깨진다
+              그래서 단서를 둘 준다. 아래쪽 글자를 흐리게 지우는 fading edge가 「여기서 끝이
+              아니다」를, 스크롤바가 얼마나 남았는지를 말한다. **fadeScrollbars를 끈다** —
+              기본값은 잠시 뒤 사라지는데, 그러면 처음 볼 때 이미 없다.
 
-              위로 벌어지는 건 X 버튼과 배지 사이인데 그건 배경(분홍 메시)일 뿐이다.
-              아래로 벌어지면 마이크가 카드에서 떨어져 나와 겹침 규칙이 화면마다 달라진다.
-
-              **홈에서는 아래 짝(space_home_mid)이 없다**(#231) — 마이크가 바닥에 못 박혀 있고
-              열 아래 여백이 그 자리를 대신한다. 지금 이 뷰와 짝을 이루는 것은 안내(메인 9)뿐이다.
+              **넘치지 않으면 둘 다 안 나온다** — 짧은 문구에 군더더기가 붙지 않는다.
             -->
-
-            <Space
-                android:id="@+id/space_flex_top"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="2" />
-
             <!--
-              다비 배지. **카드 상단 경계를 파고든다**(시안 메인 2~6: 배지 하단 138, 카드 상단 108).
-              겹침은 배지 자체가 아니라 **아래 질문 카드의 음수 위 마진**이 만든다 — FrameLayout으로
-              싸서 z축을 다루는 대신 세로 흐름을 그대로 두고 카드를 끌어올리는 쪽이 단순하다.
-              배지가 카드보다 먼저 오므로 카드가 배지 위에 그려지는데, 카드가 반투명이라 겹친
-              부분에서 배지가 비쳐 보인다 — 그래서 카드 위 패딩(davi_card_padding_top_davi)이
-              글자를 배지 아래로 밀어낸다.
+              **세로 정렬은 가운데가 아니라 위다**(2026-08-22 실기기). `center`는 넘치는 글자를
+              세로 가운데에 놓아 **위아래를 같이 자른다** — 배율 2.0에서 「서울에서 당진으로
+              이동하는 …」의 **첫 줄이 통째로 밀려 나갔다.** 문장 앞이 사라지는 것은 뒤가
+              잘리는 것보다 나쁘다: 어르신은 처음부터 읽지 스크롤을 되짚지 않는다.
+
+              **짧은 문구에서도 위가 맞다** — 카드가 wrap_content라 글자만큼만 자라고, 하한
+              176dp에 걸릴 때 글자가 배지 쪽에 붙는 것이 시안이다(2026-08-21 결정).
+              가로는 그대로 가운데다.
             -->
-            <ImageView
-                android:id="@+id/logo"
-                android:layout_width="@dimen/davi_logo_size"
-                android:layout_height="@dimen/davi_logo_size"
-                android:layout_marginTop="@dimen/davi_badge_margin_top"
-                android:src="@drawable/ic_davi_logo"
-                android:elevation="@dimen/davi_badge_elevation"
-                android:importantForAccessibility="no" />
-
-            <!--
-              실패 화면의 전신 캐릭터(메인 8, #208). **배지와 배타적이다** — 이 화면만 위를
-              캐릭터가 차지하고 카드가 그 하단을 파고든다.
-
-              겹침은 캐릭터가 아니라 **아래 질문 카드의 음수 위 마진**이 만든다(배지와 같은 수법).
-              그 마진은 상태에 따라 달라서 코드가 준다 — 배지일 때 -36dp, 캐릭터일 때 -53dp.
-
-              장식이라 스크린리더에서 뺀다. 오류 안내 화면이라 **문구만 읽혀야** 한다.
-            -->
-            <ImageView
-                android:id="@+id/stand"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/davi_stand_margin_top"
-                android:maxWidth="@dimen/davi_stand_width"
-                android:maxHeight="@dimen/davi_stand_height"
-                android:adjustViewBounds="true"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_davi_stand"
-                android:importantForAccessibility="no" />
-
-            <!--
-              메인 1 제목(#231). **두 줄이 색만 다르다** — 한 TextView로는 색을 가를 수 없어
-              뷰를 둘로 나눴다. 폭죽이 둘째 줄 오른쪽 위에 붙으므로 셋을 FrameLayout으로 싼다.
-
-              폭죽은 **글자가 아니라 화면 오른쪽 가장자리에 붙인다** — 제목이 가운데 정렬이라
-              글자의 오른쪽 끝이 문구마다 달라진다. 장식이라 스크린리더에서 뺀다.
-              제목은 두 줄이 이어진 한 문장이라 **첫 줄에 `contentDescription`으로 전체를
-              물리고** 둘째 줄을 트리에서 뺀다. 둘째 줄만 빼고 끝내면 TalkBack이 "어려운 건"만
-              읽고 "물어보세요"가 통째로 사라진다(PR #235 리뷰).
-            -->
-            <FrameLayout
-                android:id="@+id/home_head"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipChildren="false">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center_horizontal">
-
-                    <TextView
-                        android:id="@+id/home_title"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/voice_home_title"
-                        android:contentDescription="@string/voice_home_title_desc"
-                        android:textAppearance="@style/TextAppearance.Davi.HomeTitle"
-                        android:fontFamily="@font/cafe24_ssurround"
-                        app:fontFamily="@font/cafe24_ssurround"
-                        android:gravity="center" />
-
-                    <TextView
-                        android:id="@+id/home_title_accent"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/voice_home_title_accent"
-                        android:textAppearance="@style/TextAppearance.Davi.HomeTitle"
-                        android:textColor="@color/davi_home_title_accent"
-                        android:fontFamily="@font/cafe24_ssurround"
-                        app:fontFamily="@font/cafe24_ssurround"
-                        android:importantForAccessibility="no"
-                        android:gravity="center" />
-                </LinearLayout>
-
-                <ImageView
-                    android:id="@+id/home_sparkle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="top|end"
-                    android:layout_marginTop="@dimen/davi_home_sparkle_margin_top"
-                    android:layout_marginEnd="@dimen/davi_home_sparkle_margin_end"
-                    android:src="@drawable/ic_davi_sparkle"
-                    android:importantForAccessibility="no" />
-            </FrameLayout>
-
             <TextView
-                android:id="@+id/home_subtitle"
+                android:id="@+id/card_question"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/davi_home_subtitle_margin_top"
-                android:gravity="center"
-                android:text="@string/voice_home_subtitle"
-                android:textAppearance="@style/TextAppearance.Davi.HomeSubtitle" />
+                android:gravity="center_horizontal|top"
+                android:lineSpacingMultiplier="1.3"
+                android:scrollbars="vertical"
+                android:fadeScrollbars="false"
+                android:requiresFadingEdge="vertical"
+                android:fadingEdgeLength="@dimen/davi_card_scroll_fade"
+                android:accessibilityLiveRegion="polite"
+                android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
+                android:fontFamily="@font/cafe24_ssurround"
+                app:fontFamily="@font/cafe24_ssurround" />
 
             <!--
-              홈 캐릭터(#231, 지휘봉 자세). **메인 8의 `stand`와 다른 에셋이다.**
-              장식이라 스크린리더에서 뺀다 — 이 화면에서 읽혀야 하는 것은 제목과 말풍선이다.
-
-              아래 말풍선이 **음수 위 마진**으로 이 캐릭터를 파고든다(시안 20 → 24dp, 겹침 깊이는 x1.2).
-              배지·메인 8 캐릭터와 같은 수법이라 세로 흐름을 그대로 둔 채 겹침만 만든다.
+              메인 9 카드 안 지시문(#197). "새로 물어보시려면 먼저 안내를 종료해주세요" —
+              **마이크가 잠긴 이유를 설명하는 자리**다. 위 문구가 상황을 알리고 이 줄이
+              무엇을 해야 하는지 말한다. 다른 상태에서는 숨는다.
             -->
-            <ImageView
-                android:id="@+id/home_cane"
-                android:layout_width="wrap_content"
-                android:layout_height="@dimen/davi_home_cane_height"
-                android:layout_marginTop="@dimen/davi_home_cane_margin_top"
-                android:adjustViewBounds="true"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_davi_cane"
-                android:importantForAccessibility="no" />
-
-            <!--
-              말풍선(#231). **가로 여백을 주지 않는다** — 열 패딩(24dp)만 받아 카드와 같은 폭이 된다.
-              정적 문구라 아래 질문 카드(서버 되묻기)와 **다른 뷰**다 — 같은 뷰를
-              나눠 쓰면 상태 전환에서 문구가 갈린다. 채움이 불투명인 이유는 배경 드로어블 주석 참고.
-            -->
-            <FrameLayout
-                android:id="@+id/home_bubble"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/davi_home_bubble_overlap"
-                android:layout_marginBottom="@dimen/davi_home_bubble_margin_bottom"
-                android:minHeight="@dimen/davi_home_bubble_min_height"
-                android:background="@drawable/bg_davi_home_bubble">
-
-                <TextView
-                    android:id="@+id/home_bubble_text"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:paddingStart="@dimen/davi_spacing_lg"
-                    android:paddingEnd="@dimen/davi_spacing_lg"
-                    android:gravity="center"
-                    android:accessibilityLiveRegion="polite"
-                    android:lineSpacingMultiplier="1.3"
-                    android:text="@string/voice_home_bubble"
-                    android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
-                    android:textSize="@dimen/davi_type_body_lg"
-                    android:textColor="@color/davi_text_primary" />
-            </FrameLayout>
-
-
-
-            <!--
-              질문 카드. **배경·여백이 컨테이너로 올라와 있다**(#142) — 응답 대기 점이 문구
-              아래, 카드 안에 놓이기 때문이다(시안 메인 6). 문구를 대체하지 않고 함께 보인다.
-
-              높이 상한과 내부 스크롤은 TextView에 그대로 남는다 — 긴 문구를 사용자가 스크롤해
-              읽는 동작(PR #125 리뷰)이 컨테이너를 감싼 뒤에도 유지돼야 한다.
-            -->
-            <!--
-              다비 카드와 그 뒤 글로우. 글로우가 카드보다 사방 blur만큼 넓어야 번질 자리가 생겨
-              FrameLayout으로 싸고 음수 마진으로 넓힌다. 글로우는 첫 자식이라 카드 아래에 깔린다.
-            -->
-            <!--
-              **카드 두 장이 남는 세로 공간을 나눠 갖는다**(시안 176:196).
-
-              고정 높이로 쌓으면 화면 높이에 따라 위나 아래가 빈다 — 시안은 배지가 X 바로 아래에
-              붙으면서 **동시에** 시니어 카드가 마이크에 닿는데, 프레임 620과 실기기 높이가 달라
-              한쪽에 앵커하면 반대쪽이 벌어진다(실기기에서 양쪽 다 겪었다).
-
-              글자 배율이 커져도 **스크롤하지 않고 박스가 유동적으로 화면을 채운다**는 결정
-              (2026-08-16)의 구현이기도 하다.
-
-              **카드는 wrap_content + weight다** — 각자 minHeight를 먼저 확보하고 **남는 공간만**
-              비율로 나눈다(2026-08-17 결정). 0dp+weight로 두면 내용과 무관하게 화면을 다 채워
-              "무엇을 도와드릴까요?" 한 줄에도 상자가 화면 높이만큼 늘어난다.
-
-              **열은 아래에 붙는다.** 의미를 지닌 겹침이 전부 아래에 있기 때문이다 —
-              마이크와 시니어 카드의 42% 겹침은 깨지면 마이크가 허공에 뜨고, 배지와 다비 카드의
-              50% 겹침은 배지가 카드에 앵커돼 있어 카드가 어디로 가든 안 깨진다. 위로 벌어지는
-              건 X 버튼과 배지 사이의 배경뿐이고, 그 자리는 davi_badge_margin_top이 고정으로 잡는다.
-
-              **넘칠 때 줄이는 것은 다비 카드다**(우선순위: 마이크 위치 > 마이크·시니어 겹침 >
-              시니어 전체 표시 > 다비 표시). 시니어 카드는 사용자가 방금 말한 내용이라 잘리면
-              안 되고 받아쓰기라 원래 짧다. 다비 카드는 card_question의 maxHeight와 내부 스크롤이 받는다.
-
-              **glow_card가 wrap_content 래퍼를 부풀리지 않는 것이 이 구조의 전제다** —
-              CardGlowView.onMeasure가 1차 측정에서 0을 보고한다. 그 장치 없이 wrap_content로
-              두면 발화 상태에서 다비 카드가 시니어 카드를 화면 밖으로 밀어낸다(실기기 실측).
-            -->
-            <FrameLayout
-                android:id="@+id/card_question_wrap"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_card_min_height_davi"
-                android:layout_weight="176"
-                android:layout_marginTop="@dimen/davi_badge_overlap_negative"
-                android:clipChildren="false">
-
-                <!--
-                  **네 방향 마진을 따로 준다.** android:layout_margin 축약형에 음수 dimen을 주면
-                  적용되지 않아 글로우 뷰가 카드와 같은 크기가 됐고, 그러면 CardGlowView가
-                  뷰에서 blur만큼 안쪽에 그리는 도형이 카드 안에 들어가 번짐이 흰 카드 밑에
-                  깔려 보이지 않는다(2026-08-17 실기기 실측: 도형이 카드 x80~1010보다 안쪽인
-                  x170~925에 그려졌다). 소프트웨어 레이어는 뷰 밖으로 못 그리므로
-                  clipChildren을 열어도 소용이 없다 — 뷰 자체가 커져야 한다.
-                -->
-                <com.davi.helper.CardGlowView
-                    android:id="@+id/glow_card"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="@dimen/davi_glow_card_bleed"
-                    android:layout_marginTop="@dimen/davi_glow_card_bleed"
-                    android:layout_marginRight="@dimen/davi_glow_card_bleed"
-                    android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
-                    android:importantForAccessibility="no" />
-
-            <LinearLayout
-                android:id="@+id/card_question_container"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:minHeight="@dimen/davi_card_min_height_davi"
-                android:orientation="vertical"
-                android:gravity="center_horizontal"
-                android:paddingLeft="@dimen/davi_card_padding_horizontal"
-                android:paddingRight="@dimen/davi_card_padding_horizontal"
-                android:paddingTop="@dimen/davi_card_padding_top_davi"
-                android:paddingBottom="@dimen/davi_card_padding_bottom_davi"
-                android:background="@drawable/bg_davi_card">
-
-                <!--
-                  **넘칠 때 스크롤한다는 것이 보여야 한다**(2026-08-22 실기기). 배율 2.0에서 긴
-                  goal이 maxHeight에 닿으면 뒷부분이 잘린 것처럼 보인다 — 실제로는 스크롤되지만
-                  **어르신이 「끌면 더 있다」를 알 길이 없다.** 잘린 화면은 「앱이 고장났다」로 읽힌다.
-
-                  그래서 단서를 둘 준다. 아래쪽 글자를 흐리게 지우는 fading edge가 「여기서 끝이
-                  아니다」를, 스크롤바가 얼마나 남았는지를 말한다. **fadeScrollbars를 끈다** —
-                  기본값은 잠시 뒤 사라지는데, 그러면 처음 볼 때 이미 없다.
-
-                  **넘치지 않으면 둘 다 안 나온다** — 짧은 문구에 군더더기가 붙지 않는다.
-                -->
-                <!--
-                  **세로 정렬은 가운데가 아니라 위다**(2026-08-22 실기기). `center`는 넘치는 글자를
-                  세로 가운데에 놓아 **위아래를 같이 자른다** — 배율 2.0에서 「서울에서 당진으로
-                  이동하는 …」의 **첫 줄이 통째로 밀려 나갔다.** 문장 앞이 사라지는 것은 뒤가
-                  잘리는 것보다 나쁘다: 어르신은 처음부터 읽지 스크롤을 되짚지 않는다.
-
-                  **짧은 문구에서도 위가 맞다** — 카드가 wrap_content라 글자만큼만 자라고, 하한
-                  176dp에 걸릴 때 글자가 배지 쪽에 붙는 것이 시안이다(2026-08-21 결정).
-
-                  **가로는 가운데다.** 왼쪽 정렬을 시험했다가 되돌렸다(2026-08-25) — 배지·카드·
-                  마이크가 모두 화면 중심에 선 화면이라 카드 글자만 왼쪽에 붙으면 축이 둘이 된다.
-                  **보기 라벨과는 사정이 다르다** — 그쪽은 좌우 대칭 여백이 글자 폭을 절반으로 깎아
-                  배율 2.0에서 줄바꿈을 강제했지만, 이 카드는 폭을 다 쓰므로 그 문제가 없다.
-                  긴 문장이 넘치는 것은 정렬이 아니라 **화면 스크롤**(card_scroll)이 받는다.
-                -->
-                <TextView
-                    android:id="@+id/card_question"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal|top"
-                    android:lineSpacingMultiplier="1.3"
-                    android:scrollbars="vertical"
-                    android:fadeScrollbars="false"
-                    android:requiresFadingEdge="vertical"
-                    android:fadingEdgeLength="@dimen/davi_card_scroll_fade"
-                    android:accessibilityLiveRegion="polite"
-                    android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
-                    android:fontFamily="@font/cafe24_ssurround"
-                    app:fontFamily="@font/cafe24_ssurround" />
-
-                <!--
-                  메인 9 카드 안 지시문(#197). "새로 물어보시려면 먼저 안내를 종료해주세요" —
-                  **마이크가 잠긴 이유를 설명하는 자리**다. 위 문구가 상황을 알리고 이 줄이
-                  무엇을 해야 하는지 말한다. 다른 상태에서는 숨는다.
-                -->
-                <TextView
-                    android:id="@+id/card_guiding_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/davi_spacing_lg"
-                    android:gravity="center"
-                    android:lineSpacingMultiplier="1.3"
-                    android:textAppearance="@style/TextAppearance.Davi.Guiding"
-                    android:fontFamily="@font/cafe24_ssurround"
-                    app:fontFamily="@font/cafe24_ssurround" />
-
-                <com.davi.helper.LoadingDotsView
-                    android:id="@+id/loading_dots"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/davi_spacing_lg"
-                    android:importantForAccessibility="no" />
-            </LinearLayout>
-            </FrameLayout>
-
-            <!--
-              구체화에서는 질문 카드의 176dp 하한을 먼저 보존하고, 선택 영역이 남은 높이를 받는다.
-              기본 배율에서는 네 조작이 한 화면에 보이고, 2.0x처럼 내용이 넘칠 때만 include 안의
-              ScrollView가 스크롤한다. wrap_content로 두면 선택 영역만 줄지 않아 질문 카드가 패딩보다
-              작게 눌리고, 질문 한 줄조차 표시할 수 없게 된다(#326 리뷰).
-            -->
-            <include
-                android:id="@+id/clarification_choices"
-                layout="@layout/view_davi_clarification_choices"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:layout_marginTop="@dimen/davi_card_gap" />
-
-            <!--
-              시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
-              "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을
-              위해 같은 구조를 쓴 것과 짝이다.
-
-              **받아쓰기만 굵다**(시안 메인 3·5). 같은 카드 안에서 레이블("듣고 있어요")과
-              문장이 굵기로 갈린다 — 레이블은 상태 안내이고 문장은 사용자가 방금 한 말이라
-              읽어서 확인할 대상이다. 색으로 가르지 않는 이유는 두 글자 모두 A1(7:1)을 지켜야
-              해서 명도 차를 크게 벌릴 수 없기 때문이다.
-              굵어지면 글자 폭이 늘어 3줄 말줄임이 더 일찍 걸린다 — 배율 2.0x와 긴 문장에서
-              함께 확인한다.
-            -->
-            <!--
-              시니어 카드와 그 뒤 글로우. **다비 카드와 같은 구조다** — 래퍼가 크기를 정하고
-              글로우가 사방 bleed만큼 넓게 깔린다.
-
-              **글로우가 화자를 가리킨다**(2026-08-17 결정). 다비가 말하면 위 카드가, 사용자가
-              말하면 아래 카드가 빛난다 — 켜고 끄는 신호가 아니라 **자리를 옮기는 신호**다.
-              시안은 시니어에 글로우를 안 주고 그림자만 5%p 진하게(7% -> 12%) 했는데, 실기기에서
-              그 차이가 눈에 안 띄어 사용자 차례에 아무 일도 안 일어나 보였다.
-              파도·마이크 글로우는 사용자 차례에만 뜨므로 이중 신호가 되고, 겹치지 않는다.
-            -->
-            <FrameLayout
-                android:id="@+id/card_utterance_wrap"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="196"
-                android:minHeight="@dimen/davi_card_min_height_senior"
-                android:layout_marginTop="@dimen/davi_card_gap"
-                android:clipChildren="false">
-
-                <!-- 네 방향 마진을 따로 주는 근거는 glow_card 주석과 같다. -->
-                <com.davi.helper.CardGlowView
-                    android:id="@+id/glow_utterance"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="@dimen/davi_glow_card_bleed"
-                    android:layout_marginTop="@dimen/davi_glow_card_bleed"
-                    android:layout_marginRight="@dimen/davi_glow_card_bleed"
-                    android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
-                    app:daviGlowBoostAlpha="128"
-                    android:importantForAccessibility="no" />
-
-            <LinearLayout
-                android:id="@+id/card_utterance_container"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:paddingLeft="@dimen/davi_card_padding_horizontal"
-                android:paddingRight="@dimen/davi_card_padding_horizontal"
-                android:paddingTop="@dimen/davi_card_padding_top_senior"
-                android:paddingBottom="@dimen/davi_card_padding_bottom_senior"
-                android:background="@drawable/bg_davi_card_utterance">
-
-                <TextView
-                    android:id="@+id/utterance_label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/davi_spacing_sm"
-                    android:text="@string/voice_listening_label"
-                    android:textAppearance="@style/TextAppearance.Davi.Body"
-                    android:textColor="@color/davi_text_secondary" />
-
-                <TextView
-                    android:id="@+id/card_utterance"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:lineSpacingMultiplier="1.3"
-                    android:maxLines="3"
-                    android:ellipsize="end"
-                    android:textAppearance="@style/TextAppearance.Davi.BodyLg"
-                    android:textStyle="bold" />
-            </LinearLayout>
-            </FrameLayout>
-
-            <!--
-              최종 확인(MA-4)의 캡슐 버튼쌍(#196). **마이크와 같은 바닥 슬롯을 쓰지 않는다** —
-              시안 메인 7이 버튼쌍을 카드 바로 아래(카드 하단에서 86dp)에 두고 화면 아래를 비운다.
-
-              PR #164는 마이크와 확인쌍을 한 슬롯에 묶었다("최종 확인으로 넘어갈 때 버튼이 아래로
-              뛴다"). **그 결정을 뒤집는다** — 마이크 자리에 버튼이 앉으면 "여기 눌러 말하세요"의
-              자리와 겹쳐서, 확인 화면인데 입력 자리처럼 보인다. 마이크에서 버튼쌍으로 넘어가는
-              것은 상태 전환이라 자리가 바뀌는 편이 맞다.
-
-              **절대 y로 옮기지 않았다.** 시안 프레임(620 units = 744dp)이 실기기 가용 높이
-              (698dp, 인셋 뺀 실측)보다 크다. 대신 관계로 둔다 — 최종 확인에서는 카드 weight가
-              0이라 열이 위에서부터 쌓이므로, 카드 뒤에 이 여백만 주면 아래가 저절로 빈다.
-            -->
-            <!--
-              메인 9 세로 버튼쌍과 하단 안내(#197). **마이크 슬롯을 쓰지 않는다** —
-              이 화면에는 마이크가 없고 버튼이 카드 아래 열 안에 있다(메인 7과 같은 배치).
-
-              "기존 안내 이어서하기"는 **상태를 바꾸지 않는다** — 앱에서 나가기만 하고 안내는
-              그대로 돈다. 아래 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이다.
-            -->
-            <include
-                android:id="@+id/stacked_pair"
-                layout="@layout/view_davi_stacked_pair"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/davi_stacked_pair_margin_top" />
-
             <TextView
-                android:id="@+id/guiding_bottom"
+                android:id="@+id/card_guiding_hint"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/davi_guiding_bottom_margin_top"
+                android:layout_marginTop="@dimen/davi_spacing_lg"
                 android:gravity="center"
                 android:lineSpacingMultiplier="1.3"
-                android:text="@string/conversation_guiding_bottom"
-                android:textAppearance="@style/TextAppearance.Davi.GuidingBottom" />
+                android:textAppearance="@style/TextAppearance.Davi.Guiding"
+                android:fontFamily="@font/cafe24_ssurround"
+                app:fontFamily="@font/cafe24_ssurround" />
 
-            <!--
-              MA-4 확인 버튼 셋(#348 · `docs/SCREENS.md` MA-4 「확인 버튼 셋」).
-              「아니요 / 네, 맞아요」 가로 캡슐쌍을 걷고 세로 셋으로 갔다. 그 컴포넌트
-              (`view_davi_button_pair.xml`)는 **쓰는 곳이 없어져 지웠다**(2026-08-22) — 메인 10과
-              GD-3/4는 별개인 `view_davi_confirm_pair`를 쓴다.
-
-              **가운데 (2)는 「다비는 대신 버튼을 누르지 않는다」의 명시적 예외다** — 팀 전원이
-              합의했다(2026-08-21). 누르는 것은 여전히 사용자이고, 다비는 **앱을 열어 줄 뿐**
-              그 안에서 아무것도 누르지 않는다. **예외의 범위는 「첫 실행 한 번」뿐이다** —
-              그 뒤로는 닫힌 루프가 평소대로 화면을 읽어 다음 한 걸음을 안내만 한다.
-              「어차피 앱도 열어 줬으니 한 걸음만 더」가 원칙이 무너지는 전형적인 경로다.
-
-              **이 화면에 전역 ✕가 없는 것은 빠뜨린 게 아니다** — (3)이 그 일을 한다.
-              `btnClose`와 `confirmReject`의 리스너가 **같은 코드**다(cancelVoiceDialogue + Home).
-              ✕를 달면 같은 동작이 한 화면에 둘이 되고, 라벨 달린 72dp 버튼이 56dp 아이콘보다
-              찾기 쉽다. **「나가는 길은 화면마다 갈리지 않는다」(#374)에 걸리지 않는다** —
-              길이 없는 게 아니라 모양이 다른 것이다.
-
-              **셋의 우열은 없다** — 최종 확인은 우리가 권하는 자리가 아니라 사용자가 고르는
-              자리다. 구분은 **겹수와 형태·아이콘·글자**가 한다: (1)(2)는 뒤판이 오른쪽으로
-              보이는 두 겹으로 「진행한다」, (3)은 한 겹으로 「그만둔다」, (2)만 뾰족한 끝으로
-              「이 앱을 떠난다」.
-
-              **한때 이 자리는 「채워진 주 버튼이 없다. 셋 다 흰/회색이다」였다**(2026-08-21 판정).
-              08-22 시안이 셋 다 채워진 면으로 바꾸면서 그 문장이 낡았다(#396) — 그때 근거는
-              「취소가 주 버튼이 되면 안 된다」였고 지금은 취소가 가장 옅은 면이라 그 문제가 없다.
-              **다만 「(3)을 (1)(2)보다 진하게 만들지 않는다」는 남는다.**
-            -->
-            <!--
-              (1) 처음부터 안내. **08-22 시안에서 아이콘 칸이 생겨 행 구조가 됐다**(#396) —
-              전에는 TextView 하나였다. 셋이 같은 꼴이어야 하므로 (2)(3)과 같은 짜임이다.
-
-              **그림자는 elevation으로 낸다**(시안 #000000@12 y7 b16). layer-list로 그리면
-              blur가 없어 하단에 단단한 띠가 되는데, 두 겹 위에 그 띠가 얹히면 겹수가 흐려진다.
-
-              **높이는 하한이지 고정이 아니다**(2026-08-24 실기기, #396). 72dp로 고정했더니
-              배율 2.0에서 라벨이 두 줄로 흐르며 **글자 아래가 버튼 하단에 붙었다** — (2)만
-              `wrap_content`라 105.7dp까지 자라는데 (1)(3)은 72dp에 눌려 셋을 나란히 보면
-              이쪽만 답답하다. **셋이 같은 규칙을 따른다** — 72dp는 하한이고 두 줄에서 자란다.
-            -->
-            <FrameLayout
-                android:id="@+id/confirm_accept"
-                android:layout_width="match_parent"
+            <com.davi.helper.LoadingDotsView
+                android:id="@+id/loading_dots"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_confirm_choice_height"
-                android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
-                android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
-                android:layout_marginTop="@dimen/davi_confirm_choice_margin_top"
-                android:paddingLeft="@dimen/davi_shortcut_inset"
-                android:paddingRight="@dimen/davi_shortcut_inset"
-                android:background="@drawable/bg_davi_confirm_choice"
-                android:elevation="@dimen/davi_choice_elevation"
-                android:clickable="true"
-                android:focusable="true"
-                android:visibility="gone">
-
-                <!--
-                  **라벨이 버튼 전체 폭을 쓴다** — 시안에서 아이콘은 버튼 기준 x12의 절대 위치이고
-                  라벨은 가로 중앙이다. 한때 LinearLayout에 아이콘과 같은 폭의 Space를 균형추로
-                  두었는데, **라벨에 남는 폭이 174dp뿐이라 기본 배율에서도 두 줄로 흘렀다**
-                  (2026-08-24 실측, #396).
-                -->
-                <TextView
-                    android:id="@+id/confirm_accept_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:maxLines="2"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
-
-                <ImageView
-                    android:layout_width="@dimen/davi_shortcut_icon_size"
-                    android:layout_height="@dimen/davi_shortcut_icon_size"
-                    android:layout_gravity="left|center_vertical"
-                    android:background="@drawable/bg_davi_confirm_choice_icon_slot"
-                    android:src="@drawable/ic_davi_confirm_accept"
-                    android:scaleType="center"
-                    android:importantForAccessibility="no" />
-            </FrameLayout>
-
-            <!--
-              (2) 앱 바로가기. **사전 점검이 미확인이면 이것만 숨고 (1)(3)은 남는다** —
-              열 수 있는지 모르는 앱으로 보내면 안 된다(#185). 판단은 ConversationUiState의
-              shortcutVisible이 한다.
-            -->
-            <LinearLayout
-                android:id="@+id/shortcut_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_confirm_choice_height"
-                android:layout_marginTop="@dimen/davi_confirm_choice_gap"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingLeft="@dimen/davi_shortcut_inset"
-                android:paddingRight="@dimen/davi_shortcut_inset"
-                android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
-                android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
-                android:elevation="@dimen/davi_choice_elevation"
-                android:clickable="true"
-                android:focusable="true"
-                android:visibility="gone">
-                <!--
-                  **배경은 코드가 넣는다**(`ConfirmShortcutBackground`) — 오른쪽 끝이 사선이라
-                  XML 드로어블로 그릴 수 없다. 이유와 대안 검토는 그 클래스 KDoc에 있다.
-                -->
-
-                <ImageView
-                    android:id="@+id/shortcut_icon"
-                    android:layout_width="@dimen/davi_shortcut_icon_size"
-                    android:layout_height="@dimen/davi_shortcut_icon_size"
-                    android:background="@drawable/bg_davi_shortcut_icon"
-                    android:scaleType="centerCrop"
-                    android:importantForAccessibility="no" />
-
-                <!--
-                  라벨은 **아이콘 우측에서 시작하는 좌측 정렬**이다(시안 실측) — 앱 이름 길이가
-                  제각각이라 중앙 정렬이면 아이콘과의 간격이 앱마다 흔들린다.
-
-                  **두 줄까지 흘린다**(2026-08-22 실기기). 한 줄 ellipsize로 두면 배율 2.0에서
-                  「바로 가기 · 지도」가 **「바로 가기 · …」로 잘려 앱 이름이 통째로 사라진다** —
-                  라벨에 남는 폭이 198dp인데 글자가 40dp까지 커지기 때문이다. **어디로 가는지가
-                  사라지는 것이 이 행에서 제일 나쁜 잘림**이라, 잘리는 대신 행이 자란다.
-
-                  카드와 같은 우선순위다 — **카드는 스크롤이 받아 정보가 안 사라지지만 라벨은
-                  잘리면 그냥 없어진다.** 그래서 자리가 모자라면 카드가 양보한다.
-                -->
-                <TextView
-                    android:id="@+id/shortcut_label"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginLeft="@dimen/davi_confirm_choice_label_gap"
-                    android:layout_marginRight="@dimen/davi_shortcut_inset"
-                    android:maxLines="2"
-                    android:ellipsize="end"
-                    android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
-            </LinearLayout>
-
-            <!--
-              (3) 그만두기. **한 겹이다 — 뒤판도 테두리도 없다**(08-22 시안, #396).
-              겹수가 뜻을 나른다: (1)(2)의 두 겹이 「진행한다」이고 이 한 겹이 「그만둔다」다.
-
-              ⚠ **라벨이 흰색이라 A1은커녕 AA도 못 넘는다**(3.24~3.40). 예외가
-              `DESIGN-CONVENTIONS.md` 「A1 예외 — 반투명 채움 위 흰 라벨 둘」에 등록돼 있고
-              **2026-08-24 팀 합의 대상**이다. 지금은 시안대로 흰색이다.
-            -->
-            <FrameLayout
-                android:id="@+id/confirm_reject"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/davi_confirm_choice_height"
-                android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
-                android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
-                android:layout_marginTop="@dimen/davi_confirm_choice_gap"
-                android:layout_marginBottom="@dimen/davi_confirm_choices_margin_bottom"
-                android:paddingLeft="@dimen/davi_shortcut_inset"
-                android:paddingRight="@dimen/davi_shortcut_inset"
-                android:background="@drawable/bg_davi_confirm_choice_reject"
-                android:elevation="@dimen/davi_choice_elevation"
-                android:clickable="true"
-                android:focusable="true"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/confirm_reject_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:maxLines="2"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:text="@string/conversation_confirm_reject"
-                    android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice.OnFill" />
-
-                <ImageView
-                    android:layout_width="@dimen/davi_shortcut_icon_size"
-                    android:layout_height="@dimen/davi_shortcut_icon_size"
-                    android:layout_gravity="left|center_vertical"
-                    android:background="@drawable/bg_davi_confirm_choice_icon_slot"
-                    android:src="@drawable/ic_davi_confirm_reject"
-                    android:scaleType="center"
-                    android:importantForAccessibility="no" />
-            </FrameLayout>
-
-            <Space
-                android:id="@+id/space_home_mid"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="3" />
+                android:layout_marginTop="@dimen/davi_spacing_lg"
+                android:importantForAccessibility="no" />
         </LinearLayout>
-    </ScrollView>
+        </FrameLayout>
+
+        <!--
+          구체화에서는 질문 카드의 176dp 하한을 먼저 보존하고, 선택 영역이 남은 높이를 받는다.
+          기본 배율에서는 네 조작이 한 화면에 보이고, 2.0x처럼 내용이 넘칠 때만 include 안의
+          ScrollView가 스크롤한다. wrap_content로 두면 선택 영역만 줄지 않아 질문 카드가 패딩보다
+          작게 눌리고, 질문 한 줄조차 표시할 수 없게 된다(#326 리뷰).
+        -->
+        <include
+            android:id="@+id/clarification_choices"
+            layout="@layout/view_davi_clarification_choices"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="@dimen/davi_card_gap" />
+
+        <!--
+          시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
+          "듣고 있어요" 레이블을 함께 두기 때문이다(메인 3·5). 다비 카드가 응답 대기 점을
+          위해 같은 구조를 쓴 것과 짝이다.
+
+          **받아쓰기만 굵다**(시안 메인 3·5). 같은 카드 안에서 레이블("듣고 있어요")과
+          문장이 굵기로 갈린다 — 레이블은 상태 안내이고 문장은 사용자가 방금 한 말이라
+          읽어서 확인할 대상이다. 색으로 가르지 않는 이유는 두 글자 모두 A1(7:1)을 지켜야
+          해서 명도 차를 크게 벌릴 수 없기 때문이다.
+          굵어지면 글자 폭이 늘어 3줄 말줄임이 더 일찍 걸린다 — 배율 2.0x와 긴 문장에서
+          함께 확인한다.
+        -->
+        <!--
+          시니어 카드와 그 뒤 글로우. **다비 카드와 같은 구조다** — 래퍼가 크기를 정하고
+          글로우가 사방 bleed만큼 넓게 깔린다.
+
+          **글로우가 화자를 가리킨다**(2026-08-17 결정). 다비가 말하면 위 카드가, 사용자가
+          말하면 아래 카드가 빛난다 — 켜고 끄는 신호가 아니라 **자리를 옮기는 신호**다.
+          시안은 시니어에 글로우를 안 주고 그림자만 5%p 진하게(7% -> 12%) 했는데, 실기기에서
+          그 차이가 눈에 안 띄어 사용자 차례에 아무 일도 안 일어나 보였다.
+          파도·마이크 글로우는 사용자 차례에만 뜨므로 이중 신호가 되고, 겹치지 않는다.
+        -->
+        <FrameLayout
+            android:id="@+id/card_utterance_wrap"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="196"
+            android:minHeight="@dimen/davi_card_min_height_senior"
+            android:layout_marginTop="@dimen/davi_card_gap"
+            android:clipChildren="false">
+
+            <!-- 네 방향 마진을 따로 주는 근거는 glow_card 주석과 같다. -->
+            <com.davi.helper.CardGlowView
+                android:id="@+id/glow_utterance"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="@dimen/davi_glow_card_bleed"
+                android:layout_marginTop="@dimen/davi_glow_card_bleed"
+                android:layout_marginRight="@dimen/davi_glow_card_bleed"
+                android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
+                app:daviGlowBoostAlpha="128"
+                android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:id="@+id/card_utterance_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingLeft="@dimen/davi_card_padding_horizontal"
+            android:paddingRight="@dimen/davi_card_padding_horizontal"
+            android:paddingTop="@dimen/davi_card_padding_top_senior"
+            android:paddingBottom="@dimen/davi_card_padding_bottom_senior"
+            android:background="@drawable/bg_davi_card_utterance">
+
+            <TextView
+                android:id="@+id/utterance_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/davi_spacing_sm"
+                android:text="@string/voice_listening_label"
+                android:textAppearance="@style/TextAppearance.Davi.Body"
+                android:textColor="@color/davi_text_secondary" />
+
+            <TextView
+                android:id="@+id/card_utterance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.BodyLg"
+                android:textStyle="bold" />
+        </LinearLayout>
+        </FrameLayout>
+
+        <!--
+          최종 확인(MA-4)의 캡슐 버튼쌍(#196). **마이크와 같은 바닥 슬롯을 쓰지 않는다** —
+          시안 메인 7이 버튼쌍을 카드 바로 아래(카드 하단에서 86dp)에 두고 화면 아래를 비운다.
+
+          PR #164는 마이크와 확인쌍을 한 슬롯에 묶었다("최종 확인으로 넘어갈 때 버튼이 아래로
+          뛴다"). **그 결정을 뒤집는다** — 마이크 자리에 버튼이 앉으면 "여기 눌러 말하세요"의
+          자리와 겹쳐서, 확인 화면인데 입력 자리처럼 보인다. 마이크에서 버튼쌍으로 넘어가는
+          것은 상태 전환이라 자리가 바뀌는 편이 맞다.
+
+          **절대 y로 옮기지 않았다.** 시안 프레임(620 units = 744dp)이 실기기 가용 높이
+          (698dp, 인셋 뺀 실측)보다 크다. 대신 관계로 둔다 — 최종 확인에서는 카드 weight가
+          0이라 열이 위에서부터 쌓이므로, 카드 뒤에 이 여백만 주면 아래가 저절로 빈다.
+        -->
+        <!--
+          메인 9 세로 버튼쌍과 하단 안내(#197). **마이크 슬롯을 쓰지 않는다** —
+          이 화면에는 마이크가 없고 버튼이 카드 아래 열 안에 있다(메인 7과 같은 배치).
+
+          "기존 안내 이어서하기"는 **상태를 바꾸지 않는다** — 앱에서 나가기만 하고 안내는
+          그대로 돈다. 아래 하단 안내가 같은 동작을 뒤로가기로 설명하는 것과 짝이다.
+        -->
+        <include
+            android:id="@+id/stacked_pair"
+            layout="@layout/view_davi_stacked_pair"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_stacked_pair_margin_top" />
+
+        <TextView
+            android:id="@+id/guiding_bottom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/davi_guiding_bottom_margin_top"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/conversation_guiding_bottom"
+            android:textAppearance="@style/TextAppearance.Davi.GuidingBottom" />
+
+        <!--
+          MA-4 확인 버튼 셋(#348 · `docs/SCREENS.md` MA-4 「확인 버튼 셋」).
+          「아니요 / 네, 맞아요」 가로 캡슐쌍을 걷고 세로 셋으로 갔다. 그 컴포넌트
+          (`view_davi_button_pair.xml`)는 **쓰는 곳이 없어져 지웠다**(2026-08-22) — 메인 10과
+          GD-3/4는 별개인 `view_davi_confirm_pair`를 쓴다.
+
+          **가운데 (2)는 「다비는 대신 버튼을 누르지 않는다」의 명시적 예외다** — 팀 전원이
+          합의했다(2026-08-21). 누르는 것은 여전히 사용자이고, 다비는 **앱을 열어 줄 뿐**
+          그 안에서 아무것도 누르지 않는다. **예외의 범위는 「첫 실행 한 번」뿐이다** —
+          그 뒤로는 닫힌 루프가 평소대로 화면을 읽어 다음 한 걸음을 안내만 한다.
+          「어차피 앱도 열어 줬으니 한 걸음만 더」가 원칙이 무너지는 전형적인 경로다.
+
+          **이 화면에 전역 ✕가 없는 것은 빠뜨린 게 아니다** — (3)이 그 일을 한다.
+          `btnClose`와 `confirmReject`의 리스너가 **같은 코드**다(cancelVoiceDialogue + Home).
+          ✕를 달면 같은 동작이 한 화면에 둘이 되고, 라벨 달린 72dp 버튼이 56dp 아이콘보다
+          찾기 쉽다. **「나가는 길은 화면마다 갈리지 않는다」(#374)에 걸리지 않는다** —
+          길이 없는 게 아니라 모양이 다른 것이다.
+
+          **셋의 우열은 없다** — 최종 확인은 우리가 권하는 자리가 아니라 사용자가 고르는
+          자리다. 구분은 **겹수와 형태·아이콘·글자**가 한다: (1)(2)는 뒤판이 오른쪽으로
+          보이는 두 겹으로 「진행한다」, (3)은 한 겹으로 「그만둔다」, (2)만 뾰족한 끝으로
+          「이 앱을 떠난다」.
+
+          **한때 이 자리는 「채워진 주 버튼이 없다. 셋 다 흰/회색이다」였다**(2026-08-21 판정).
+          08-22 시안이 셋 다 채워진 면으로 바꾸면서 그 문장이 낡았다(#396) — 그때 근거는
+          「취소가 주 버튼이 되면 안 된다」였고 지금은 취소가 가장 옅은 면이라 그 문제가 없다.
+          **다만 「(3)을 (1)(2)보다 진하게 만들지 않는다」는 남는다.**
+        -->
+        <!--
+          (1) 처음부터 안내. **08-22 시안에서 아이콘 칸이 생겨 행 구조가 됐다**(#396) —
+          전에는 TextView 하나였다. 셋이 같은 꼴이어야 하므로 (2)(3)과 같은 짜임이다.
+
+          **그림자는 elevation으로 낸다**(시안 #000000@12 y7 b16). layer-list로 그리면
+          blur가 없어 하단에 단단한 띠가 되는데, 두 겹 위에 그 띠가 얹히면 겹수가 흐려진다.
+
+          **높이는 하한이지 고정이 아니다**(2026-08-24 실기기, #396). 72dp로 고정했더니
+          배율 2.0에서 라벨이 두 줄로 흐르며 **글자 아래가 버튼 하단에 붙었다** — (2)만
+          `wrap_content`라 105.7dp까지 자라는데 (1)(3)은 72dp에 눌려 셋을 나란히 보면
+          이쪽만 답답하다. **셋이 같은 규칙을 따른다** — 72dp는 하한이고 두 줄에서 자란다.
+        -->
+        <FrameLayout
+            android:id="@+id/confirm_accept"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
+            android:layout_marginTop="@dimen/davi_confirm_choice_margin_top"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
+            android:background="@drawable/bg_davi_confirm_choice"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <!--
+              **라벨이 버튼 전체 폭을 쓴다** — 시안에서 아이콘은 버튼 기준 x12의 절대 위치이고
+              라벨은 가로 중앙이다. 한때 LinearLayout에 아이콘과 같은 폭의 Space를 균형추로
+              두었는데, **라벨에 남는 폭이 174dp뿐이라 기본 배율에서도 두 줄로 흘렀다**
+              (2026-08-24 실측, #396).
+            -->
+            <TextView
+                android:id="@+id/confirm_accept_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="left|center_vertical"
+                android:background="@drawable/bg_davi_confirm_choice_icon_slot"
+                android:src="@drawable/ic_davi_confirm_accept"
+                android:scaleType="center"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+
+        <!--
+          (2) 앱 바로가기. **사전 점검이 미확인이면 이것만 숨고 (1)(3)은 남는다** —
+          열 수 있는지 모르는 앱으로 보내면 안 된다(#185). 판단은 ConversationUiState의
+          shortcutVisible이 한다.
+        -->
+        <LinearLayout
+            android:id="@+id/shortcut_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:layout_marginTop="@dimen/davi_confirm_choice_gap"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+            <!--
+              **배경은 코드가 넣는다**(`ConfirmShortcutBackground`) — 오른쪽 끝이 사선이라
+              XML 드로어블로 그릴 수 없다. 이유와 대안 검토는 그 클래스 KDoc에 있다.
+            -->
+
+            <ImageView
+                android:id="@+id/shortcut_icon"
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:background="@drawable/bg_davi_shortcut_icon"
+                android:scaleType="centerCrop"
+                android:importantForAccessibility="no" />
+
+            <!--
+              라벨은 **아이콘 우측에서 시작하는 좌측 정렬**이다(시안 실측) — 앱 이름 길이가
+              제각각이라 중앙 정렬이면 아이콘과의 간격이 앱마다 흔들린다.
+
+              **두 줄까지 흘린다**(2026-08-22 실기기). 한 줄 ellipsize로 두면 배율 2.0에서
+              「바로 가기 · 지도」가 **「바로 가기 · …」로 잘려 앱 이름이 통째로 사라진다** —
+              라벨에 남는 폭이 198dp인데 글자가 40dp까지 커지기 때문이다. **어디로 가는지가
+              사라지는 것이 이 행에서 제일 나쁜 잘림**이라, 잘리는 대신 행이 자란다.
+
+              카드와 같은 우선순위다 — **카드는 스크롤이 받아 정보가 안 사라지지만 라벨은
+              잘리면 그냥 없어진다.** 그래서 자리가 모자라면 카드가 양보한다.
+            -->
+            <TextView
+                android:id="@+id/shortcut_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="@dimen/davi_confirm_choice_label_gap"
+                android:layout_marginRight="@dimen/davi_shortcut_inset"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
+        </LinearLayout>
+
+        <!--
+          (3) 그만두기. **한 겹이다 — 뒤판도 테두리도 없다**(08-22 시안, #396).
+          겹수가 뜻을 나른다: (1)(2)의 두 겹이 「진행한다」이고 이 한 겹이 「그만둔다」다.
+
+          ⚠ **라벨이 흰색이라 A1은커녕 AA도 못 넘는다**(3.24~3.40). 예외가
+          `DESIGN-CONVENTIONS.md` 「A1 예외 — 반투명 채움 위 흰 라벨 둘」에 등록돼 있고
+          **2026-08-24 팀 합의 대상**이다. 지금은 시안대로 흰색이다.
+        -->
+        <FrameLayout
+            android:id="@+id/confirm_reject"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
+            android:layout_marginTop="@dimen/davi_confirm_choice_gap"
+            android:layout_marginBottom="@dimen/davi_confirm_choices_margin_bottom"
+            android:paddingLeft="@dimen/davi_shortcut_inset"
+            android:paddingRight="@dimen/davi_shortcut_inset"
+            android:background="@drawable/bg_davi_confirm_choice_reject"
+            android:elevation="@dimen/davi_choice_elevation"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/confirm_reject_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:text="@string/conversation_confirm_reject"
+                android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice.OnFill" />
+
+            <ImageView
+                android:layout_width="@dimen/davi_shortcut_icon_size"
+                android:layout_height="@dimen/davi_shortcut_icon_size"
+                android:layout_gravity="left|center_vertical"
+                android:background="@drawable/bg_davi_confirm_choice_icon_slot"
+                android:src="@drawable/ic_davi_confirm_reject"
+                android:scaleType="center"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+
+        <Space
+            android:id="@+id/space_home_mid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="3" />
+    </LinearLayout>
 
     <!--
       조작 수단: 마이크. **이제 확인쌍과 자리를 나눠 쓰지 않는다**(#196) — 최종 확인의
@@ -795,41 +799,6 @@
         android:text="@string/voice_home_caption"
         android:textAppearance="@style/TextAppearance.Davi.HomeCaption"
         android:importantForAccessibility="no" />
-
-    <!--
-      MA-3 질문 칩(#374 · 시안 24,46). **열이 아니라 ✕와 같은 층에 있다**(#372, 3분할).
-
-      진행도는 「지금 어디쯤인가」라 **묻기 전에** 보여야 하고, 시안이 칩과 ✕를 한 줄로 그렸다.
-      그런데 ✕는 **모든 화면에서 자리와 크기가 같아야 해서**(2026-08-23) 전역 `btn_close`가
-      여기 형제로 있는데 **칩만 열 안에 있었다.** 그래서 열의 가변 여백이 부족분을 물어 음수로
-      갈 때 칩만 따라 밀려 **배지와 겹쳤다** — 320×693dp 배율 2.0에서 가로 23.7dp·세로 모두
-      겹치는 것을 실측했다(#372). 세로로 쌓인 형제인데 겹치는 이유가 이것이었다.
-
-      **같은 층으로 올리면 그 겹침이 구조적으로 사라진다.** 좌표도 그대로 맞는다 —
-      ✕ 중심 16 + 28 = 44dp, 칩 25 + 19 = 44dp(`davi_step_row_margin_top` 그대로).
-      가로 24dp는 열의 패딩(`davi_spacing_xl`)이 주던 값을 자기 마진으로 가져온 것이다.
-
-      **덤으로 열에 63dp가 돌아온다**(칩 38 + 마진 25) — MA-3 보기 넷의 부족분이 그만큼 준다.
-
-      **폭은 wrap_content, 높이만 고정이다.** 시안 92x32(=110x38dp)를 둘 다 고정으로 두면
-      2.0 위 배율에서 「질문 1/2」가 잘린다 — 진행도는 짧은 글자라 최소 폭만 지키면 되고,
-      **높이는 ✕와 중심을 맞추는 입력**이라 고정이어야 한다.
-    -->
-    <TextView
-        android:id="@+id/question_progress"
-        android:layout_width="wrap_content"
-        android:layout_height="@dimen/davi_step_chip_height"
-        android:minWidth="@dimen/davi_step_chip_width"
-        android:layout_gravity="top|start"
-        android:layout_marginTop="@dimen/davi_step_row_margin_top"
-        android:layout_marginStart="@dimen/davi_spacing_xl"
-        android:paddingLeft="@dimen/davi_spacing_md"
-        android:paddingRight="@dimen/davi_spacing_md"
-        android:maxLines="1"
-        android:gravity="center"
-        android:background="@drawable/bg_davi_step_chip"
-        android:textAppearance="@style/TextAppearance.Davi.StepChip"
-        android:visibility="gone" />
 
     <ImageButton
         android:id="@+id/btn_close"
