@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
+import android.os.Build
 import android.os.PowerManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -83,6 +84,29 @@ class GuideAccessibilityService : AccessibilityService() {
      * 응답이 아직 없는 화면에서도 게이트가 서도록 응답이 아니라 샘플에서 채운다.
      */
     private var currentScreenPackage: String? = null
+
+    /**
+     * 이 세션에서 클릭 이벤트를 **한 번이라도** 쏜 package(#427 2단계).
+     *
+     * 여기 없는 앱은 인과의 클릭 축이 사실상 없다(코레일 인원 선택은 조작해도 0건이다).
+     * 그런 앱에서만 조용함 기반의 보조 문을 연다 — 클릭을 쏘는 앱은 동작이 그대로다.
+     * 세션 지식이라 [GuideSession] 전환에서 함께 비운다.
+     */
+    private val packagesWithClicks = mutableSetOf<String>()
+
+    /**
+     * 이 세션에서 **내용 변화 이벤트**를 한 번이라도 쏜 package(#427 2단계).
+     *
+     * 접근성 노드 캐시는 **대상 앱이 쏘는 이벤트로만** 무효화된다. 여기 없는 앱에서는
+     * `getRootInActiveWindow()`가 낡은 트리를 계속 돌려주므로 화면이 바뀌어도 우리가 못 본다 —
+     * 2026-08-25 SM-S921N 실측: 코레일 인원 선택에서 인원을 다섯 번 올리는 동안
+     * `VIEW_CLICKED`·`WINDOW_CONTENT_CHANGED`가 **0건**이었고(창 전환 2건이 전부),
+     * 화면이 `5`인데 서명은 153샘플(약 2분) 동안 옛 값 그대로였다.
+     */
+    private val packagesWithContentEvents = mutableSetOf<String>()
+
+    /** 지금 캐시를 켜 둔 상태인가. 매 샘플 같은 값을 다시 넣지 않으려고 든다. */
+    private var a11yCacheEnabled = true
 
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
@@ -183,6 +207,8 @@ class GuideAccessibilityService : AccessibilityService() {
     private val sessionListener = GuideSession.Listener { goal ->
         mainHandler.post {
             stability.reset()
+            packagesWithClicks.clear()
+            packagesWithContentEvents.clear()
             logicalRequests.reset()
             // 새 세션의 첫 예약은 기한을 새로 받는다 — 직전 세션이 열어 둔 기한이 그사이
             // 지났으면 settle 없이 곧바로 뜬다(#380).
@@ -377,6 +403,17 @@ class GuideAccessibilityService : AccessibilityService() {
         // 계측. release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
         // 위 필터 앞이라는 자리가 감당 가능한 이유는 이 호출이 `event.source`를 읽지 않기 때문이다(#356).
         GuideScreenLog.event(event, interesting)
+        // 캐시 무효화의 근거가 되는 이벤트를 이 앱이 쏘는가(#427 2단계). 타입과 package만
+        // 읽으므로 `event.source`를 건드리지 않는다(#356의 경계 그대로).
+        event.packageName?.toString()?.let { pkg ->
+            if (
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+            ) {
+                packagesWithContentEvents.add(pkg)
+            }
+        }
         if (!interesting) return
 
         // 인과 게이트의 **폴백 축**(#380). 판정에 쓰는 것은 타입과 package뿐이라, 부하 시
@@ -396,6 +433,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
+                packagesWithClicks.add(pkg)
                 stability.markInteraction(stabilityNowMs())
             }
             onTargetPressed(event)
@@ -523,6 +561,21 @@ class GuideAccessibilityService : AccessibilityService() {
         return PressMatch.judge(bounds, null, guidedTargetLabel, candidates)
     }
 
+    /**
+     * 접근성 노드 캐시를 켜고 끈다(#427 2단계). 상태가 바뀔 때만 호출해 매 샘플의 IPC를 아낀다.
+     * API 31 미만에는 이 손잡이가 없다 — 그 기기에서는 낡은 트리를 그대로 받는다(알려진 한계).
+     */
+    private fun updateA11yCache(enabled: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (enabled == a11yCacheEnabled) return
+        runCatching { setCacheEnabled(enabled) }
+            .onSuccess {
+                a11yCacheEnabled = enabled
+                Log.i(TAG, "a11y cache=${if (enabled) "on" else "off"}")
+            }
+            .onFailure { Log.w(TAG, "a11y cache toggle failed", it) }
+    }
+
     private fun scheduleSample(delayMs: Long) {
         // 꺼진 화면에는 그릴 것도 물을 것도 없다. 되살리는 것은 [resumeAfterScreenOn]뿐이다.
         if (screenOff) return
@@ -605,11 +658,17 @@ class GuideAccessibilityService : AccessibilityService() {
         currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
         val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
+        val clickAxisDead = currentScreenPackage?.let { it !in packagesWithClicks } ?: false
+        // **내용 이벤트를 안 쏘는 앱에서만 캐시를 끈다.** 끄면 노드 접근이 전부 IPC라
+        // 직렬화가 23ms에서 800ms대로 뛴다(2026-08-25 SM-S921N 실측) — 그 값을 모든 앱에
+        // 물리면 폴링 예산을 넘긴다. 이벤트를 쏘는 앱은 캐시가 제때 무효화되므로 낼 이유도 없다.
+        updateA11yCache(enabled = currentScreenPackage?.let { it in packagesWithContentEvents } ?: true)
         val decision = stability.onSample(
             signature,
             now,
             hasLabeledElement,
             guidedTargetChanged = targetSlotChanged,
+            clickAxisDead = clickAxisDead,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
         // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
@@ -624,6 +683,9 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionGateOpen(now),
             targetSlotChanged,
             stability.anchorRequerySpent(),
+            stability.quietState().first,
+            stability.quietState().second,
+            clickAxisDead,
             result.cost,
         )
         lastDecision = decision

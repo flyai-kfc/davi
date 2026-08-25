@@ -26,12 +26,15 @@ class ScreenSignatureTest {
     )
 
     @Test
-    fun `숫자만 다른 화면은 같은 시그니처다`() {
-        // 시계·배터리% 때문에 화면이 계속 바뀐 것으로 오인하던 문제(HANDOFF §4).
+    fun `숫자만 다른 화면은 다른 시그니처다`() {
+        // 예전에는 시계·배터리% 때문에 숫자를 지웠는데(HANDOFF §4), 그 탓에 장바구니 수량
+        // `2`와 `3`도 같은 화면이 됐다(#427). 지금은 지우지 않는다 — 시계처럼 스스로 도는
+        // 숫자를 막는 것은 정규화가 아니라 **인과 게이트**이고, 홀드는 구조가 안정이면
+        // [ScreenStabilityTracker.CONTENT_SETTLE_MS] 뒤 면제되므로 안정 판정도 늦지 않는다.
         val at3 = screen(UiElement(nodeId = "n1", label = "3:45 화요일", role = "TextView"))
         val at4 = screen(UiElement(nodeId = "n1", label = "4:07 화요일", role = "TextView"))
 
-        assertEquals(ScreenSignature.of(at3), ScreenSignature.of(at4))
+        assertNotEquals(ScreenSignature.of(at3), ScreenSignature.of(at4))
     }
 
     @Test
@@ -49,7 +52,7 @@ class ScreenSignatureTest {
     }
 
     @Test
-    fun `NumberPicker 주변 버튼의 숫자만 바뀌는 것은 volatile로 유지한다`() {
+    fun `picker 주변 버튼의 숫자도 시그니처에 그대로 들어간다`() {
         val before = screen(
             UiElement(nodeId = "n1", label = "29", role = "Button", clickable = true),
             UiElement(nodeId = "n2", label = "31", role = "Button", clickable = true),
@@ -59,7 +62,8 @@ class ScreenSignatureTest {
             UiElement(nodeId = "n2", label = "32", role = "Button", clickable = true),
         )
 
-        assertEquals(ScreenSignature.of(before), ScreenSignature.of(after))
+        // #117이 editable picker에만 두던 예외가 이제 전체 규칙이다(#427).
+        assertNotEquals(ScreenSignature.of(before), ScreenSignature.of(after))
     }
 
     @Test
@@ -147,12 +151,13 @@ class ScreenSignatureTest {
     }
 
     @Test
-    fun `제목에 붙는 숫자는 volatile로 본다`() {
-        // "받은편지함 (3)"처럼 개수가 붙는 제목이 매 폴링마다 새 화면이 되면 안 된다.
+    fun `제목에 붙는 숫자도 시그니처에 들어간다`() {
+        // "받은편지함 (3)"이 (4)가 되는 것은 진짜 변화다. 사용자 조작 없이 바뀌면 인과 게이트가
+        // 막으므로, 이 축이 그것을 보는 것 자체는 비용이 아니다(#427).
         val three = screen(windowTitle = "받은편지함 (3)")
         val four = screen(windowTitle = "받은편지함 (4)")
 
-        assertEquals(ScreenSignature.of(three), ScreenSignature.of(four))
+        assertNotEquals(ScreenSignature.of(three), ScreenSignature.of(four))
     }
 
     @Test
@@ -368,11 +373,12 @@ class GuidedSlotAnchorTest {
     }
 
     @Test
-    fun `숫자만 다른 label은 밀린 것이 아니다`() {
-        // 시그니처와 같은 정규화를 쓰지 않으면 대상에 붙은 시계·개수가 앵커를 매 초 흔든다.
+    fun `숫자만 다른 label도 밀린 것으로 본다`() {
+        // 정규화를 걷었으므로(#427) 앵커도 시그니처와 같은 값을 본다 — 두 자리가 같은 기준을
+        // 쓴다는 것이 계약이고, 자기발생 변화를 막는 것은 정규화가 아니라 앵커 상한이다.
         val after = screen(UiElement(nodeId = "n3", label = "안 읽음 12", role = "View"))
 
-        assertFalse(after.guidedSlotLabelChanged("n3", "안 읽음 #", SAME, SAME))
+        assertTrue(after.guidedSlotLabelChanged("n3", "안 읽음 11", SAME, SAME))
     }
 
     @Test
@@ -905,6 +911,97 @@ class ScreenStabilityTrackerTest {
         val page2 = ScreenSig("list", "2페이지")
         assertEquals(Decision.WAIT, tracker.onSample(page2, 1_100, hasLabeledElement = true))
         assertEquals(Decision.SEND, tracker.onSample(page2, 1_800, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `클릭을 안 쏘는 앱에서 조용하던 화면이 움직이면 새 화면이다`() {
+        // 코레일 인원 선택 — 어린이 `1`→`2`. 클릭 이벤트가 0건이라 인과 게이트가 영영 안 열리고,
+        // 구조·내용(숫자 제거) 축도 그대로다. 조작 전까지 조용했다는 것이 유일한 인과 근거다
+        // (2026-08-25 SM-S921N 실측: 그 화면은 80샘플 넘게 고정이었다).
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("count", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "어린이 1명")
+        sample(700, "어린이 1명")
+        tracker.markSent(ScreenSig("count", "어린이 1명"), 700)
+        tracker.markFinished()
+        // 조용한 구간을 [QUIET_SAMPLES]만큼 채운다.
+        repeat(ScreenStabilityTracker.QUIET_SAMPLES) { i -> sample(1_400 + i * 700L, "어린이 1명") }
+
+        val at = 1_400 + ScreenStabilityTracker.QUIET_SAMPLES * 700L
+        assertEquals(Decision.SEND, sample(at, "어린이 2명"))
+    }
+
+    @Test
+    fun `조용하지 않았던 화면은 클릭이 없으면 열리지 않는다`() {
+        // 회전하는 검색 화면 — 샘플마다 내용이 바뀌어 조용할 틈이 없다. 실측에서 이런 화면의
+        // 최대 연속 정지는 3샘플이었고 [QUIET_SAMPLES]는 그보다 크다.
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("search", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "검색어 A")
+        sample(700, "검색어 A")
+        tracker.markSent(ScreenSig("search", "검색어 A"), 700)
+        tracker.markFinished()
+        // 시그니처가 매 샘플 달라 초반은 WAIT이고, 승격 뒤에는 IDLE이다. 어느 쪽이든
+        // **SEND는 없어야 한다** — 조용할 틈이 없으니 이 문이 열리면 안 된다.
+        repeat(8) { i ->
+            val decision = sample(1_400 + i * 700L, "검색어 ${'A' + i + 1}")
+            assertNotEquals(Decision.SEND, decision)
+        }
+    }
+
+    @Test
+    fun `클릭을 쏘는 앱에서는 조용함만으로 열리지 않는다`() {
+        // 배민처럼 클릭 축이 살아 있는 앱은 이 문을 아예 쓰지 않는다 — 기존 동작이 그대로다.
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("cart", v), t, hasLabeledElement = true, clickAxisDead = false)
+
+        sample(0, "수량 1")
+        sample(700, "수량 1")
+        tracker.markSent(ScreenSig("cart", "수량 1"), 700)
+        tracker.markFinished()
+        repeat(ScreenStabilityTracker.QUIET_SAMPLES) { i -> sample(1_400 + i * 700L, "수량 1") }
+
+        val at = 1_400 + ScreenStabilityTracker.QUIET_SAMPLES * 700L
+        assertEquals(Decision.IDLE, sample(at, "수량 2"))
+    }
+
+    @Test
+    fun `숫자만 바뀐 화면도 조작이 관측되면 새 화면이다`() {
+        // 배민 장바구니 수량 `2`->`3`. 내용 축이 숫자를 그대로 담으므로 두 화면이 갈리고,
+        // 인과 게이트가 열려 있으니 다시 물어야 한다(2026-08-25 SM-S921N 실측: 정규화가
+        // 있던 동안 이 경우가 `gate=open`인데 IDLE로 멈춰 있었다).
+        val before = ScreenSig("cart", "수량 2")
+        val after = ScreenSig("cart", "수량 3")
+        tracker.onSample(before, 0, hasLabeledElement = true)
+        tracker.onSample(before, 700, hasLabeledElement = true)
+        tracker.markSent(before, 700)
+        tracker.markFinished()
+
+        tracker.markInteraction(1_000)
+        assertEquals(Decision.WAIT, tracker.onSample(after, 1_100, hasLabeledElement = true))
+        assertEquals(Decision.SEND, tracker.onSample(after, 1_800, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `숫자만 바뀐 화면은 조작이 없으면 새 화면이 아니다`() {
+        // 시계처럼 스스로 도는 숫자. 내용 축이 숫자를 담아도 인과 게이트가 닫혀 있으면
+        // 열리지 않는다 — 정규화를 걷어도 폭주로 돌아가지 않는 근거가 이 자리다.
+        val base = ScreenSig("home", "남은 시간 9분")
+        tracker.onSample(base, 0, hasLabeledElement = true)
+        tracker.onSample(base, 700, hasLabeledElement = true)
+        tracker.markSent(base, 700)
+        tracker.markFinished()
+
+        // 구조 안정이 CONTENT_SETTLE_MS를 넘긴 뒤라 홀드는 면제되고, 남는 관문은 인과뿐이다.
+        repeat(3) { i ->
+            val ticking = ScreenSig("home", "남은 시간 ${8 - i}분")
+            assertEquals(
+                Decision.IDLE,
+                tracker.onSample(ticking, 4_000 + i * 700L, hasLabeledElement = true),
+            )
+        }
     }
 
     @Test
