@@ -485,8 +485,7 @@
             layout="@layout/view_davi_clarification_choices"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="@dimen/davi_card_gap" />
+            android:layout_weight="1" />
 
         <!--
           시니어 카드. **배경·여백이 컨테이너로 올라와 있다** — 시안이 인식된 문장 위에
