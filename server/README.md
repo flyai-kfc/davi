@@ -595,7 +595,7 @@ pytest
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
 - `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.
 - `app/raw_store.py` — 도그푸딩 화이트리스트 왕복의 봉투 저장(#41). `/v1/next-step`이
-  `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 5건. 위 "도그푸딩 raw 보존" 절.
+  `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 9건. 위 "도그푸딩 raw 보존" 절.
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._verify_done` — evidence가 현재 화면의 최소 두 글자 label을 어절 경계로 인용했는지
