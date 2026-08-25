@@ -109,10 +109,12 @@ internal const val EXTRA_DEBUG_HOME_STATUS = "com.davi.helper.extra.DEBUG_HOME_S
  * 배치를 흔드는 화면일수록 길게·짧게 넣어 봐야 한다(#372).
  *
  * 바로가기 행은 [EXTRA_DEBUG_CONFIRM_APP]이 있을 때만 뜬다 — 사전 점검이 통과한 경우다.
+ * **값은 패키지명이다** — 아이콘을 PackageManager가 그것으로 찾는다. 라벨은 설치된 앱에서
+ * 읽고, 안 깔린 패키지면 패키지명을 그대로 라벨로 쓴다.
  *
  *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
  *     --es com.davi.helper.extra.DEBUG_CONFIRM "'엄마에게 사진 보내기'" \
- *     --es com.davi.helper.extra.DEBUG_CONFIRM_APP "'카카오톡'"
+ *     --es com.davi.helper.extra.DEBUG_CONFIRM_APP "'com.kakao.talk'"
  */
 internal const val EXTRA_DEBUG_CONFIRM = "com.davi.helper.extra.DEBUG_CONFIRM"
 internal const val EXTRA_DEBUG_CONFIRM_APP = "com.davi.helper.extra.DEBUG_CONFIRM_APP"
@@ -763,12 +765,21 @@ class ConversationActivity : AppCompatActivity() {
         }
         intent.getStringExtra(EXTRA_DEBUG_CONFIRM)?.let { goal ->
             GuideTelemetry.voiceState("debug_confirm_injected")
-            val app = intent.getStringExtra(EXTRA_DEBUG_CONFIRM_APP)
+            // **패키지명을 받는다 — 라벨이 아니다.** 아이콘은 PackageManager가 packageName으로
+            // 조회한다(renderShortcutRow). 빈 패키지를 넘기면 라벨만 뜨고 아이콘 슬롯이 빈
+            // 채로 남아, 정작 이 행에서 봐야 할 「어느 앱으로 가는가」가 안 보인다.
+            // 라벨은 설치된 앱에서 읽고, 없으면 패키지명을 그대로 보여 준다.
+            val pkg = intent.getStringExtra(EXTRA_DEBUG_CONFIRM_APP)
             return ConversationUiState.Confirm(
                 goal = goal,
-                // 바로가기 행은 **열 앱을 아는 경우에만** 뜬다. 패키지는 배치를 재는 데
-                // 쓰이지 않으므로(아이콘은 PackageManager가 라벨로 찾는다) 라벨만 받는다.
-                shortcutApp = app?.let { ShortcutApp(packageName = "", label = it) },
+                shortcutApp = pkg?.let {
+                    val label = runCatching {
+                        packageManager.getApplicationLabel(
+                            packageManager.getApplicationInfo(it, 0),
+                        ).toString()
+                    }.getOrDefault(it)
+                    ShortcutApp(packageName = it, label = label)
+                },
             )
         }
         return debugClarificationState()
