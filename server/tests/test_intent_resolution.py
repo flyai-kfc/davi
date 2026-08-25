@@ -647,35 +647,85 @@ def test_llm_keeps_unrelated_blank_error_when_clarification_prompt_has_spaces(ca
     )
 
 
-def test_llm_rejects_non_array_clarification_questions_as_parse_without_crashing(caplog):
+@pytest.mark.parametrize(
+    "clarification",
+    [
+        {"questions": []},
+        {
+            "questions": [
+                {"id": "q1", "options": [], "allow_freeform": True},
+            ]
+        },
+        {
+            "questions": [
+                {"id": "q1", "prompt": "   ", "options": [], "allow_freeform": True},
+            ]
+        },
+        {
+            "questions": {
+                "id": "q1",
+                "prompt": "어느 앱인가요?",
+                "options": [],
+                "allow_freeform": True,
+            }
+        },
+    ],
+)
+def test_llm_safe_ends_when_clarification_has_no_usable_first_prompt(
+    clarification,
+    caplog,
+):
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        question = _clarification("어느 앱인가요?")["questions"][0]
         return httpx.Response(
             200,
             json=_gemini_response(
                 {
                     "status": "needs_clarification",
                     "message": "어느 앱인가요?",
-                    "clarification": {"questions": question},
+                    "clarification": clarification,
                 }
             ),
         )
 
-    with (
-        caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"),
-        pytest.raises(LlmError) as raised,
-    ):
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"):
+        state = _resolver(handler).resolve(_request())
+
+    assert state.status == "unable_to_finalize"
+    assert state.goal is None
+    assert state.clarification is None
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "status_clarification_mismatch" and event.get("action") == "safe_end"
+        for event in _events(caplog)
+    )
+
+
+def test_llm_keeps_other_invalid_clarification_fields_as_parse():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        clarification = _clarification("어느 앱인가요?")
+        clarification["questions"][0]["allow_freeform"] = False
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "어느 앱인가요?",
+                    "clarification": clarification,
+                }
+            ),
+        )
+
+    with pytest.raises(LlmError) as raised:
         _resolver(handler).resolve(_request())
 
     assert raised.value.kind is ErrorKind.PARSE
     assert len(requests) == 1
-    assert any(
-        event.get("reason") == "invalid_intent_dialogue" and event.get("action") == "fail"
-        for event in _events(caplog)
-    )
 
 
 def test_llm_rejects_ready_without_goal_without_retry():

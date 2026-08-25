@@ -123,8 +123,8 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   `scroll_direction_missing` 진단 코드만 남긴다.
 - 음성 목표 판단은 공개 wire 모델과 내부 판단 모델을 분리하고, 내부 `decision_basis`를
   `status`보다 먼저 생성한다. #316 경로는 첫 판단·최종화에서 공급자를 각각 한 번만 호출한다.
-  첫 판단에서 유효한 질문 계획과 어긋난 `message`는 첫 질문으로 정규화하고, 질문 계획 없는
-  `needs_clarification`은 재호출 없이 안전 종료한다. 그 밖의 첫 판단 계약 위반은 PARSE, 최종화
+  첫 판단에서 유효한 질문 계획과 어긋난 `message`는 첫 질문으로 정규화하고, 질문 계획이 없거나
+  첫 질문을 쓸 수 없는 `needs_clarification`은 재호출 없이 안전 종료한다. 그 밖의 첫 판단 계약 위반은 PARSE, 최종화
   계약 위반은 재호출 없는 안전 종료다. 로그에는 고정 reason code만 남긴다.
 - Pydantic 배열의 `min_length`/`max_length`는 Gemini `minItems`/`maxItems`로 옮긴다. 변환기는
   공용이므로 slot-fill 질문·보기뿐 아니라 app-resolution의 후보·package·label 배열에도 적용된다.

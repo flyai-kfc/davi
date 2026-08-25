@@ -87,7 +87,7 @@ status는 `needs_clarification` / `ready` / `unable_to_finalize`다.
     │                                      message, goal, clarification}
     │                                     ⑥ 요청당 공급자 호출은 한 번:
     │                                        질문 문구 불일치 → 첫 질문으로 정규화
-    │                                        질문 계획 없음·최종 계약 오류 → 안전 종료
+    │                                        질문 계획 없음·첫 질문 무효·최종 계약 오류 → 안전 종료
     │                                        그 밖의 첫 계약 오류 → PARSE
     │                       ◀──────────  SlotFillState{status, message, goal,
     │                                                  clarification}
@@ -389,7 +389,8 @@ W5가 들어오기 전에 깔아 두는 안전망이다. 초기 초안은 #259(�
 구체화) 이전 구조를 기준으로 했으므로, 구현 기준은 최신 이슈 #103과 현재 main이다.
 
 - **옛 `_REPAIR_GUIDANCE` 항목은 더 이상 해당하지 않는다.** 직접 인덱싱과 교정 사전이 사라졌고,
-  첫 판단의 질문 문구 불일치는 결정론적으로 정규화하며 질문 계획이 없으면 안전 종료한다. 그 밖의
+  첫 판단의 질문 문구 불일치는 결정론적으로 정규화하며 질문 계획이 없거나 첫 질문을 쓸 수 없으면
+  안전 종료한다. 그 밖의
   첫 판단 계약 위반은 고정 reason code PARSE, 최종화 계약 위반은 재호출 없는 안전 종료로 닫힌다.
 - **slot-fill 응답 최소선은 현재 계약에서 파생한다.** `ready`뿐 아니라 최대 2문항·문항별 3보기를
   담는 `needs_clarification`도 각각 최대 유효 compact JSON을 만들고, Pydantic의 `maxLength`·

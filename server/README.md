@@ -156,8 +156,8 @@ profile과 전체 설치 목록은 요청과 로그에 없다. `candidate_count`
 
 모델은 내부 전용 `decision_basis`를 먼저 생성한 뒤 status를 결정한다. 이 근거는 wire 응답과 운영
 로그에 포함하지 않는다. #316 음성 목표 경로는 첫 판단과 최종화에 공급자를 각각 한 번만 호출한다.
-첫 판단에서 유효한 질문 계획과 다른 `message`는 첫 질문으로 정규화하고, 질문 계획 없는
-`needs_clarification`은 재호출 없이 `unable_to_finalize`로 안전 종료한다. 그 밖의 첫 판단 계약
+첫 판단에서 유효한 질문 계획과 다른 `message`는 첫 질문으로 정규화하고, 질문 계획이 없거나 첫 질문을
+쓸 수 없는 `needs_clarification`은 재호출 없이 `unable_to_finalize`로 안전 종료한다. 그 밖의 첫 판단 계약
 위반은 `PARSE`, 답을 실은 최종화의 계약 위반은 재호출 없는 `unable_to_finalize`다.
 `needs_clarification`에 goal이 함께 왔고 질문 계획이 유효한 경우에는 goal도 제거해 정규화한다.
 

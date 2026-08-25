@@ -386,11 +386,12 @@ def _normalize_clarification_decision(
         reasons.append("status_goal_mismatch")
 
     first_prompt = _first_clarification_prompt(normalized)
-    if first_prompt is not None:
-        message = normalized.get("message")
-        if not isinstance(message, str) or message.strip() != first_prompt:
-            normalized["message"] = first_prompt
-            reasons.append("status_clarification_mismatch")
+    if first_prompt is None:
+        raise _IntentContractViolation("status_clarification_mismatch")
+    message = normalized.get("message")
+    if not isinstance(message, str) or message.strip() != first_prompt:
+        normalized["message"] = first_prompt
+        reasons.append("status_clarification_mismatch")
 
     return normalized, tuple(reasons)
 
@@ -420,18 +421,6 @@ def _contract_violation_reason(
         goal = payload.get("goal")
         if goal is None or (isinstance(goal, str) and not goal.strip()):
             return "status_goal_mismatch"
-    if (
-        payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
-        and payload.get("clarification") is None
-    ):
-        return "status_clarification_mismatch"
-    if payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION:
-        first_prompt = _first_clarification_prompt(payload)
-        message = payload.get("message")
-        normalized_message = message.strip() if isinstance(message, str) else None
-        if first_prompt is not None and first_prompt != normalized_message:
-            return "status_clarification_mismatch"
-
     relevant_fields = {"decision_basis", "message", "goal", "clarification"}
     for detail in error.errors(
         include_url=False,
