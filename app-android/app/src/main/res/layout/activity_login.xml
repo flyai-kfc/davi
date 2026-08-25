@@ -5,8 +5,51 @@
   **동작은 이 파일이 정하지 않는다** — 카카오 OAuth · 스킵 · 진행 중 표시는 전부
   [LoginActivity]에 이미 있다. 여기는 모양만 바꾼다.
 
-  폼형 화면이라 **루트 스크롤을 유지한다** — 글자 배율을 키우면 세로가 모자란다.
-  배경 메시는 스크롤 바깥에 둔다(ON-2·대화 화면과 같은 구조).
+  ══════════════════════════════════════════════════════════════════════
+  **무엇이 먼저 줄지를 구조가 정한다**(D4, `docs/DESIGN-CONVENTIONS.md` · #372).
+
+      위 블록     줄어도 되는 쪽. 남는 세로를 먹고 **모자란 것을 먼저 문다**(0dp + weight)
+      버튼 블록   안 주는 쪽. `min(자연 높이, 창 전체)`를 갖고, 창이 그보다 짧을 때만 자기 안이 스크롤된다
+
+  **왜 바꿨나** — 전에는 열 하나를 통째로 스크롤에 넣었다. 내용이 넘치면 **버튼까지 함께
+  스크롤 대상이 되어 화면 밖으로 나갔다.** 실측(SM-S921N, density 540 · 배율 2.0 → 320×693dp):
+
+      btn_login_skip   보이는 높이 33.48dp   (D1 56dp의 46%)   나머지는 화면 밖
+
+  라벨이 「로그인 없이」까지만 보였다. **앱의 입구가 막히는 자리다** — 시니어가 「끌면 더 있다」를
+  모르면 시작 자체를 못 한다(#125에서 카드 스크롤로 이미 겪은 문제다).
+
+  ⚠ **눌린 것이 아니라 잘린 것이다.** 버튼은 제 높이(91.85dp)로 측정되고 스크롤 밖에 있었을
+  뿐이다 — MA-3에서 보기 넷을 스크롤해 보니 마지막 「직접 말하기」가 **온전한 두 줄로**
+  나타나는 것으로 확인했다(2026-08-24). `minHeight`가 안 지켜졌다고 읽지 말 것.
+  **그래도 고칠 자리인 이유**는 D1이 「56dp로 측정된다」가 아니라 **「누를 수 있게 보인다」**를
+  요구하기 때문이다.
+
+  **버튼 블록이 왜 스크롤인가**(PR #423 리뷰) — 스크롤 밖에 두면 **창이 그 블록보다도 짧아졌을 때
+  끌어도 안 온다.** 배율 2.0에서 이 블록은 324dp이고 진행 중 표시가 뜨면 ~374dp인데,
+  **분할 화면**(780dp를 ~350~390dp로 만든다)과 **API 36의 대형 화면 방향 무시**가 그 아래로
+  내려가는 길이다. 전 구조에서 「밑에 더 있다」였던 것이 「없다」가 된다.
+
+  `layout_height="wrap_content"`인 `ScrollView`라 부모(EXACTLY)에서 **AT_MOST로 측정돼
+  `min(자연 높이, 창 전체)`**를 갖는다 — 평소에는 자연 높이 그대로 바닥에 붙고, 창이 그보다
+  짧을 때만 **이 블록 안이 스크롤돼** 버튼에 닿는다.
+
+  **「남은 창」이 아니라 「창 전체」인 것이 핵심이다.** `LinearLayout`은 weight 자식을 **건너뛴
+  뒤** 이 블록을 재는데 그때 `usedHeight`가 0이라 AT_MOST 스펙이 창 전체다. **「위 블록이 0까지
+  먼저 문다」가 바로 그 사실에서 나온다** — 「남은 창」으로 읽으면 「위 블록의 최소를 빼고 잰다」가
+  되어 **위 블록에 `minHeight`를 넣어도 되는 줄 안다.** 넣으면 그만큼 버튼이 밀린다.
+
+  ⚠ **한때 바깥을 `NestedScrollView`(fillViewport)로 감쌌다가 걷었다.** 그것은 안전망이 아니었다 —
+  `fillViewport`는 **자식이 뷰포트보다 작을 때만** 다시 재므로 **남을 때만 주고 모자랄 때는
+  아무것도 못 한다.** 게다가 그 UNSPECIFIED 패스에서 `0dp + weight` 자식이 0으로 접히지 않고
+  (`measureVertical`의 `useExcessSpace`가 `WRAP_CONTENT`로 다시 잰다) 열의 자연 높이가
+  **위 블록 자연 + 버튼 블록**이 되어, 실제 임계값이 「창 < 버튼 블록」이 아니라
+  **「창 < 자연 합(배율 2.0에서 ≈601dp)」**이었다. 그 아래로 내려가면 버튼까지 함께 스크롤
+  대상이 됐다 — **위 블록만 줄고 버튼은 안 주는 중간 구간이 아예 없었다.**
+
+  **범인은 배율이 아니라 화면 dp다**(같은 실측). 360×780dp에서는 배율 2.0에서도 스킵 버튼이
+  91.67dp로 온전하고 19dp가 남는다. 무너뜨리는 것은 「화면 크게」가 dp 좌표계를 줄이는 쪽이다.
+  ══════════════════════════════════════════════════════════════════════
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/login_root"
@@ -29,115 +72,160 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <ScrollView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true"
-            android:clipToPadding="false">
+            android:orientation="vertical">
 
-            <LinearLayout
+            <!--
+              **줄어도 되는 쪽.** `0dp + weight`라 남는 세로를 먹고 모자란 것도 문다.
+              **스크롤을 안에 두는 이유** — 다 줄어든 뒤에도 로고·앱명·부제가 사라지지 않게
+              한다. `fillViewport`는 이 블록이 남는 높이를 채우게 해, 안의 `Space` 둘이
+              그 여유를 나눠 갖게 만든다(스크롤은 늘리기가 멈춘 뒤에야 돈다).
+            -->
+            <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center_horizontal"
-                android:paddingBottom="@dimen/davi_login_bottom_margin">
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true">
 
-                <!--
-                  아바타. **모양은 에셋이 갖는다** — ic_davi_logo의 클립이 스퀘어클이라
-                  배경을 따로 깔지 않는다(2026-08-19 에셋 갱신).
-                -->
-                <ImageView
-                    android:id="@+id/login_logo"
-                    android:layout_width="@dimen/davi_login_avatar_size"
-                    android:layout_height="@dimen/davi_login_avatar_size"
-                    android:layout_marginTop="@dimen/davi_login_avatar_margin_top"
-                    android:importantForAccessibility="no"
-                    android:src="@drawable/ic_davi_logo" />
-
-                <!--
-                  **app_name이 아니다.** 그쪽은 런처 이름과 알림 제목이 쓰는 값이라
-                  화면 문구로 재사용하면 둘이 묶인다(strings.xml 주석).
-
-                  시안은 Cafe24 Bold 40인데 **램프(28·24·20·17·14)로 스냅해 28을 쓴다**(#266 결정) —
-                  40은 배율 2.0에서 80sp라 「다비」가 버튼 폭 288을 넘길 위험이 있다.
-                -->
-                <TextView
-                    android:id="@+id/login_app_name"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/davi_onboarding_card_margin_h"
-                    android:layout_marginEnd="@dimen/davi_onboarding_card_margin_h"
-                    android:layout_marginTop="@dimen/davi_login_title_margin_top"
-                    android:gravity="center"
-                    android:text="@string/login_app_title"
-                    android:textAppearance="@style/TextAppearance.Davi.Title.Davi" />
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal">
 
-                <!--
-                  **폭을 카드 폭으로 묶는다**(시안 텍스트 252). wrap_content로 두면 배율 2.0에서
-                  한 줄이 화면 끝까지 닿는다 — 줄바꿈 자리를 시안과 같은 폭이 정하게 한다.
-                -->
-                <TextView
-                    android:id="@+id/login_tagline"
+                    <!--
+                      **로고 위 여백은 값이 아니라 비율이다**(D4 ②, PR #423 리뷰).
+                      시안은 136dp인데 **그 값을 dp로 박으면 화면이 줄 때 안 준다** — 좁은
+                      화면에서 이 화면의 가장 큰 고정 덩어리가 되어 앱명이 글자 중간에서
+                      잘렸다. 한때 `values-h720dp/`로 갈랐다가 **되돌렸다**: `hXXXdp`는
+                      `Configuration.screenHeightDp`로 판정되는데 **그 값이 시스템 바를
+                      포함하는지가 Android 15에서 바뀌어**(targetSdk 35+ · Android 15+에서만
+                      포함), `minSdk 26`인 이 앱은 Android 14 이하에서 **기본 설정인데도
+                      임계값 아래로 떨어질 수 있었다.**
+
+                      **2 : 1인 이유** — 남는 세로를 위:아래로 그 비율로 나누면 360×780dp
+                      기본에서 위 여백이 139.6dp로 시안 136에 3.5dp 안쪽이고, 320×693dp
+                      배율 2.0에서는 9.2dp로 줄어 **스크롤 없이 전부 들어온다**(계산·실측).
+                    -->
+                    <Space
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="2" />
+
+                    <!--
+                      아바타. **모양은 에셋이 갖는다** — ic_davi_logo의 클립이 스퀘어클이라
+                      배경을 따로 깔지 않는다(2026-08-19 에셋 갱신).
+                    -->
+                    <ImageView
+                        android:id="@+id/login_logo"
+                        android:layout_width="@dimen/davi_login_avatar_size"
+                        android:layout_height="@dimen/davi_login_avatar_size"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_davi_logo" />
+
+                    <!--
+                      **app_name이 아니다.** 그쪽은 런처 이름과 알림 제목이 쓰는 값이라
+                      화면 문구로 재사용하면 둘이 묶인다(strings.xml 주석).
+
+                      시안은 Cafe24 Bold 40인데 **램프(28·24·20·17·14)로 스냅해 28을 쓴다**(#266 결정) —
+                      40은 배율 2.0에서 80sp라 「다비」가 버튼 폭 288을 넘길 위험이 있다.
+                    -->
+                    <TextView
+                        android:id="@+id/login_app_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/davi_onboarding_card_margin_h"
+                        android:layout_marginEnd="@dimen/davi_onboarding_card_margin_h"
+                        android:layout_marginTop="@dimen/davi_login_title_margin_top"
+                        android:gravity="center"
+                        android:text="@string/login_app_title"
+                        android:textAppearance="@style/TextAppearance.Davi.Title.Davi" />
+
+                    <!--
+                      **폭을 카드 폭으로 묶는다**(시안 텍스트 252). wrap_content로 두면 배율 2.0에서
+                      한 줄이 화면 끝까지 닿는다 — 줄바꿈 자리를 시안과 같은 폭이 정하게 한다.
+                    -->
+                    <TextView
+                        android:id="@+id/login_tagline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/davi_onboarding_card_margin_h"
+                        android:layout_marginEnd="@dimen/davi_onboarding_card_margin_h"
+                        android:layout_marginTop="@dimen/davi_login_title_margin_top"
+                        android:gravity="center"
+                        android:text="@string/login_tagline"
+                        android:textAppearance="@style/TextAppearance.Davi.OnboardingBody" />
+
+                    <!--
+                      부제 아래 여백. 위 여백과 2:1로 나눠 갖는다 — 시안이 버튼쌍을 바닥에
+                      두고 그 위를 비우므로 남는 것이 아래로 몰리면 안 된다.
+                    -->
+                    <Space
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+                </LinearLayout>
+            </ScrollView>
+
+            <!--
+              **안 주는 쪽.** `wrap_content`인 `ScrollView`라 `min(자연 높이, 창 전체)`를 갖는다 —
+              평소에는 자연 높이 그대로 바닥에 붙고, 창이 그보다 짧을 때만 **여기 안이 스크롤돼**
+              버튼에 닿는다. **「남은 창」이 아니라 「창 전체」다**(위 머리 주석) — 부족분은
+              그전에 위 블록이 0까지 문다.
+              아래 여백을 안쪽 열의 패딩으로 들고 있어 **버튼과 함께 스크롤된다** — 바깥 열의
+              패딩으로 두면 그것도 부족분에 먹힌다.
+            -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/davi_onboarding_card_margin_h"
-                    android:layout_marginEnd="@dimen/davi_onboarding_card_margin_h"
-                    android:layout_marginTop="@dimen/davi_login_title_margin_top"
-                    android:gravity="center"
-                    android:text="@string/login_tagline"
-                    android:textAppearance="@style/TextAppearance.Davi.OnboardingBody" />
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingBottom="@dimen/davi_login_bottom_margin">
 
-                <!--
-                  **남는 세로를 여기서 먹는다.** 시안 프레임(300x620 -> 744)보다 폰이 길어서
-                  87dp가 남는데, 시안은 버튼쌍을 아래(바닥에서 58)에 두고 그 위를 비운다 —
-                  남는 것을 아래로 흘리면 버튼이 화면 가운데로 떠올라 무게중심이 달라진다.
+                    <!--
+                      진행 중 표시. 시안에 없는 상태다. **버튼과 같은 블록에 둔다** — 떠도 버튼을
+                      밀어내지 않고 위 블록이 그만큼 줄어든다.
+                    -->
+                    <TextView
+                        android:id="@+id/login_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/davi_spacing_md"
+                        android:gravity="center"
+                        android:lineSpacingMultiplier="1.3"
+                        android:text="@string/login_in_progress"
+                        android:textAppearance="@style/TextAppearance.Davi.Body"
+                        android:visibility="gone" />
 
-                  **글자 배율을 키우면 이 여백이 먼저 접힌다**(0dp + weight). 다 접히면
-                  아래 카카오 버튼의 마진 66이 시안 간격을 그대로 지키고, 그때부터 스크롤이 받는다.
-                -->
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1" />
+                    <Button
+                        android:id="@+id/btn_kakao_login"
+                        style="@style/Widget.Davi.OnboardingButton.Kakao"
+                        android:layout_width="@dimen/davi_onboarding_button_width"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/davi_login_button_margin_top"
+                        android:minHeight="@dimen/davi_onboarding_button_min_height"
+                        android:text="@string/btn_kakao_login" />
 
-                <!--
-                  진행 중 표시. 시안에 없는 상태다. **위 가변 여백 아래에 둔다** — 그래서
-                  평소 배율에서는 이게 떠도 여백이 그만큼 줄어들 뿐 버튼은 안 움직인다.
-                  여백이 다 접힌 뒤(큰 배율)에야 버튼을 밀어내린다.
-                -->
-                <TextView
-                    android:id="@+id/login_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/davi_spacing_md"
-                    android:gravity="center"
-                    android:lineSpacingMultiplier="1.3"
-                    android:text="@string/login_in_progress"
-                    android:textAppearance="@style/TextAppearance.Davi.Body"
-                    android:visibility="gone" />
-
-                <Button
-                    android:id="@+id/btn_kakao_login"
-                    style="@style/Widget.Davi.OnboardingButton.Kakao"
-                    android:layout_width="@dimen/davi_onboarding_button_width"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/davi_login_button_margin_top"
-                    android:minHeight="@dimen/davi_onboarding_button_min_height"
-                    android:text="@string/btn_kakao_login" />
-
-                <!--
-                  **추후 지운다** — 카카오 로그인만 남기기로 했다(2026-08-19, #266).
-                  그때 이 버튼 하나만 빼면 되도록 위 간격을 자기 마진으로 갖고 있다.
-                -->
-                <Button
-                    android:id="@+id/btn_login_skip"
-                    style="@style/Widget.Davi.OnboardingButton.Skip"
-                    android:layout_width="@dimen/davi_onboarding_button_width"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/davi_login_button_gap"
-                    android:minHeight="@dimen/davi_onboarding_button_min_height"
-                    android:text="@string/btn_login_skip" />
-            </LinearLayout>
-        </ScrollView>
+                    <!--
+                      **추후 지운다** — 카카오 로그인만 남기기로 했다(2026-08-19, #266).
+                      그때 이 버튼 하나만 빼면 되도록 위 간격을 자기 마진으로 갖고 있다.
+                    -->
+                    <Button
+                        android:id="@+id/btn_login_skip"
+                        style="@style/Widget.Davi.OnboardingButton.Skip"
+                        android:layout_width="@dimen/davi_onboarding_button_width"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/davi_login_button_gap"
+                        android:minHeight="@dimen/davi_onboarding_button_min_height"
+                        android:text="@string/btn_login_skip" />
+                </LinearLayout>
+            </ScrollView>
+        </LinearLayout>
     </FrameLayout>
 </FrameLayout>

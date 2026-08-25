@@ -1157,8 +1157,12 @@
       "시안 r36을 1:1로 쓰나 비율로 쓰나"라는 물음 자체가 여기서는 성립하지 않는다.
     -->
     <dimen name="davi_login_avatar_size">115dp</dimen>
-    <!-- 아바타 위. 시안 y170에서 상태바 34를 뺀다 — 세로 거리라 1:1. -->
-    <dimen name="davi_login_avatar_margin_top">136dp</dimen>
+    <!--
+      ⚠ `davi_login_avatar_margin_top` **(토큰 없음 — 구조가 갖는다)**
+      아래 토큰에 붙은 경고가 아니다. 시안 136dp를 dp로 박으면 화면이 줄 때 안 준다 —
+      `activity_login.xml`에서 **weight 2 : 1의 `Space`**로 적는다(D4 ②, #372 · PR #423 리뷰).
+      값으로 되살리지 말 것.
+    -->
     <!-- 아바타 하단 266 -> 앱명 279, 앱명 하단 321 -> 부제 334. 둘 다 13이다. -->
     <dimen name="davi_login_title_margin_top">13dp</dimen>
     <!-- 부제 하단 360 -> 카카오 426. -->
