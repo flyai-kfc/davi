@@ -186,7 +186,7 @@ def _request_identity(request: BaseModel) -> dict:
                 "editable": element.editable,
                 "focused": element.focused,
                 "enabled": element.enabled,
-                "checked": element.checked,
+                "check_state": element.check_state.value,
                 "selected": element.selected,
                 "showing_hint_text": element.showing_hint_text,
                 "obscured": element.obscured,

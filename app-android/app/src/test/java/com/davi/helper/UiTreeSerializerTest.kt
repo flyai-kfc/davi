@@ -1,5 +1,6 @@
 package com.davi.helper
 
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -227,27 +228,85 @@ class UiTreeSerializerTest {
     }
 
     @Test
-    fun `켤 수 없는 요소의 꺼짐은 상태가 아니다`() {
-        // isChecked는 checkable이 아닌 노드에서도 false로 온다. 그걸 "꺼짐"으로 실으면
-        // 모델이 화면의 모든 요소를 꺼진 토글로 읽는다.
-        assertNull(UiTreeSerializer.checkedState(checkable = false, checked = false))
-        assertEquals(false, UiTreeSerializer.checkedState(checkable = true, checked = false))
-        assertEquals(true, UiTreeSerializer.checkedState(checkable = true, checked = true))
+    fun `Android 16 체크 상태는 부분 선택을 보존한다`() {
+        assertEquals(
+            CheckState.CHECKED,
+            UiTreeSerializer.checkState(AccessibilityNodeInfo.CHECKED_STATE_TRUE),
+        )
+        assertEquals(
+            CheckState.UNCHECKED,
+            UiTreeSerializer.checkState(AccessibilityNodeInfo.CHECKED_STATE_FALSE),
+        )
+        assertEquals(
+            CheckState.PARTIAL,
+            UiTreeSerializer.checkState(AccessibilityNodeInfo.CHECKED_STATE_PARTIAL),
+        )
+        assertEquals(CheckState.UNAVAILABLE, UiTreeSerializer.checkState(Int.MIN_VALUE))
+    }
+
+    @Test
+    fun `API 게이트는 지원되는 체크 판독기만 호출한다`() {
+        assertEquals(
+            CheckState.UNCHECKED,
+            UiTreeSerializer.checkStateFor(
+                sdkInt = 35,
+                checkable = true,
+                modernState = { error("API 36 판독기를 호출하면 안 된다") },
+                legacyChecked = { false },
+            ),
+        )
+        assertEquals(
+            CheckState.PARTIAL,
+            UiTreeSerializer.checkStateFor(
+                sdkInt = 36,
+                checkable = true,
+                modernState = { AccessibilityNodeInfo.CHECKED_STATE_PARTIAL },
+                legacyChecked = { error("구 API 판독기를 호출하면 안 된다") },
+            ),
+        )
+        assertEquals(
+            CheckState.UNAVAILABLE,
+            UiTreeSerializer.checkStateFor(
+                sdkInt = 36,
+                checkable = false,
+                modernState = { error("non-checkable 노드를 읽으면 안 된다") },
+                legacyChecked = { error("non-checkable 노드를 읽으면 안 된다") },
+            ),
+        )
     }
 
     @Test
     fun `라벨을 흡수하면 자손의 켬끔도 함께 올린다`() {
         // 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면 그 자식은 흡수돼
         // 별도 요소로 나가지 않는다. 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다(#288 리뷰).
-        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = null, descendant = true))
-        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = null, descendant = false))
-        assertNull(UiTreeSerializer.hoistedCheckedState(own = null, descendant = null))
+        assertEquals(
+            CheckState.CHECKED,
+            UiTreeSerializer.hoistedCheckState(CheckState.UNAVAILABLE, CheckState.CHECKED),
+        )
+        assertEquals(
+            CheckState.UNCHECKED,
+            UiTreeSerializer.hoistedCheckState(CheckState.UNAVAILABLE, CheckState.UNCHECKED),
+        )
+        assertEquals(
+            CheckState.PARTIAL,
+            UiTreeSerializer.hoistedCheckState(CheckState.UNAVAILABLE, CheckState.PARTIAL),
+        )
+        assertEquals(
+            CheckState.UNAVAILABLE,
+            UiTreeSerializer.hoistedCheckState(CheckState.UNAVAILABLE, CheckState.UNAVAILABLE),
+        )
     }
 
     @Test
     fun `자기 상태가 있으면 자손보다 우선한다`() {
-        assertEquals(false, UiTreeSerializer.hoistedCheckedState(own = false, descendant = true))
-        assertEquals(true, UiTreeSerializer.hoistedCheckedState(own = true, descendant = false))
+        assertEquals(
+            CheckState.UNCHECKED,
+            UiTreeSerializer.hoistedCheckState(CheckState.UNCHECKED, CheckState.CHECKED),
+        )
+        assertEquals(
+            CheckState.PARTIAL,
+            UiTreeSerializer.hoistedCheckState(CheckState.PARTIAL, CheckState.CHECKED),
+        )
     }
 
     @Test

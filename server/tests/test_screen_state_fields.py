@@ -7,12 +7,15 @@
 
 from app.masking import mask_screen, mask_screen_model
 from app.prompt import (
+    ALREADY_IN_TARGET_STATE_INSTRUCTION,
     DISABLED_ELEMENT_INSTRUCTION,
     HINT_TEXT_INSTRUCTION,
+    PARTIAL_CHECK_STATE_INSTRUCTION,
+    SELECTED_STATE_INSTRUCTION,
     TOGGLE_STATE_INSTRUCTION,
     build_prompt,
 )
-from app.schemas import NextStepRequest, Screen, UiElement
+from app.schemas import CheckState, NextStepRequest, Screen, UiElement
 from app.signature import screen_signature
 
 
@@ -52,17 +55,49 @@ def test_toggle_state_is_carried_for_checkable_elements():
         _request(
             elements=[
                 UiElement(
-                    node_id="n1", label="Wi-Fi", role="Switch", clickable=True, checked=False
+                    node_id="n1",
+                    label="Wi-Fi",
+                    role="Switch",
+                    clickable=True,
+                    check_state=CheckState.UNCHECKED,
                 ),
                 UiElement(
-                    node_id="n2", label="블루투스", role="Switch", clickable=True, checked=True
+                    node_id="n2",
+                    label="블루투스",
+                    role="Switch",
+                    clickable=True,
+                    check_state=CheckState.CHECKED,
                 ),
             ]
         )
     )
-    assert "checked=False" in prompt
-    assert "checked=True" in prompt
+    assert "check_state=unchecked" in prompt
+    assert "check_state=checked" in prompt
+    assert "checked=true/false" in prompt
     assert TOGGLE_STATE_INSTRUCTION in prompt
+    assert PARTIAL_CHECK_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION in prompt
+
+
+def test_partial_check_state_is_carried_as_observation_only():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="일부 항목",
+                    role="CheckBox",
+                    clickable=True,
+                    check_state=CheckState.PARTIAL,
+                )
+            ]
+        )
+    )
+
+    assert "check_state=partial" in prompt
+    assert PARTIAL_CHECK_STATE_INSTRUCTION in prompt
+    assert TOGGLE_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION not in prompt
 
 
 def test_selected_is_carried_only_when_it_marks_the_current_item():
@@ -76,7 +111,26 @@ def test_selected_is_carried_only_when_it_marks_the_current_item():
     )
     assert "selected=True" in prompt
     assert "selected=False" not in prompt
-    assert TOGGLE_STATE_INSTRUCTION in prompt
+    assert SELECTED_STATE_INSTRUCTION in prompt
+    assert TOGGLE_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION in prompt
+
+
+def test_repeat_guard_is_emitted_once_when_toggle_and_selected_are_both_present():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="Wi-Fi",
+                    check_state=CheckState.CHECKED,
+                ),
+                UiElement(node_id="n2", label="연결", selected=True),
+            ]
+        )
+    )
+
+    assert prompt.count(ALREADY_IN_TARGET_STATE_INSTRUCTION) == 1
 
 
 def test_empty_input_is_named_without_sending_the_value():
@@ -115,6 +169,9 @@ def test_state_sentences_are_absent_when_no_element_carries_the_value():
         _request(elements=[UiElement(node_id="n1", label="다음", clickable=True)])
     )
     assert TOGGLE_STATE_INSTRUCTION not in prompt
+    assert PARTIAL_CHECK_STATE_INSTRUCTION not in prompt
+    assert SELECTED_STATE_INSTRUCTION not in prompt
+    assert ALREADY_IN_TARGET_STATE_INSTRUCTION not in prompt
     assert HINT_TEXT_INSTRUCTION not in prompt
 
 
@@ -149,20 +206,46 @@ def test_missing_window_title_survives_masking():
     assert mask_screen_model(Screen(package_name="p")).window_title is None
 
 
-def _switch_screen(checked: bool) -> Screen:
+def _switch_screen(check_state: CheckState) -> Screen:
     return Screen(
         package_name="com.android.settings",
         window_title="Wi-Fi",
         elements=[
-            UiElement(node_id="n1", label="Wi-Fi", role="Switch", clickable=True, checked=checked)
+            UiElement(
+                node_id="n1",
+                label="Wi-Fi",
+                role="Switch",
+                clickable=True,
+                check_state=check_state,
+            )
         ],
     )
 
 
 def test_signature_changes_when_only_the_switch_flips():
-    """이 화면에서 바뀌는 것은 checked 하나뿐이다 — label도 role도 그대로다."""
+    """이 화면에서 바뀌는 것은 check_state 하나뿐이다 — label도 role도 그대로다."""
 
-    assert screen_signature(_switch_screen(False)) != screen_signature(_switch_screen(True))
+    signatures = {screen_signature(_switch_screen(state)) for state in CheckState}
+    assert len(signatures) == len(CheckState)
+
+
+def test_legacy_checked_values_still_produce_different_server_signatures():
+    def legacy_screen(checked: bool) -> Screen:
+        return Screen.model_validate(
+            {
+                "package_name": "com.android.settings",
+                "elements": [
+                    {
+                        "node_id": "n1",
+                        "label": "Wi-Fi",
+                        "role": "Switch",
+                        "checked": checked,
+                    }
+                ],
+            }
+        )
+
+    assert screen_signature(legacy_screen(False)) != screen_signature(legacy_screen(True))
 
 
 def test_signature_changes_when_only_the_button_becomes_enabled():

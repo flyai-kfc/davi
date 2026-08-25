@@ -270,7 +270,7 @@ def test_next_step_fingerprint_matches_android_structure_axis():
         _payload(label="3:46", node_id="n9", bounds=[1, 2, 101, 102], window_title="받은편지함 4")
     )
     structural_change_payload = _payload()
-    structural_change_payload["screen"]["elements"][0]["checked"] = True
+    structural_change_payload["screen"]["elements"][0]["check_state"] = "checked"
     structural_change = NextStepRequest.model_validate(structural_change_payload)
 
     assert request_fingerprint(first) == request_fingerprint(volatile_retry)
