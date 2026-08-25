@@ -717,11 +717,11 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 읽는 중 표시가 무한히 돌면 안 되므로 로컬 안내로 빠져나갈 길을 준다(#350).
                 // 완료·종료 확인은 화면을 따라다니는 더 강한 상태라 덮지 않는다.
                 if (!GuideSession.awaitingConfirm) {
-                    e2ePublisher?.screenUnreadable()
                     display.showUnreadableNotice(
                         signature.structure,
                         getString(R.string.guide_screen_unreadable),
                     )?.let {
+                        e2ePublisher?.screenUnreadable()
                         Log.w(
                             TAG,
                             "screen unreadable for ${ScreenStabilityTracker.UNREADABLE_AFTER_MS}ms",

@@ -175,6 +175,10 @@ UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryT
 두 화면 진단을 추가한 뒤 driver/test APK 컴파일과 JVM 상태 전이 테스트는 통과했지만, 연결 기기가
 없어 새 두 행의 서명 broadcast 재실행은 보류했다. 기존 root·server·target 경계의 `OK (2 tests)`
 실측을 새 화면 진단까지 통과한 것으로 넓혀 쓰지 않는다.
+JVM은 driver 상태 전이, 계측 테스트는 wire 직접 주입만 확인하므로 앱의 `UNREADABLE`·`STUCK` 방출
+지점 자체는 아직 태우지 않았다. 이 채널은 debug E2E 보고 전용이고 제품 안내 동작은 바꾸지 않으므로
+머지 차단 조건으로 두지 않는다. 다음 연결 기기 실행에서 두 상태를 실제로 유지해 edge당 broadcast
+한 번과 위 두 행을 확인하고 이 문서를 갱신한다.
 
 리뷰 수정 커밋 `bfea9fb`으로 같은 기기에서 `samsung-clock-create-alarm-full-journey`도 다시 실행했다.
 기본 개인정보 마스킹과 실제 `gemini-3.5-flash-lite`를 사용했고, 런처에서 삼성 시계로 이동해
