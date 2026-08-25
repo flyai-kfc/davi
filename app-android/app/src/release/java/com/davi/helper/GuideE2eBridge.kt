@@ -21,4 +21,8 @@ class GuideE2ePublisher(@Suppress("UNUSED_PARAMETER") context: Context) {
     fun requestStarted() = Unit
 
     fun serverError() = Unit
+
+    fun clientConfigurationError() = Unit
+
+    fun responseParseError() = Unit
 }

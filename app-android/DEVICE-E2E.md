@@ -39,6 +39,9 @@ UIAutomator를 쓰는 `GuidedActionExecutor`는 이 계획만 받아 실제 손�
 root가 여전히 없으면 `root_unavailable`, 마지막 서버 요청이 실패했으면 `server_error`, 둘 다 아니면
 `decision_timeout`이다. 대상이 필요한 action의 `target_node_id`가 같은 요청 tree에서 풀리지 않으면
 `target_node_id_mismatch`, 최종 외부 앱 상태가 목표에 못 미치면 `done_before_goal`로 각각 기록한다.
+서버 클라이언트 미구성은 `client_configuration_error`, HTTP 200 응답 계약 파손은
+`response_parse_error`로 서버 실패와도 나눈다. 공유 보고서는 세부 코드와 함께
+`infra_failure`·`model_quality_failure`·`safety_boundary_failure` 범주를 표시한다.
 
 이 full-journey는 최신 Davi 화면과 홈 전환부터 검증하지만 음성 인식의 비결정성을 섞지 않기 위해
 목표 문장은 debug 서명 채널로 주입한다. 음성 인식·후속 질문·사용자의 최종 확인 UI 품질은 별도

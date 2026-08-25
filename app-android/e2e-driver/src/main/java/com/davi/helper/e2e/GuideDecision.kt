@@ -114,14 +114,22 @@ internal object GuideE2eContract {
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
     const val EXTRA_DIAGNOSTIC = "diagnostic"
+    const val DIAGNOSTIC_ROOT_UNAVAILABLE = "root_unavailable"
+    const val DIAGNOSTIC_ROOT_RECOVERED = "root_recovered"
+    const val DIAGNOSTIC_REQUEST_STARTED = "request_started"
+    const val DIAGNOSTIC_SERVER_ERROR = "server_error"
+    const val DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR = "client_configuration_error"
+    const val DIAGNOSTIC_RESPONSE_PARSE_ERROR = "response_parse_error"
 }
 
 /** 화면 원문 없이 결정 대기 실패 원인을 구분하는 debug 전용 관측 이벤트. */
 internal enum class GuideE2eDiagnostic(val wire: String) {
-    ROOT_UNAVAILABLE("root_unavailable"),
-    ROOT_RECOVERED("root_recovered"),
-    REQUEST_STARTED("request_started"),
-    SERVER_ERROR("server_error"),
+    ROOT_UNAVAILABLE(GuideE2eContract.DIAGNOSTIC_ROOT_UNAVAILABLE),
+    ROOT_RECOVERED(GuideE2eContract.DIAGNOSTIC_ROOT_RECOVERED),
+    REQUEST_STARTED(GuideE2eContract.DIAGNOSTIC_REQUEST_STARTED),
+    SERVER_ERROR(GuideE2eContract.DIAGNOSTIC_SERVER_ERROR),
+    CLIENT_CONFIGURATION_ERROR(GuideE2eContract.DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR),
+    RESPONSE_PARSE_ERROR(GuideE2eContract.DIAGNOSTIC_RESPONSE_PARSE_ERROR),
     ;
 
     companion object {
@@ -132,28 +140,31 @@ internal enum class GuideE2eDiagnostic(val wire: String) {
 /** transient 오류를 즉시 중단하지 않고, 결정 timeout 시점의 실제 원인만 남긴다. */
 internal class GuideE2eDiagnosticState {
     private var rootUnavailable = false
-    private var serverError = false
+    private var requestFailureCode: String? = null
 
     @Synchronized
     fun observe(event: GuideE2eDiagnostic) {
         when (event) {
             GuideE2eDiagnostic.ROOT_UNAVAILABLE -> rootUnavailable = true
             GuideE2eDiagnostic.ROOT_RECOVERED -> rootUnavailable = false
-            GuideE2eDiagnostic.REQUEST_STARTED -> serverError = false
-            GuideE2eDiagnostic.SERVER_ERROR -> serverError = true
+            GuideE2eDiagnostic.REQUEST_STARTED -> requestFailureCode = null
+            GuideE2eDiagnostic.SERVER_ERROR -> requestFailureCode = "server_error"
+            GuideE2eDiagnostic.CLIENT_CONFIGURATION_ERROR ->
+                requestFailureCode = "client_configuration_error"
+            GuideE2eDiagnostic.RESPONSE_PARSE_ERROR -> requestFailureCode = "response_parse_error"
         }
     }
 
     @Synchronized
     fun reset() {
         rootUnavailable = false
-        serverError = false
+        requestFailureCode = null
     }
 
     @Synchronized
     fun timeoutFailureCode(): String = when {
         rootUnavailable -> "root_unavailable"
-        serverError -> "server_error"
+        requestFailureCode != null -> checkNotNull(requestFailureCode)
         else -> "decision_timeout"
     }
 }

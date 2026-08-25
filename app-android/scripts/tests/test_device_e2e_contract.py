@@ -20,7 +20,8 @@ class DeviceE2eContractTest(unittest.TestCase):
     def test_debug_app_and_driver_observation_contracts_match(self):
         app = string_constants(APP_CONTRACT)
         driver = string_constants(DRIVER_CONTRACT)
-        shared = {
+        shared = app.keys() & driver.keys()
+        critical = {
             "PERMISSION",
             "ACTION_DECISION",
             "ACTION_DIAGNOSTIC",
@@ -30,6 +31,8 @@ class DeviceE2eContractTest(unittest.TestCase):
             "EXTRA_RESPONSE_GZIP",
         }
 
+        self.assertTrue(critical <= shared)
+        self.assertGreaterEqual(len(shared), 20)
         self.assertEqual({key: app[key] for key in shared}, {key: driver[key] for key in shared})
 
     def test_next_action_planner_has_no_uiautomator_or_selector_dependency(self):

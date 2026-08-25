@@ -1,13 +1,18 @@
 package com.davi.helper.e2e
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 
 /** 서명 보호된 debug 진단 broadcast가 timeout 실패 코드까지 이어지는지 실기기에서 고정한다. */
@@ -18,7 +23,8 @@ class GuideDecisionQueueDiagnosticTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         GuideDecisionQueue(context).use { queue ->
-            context.sendBroadcast(
+            sendAndAwait(
+                context,
                 Intent(GuideE2eContract.ACTION_DECISION)
                     .setPackage(context.packageName)
                     .putExtra(GuideE2eContract.EXTRA_GENERATION, 1L)
@@ -34,9 +40,7 @@ class GuideDecisionQueueDiagnosticTest {
                     .putExtra(GuideE2eContract.EXTRA_COMPLETION_VERDICT, "inconclusive")
                     .putExtra(GuideE2eContract.EXTRA_REQUEST_GZIP, gzip("{}"))
                     .putExtra(GuideE2eContract.EXTRA_RESPONSE_GZIP, gzip("{}")),
-                GuideE2eContract.PERMISSION,
             )
-            instrumentation.waitForIdleSync()
 
             val decision = queue.await(
                 timeoutMs = 1_000,
@@ -57,28 +61,43 @@ class GuideDecisionQueueDiagnosticTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         GuideDecisionQueue(context).use { queue ->
-            sendDiagnostic(context, "root_unavailable")
-            instrumentation.waitForIdleSync()
+            sendDiagnosticAndAwait(context, "root_unavailable")
             assertEquals("root_unavailable", timeoutCode(queue, step = 1))
 
-            sendDiagnostic(context, "root_recovered")
-            sendDiagnostic(context, "server_error")
-            instrumentation.waitForIdleSync()
+            sendDiagnosticAndAwait(context, "root_recovered")
+            sendDiagnosticAndAwait(context, "server_error")
             assertEquals("server_error", timeoutCode(queue, step = 2))
 
-            sendDiagnostic(context, "request_started")
-            instrumentation.waitForIdleSync()
+            sendDiagnosticAndAwait(context, "request_started")
             assertEquals("decision_timeout", timeoutCode(queue, step = 3))
         }
     }
 
-    private fun sendDiagnostic(context: android.content.Context, value: String) {
-        context.sendBroadcast(
+    private fun sendDiagnosticAndAwait(context: Context, value: String) {
+        sendAndAwait(
+            context,
             Intent(GuideE2eContract.ACTION_DIAGNOSTIC)
                 .setPackage(context.packageName)
                 .putExtra(GuideE2eContract.EXTRA_DIAGNOSTIC, value),
-            GuideE2eContract.PERMISSION,
         )
+    }
+
+    private fun sendAndAwait(context: Context, intent: Intent) {
+        val delivered = CountDownLatch(1)
+        context.sendOrderedBroadcast(
+            intent,
+            GuideE2eContract.PERMISSION,
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    delivered.countDown()
+                }
+            },
+            null,
+            0,
+            null,
+            null,
+        )
+        assertTrue("E2E broadcast timed out", delivered.await(5, TimeUnit.SECONDS))
     }
 
     private fun timeoutCode(queue: GuideDecisionQueue, step: Int): String {

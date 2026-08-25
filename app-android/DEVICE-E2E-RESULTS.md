@@ -166,7 +166,7 @@ root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를
 세 경로와 `target_node_id_mismatch`의 signed decision 전달을 두 계측 테스트에서 실행해
 `OK (2 tests)`를 확인했다. transient root 복구와 다음 서버 요청은
 오래된 진단을 지우므로 이전 오류가 다음 단계의 원인으로 남지 않는다. `target_node_id` 불일치와
-UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 5건으로 고정했다.
+UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 8건으로 고정했다.
 
 실제 Gemini·삼성 시계 관통은 이 문서의 2026-08-13 실행 4가 이미 같은 Davi 요청/action 채널을
 검증한다. #209는 그 채널의 누락된 실패 분류와 회귀 관문을 보완하며 서버 API나 시나리오는 바꾸지

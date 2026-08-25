@@ -105,6 +105,25 @@ class GuidedObservationBoundaryTest {
     }
 
     @Test
+    fun actionsThatNeverConsumeBoundsIgnoreAStrayTargetId() {
+        listOf(
+            GuidedActionType.DONE,
+            GuidedActionType.OPEN_APP_DRAWER,
+            GuidedActionType.OPEN_QUICK_SETTINGS,
+        ).forEach { actionType ->
+            GuideInstructionQuality.validate(
+                decision(
+                    actionType = actionType,
+                    bounds = null,
+                    targetResolved = false,
+                    targetNodeId = "stray-node",
+                ),
+                step = 8,
+            )
+        }
+    }
+
+    @Test
     fun timeoutUsesCurrentRootAndServerDiagnosticsWithoutKeepingRecoveredFailures() {
         val state = GuideE2eDiagnosticState()
 
@@ -113,9 +132,17 @@ class GuidedObservationBoundaryTest {
         state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
         assertEquals("decision_timeout", state.timeoutFailureCode())
 
+        state.observe(GuideE2eDiagnostic.CLIENT_CONFIGURATION_ERROR)
+        assertEquals("client_configuration_error", state.timeoutFailureCode())
+        state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
+        state.observe(GuideE2eDiagnostic.RESPONSE_PARSE_ERROR)
+        assertEquals("response_parse_error", state.timeoutFailureCode())
+
         state.observe(GuideE2eDiagnostic.ROOT_UNAVAILABLE)
         assertEquals("root_unavailable", state.timeoutFailureCode())
         state.observe(GuideE2eDiagnostic.ROOT_RECOVERED)
+        assertEquals("response_parse_error", state.timeoutFailureCode())
+        state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
         assertEquals("decision_timeout", state.timeoutFailureCode())
     }
 

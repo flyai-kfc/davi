@@ -91,10 +91,6 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
         while (decisions.poll() != null) onDiscard("before_execute")
     }
 
-    fun resetDiagnostics() {
-        diagnostics.reset()
-    }
-
     override fun close() {
         runCatching { context.unregisterReceiver(receiver) }
     }

@@ -54,15 +54,29 @@ class GuideE2ePublisher(private val context: Context) {
 
     /** transient 상태는 즉시 종료하지 않고 driver가 timeout 원인을 고를 수 있게만 전달한다. */
     fun rootState(available: Boolean) {
-        diagnostic(if (available) "root_recovered" else "root_unavailable")
+        diagnostic(
+            if (available) {
+                GuideE2eContract.DIAGNOSTIC_ROOT_RECOVERED
+            } else {
+                GuideE2eContract.DIAGNOSTIC_ROOT_UNAVAILABLE
+            },
+        )
     }
 
     fun requestStarted() {
-        diagnostic("request_started")
+        diagnostic(GuideE2eContract.DIAGNOSTIC_REQUEST_STARTED)
     }
 
     fun serverError() {
-        diagnostic("server_error")
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SERVER_ERROR)
+    }
+
+    fun clientConfigurationError() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR)
+    }
+
+    fun responseParseError() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_RESPONSE_PARSE_ERROR)
     }
 
     private fun diagnostic(value: String) {
@@ -152,4 +166,10 @@ internal object GuideE2eContract {
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
     const val EXTRA_DIAGNOSTIC = "diagnostic"
+    const val DIAGNOSTIC_ROOT_UNAVAILABLE = "root_unavailable"
+    const val DIAGNOSTIC_ROOT_RECOVERED = "root_recovered"
+    const val DIAGNOSTIC_REQUEST_STARTED = "request_started"
+    const val DIAGNOSTIC_SERVER_ERROR = "server_error"
+    const val DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR = "client_configuration_error"
+    const val DIAGNOSTIC_RESPONSE_PARSE_ERROR = "response_parse_error"
 }

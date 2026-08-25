@@ -1004,7 +1004,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (!requestInFlight.compareAndSet(false, true)) return false
         val client = guideApiClient ?: run {
             requestInFlight.set(false)
-            e2ePublisher?.serverError()
+            e2ePublisher?.clientConfigurationError()
             return false
         }
         // 논리 요청의 "같은 화면" 판정도 구조 축이다(#380) — 내용까지 넣으면 배너 로테이션이
@@ -1122,7 +1122,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     }
 
                     is NextStepResult.ParseFailure -> {
-                        e2ePublisher?.serverError()
+                        e2ePublisher?.responseParseError()
                         // trace가 있으면 서버의 성공 응답까지 받은 뒤 body 계약 파싱이 실패한 것이다.
                         // #82가 같은 ID의 결과를 캐시해도 불량 200을 되받지 않도록 논리 요청을 닫는다.
                         if (result.trace != null) logicalRequests.markHttpResponse(logicalRequest, 200)

@@ -74,6 +74,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
                         },
                     },
                     "resolved_target": {
+                        "resolved": True,
                         "bounds": [1, 2, 3, 4],
                         "role": "Button",
                         "clickable": True,
@@ -107,6 +108,7 @@ class DeviceE2ePrivateReportTest(unittest.TestCase):
             self.assertIn("| evidence | 추가 버튼 |", report)
             self.assertIn("| instruction | 추가를 여세요 |", report)
             self.assertIn("| target_node_id | `n1` |", report)
+            self.assertIn("| target_node_id resolved | `true` |", report)
             self.assertIn("| outcome | `executed` |", report)
             self.assertIn(
                 "| deviation_codes | `&#91;&quot;unknown_clock_screen&quot;&#93;` |",
