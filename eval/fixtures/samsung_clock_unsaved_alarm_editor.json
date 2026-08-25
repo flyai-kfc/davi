@@ -1,0 +1,166 @@
+{
+  "id": "samsung-clock-unsaved-alarm-editor",
+  "description": "삼성 시계 알람 편집 화면에서 저장 Button의 존재만으로 done이 verified된 #446 실측의 익명화 화면",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-08-25",
+    "issue": 446,
+    "device_model": "SM-S921N",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
+    "anonymization": [
+      "완료 근거로 선택된 일반 동작 label '저장'만 보존하고 나머지 화면 label은 순서 기반 일반 요소로 치환",
+      "목표 시간과 테스트용 알람 이름은 fixture의 일반 시간 목표로 교체",
+      "요소 수·순서·role·click/edit/focus·bounds·scroll·IME 메타는 앱이 서버로 보낸 실측 snapshot을 보존",
+      "기기 serial·request id·모델 문장·원본 목표·원본 화면 label은 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "오전 6시 5분에 알람 만들기",
+    "screen": {
+      "package_name": "com.sec.android.app.clockpackage",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "일반 요소 1",
+          "role": "ScrollView",
+          "clickable": false,
+          "bounds": [0, 91, 1080, 1278],
+          "can_scroll_forward": true,
+          "can_scroll_backward": false,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n2",
+          "label": "일반 요소 2",
+          "role": "NumberPicker",
+          "clickable": false,
+          "bounds": [66, 170, 374, 845],
+          "can_scroll_forward": true,
+          "can_scroll_backward": false,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n3",
+          "label": "일반 요소 3",
+          "role": "TextView",
+          "clickable": true,
+          "editable": true,
+          "bounds": [66, 401, 374, 614]
+        },
+        {
+          "node_id": "n4",
+          "label": "일반 요소 4",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [66, 614, 374, 845]
+        },
+        {
+          "node_id": "n5",
+          "label": "일반 요소 5",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "focused": true,
+          "bounds": [374, 392, 682, 622]
+        },
+        {
+          "node_id": "n6",
+          "label": "일반 요소 6",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "bounds": [726, 392, 1035, 622]
+        },
+        {
+          "node_id": "n7",
+          "label": "일반 요소 7",
+          "role": "TextView",
+          "clickable": false,
+          "bounds": [84, 1032, 924, 1091]
+        },
+        {
+          "node_id": "n8",
+          "label": "일반 요소 8",
+          "role": "ImageView",
+          "clickable": true,
+          "bounds": [924, 1025, 996, 1097]
+        },
+        {
+          "node_id": "n9",
+          "label": "일반 요소 9",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [63, 1127, 153, 1271]
+        },
+        {
+          "node_id": "n10",
+          "label": "일반 요소 10",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [207, 1127, 297, 1271]
+        },
+        {
+          "node_id": "n11",
+          "label": "일반 요소 11",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [351, 1127, 441, 1271]
+        },
+        {
+          "node_id": "n12",
+          "label": "일반 요소 12",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [495, 1127, 585, 1271]
+        },
+        {
+          "node_id": "n13",
+          "label": "일반 요소 13",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [639, 1127, 729, 1271]
+        },
+        {
+          "node_id": "n14",
+          "label": "일반 요소 14",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [783, 1127, 873, 1271]
+        },
+        {
+          "node_id": "n15",
+          "label": "일반 요소 15",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [927, 1127, 1017, 1271]
+        },
+        {
+          "node_id": "n16",
+          "label": "일반 요소 16",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [72, 1278, 540, 1446]
+        },
+        {
+          "node_id": "n17",
+          "label": "저장",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [540, 1278, 1008, 1446]
+        }
+      ],
+      "has_scrollable_element": true,
+      "ime_visible": true
+    },
+    "steps": []
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

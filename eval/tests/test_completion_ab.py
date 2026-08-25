@@ -37,6 +37,7 @@ _EXPLICIT_FAILURE_CASES = {
     "contradicted-error-occurrence",
     "contradicted-permission-required",
 }
+_ACTION_BUTTON_CASE = "inconclusive-action-button-is-not-completion-state"
 
 
 class _FixedPolicy:
@@ -52,7 +53,7 @@ def test_completion_fixture_has_human_tristate_verdict_and_is_pii_safe():
     loaded = load_completion_dataset()
 
     assert loaded.dataset.dataset_version == 3
-    assert len(loaded.cases) == 32
+    assert len(loaded.cases) == 33
     assert {item.case.expected_verdict for item in loaded.cases} == {
         CompletionVerdict.VERIFIED,
         CompletionVerdict.INCONCLUSIVE,
@@ -75,6 +76,9 @@ def test_completion_fixture_has_human_tristate_verdict_and_is_pii_safe():
     for case_id in _EXPLICIT_FAILURE_CASES:
         assert by_id[case_id].expected_verdict is CompletionVerdict.CONTRADICTED
         assert by_id[case_id].completion_evidence is not None
+    assert by_id[_ACTION_BUTTON_CASE].expected_verified
+    assert by_id[_ACTION_BUTTON_CASE].expected_verdict is CompletionVerdict.INCONCLUSIVE
+    assert by_id[_ACTION_BUTTON_CASE].completion_evidence is not None
     assert len(loaded.corpus_sha256) == 64
 
 
@@ -113,12 +117,12 @@ def test_default_ab_report_has_confusion_matrices_metrics_and_identity():
 
     baseline_matrix = {
         "verified": {"verified": 9, "inconclusive": 2, "contradicted": 0},
-        "inconclusive": {"verified": 11, "inconclusive": 4, "contradicted": 0},
+        "inconclusive": {"verified": 12, "inconclusive": 4, "contradicted": 0},
         "contradicted": {"verified": 6, "inconclusive": 0, "contradicted": 0},
     }
     candidate_matrix = {
         "verified": {"verified": 9, "inconclusive": 2, "contradicted": 0},
-        "inconclusive": {"verified": 1, "inconclusive": 14, "contradicted": 0},
+        "inconclusive": {"verified": 1, "inconclusive": 15, "contradicted": 0},
         "contradicted": {"verified": 0, "inconclusive": 0, "contradicted": 6},
     }
     assert report.baseline.policy_id == BaselineCompletionPolicy.policy_id
@@ -132,25 +136,27 @@ def test_default_ab_report_has_confusion_matrices_metrics_and_identity():
         assert report.candidate.verdicts[case_id] == "inconclusive"
     for case_id in _EXPLICIT_FAILURE_CASES:
         assert report.candidate.verdicts[case_id] == "contradicted"
+    assert report.baseline.verdicts[_ACTION_BUTTON_CASE] == "verified"
+    assert report.candidate.verdicts[_ACTION_BUTTON_CASE] == "inconclusive"
 
-    assert report.baseline.false_success.numerator == 17
-    assert report.baseline.false_success.denominator == 21
-    assert report.baseline.false_success.rate == pytest.approx(17 / 21)
+    assert report.baseline.false_success.numerator == 18
+    assert report.baseline.false_success.denominator == 22
+    assert report.baseline.false_success.rate == pytest.approx(18 / 22)
     assert report.baseline.verified_recall.numerator == 9
     assert report.baseline.verified_recall.denominator == 11
     assert report.baseline.contradiction_recall.numerator == 0
     assert report.baseline.contradiction_recall.denominator == 6
     assert report.baseline.inconclusive_rate.numerator == 6
-    assert report.baseline.inconclusive_rate.denominator == 32
+    assert report.baseline.inconclusive_rate.denominator == 33
 
     assert report.candidate.false_success.numerator == 1
-    assert report.candidate.false_success.denominator == 21
+    assert report.candidate.false_success.denominator == 22
     assert report.candidate.verified_recall.numerator == 9
     assert report.candidate.verified_recall.denominator == 11
     assert report.candidate.contradiction_recall.numerator == 6
     assert report.candidate.contradiction_recall.denominator == 6
-    assert report.candidate.inconclusive_rate.numerator == 16
-    assert report.candidate.inconclusive_rate.denominator == 32
+    assert report.candidate.inconclusive_rate.numerator == 17
+    assert report.candidate.inconclusive_rate.denominator == 33
 
     assert report.corpus_sha256 == loaded.corpus_sha256
     assert report.git_sha == _GIT_SHA
@@ -169,7 +175,7 @@ def test_false_success_increase_is_an_explicit_gate_failure():
     )
 
     assert report.baseline.false_success.numerator == 0
-    assert report.candidate.false_success.numerator == 21
+    assert report.candidate.false_success.numerator == 22
     assert report.false_success_regression
     assert report.to_dict()["gate"]["false_success_not_increased"] is False
 
@@ -190,8 +196,8 @@ def test_cli_fails_when_server_candidate_regresses_without_changing_baseline(
     payload = json.loads(captured.out)
 
     assert exit_code == 1
-    assert payload["baseline"]["metrics"]["false_success"]["count"] == 17
-    assert payload["candidate"]["metrics"]["false_success"]["count"] == 21
+    assert payload["baseline"]["metrics"]["false_success"]["count"] == 18
+    assert payload["candidate"]["metrics"]["false_success"]["count"] == 22
     assert payload["gate"]["false_success_not_increased"] is False
     assert "candidate false success" in captured.err
 

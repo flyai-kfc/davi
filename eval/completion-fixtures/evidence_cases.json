@@ -271,6 +271,19 @@
       "expected_verdict": "inconclusive"
     },
     {
+      "id": "inconclusive-action-button-is-not-completion-state",
+      "axis": "action_control_not_state",
+      "source": "anonymized_real_device_fixture",
+      "screen_fixture": "samsung_clock_unsaved_alarm_editor.json",
+      "goal": "오전 6시 5분에 알람 만들기",
+      "expected_result": "오전 6시 5분 알람이 저장되어 있다",
+      "evidence": "화면에 '저장' 버튼이 있어 알람 생성이 완료됐습니다",
+      "evidence_label": "저장",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n17", "kind": "success"},
+      "expected_verdict": "inconclusive"
+    },
+    {
       "id": "invalid-negated-visible-label",
       "axis": "negation",
       "source": "eval_case",

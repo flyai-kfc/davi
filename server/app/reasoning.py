@@ -701,6 +701,11 @@ def _classify_completion(
             if _is_explicit_failure_observation(element)
             else CompletionVerdict.INCONCLUSIVE
         )
+    # Android className의 마지막 조각인 role이 Button으로 끝나면 상태 claim 없이는 성공 근거로
+    # 쓰지 않는다(#446). 의미 분류가 아닌 보수적 클래스명 경계라 custom action class는 놓치고,
+    # label만 상태를 담은 Button은 내릴 수 있다. 앱·문구별 selector는 두지 않는다.
+    if element.role.casefold().endswith("button") and claim.state is None:
+        return CompletionVerdict.INCONCLUSIVE
     return CompletionVerdict.VERIFIED
 
 

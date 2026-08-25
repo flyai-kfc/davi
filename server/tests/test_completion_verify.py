@@ -321,6 +321,61 @@ def test_non_done_action_ignores_completion_rejection_feedback():
     assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
 
 
+@pytest.mark.parametrize("role", ["Button", "ImageButton", "MaterialButton"])
+@pytest.mark.parametrize("clickable", [True, False])
+@pytest.mark.parametrize("enabled", [True, False, None])
+def test_action_button_without_observed_state_is_inconclusive(
+    role: str,
+    clickable: bool,
+    enabled: bool | None,
+):
+    request = NextStepRequest(
+        goal="오전 6시 5분에 알람 만들기",
+        screen=Screen(
+            package_name="com.example.clock",
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="저장",
+                    role=role,
+                    clickable=clickable,
+                    enabled=enabled,
+                )
+            ],
+        ),
+    )
+    action = _done_with_claim(
+        evidence="화면에 '저장' 버튼이 보입니다",
+        node_id="n1",
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.INCONCLUSIVE
+
+
+def test_stateful_toggle_button_can_still_be_verified():
+    request = NextStepRequest(
+        goal="기능 켜기",
+        screen=Screen(
+            package_name="com.example.settings",
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="기능 사용 중",
+                    role="ToggleButton",
+                    clickable=True,
+                    checked=True,
+                )
+            ],
+        ),
+    )
+    action = _done_with_claim(
+        evidence="화면에 '기능 사용 중'이 보입니다",
+        state=ExpectedTargetState(attribute=ObservableState.CHECKED, value=True),
+    )
+
+    assert _classify_completion(action, request) is CompletionVerdict.VERIFIED
+
+
 def _done_with_claim(
     *,
     evidence: str = "화면에 '기능 사용 중'이 보입니다",
