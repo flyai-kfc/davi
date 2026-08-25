@@ -101,6 +101,9 @@ class Case:
     #: 찍힌다(실측 S23 Ultra: MA-1·MA-4 칸이 통째로 비었다). 화면마다 맨 위에 서는
     #: 것이 다르므로 칸이 스스로 무엇을 기다릴지 안다.
     expect: str = "card_question_wrap"
+    #: 시작선을 토큰에서 재생하는 사슬. 있으면 표가 **절대값까지** 못 박는다.
+    #: MA-3만 사슬을 유도해 뒀다 — 다른 화면은 아직 「칸 사이가 같은가」만 본다.
+    start_line_chain: tuple = None
     #: 화면이 선 뒤 누를 뷰. **주입만으로 못 닿는 화면이 있다** — 청취는 「직접 말하기」를
     #: 거쳐야 오고, 그 전이는 세션이 아니라 화면 상태만 보므로 주입한 화면에서도 탄다.
     tap: str = None
@@ -126,6 +129,7 @@ def clarification_case(option_count: int, question_count: int) -> Case:
         chip="있음" if question_count > 1 else "없음",
         perched=True,
         expect="btn_close",
+        start_line_chain=MA3_START_LINE_CHAIN,
     )
 
 
@@ -266,6 +270,8 @@ class Row:
     missing: tuple = ()
     #: 이 칸이 뜨기를 기다린 뷰. 「못 잼」 줄이 무엇을 못 봤는지 말해 준다.
     expected: str = None
+    #: 토큰 사슬이 말하는 시작선. 잰 값과 어긋나면 구조가 아니라 **넘침**이 붙잡고 있던 것이다.
+    expected_start_line_dp: float = None
     #: 마지막 덤프에서 실제로 본 뷰들. **못 잰 칸에서 이게 없으면 다음 사람도 똑같이
     #: 추측만 한다** — 다른 화면이 찍혔는지, 트리가 덜 만들어졌는지가 여기서 갈린다.
     seen: tuple = ()
@@ -393,6 +399,32 @@ def measure(
     }
 
 
+#: MA-3 시작선을 **토큰에서 재생하는 사슬**. 합이 「인셋 위로 몇 dp인가」다.
+#:
+#: **폭만 재면 못 잡는 것이 있다.** 표의 `폭 0.0dp`는 칸 **사이의** 차이만 보므로, 모든 칸이
+#: 똑같이 밀리면 여전히 초록이다. 그런데 MA-3에서 시작선을 붙잡고 있는 것은 구조가 아니라
+#: **칸이 넘친다는 사실**이다 — 카드는 weight 0이고, 여유가 생기면 칩 자리와 카드 사이의
+#: `space_flex_top`(weight 2)이 그 1/3을 먹어 시작선을 통째로 아래로 민다. 절대값을 함께
+#: 못 박아야 그 순간이 잡힌다(화면이 커지거나 조작 영역이 줄면 온다).
+#:
+#: **값을 베끼지 않는다** — 다섯 토큰을 `dimens.xml`에서 읽어 더한다.
+MA3_START_LINE_CHAIN = (
+    ("davi_step_row_margin_top", 1),      # 칩 줄이 인셋에서 떨어진 만큼
+    ("davi_step_chip_height", 1),         # 칩이 먹는 높이 — 배율을 안 탄다(고정 토큰)
+    ("davi_spacing_md", 1),               # 구체화의 카드 위 마진
+    ("davi_size_touch_target", -0.5),     # ✕는 카드 상단선에 **중심**을 맞춘다
+    ("davi_close_circle_inset", 1),       # 재는 것은 뷰가 아니라 **보이는 원**의 윗변
+)
+
+
+def chain_dp(chain, dimens_path=DIMENS_XML) -> float:
+    """사슬을 dp 하나로 접는다."""
+    return round(sum(read_dimen_dp(name, dimens_path) * mult for name, mult in chain), 2)
+
+
+#: 글꼴 배율을 바꾼 뒤 기다리는 시간. 위 [launch_until_ready]의 재시도보다 앞선다.
+SCALE_SETTLE_S = 3.0
+
 #: 3x 기기에서 1px = 0.33dp다. **레이아웃 반올림까지 흔들림으로 부르지 않는다** — 칸마다
 #: 1px씩 갈리는 것은 결함이 아니고, 그것을 흔들림으로 세면 다 고치고도 초록이 안 뜬다.
 SPREAD_TOLERANCE_DP = 0.5
@@ -420,6 +452,17 @@ def verdict_lines(rows: list) -> list:
         mark = "OK" if spread <= SPREAD_TOLERANCE_DP else "흔들림"
         joined = ", ".join(f"{v}dp" for v in sorted(values))
         lines.append(f"- [{mark}] {screen} · 배율 {scale} — 시작선 {joined} (폭 {spread}dp)")
+    # **절대값도 못 박는다** — 폭만 보면 모든 칸이 함께 밀린 날에도 초록이 뜬다.
+    for row in rows:
+        if row.expected_start_line_dp is None or row.start_line_dp is None:
+            continue
+        gap = round(row.start_line_dp - row.expected_start_line_dp, 2)
+        if abs(gap) > SPREAD_TOLERANCE_DP:
+            lines.append(
+                f"- [어긋남] {row.screen} · {row.label} · 배율 {row.scale} — "
+                f"시작선 {row.start_line_dp}dp인데 토큰 사슬은 "
+                f"{row.expected_start_line_dp}dp다 ({gap:+}dp)"
+            )
     # **못 잰 칸을 판정에서 빼지 않는다.** 빼면 표에 `-`만 한 줄 남고 판정은 조용해서,
     # 「재는 데 실패했다」가 「이상 없다」와 구분되지 않는다. `am start`는 화면을 못 띄우고도
     # 종료코드 0을 준다.
@@ -459,6 +502,7 @@ COLUMNS = (
     ("칩", "chip"),
     ("배율", "scale"),
     ("시작선(dp)", "start_line_dp"),
+    ("토큰 사슬", "expected_start_line_dp"),
     ("기준", "start_line_source"),
     ("카드 상단", "card_top_dp"),
     ("✕ 상단", "close_top_dp"),
@@ -599,6 +643,9 @@ class Device:
 LAUNCH_ATTEMPTS = 3
 READY_DUMPS = 4
 READY_INTERVAL_S = 0.4
+#: 다시 띄우기 전에 쉬는 시간. **곧바로 다시 넣으면 세 번이 같은 혼란 안에서 소모된다** —
+#: 배율이 바뀐 직후에는 시스템이 아직 화면을 다시 만들고 있다.
+RELAUNCH_BACKOFF_S = 1.5
 
 
 def launch_until_ready(device, case: Case, tmp_path: str, package: str) -> dict:
@@ -616,7 +663,9 @@ def launch_until_ready(device, case: Case, tmp_path: str, package: str) -> dict:
     못 재고, 표에서 빈 칸은 [verdict_lines]가 「못 잼」으로 세운다.
     """
     nodes = {}
-    for _ in range(LAUNCH_ATTEMPTS):
+    for attempt in range(LAUNCH_ATTEMPTS):
+        if attempt:
+            time.sleep(RELAUNCH_BACKOFF_S)
         device.launch(case, package)
         nodes = wait_for(device, case, case.expect, tmp_path, package)
         if case.expect not in nodes:
@@ -675,8 +724,12 @@ def run(args) -> int:
     try:
         for scale in args.scales:
             device.set_font_scale(scale)
-            # 배율 변경은 액티비티를 다시 만든다 — 다음 주입이 옛 배율에서 재지 않게 기다린다.
-            time.sleep(1.0)
+            # **배율 변경은 액티비티 하나가 아니라 시스템 전체를 다시 만든다.** 그 사이에
+            # 넣은 주입은 삼켜지고, 덤프에는 **아무 뷰도 없는 트리**가 온다(실측 S23 Ultra:
+            # 배율 1.0으로 넘어가는 첫 두 칸이 「본 것: 아무것도」로 두 번 연속 비었다).
+            # 칸마다 다시 띄우는 그물이 있어도 그 그물이 같은 혼란 안에서 소모되므로,
+            # 여기서 먼저 가라앉기를 기다린다.
+            time.sleep(SCALE_SETTLE_S)
             for case in cases:
                 nodes = launch_until_ready(device, case, tmp, args.package)
                 metrics = measure(
@@ -698,6 +751,11 @@ def run(args) -> int:
                         scale=scale,
                         inset_top_dp=dp(inset_top, density),
                         expected=case.expect_after or case.expect,
+                        expected_start_line_dp=(
+                            round(dp(inset_top, density) + chain_dp(case.start_line_chain), 2)
+                            if case.start_line_chain
+                            else None
+                        ),
                         seen=tuple(sorted(nodes)),
                         # **그 화면에 원래 있는 뷰만 「못 찾음」으로 센다** — MA-4에는 ✕가
                         # 없고 홈에는 질문 카드가 없다. 없는 것을 못 찾았다고 적으면

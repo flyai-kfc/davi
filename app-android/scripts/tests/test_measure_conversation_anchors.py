@@ -276,6 +276,64 @@ class VerdictTest(unittest.TestCase):
         self.assertTrue(any("card_question_wrap" in line for line in lines))
 
 
+class StartLineChainTest(unittest.TestCase):
+    """**폭만 재면 못 잡는 것이 있다.** `폭 0.0dp`는 칸 사이의 차이만 보므로 모든 칸이 함께
+    밀린 날에도 초록이다. MA-3에서 시작선을 붙잡고 있는 것은 구조가 아니라 **칸이 넘친다는
+    사실**이라(카드는 weight 0, 여유가 생기면 `space_flex_top`이 1/3을 먹는다) 절대값을
+    함께 못 박아야 그 순간이 잡힌다."""
+
+    def test_the_chain_folds_the_five_tokens_into_53dp(self):
+        self.assertEqual(MODULE.chain_dp(MODULE.MA3_START_LINE_CHAIN), 53.0)
+
+    def test_the_chain_is_read_from_dimens_not_copied(self):
+        # 25 + 38 + 12 − 28 + 6. 토큰이 바뀌면 이 합이 따라 바뀌어야 한다.
+        names = [name for name, _ in MODULE.MA3_START_LINE_CHAIN]
+        self.assertEqual(
+            names,
+            [
+                "davi_step_row_margin_top",
+                "davi_step_chip_height",
+                "davi_spacing_md",
+                "davi_size_touch_target",
+                "davi_close_circle_inset",
+            ],
+        )
+        for name in names:
+            MODULE.read_dimen_dp(name)  # 없으면 여기서 터진다
+
+    def row(self, measured: float, expected: float):
+        return MODULE.Row(
+            screen="MA-3 구체화",
+            label="보기 3 · 질문 2",
+            options="3",
+            chip="있음",
+            scale="1.0",
+            start_line_dp=measured,
+            expected_start_line_dp=expected,
+            clipped="아니오",
+        )
+
+    def test_every_cell_sliding_together_is_still_caught(self):
+        # 넘침이 풀려 space_flex_top이 살아나면 **모든 칸이 똑같이** 아래로 밀린다 —
+        # 폭은 그대로 0.0dp라 옛 판정으로는 초록이었다.
+        lines = MODULE.verdict_lines([self.row(120.0, 87.33), self.row(120.0, 87.33)])
+
+        self.assertTrue(any("[어긋남]" in line for line in lines))
+        self.assertTrue(any("+32.67dp" in line for line in lines))
+        self.assertTrue(any("[OK]" in line for line in lines))  # 폭은 여전히 0이다
+
+    def test_pixel_rounding_does_not_trip_the_absolute_check(self):
+        # 450dpi에서 인셋 26.67 + 53 = 79.67인데 실측은 79.64였다(1px 반올림).
+        lines = MODULE.verdict_lines([self.row(79.64, 79.67)])
+
+        self.assertFalse(any("[어긋남]" in line for line in lines))
+
+    def test_screens_without_a_derived_chain_are_not_judged_on_absolutes(self):
+        lines = MODULE.verdict_lines([self.row(300.0, None)])
+
+        self.assertFalse(any("[어긋남]" in line for line in lines))
+
+
 class GridTest(unittest.TestCase):
     def test_the_grid_also_covers_the_screen_that_still_uses_the_badge_margin(self):
         """구체화에서 배지를 뺀 뒤에도 **청취에는 배지가 선다** — 배지 위 여백이 카드를
