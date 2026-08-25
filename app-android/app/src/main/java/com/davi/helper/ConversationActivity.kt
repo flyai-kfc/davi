@@ -85,6 +85,21 @@ internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
  */
 internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
 
+/**
+ * 홈 말풍선 문구를 갈아 끼운다(debug 전용). **상태를 바꾸지 않는다** — 홈 화면 그대로에서
+ * 문구만 길게 만들어 배치를 재는 자리다.
+ *
+ * 이 문구의 길이는 서버·오류 상황이 정하고 앱이 못 정한다. 그런데 「길어지면 말풍선이
+ * 마이크를 덮는다」가 실제 결함이라, **길어진 화면을 띄울 길이 없으면 고쳤는지 확인할 수
+ * 없다.** 줄바꿈은 `
+`으로 넣는다.
+ *
+ *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *     --es com.davi.helper.extra.DEBUG_HOME_STATUS "'인터넷 연결이 원활하지 않아요.
+ *     연결을 확인하고 다시 해 주세요.'"
+ */
+internal const val EXTRA_DEBUG_HOME_STATUS = "com.davi.helper.extra.DEBUG_HOME_STATUS"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -664,7 +679,8 @@ class ConversationActivity : AppCompatActivity() {
     private fun debugInjectionRequested(): Boolean =
         BuildConfig.DEBUG && (
             intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
-                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null
+                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null ||
+                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null
             )
 
     /**
@@ -778,7 +794,18 @@ class ConversationActivity : AppCompatActivity() {
         // (voice_permission_open_settings)가 글꼴 배율 2.0에서 세 줄까지 들어가는 것을
         // 실기기로 확인했다(PR #235). 이보다 긴 문구를 넣으면 그때는 잘리고, 그때 접어야
         // 하는 것은 안내 문구가 아니라 캐릭터다.
-        binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
+        // **주입이 있으면 그것으로 갈아 끼운다**(debug 전용). 상태는 안 바꾼다 —
+        // 긴 문구에서 말풍선이 마이크를 덮는지 재려면 긴 문구를 띄울 길이 있어야 한다.
+        val debugStatus = if (BuildConfig.DEBUG) {
+            intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS)
+        } else {
+            null
+        }
+        if (debugStatus != null) {
+            binding.homeBubbleText.text = debugStatus
+        } else {
+            binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
+        }
         binding.logo.isVisible(model.logoVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
