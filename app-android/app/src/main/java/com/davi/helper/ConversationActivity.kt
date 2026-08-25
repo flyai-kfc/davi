@@ -945,6 +945,11 @@ class ConversationActivity : AppCompatActivity() {
             resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
         }
         // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **구체화에는 배지가 없으니 접힘에서 걷는다.**
+        //
+        // **inClarificationFlow를 본다 — clarificationVisible이 아니다.** 그쪽은 「직접
+        // 말하기」로 넘어가는 순간 꺼져서 위 패딩이 갈리고, **카드 위치는 그대로인 채 질문
+        // 글자만 4dp 밀린다**(눈에 잘 안 띈다, 2026-08-23 리뷰). 카드 안팎이 함께 움직이려면
+        // 배지 위 여백·칩 자리와 같은 신호를 봐야 한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
@@ -1125,14 +1130,6 @@ class ConversationActivity : AppCompatActivity() {
                 },
             )
         }
-        // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
-        // **stepChipVisible을 함께 본다** — clarificationVisible만 보면 「직접 말하기」로
-        // 넘어가는 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라
-        // 눈에 잘 안 띈다). 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
-        //
-        // **inClarificationFlow를 본다** — 칩이 없는 1문항도, 「직접 말하기」로 넘어간 청취도
-        // 같은 값이어야 한다. clarificationVisible은 청취에서 꺼지고 stepChipVisible은
-        // 1문항에서 꺼져, 어느 하나만 보면 그 조합에서 글자가 4dp 밀린다(2026-08-23 리뷰).
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
         binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
@@ -1708,7 +1705,11 @@ class ConversationActivity : AppCompatActivity() {
         // 칩을 맞출 기준은 뷰의 위가 아니라 **원의 위**다.
         val circleInset = resources.getDimensionPixelSize(R.dimen.davi_close_circle_inset)
         // **칩은 ✕의 맨 위에 수평을 맞춘다 — 중심이 아니다.** 둘은 높이가 달라(✕ 56dp,
-        // 칩은 글꼴 배율을 따라 자란다) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
+        // 칩 38dp) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
+        //
+        // **칩 높이는 글꼴 배율을 안 탄다** — layout_height가 고정 토큰(davi_step_chip_height)
+        // 이다. 폭만 wrap_content라 글자를 따라 자란다(그 근거는 레이아웃 주석에 있다).
+        // 그래서 **칩 줄이 먹는 63dp가 배율과 무관하고**, 시작선이 배율 1.0·2.0에서 같은 값이다.
         if (chip.isShown && chip.height > 0 && closeTop != null) {
             val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
             val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
