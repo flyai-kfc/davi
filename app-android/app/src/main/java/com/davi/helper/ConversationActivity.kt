@@ -491,7 +491,14 @@ class ConversationActivity : AppCompatActivity() {
         // 안내만 안 그려졌다 — 그 권한을 걷어내며 그 갈래 자체가 없어졌다.
         val instrumentationUiTest = BuildConfig.DEBUG &&
             intent.getBooleanExtra(EXTRA_INSTRUMENTATION_SKIP_ACCESSIBILITY, false)
-        if (!canStartGuide() && !instrumentationUiTest) {
+        // **레이아웃만 재는 디버그 주입도 같은 예외다**(2026-08-25). 접근성 서비스를 담은 앱을
+        // 다시 깔면 안드로이드가 바인딩을 끊어서, 화면을 한 번 고칠 때마다 사람이 설정에서
+        // 스위치를 껐다 켜야 했다(하루에 네 번 겪었다). 이 주입은 안내를 돌리지 않고 **모양만
+        // 보는** 자리라 서비스가 필요 없다 — [debugClarificationState]가 상태를 통째로 만든다.
+        //
+        // **release에는 두 진입점 모두 없다** — BuildConfig.DEBUG가 앞에 선다.
+        val layoutProbe = debugInjectionRequested()
+        if (!canStartGuide() && !instrumentationUiTest && !layoutProbe) {
             // 접근성 회수는 onUnbind도 정리하지만, 그 콜백보다 이 화면이 먼저 살아나는 경합이
             // 있어 여기서도 끊는다. 두 번 불려도 GuideSession.stop()은 멱등이다.
             GuideSession.stop()
@@ -505,7 +512,11 @@ class ConversationActivity : AppCompatActivity() {
         // 하필 이 알림이 필요한 사람이 그 사람이다(알림은 "안내 중 접근성이 꺼졌을 때" 뜬다).
         // 이 화면은 사라지지 않고, **모든 안내 세션이 여기서 시작하므로** 묻는 시점이 항상
         // 세션보다 앞선다. 안내가 도는 중에는 사용자가 다른 앱에 있어 물을 화면 자체가 없다.
-        askPostNotificationsOnce()
+        // **주입으로 띄운 화면에서는 묻지 않는다**(2026-08-25 리뷰). 이 대화상자는 액티비티를
+        // onPause시키고, onPause가 상태를 홈으로 되돌린다 — 재주입은 onCreate/onNewIntent에만
+        // 있어서 **주입한 화면이 뜨자마자 홈으로 사라진다.** 하필 이 게이트가 겨냥한 상황
+        // (앱을 다시 깐 직후)이 알림 권한이 없는 바로 그 상태다.
+        if (!layoutProbe) askPostNotificationsOnce()
         GuideSession.addListener(sessionListener)
         render(uiState)
     }
@@ -549,6 +560,22 @@ class ConversationActivity : AppCompatActivity() {
         voiceExecutor.shutdownNow()
         super.onDestroy()
     }
+
+    /**
+     * debug 주입이 붙어 왔는가. **[debugInjectedState]와 달리 상태를 만들지도 기록을 남기지도
+     * 않는다** — 그쪽은 부르면 텔레메트리가 찍혀서, 판정에만 쓰면 같은 주입이 두 번 기록된다.
+     *
+     * **실패 화면 주입도 함께 본다** — 그쪽도 안내를 안 돌리는 순수 배치 확인이라 근거가 같다.
+     * 다만 실패 상태는 5초 뒤 홈으로 돌아간다(FAILED_RETURN_DELAY_MS) — **재기 전에 사라지니
+     * 그 화면을 잴 때는 그 안에 찍어야 한다.**
+     * 키 유무(`hasExtra`)가 아니라 **값의 형태**를 본다. 문자열이 아닌 값을 같은 키로 넣으면
+     * 게이트만 열리고 주입은 안 돼, 권한이 없는 기기에서 빈 화면이 뜬다.
+     */
+    private fun debugInjectionRequested(): Boolean =
+        BuildConfig.DEBUG && (
+            intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
+                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null
+            )
 
     /**
      * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
@@ -1380,8 +1407,10 @@ class ConversationActivity : AppCompatActivity() {
      * 어르신이 **다른 앱으로 가는 줄 알고** 누른다. 「시간 정하기」처럼 앱이 아닌 답은
      * 자연히 슬롯이 숨는다.
      *
-     * **아이콘이 숨어도 라벨은 안 움직인다** — 라벨이 본체 가운데에 서기 때문이다(시안
-     * 「가로 중앙」). 좌우 여백만 아이콘 유무에 따라 갈린다.
+     * **아이콘이 숨어도 라벨의 첫 글자는 안 움직인다** — 왼쪽 여백이 아이콘 폭(76dp)으로
+     * 고정이라 슬롯이 접혀도 넷의 줄이 맞는다. 예전에는 「본체 가운데에 서기 때문」이었는데
+     * (시안 「가로 중앙」) 2026-08-25에 왼쪽 정렬로 바뀌었다 — 결론은 같고 이유가 달라졌다.
+     * 여백은 아이콘 유무와 **무관하게** 같다.
      */
     private fun renderClarificationOptions(state: ConversationUiState.Clarifying) {
         val buttons = listOf(
