@@ -558,6 +558,32 @@ class LaunchUntilReadyTest(unittest.TestCase):
         self.assertEqual(device.launches, MODULE.LAUNCH_ATTEMPTS)
 
 
+class ScreenStateTest(unittest.TestCase):
+    """**격자 한 판이 기기의 화면 꺼짐 시간보다 길다.** S23 Ultra는 30초로 잡혀 있었고,
+    앞선 기기를 재는 10분 사이에 잠들어 배율 1.0 패스 14칸이 통째로 빈 트리를 읽었다.
+    잠든 화면에서도 `am start`는 종료코드 0을 준다."""
+
+    def test_an_awake_unlocked_device_is_recognised(self):
+        raw = "  mAwake=true mScreenOnEarly=true\n  mDreamingLockscreen=false\n"
+
+        self.assertEqual(FakeDevice(raw).screen_state(), (True, False))
+
+    def test_a_sleeping_or_locked_device_is_recognised(self):
+        self.assertEqual(
+            FakeDevice("  mAwake=false\n  mDreamingLockscreen=true\n").screen_state(),
+            (False, True),
+        )
+
+    def test_keeping_the_screen_on_is_tied_to_usb_and_released_afterwards(self):
+        device = FakeDevice()
+
+        device.keep_screen_on(True)
+        self.assertEqual(device.commands[-1], ["svc", "power", "stayon", "usb"])
+
+        device.keep_screen_on(False)
+        self.assertEqual(device.commands[-1], ["svc", "power", "stayon", "false"])
+
+
 class FontScaleRestoreTest(unittest.TestCase):
     def test_a_device_that_never_had_the_setting_is_cleared_not_pinned(self):
         """`settings get`은 한 번도 안 바꾼 기기에서 `null`을 준다 — 그리고 그 기기가 정확히

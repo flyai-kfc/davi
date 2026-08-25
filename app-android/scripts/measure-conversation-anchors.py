@@ -589,6 +589,25 @@ class Device:
         """아래쪽 인셋 — 내비게이션 바 **높이**만큼 화면 바닥에서 물러나야 한다."""
         return self.system_bar_height_px("navigationBars").height
 
+    def screen_state(self) -> tuple:
+        """`(깨어 있는가, 잠겨 있는가)`. `dumpsys window`의 두 줄로 본다."""
+        raw = self.shell("dumpsys", "window")
+        awake = "mAwake=true" in raw
+        locked = "mDreamingLockscreen=true" in raw
+        return awake, locked
+
+    def keep_screen_on(self, on: bool) -> None:
+        """USB로 붙어 있는 동안 화면을 안 끄게 한다.
+
+        **격자 한 판이 기기의 화면 꺼짐 시간보다 길다.** S23 Ultra는 30초로 잡혀 있었고,
+        앞선 기기를 재는 10분 사이에 잠들어 **배율 1.0 패스 14칸이 통째로 빈 트리**를 읽었다
+        (`본 것: 아무것도`). 잠든 화면에서도 `am start`는 종료코드 0을 준다.
+        """
+        self.shell("svc", "power", "stayon", "usb" if on else "false")
+
+    def wake(self) -> None:
+        self.shell("input", "keyevent", "KEYCODE_WAKEUP")
+
     def font_scale(self) -> str:
         return (self.shell("settings", "get", "system", "font_scale") or "").strip()
 
@@ -717,6 +736,18 @@ def run(args) -> int:
         for view, token in FIXED_HEIGHT_TOKENS.items()
     }
     original_scale = device.font_scale()
+    # **재기 전에 화면부터 확인한다.** 잠긴 기기에서 돌리면 28칸이 전부 「못 잼」으로 나오고,
+    # 그 표는 결함을 못 찾은 것이 아니라 **아무것도 안 본 것**이다. 비밀번호는 스크립트가
+    # 못 넣으므로 여기서 세운다 — 사람이 풀어야 한다.
+    device.wake()
+    time.sleep(1.0)
+    awake, locked = device.screen_state()
+    if not awake or locked:
+        raise RuntimeError(
+            "기기 화면이 꺼져 있거나 잠겨 있다 — 잠금을 풀고 다시 돌려라 "
+            f"(awake={awake} locked={locked})"
+        )
+    device.keep_screen_on(True)
     cases = default_cases()
     rows = []
     tmp = os.path.join(args.work_dir, "davi-anchors.xml")
@@ -770,6 +801,7 @@ def run(args) -> int:
                 )
     finally:
         device.restore_font_scale(original_scale)
+        device.keep_screen_on(False)
 
     header = (
         f"# 대화 화면 시작선 실측 (#452)\n\n"
