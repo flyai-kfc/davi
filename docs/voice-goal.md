@@ -51,7 +51,7 @@ status는 `needs_clarification` / `ready` / `unable_to_finalize`다.
 
 > 음성 원문은 연락처 이름처럼 의미 자체가 개인 데이터일 수 있어 화면 트리의 패턴 마스킹을 그대로 적용하면 **목표가 깨진다.** … 인식된 텍스트와 이전 턴이 서버와 Gemini로 **전송됨을 전제로 하되**, 앱·서버 운영 로그, 도그푸딩 raw 저장, 픽스처에는 남기지 않는다.
 
-**화면 쪽도 같은 결로 정해졌다** — `SPEC.md` §2 「패턴 밖 고유명」(#360). 다만 **완화책까지 같지는 않다**: `post_slot_fill`과 달리 `/v1/next-step`은 `_store_raw_if_dogfood`를 부르므로 옵트인 기기의 raw에는 고유명이 남는다(#375). 패턴이 못 잡는 고유명은 지우지 않고 **운영 로그·픽스처**에서 막는다는 같은 결정이 양쪽에 있고, raw 저장에서 갈린다.
+**화면 쪽도 같은 결로 정해졌다** — `SPEC.md` §2 「패턴 밖 고유명」(#360). 다만 **완화책까지 같지는 않다**: `post_slot_fill`과 달리 `/v1/next-step`은 `_store_raw_if_dogfood`를 부르므로 옵트인 기기의 raw에는 고유명이 남는다 — 좁히지 않기로 정했다(#375, `SPEC.md` §3). 패턴이 못 잡는 고유명은 지우지 않고 **운영 로그·픽스처**에서 막는다는 같은 결정이 양쪽에 있고, raw 저장에서 갈린다.
 
 완화책은 이미 구현돼 있다 — `post_slot_fill`은 `_store_raw_if_dogfood`를 부르지 않고, 요청 로그에는 `conversation_message_count`만 남으며, 교정 진단에는 고정 reason code만 남는다. `app-android/CLAUDE.md`에도 같은 내용이 있다. 여는 논의는 §4 Q7이다.
 
