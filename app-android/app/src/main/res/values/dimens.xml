@@ -242,12 +242,6 @@
     <dimen name="davi_spacing_md">12dp</dimen>
     <dimen name="davi_spacing_lg">16dp</dimen>
     <dimen name="davi_spacing_xl">24dp</dimen>
-    <!--
-      접기 손잡이가 카드 밖으로 내미는 깊이(#434). **터치 영역(56dp)의 절반이라 카드 하단선이
-      삼각형의 가운데를 정확히 지난다.** 값을 바꾸면 선이 삼각형을 비껴간다 — 손잡이 크기와
-      묶여 있으니 둘을 같이 읽는다.
-    -->
-    <dimen name="davi_caret_overhang_negative">-28dp</dimen>
     <!-- **지금 쓰는 곳이 없다**(#234). 강조 사각형이 마지막 사용처였는데 v2 반경 10
          (davi_overlay_target_radius)으로 갈았다. 척도의 작은 칸이라 남겨 둔다. -->
     <dimen name="davi_radius_sm">8dp</dimen>
@@ -910,16 +904,6 @@
       내부가 약간 여유로워진다.
     -->
     <dimen name="davi_card_min_height_davi">176dp</dimen>
-    <!--
-      **접힌 질문 카드의 하한**(#434). 176은 원문이 들어오는 카드의 값이라 접힌 카드에 그대로
-      쓰면 한 줄짜리 문구 아래가 46dp 빈 채로 그만큼을 보기 영역에서 뺏는다 — 자리를 벌려고
-      접는 것과 반대가 된다(실측: 「직접 말하기」가 잘린 채였다).
-
-      값은 접힌 내용이 실제로 쓰는 만큼이다 — 문구 한 줄 + 손잡이 + 카드 위아래 여백.
-      배율 2.0에서 재서 잡았고, 그보다 작게 잡으면 배지가 파고드는 깊이(36dp)를 빼고 남는
-      글자 자리가 한 줄을 못 채운다.
-    -->
-    <dimen name="davi_card_min_height_collapsed">130dp</dimen>
     <dimen name="davi_card_min_height_senior">196dp</dimen>
     <!-- 카드 사이 간격. 시안 48 = 시니어 상단 332 - 다비 하단 284. -->
     <dimen name="davi_card_gap">48dp</dimen>
@@ -958,9 +942,14 @@
 
       **이 화면의 앞뒤 순서는 하나로 읽는다**(2026-08-25):
 
-          보기 버튼   davi_choice_elevation      6dp   카드 뒤로 미끄러져 들어간다
-          질문 카드   davi_card_elevation        8dp
-          배지·칩     여기 · davi_step_chip_elevation  10dp   카드 위에 얹힌다
+          보기 셋      davi_choice_elevation           6dp
+          질문 카드     davi_card_elevation             8dp
+          배지·칩       여기 · davi_step_chip_elevation  10dp   카드 위에 얹힌다
+          직접 말하기   davi_choice_primary_elevation   14dp   **카드보다 앞이다**
+
+      **스크롤한 보기가 카드에 안 비치는 것은 z 덕이 아니다** — 「직접 말하기」는 14dp라 카드를
+      이긴다. 실제로 막는 것은 선택 영역의 clipToOutline이다(view_davi_clarification_choices).
+      그 클립을 걷으면 이 화면에서 가장 중요한 버튼이 카드 위로 뜬다.
 
       **셋은 같이 읽어야 한다.** 예전 값은 2dp였는데 카드에 8dp를 준 순간 **카드가 배지를
       덮었다**(실측) — 이 토큰이 존재하는 이유가 그 위에 서기 위해서인데 값만 남고 뜻이

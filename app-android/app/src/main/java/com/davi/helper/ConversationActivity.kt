@@ -336,8 +336,10 @@ class ConversationActivity : AppCompatActivity() {
         // **배치가 바뀔 때만 다시 잡는다.** 그리기 직전마다 부르는 방식을 썼다가 걷었다 —
         // 화면이 idle에 못 들어가 측정 도구(uiautomator)까지 막혔고, 배터리도 그만큼 쓴다.
         // 카드·칩·✕ 셋 중 하나라도 자리가 바뀌면 다시 잡으면 충분하다.
+        // **마지막 모델을 들고 쓴다** — 리스너가 셋에 걸려 한 패스에 여러 번 도는데,
+        // 그때마다 renderModelOf를 새로 만들 이유가 없다.
         val perchWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            perchTopControlsOnCard(renderModelOf(uiState, guideActive = GuideSession.isActive))
+            lastRenderModel?.let { perchTopControlsOnCard(it) }
         }
         binding.cardQuestionWrap.addOnLayoutChangeListener(perchWatch)
         binding.questionProgress.addOnLayoutChangeListener(perchWatch)
@@ -626,7 +628,7 @@ class ConversationActivity : AppCompatActivity() {
      */
     private fun updateSparkleOcclusion() {
         val sparkle = binding.homeSparkle
-        if (sparkle.visibility == View.GONE || sparkle.width == 0) return
+        if (!sparkle.isShown || sparkle.width == 0) return
         val at = IntArray(2).also { sparkle.getLocationInWindow(it) }
         val hit = listOf(binding.homeTitle, binding.homeTitleAccent).any { text ->
             if (!text.isShown || text.width == 0) return@any false
@@ -854,6 +856,9 @@ class ConversationActivity : AppCompatActivity() {
         // **구체화에서는 배지를 뺀다**(#434 시안). 칩과 ✕가 카드 위 모서리에 걸치는 자리라
         // 배지가 그 가운데를 차지하면 걸칠 곳이 없고, 배지를 피하려던 카드 위 패딩이
         // 접힌 카드의 하한을 끌어올려 접기의 이득을 먹는다.
+        // 접힘 상태를 **먼저** 정한다 — 아래 카드 크기 블록이 이 값에 걸린다.
+        lastRenderModel = model
+        val foldActive = resolveQuestionFold(state, model)
         binding.logo.isVisible(model.logoVisible && !model.clarificationVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
@@ -866,10 +871,40 @@ class ConversationActivity : AppCompatActivity() {
                 else R.dimen.davi_badge_overlap_negative,
             )
         }
-        // 실패 카드는 시안이 높이를 따로 잡았다(FIXED 200 -> 240dp). 다른 화면은 하한만 쓴다.
-        binding.cardQuestionContainer.minimumHeight = resources.getDimensionPixelSize(
-            if (model.standVisible) R.dimen.davi_failed_card_height
-            else R.dimen.davi_card_min_height_davi,
+        // ─── 카드 크기는 여기서만 정한다 (하한 · 위 패딩 · 아래 패딩) ───────────────
+        //
+        // **세 값을 한 곳에서 정한다**(2026-08-25 리뷰). 예전에는 접힘 갈래가 따로 건드려서
+        // **순서가 곧 우선순위**가 됐고, 읽어서는 어느 값이 이기는지 알 수 없었다 — 접힘의
+        // 위 패딩은 같은 render 뒷부분에 덮여 한 프레임도 안 나갔고, 아래 패딩은 구체화를
+        // 떠나도 안 돌아왔다. **되돌리는 자리를 따로 두지 않으려면 매번 셋 다 줘야 한다.**
+        val collapsed = foldActive && !questionExpanded
+        // 접힌 카드는 내용에 붙는다 — 하한이 있으면 한 줄 아래가 빈 채로 그만큼을 보기
+        // 영역에서 뺏는다(실측: 접었는데도 181dp라 「직접 말하기」가 잘렸다).
+        // **하한은 래퍼에도 걸려 있다** — 컨테이너만 낮췄더니 176이 그대로 남았다.
+        val cardMin = when {
+            collapsed -> 0
+            model.standVisible -> resources.getDimensionPixelSize(R.dimen.davi_failed_card_height)
+            else -> resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
+        }
+        binding.cardQuestionContainer.minimumHeight = cardMin
+        binding.cardQuestionWrap.minimumHeight = if (collapsed) {
+            0
+        } else {
+            resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
+        }
+        // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **구체화에는 배지가 없으니 접힘에서 걷는다.**
+        binding.cardQuestionContainer.updatePadding(
+            top = resources.getDimensionPixelSize(
+                when {
+                    collapsed -> R.dimen.davi_spacing_xl
+                    model.guidingVisible || model.inClarificationFlow ->
+                        R.dimen.davi_card_padding_top_guiding
+                    else -> R.dimen.davi_card_padding_top_davi
+                },
+            ),
+            bottom = resources.getDimensionPixelSize(
+                if (collapsed) R.dimen.davi_spacing_sm else R.dimen.davi_card_padding_bottom_davi,
+            ),
         )
         // 카드 배경이 컨테이너로 올라갔다(#142) — 문구나 점 중 하나라도 있으면 카드를 보인다.
         val questionVisible = model.questionRes != null || model.questionText != null
@@ -974,7 +1009,7 @@ class ConversationActivity : AppCompatActivity() {
                 stepOutcome.questionCount,
             )
         }
-        renderQuestionFold(state, model)
+        renderQuestionFold(foldActive, model)
         perchTopControlsOnCard(model)
         // 이번 render가 만든 배치가 끝난 뒤에 한 번 더 — 위 호출은 직전 프레임 값을 본다.
         binding.root.post { perchTopControlsOnCard(model) }
@@ -1043,14 +1078,6 @@ class ConversationActivity : AppCompatActivity() {
         // **inClarificationFlow를 본다** — 칩이 없는 1문항도, 「직접 말하기」로 넘어간 청취도
         // 같은 값이어야 한다. clarificationVisible은 청취에서 꺼지고 stepChipVisible은
         // 1문항에서 꺼져, 어느 하나만 보면 그 조합에서 글자가 4dp 밀린다(2026-08-23 리뷰).
-        binding.cardQuestionContainer.updatePadding(
-            top = resources.getDimensionPixelSize(
-                if (model.guidingVisible || model.inClarificationFlow) {
-                    R.dimen.davi_card_padding_top_guiding
-                }
-                else R.dimen.davi_card_padding_top_davi,
-            ),
-        )
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
         binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
@@ -1634,11 +1661,43 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 접힘/펼침 **상태만** 정한다 — 뷰는 안 건드린다.
+     *
+     * **뷰 적용보다 먼저 불려야 한다.** 카드의 하한·위아래 패딩이 이 값에 걸리는데, 그 셋은
+     * render 한 곳에서 정한다(아래 「카드 크기는 여기서만 정한다」). 예전에는 판정과 적용이
+     * 한 함수에 섞여 있었고, 그러면 **순서가 곧 우선순위**가 돼 읽어서는 어느 값이 이기는지
+     * 알 수 없었다 — 실제로 접힘이 준 위 패딩은 같은 render 뒷부분에 덮여 한 프레임도 화면에
+     * 안 나갔고, 아래 패딩은 구체화를 떠나도 안 돌아왔다(2026-08-25 리뷰).
+     */
+    private fun resolveQuestionFold(state: ConversationUiState, model: ConversationRenderModel): Boolean {
+        if (!model.clarificationVisible || model.questionText == null) {
+            questionFoldKey = null
+            return false
+        }
+        val key = model.questionText
+        val speaking = (state as? ConversationUiState.Clarifying)?.speaking == true
+        if (key != questionFoldKey) {
+            questionFoldKey = key
+            questionFoldTouched = false
+            // 읽어 주는 동안만 펼쳐 둔다. 안 읽으면 처음부터 접힌다.
+            questionExpanded = speaking
+            // 새 질문이면 보기도 맨 위부터 본다 — 앞 질문에서 내려 둔 자리가 남으면 안 된다.
+            binding.clarificationChoices.root.scrollTo(0, 0)
+        } else if (!questionFoldTouched) {
+            questionExpanded = speaking
+        }
+        return true
+    }
+
     /** 지금 화면의 질문 카드가 펼쳐져 있는가. 사용자가 손잡이를 누르면 뒤집힌다. */
     private var questionExpanded = false
 
     /** 이 질문에서 사용자가 손잡이를 눌렀는가. 눌렀으면 낭독 상태가 덮어쓰지 않는다. */
     private var questionFoldTouched = false
+
+    /** 마지막 render가 만든 모델. 레이아웃 리스너가 다시 만들지 않고 이것을 쓴다. */
+    private var lastRenderModel: ConversationRenderModel? = null
 
     /** 접힘 판정을 되돌리는 기준이 되는 질문. 질문이 바뀌면 손잡이 기록을 지운다. */
     private var questionFoldKey: String? = null
@@ -1662,57 +1721,19 @@ class ConversationActivity : AppCompatActivity() {
      * **사용자가 손잡이를 누른 뒤에는 낭독 상태가 덮어쓰지 않는다** — 펼쳐 놓고 읽는 중에
      * 낭독이 끝났다고 접히면 읽던 것이 사라진다.
      */
-    private fun renderQuestionFold(state: ConversationUiState, model: ConversationRenderModel) {
+    private fun renderQuestionFold(foldActive: Boolean, model: ConversationRenderModel) {
         val toggle = binding.btnQuestionToggle
-        if (!model.clarificationVisible || model.questionText == null) {
+        if (!foldActive) {
             toggle.isVisible(false)
-            questionFoldKey = null
             // 다른 화면의 카드는 예전대로 끌어서 스크롤한다.
             binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
             return
         }
         val key = model.questionText
-        if (key != questionFoldKey) {
-            questionFoldKey = key
-            questionFoldTouched = false
-            // 읽어 주는 동안만 펼쳐 둔다. 안 읽으면 처음부터 접힌다.
-            questionExpanded = (state as? ConversationUiState.Clarifying)?.speaking == true
-            // 새 질문이면 보기도 맨 위부터 본다 — 앞 질문에서 내려 둔 자리가 남으면 안 된다.
-            binding.clarificationChoices.root.scrollTo(0, 0)
-        } else if (!questionFoldTouched) {
-            questionExpanded = (state as? ConversationUiState.Clarifying)?.speaking == true
-        }
         binding.cardQuestion.text = if (questionExpanded) {
             key
         } else {
             getString(R.string.clarification_prompt_collapsed)
-        }
-        // **접힌 카드는 내용에 붙는다 — 하한도 위 패딩도 걷는다.**
-        //
-        // 176 하한은 원문이 들어오는 카드의 값이고, 위 패딩은 배지를 피하려고 잡아 둔 값이다.
-        // 접힌 카드에는 둘 다 근거가 없다 — 이 화면에는 배지가 없고 문구는 한 줄이다. 그대로
-        // 두면 한 줄 아래가 빈 채로 그만큼을 보기 영역에서 뺏는다(실측: 접었는데도 181dp라
-        // 「직접 말하기」가 잘렸다). 접기의 이득이 통째로 사라진다.
-        //
-        // 남는 것은 문구 한 줄 + 얕은 여백 + 손잡이다. 손잡이가 그 여백 자리에 앉는다.
-        // **하한은 래퍼에도 걸려 있다.** 컨테이너만 낮췄더니 176이 그대로 남아 접힌 카드가
-        // 글자보다 97dp 컸다(실측). 둘 다 같이 움직여야 한다.
-        if (questionExpanded) {
-            binding.cardQuestionWrap.minimumHeight =
-                resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
-            binding.cardQuestionContainer.minimumHeight =
-                resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
-            binding.cardQuestionContainer.updatePadding(
-                top = resources.getDimensionPixelSize(R.dimen.davi_card_padding_top_guiding),
-                bottom = resources.getDimensionPixelSize(R.dimen.davi_card_padding_bottom_davi),
-            )
-        } else {
-            binding.cardQuestionWrap.minimumHeight = 0
-            binding.cardQuestionContainer.minimumHeight = 0
-            binding.cardQuestionContainer.updatePadding(
-                top = resources.getDimensionPixelSize(R.dimen.davi_spacing_xl),
-                bottom = resources.getDimensionPixelSize(R.dimen.davi_spacing_sm),
-            )
         }
         // **구체화 카드는 조금 내려 앉는다.** 이 화면에는 배지가 없어 카드가 파고들 대상이
         // 없는데 음수 위 마진(davi_badge_overlap_negative)이 그대로면 카드가 상태바에 붙는다.
