@@ -31,6 +31,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import kotlin.system.measureTimeMillis
 
 /** 계측이 앱 화면만 검증할 때 쓰는 debug 전용 진입점. release에서는 항상 무시된다. */
@@ -1695,7 +1696,7 @@ class ConversationActivity : AppCompatActivity() {
             // 동작이고, 올리려 드는 순간이 곧 카드가 있으면 안 될 곳까지 올라간 순간이다 —
             // 그때는 걸치기를 포기하고 나가는 길을 남긴다. 위 questionProgress의 자리
             // 비우기가 그 순간 자체를 없애지만, **하나가 무너져도 ✕는 남아야 한다.**
-            val wanted = ((cardTop - close.height / 2f) - resting).coerceAtLeast(0f)
+            val wanted = perchOffset(cardTop - close.height / 2f, resting)
             if (close.translationY != wanted) close.translationY = wanted
             resting + wanted
         } else {
@@ -1712,7 +1713,7 @@ class ConversationActivity : AppCompatActivity() {
         // 그래서 **칩 줄이 먹는 63dp가 배율과 무관하고**, 시작선이 배율 1.0·2.0에서 같은 값이다.
         if (chip.isShown && chip.height > 0 && closeTop != null) {
             val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
-            val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
+            val wanted = perchOffset(closeTop + circleInset, topNow - chip.translationY)
             if (chip.translationY != wanted) chip.translationY = wanted
             // 카드 왼쪽 둥근 모서리에 물리지 않게 조금 민다. **걸칠 때만이다** — 마진으로
             // 주면 배지가 서는 화면까지 따라 밀려 배지를 더 파고든다.
@@ -1722,6 +1723,21 @@ class ConversationActivity : AppCompatActivity() {
             if (chip.translationX != offsetX) chip.translationX = offsetX
         }
     }
+
+    /**
+     * 걸치기 이동량. **정수 픽셀로 떨어뜨리고, 제자리보다 위로는 안 간다.**
+     *
+     * `getLocationInWindow`은 **반올림된 int**를 준다. 그런데 제자리(`resting`)는 「지금 자리
+     * − 지금 이동량」으로 되짚으므로, 이동량이 0.5px이면 되짚은 제자리가 0.5px 어긋나고
+     * 다음 배치가 그만큼 또 옮긴다 — **걸치기가 몇 번 도느냐에 따라 자리가 1px 흔들렸다**
+     * (실측 540dpi: 칩이 설 때 ✕가 262px, 안 설 때 261px. 카드는 두 경우 모두 356px로
+     * 같았으니 카드가 아니라 이 계산이 흔든 것이다). 이동량이 정수면 되짚기가 정확해져
+     * 두 번째 호출부터 값이 안 변한다.
+     *
+     * 바닥이 0인 이유는 [perchTopControlsOnCard] 주석에 있다.
+     */
+    private fun perchOffset(wantedTop: Float, restingTop: Float): Float =
+        (wantedTop - restingTop).coerceAtLeast(0f).roundToInt().toFloat()
 
     /**
      * 접힘/펼침 **상태만** 정한다 — **카드 크기에 걸리는 속성은 안 건드린다.**
