@@ -563,10 +563,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
     /**
      * 접근성 노드 캐시를 켜고 끈다(#427 2단계). 상태가 바뀔 때만 호출해 매 샘플의 IPC를 아낀다.
-     * API 31 미만에는 이 손잡이가 없다 — 그 기기에서는 낡은 트리를 그대로 받는다(알려진 한계).
+     * API 33 미만에는 이 손잡이가 없다 — 그 기기에서는 낡은 트리를 그대로 받는다(알려진 한계).
      */
     private fun updateA11yCache(enabled: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (enabled == a11yCacheEnabled) return
         runCatching { setCacheEnabled(enabled) }
             .onSuccess {
