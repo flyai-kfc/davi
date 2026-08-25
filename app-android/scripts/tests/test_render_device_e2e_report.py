@@ -8,6 +8,10 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).parents[1] / "render-device-e2e-report.py"
+MESSAGING_SEND_SAFETY = (
+    Path(__file__).parents[2]
+    / "e2e-driver/src/main/java/com/davi/helper/e2e/MessagingSendSafety.kt"
+)
 SPEC = importlib.util.spec_from_file_location("device_e2e_report", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -35,6 +39,16 @@ class DeviceE2eReportTest(unittest.TestCase):
             "model_quality_failure",
         )
         self.assertEqual(MODULE.FAILURE_CATEGORIES["done_before_goal"], "model_quality_failure")
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["screen_stuck"], "model_quality_failure")
+        self.assertEqual(MODULE.FAILURE_CATEGORIES["screen_unreadable"], "infra_failure")
+        safety_source = MESSAGING_SEND_SAFETY.read_text(encoding="utf-8")
+        messaging_codes = set(
+            re.findall(r'const val SEND_[A-Z_]+ = "([a-z_]+)"', safety_source)
+        )
+        self.assertEqual(len(messaging_codes), 4)
+        for code in {"settings_app_blocked", *messaging_codes}:
+            self.assertEqual(MODULE.FAILURE_CATEGORIES[code], "safety_boundary_failure")
+        self.assertNotIn("done_unverified", MODULE.FAILURE_CATEGORIES)
 
     def test_android_junit_success_code_is_reported_as_passed(self):
         with tempfile.TemporaryDirectory() as directory:

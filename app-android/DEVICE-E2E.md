@@ -36,8 +36,10 @@ UIAutomator를 쓰는 `GuidedActionExecutor`는 이 계획만 받아 실제 손�
 
 결정 대기 실패도 하나의 timeout으로 뭉치지 않는다. debug 앱은 화면 원문 없이 root 상태와 서버 요청
 상태만 서명 채널에 함께 보내며, transient 복구와 재시도는 계속 허용한다. 제한 시간이 끝났을 때
-root가 여전히 없으면 `root_unavailable`, 마지막 서버 요청이 실패했으면 `server_error`, 둘 다 아니면
-`decision_timeout`이다. `tap`·`type`·`scroll`처럼 bounds를 소비하는 action에 서버가 보낸
+root가 여전히 없으면 `root_unavailable`, 마지막 서버 요청이 실패했으면 `server_error`, 안내 동작 뒤
+화면이 바뀌지 않았으면 `screen_stuck`, 접근성 요소를 읽지 못했으면 `screen_unreadable`, 이 진단이
+모두 없으면 `decision_timeout`이다. `screen_stuck`은 모델 품질, `screen_unreadable`과 원인 없는
+timeout은 관측 인프라 실패로 분리한다. `tap`·`type`·`scroll`처럼 bounds를 소비하는 action에 서버가 보낸
 `target_node_id`가 같은 요청 tree에서 풀리지 않으면 `target_node_id_mismatch`로 기록한다. 대상 없이
 전역 제스처를 쓰는 `open_app_drawer`·`open_quick_settings`, bounds를 쓰지 않는 `done`의 잔여 id는 이
 실패를 만들지 않는다. 최종 외부 앱 상태가 목표에 못 미치면 `done_before_goal`로 기록한다.

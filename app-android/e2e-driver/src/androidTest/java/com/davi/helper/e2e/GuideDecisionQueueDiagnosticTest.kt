@@ -57,7 +57,7 @@ class GuideDecisionQueueDiagnosticTest {
     }
 
     @Test
-    fun rootAndServerDiagnosticsRemainDistinctAtDecisionTimeout() {
+    fun rootServerAndScreenDiagnosticsRemainDistinctAtDecisionTimeout() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         GuideDecisionQueue(context).use { queue ->
@@ -70,6 +70,13 @@ class GuideDecisionQueueDiagnosticTest {
 
             sendDiagnosticAndAwait(context, "request_started")
             assertEquals("decision_timeout", timeoutCode(queue, step = 3))
+
+            sendDiagnosticAndAwait(context, "screen_stuck")
+            assertEquals("screen_stuck", timeoutCode(queue, step = 4))
+
+            sendDiagnosticAndAwait(context, "request_started")
+            sendDiagnosticAndAwait(context, "screen_unreadable")
+            assertEquals("screen_unreadable", timeoutCode(queue, step = 5))
         }
     }
 

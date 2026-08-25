@@ -717,6 +717,7 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 읽는 중 표시가 무한히 돌면 안 되므로 로컬 안내로 빠져나갈 길을 준다(#350).
                 // 완료·종료 확인은 화면을 따라다니는 더 강한 상태라 덮지 않는다.
                 if (!GuideSession.awaitingConfirm) {
+                    e2ePublisher?.screenUnreadable()
                     display.showUnreadableNotice(
                         signature.structure,
                         getString(R.string.guide_screen_unreadable),
@@ -749,6 +750,7 @@ class GuideAccessibilityService : AccessibilityService() {
                     if (requeried) {
                         Log.i(TAG, "press requery")
                     } else {
+                        e2ePublisher?.screenStuck()
                         Log.i(TAG, "screen stuck for ${ScreenStabilityTracker.STUCK_AFTER_MS}ms")
                         showStuckNotice(signature.structure)
                     }

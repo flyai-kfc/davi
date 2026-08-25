@@ -162,11 +162,19 @@ root와 서버 상태를 넣은 뒤 결정 timeout의 구조화 실패 코드를
 | `root_unavailable` | `root_unavailable` | 통과 |
 | `root_recovered` → `server_error` | `server_error` | 통과 |
 | `request_started` | `decision_timeout` | 통과 |
+| `screen_stuck` | `screen_stuck` | JVM 통과 · 실기기 재실행 보류 |
+| `request_started` → `screen_unreadable` | `screen_unreadable` | JVM 통과 · 실기기 재실행 보류 |
 
 세 경로와 `target_node_id_mismatch`의 signed decision 전달을 두 계측 테스트에서 실행해
 `OK (2 tests)`를 확인했다. transient root 복구와 다음 서버 요청은
 오래된 진단을 지우므로 이전 오류가 다음 단계의 원인으로 남지 않는다. `target_node_id` 불일치와
 UIAutomator 비보정 경계는 기기 없이 도는 `GuidedObservationBoundaryTest` 8건으로 고정했다.
+`screen_stuck`은 안내를 실행했지만 화면이 바뀌지 않은 모델 품질 실패로, `screen_unreadable`은
+접근성 관측 인프라 실패로 공유 보고서에서 갈라진다. 문자 전송 하드 경계 4코드는 모두
+`safety_boundary_failure`로 묶여 전송 차단 실행이 미분류로 떨어지지 않는다.
+두 화면 진단을 추가한 뒤 driver/test APK 컴파일과 JVM 상태 전이 테스트는 통과했지만, 연결 기기가
+없어 새 두 행의 서명 broadcast 재실행은 보류했다. 기존 root·server·target 경계의 `OK (2 tests)`
+실측을 새 화면 진단까지 통과한 것으로 넓혀 쓰지 않는다.
 
 리뷰 수정 커밋 `bfea9fb`으로 같은 기기에서 `samsung-clock-create-alarm-full-journey`도 다시 실행했다.
 기본 개인정보 마스킹과 실제 `gemini-3.5-flash-lite`를 사용했고, 런처에서 삼성 시계로 이동해

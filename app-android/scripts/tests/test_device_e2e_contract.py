@@ -32,7 +32,7 @@ class DeviceE2eContractTest(unittest.TestCase):
         }
 
         self.assertTrue(critical <= shared)
-        self.assertGreaterEqual(len(shared), 20)
+        self.assertEqual(len(shared), 34)
         self.assertEqual({key: app[key] for key in shared}, {key: driver[key] for key in shared})
 
     def test_next_action_planner_has_no_uiautomator_or_selector_dependency(self):

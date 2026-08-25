@@ -79,6 +79,14 @@ class GuideE2ePublisher(private val context: Context) {
         diagnostic(GuideE2eContract.DIAGNOSTIC_RESPONSE_PARSE_ERROR)
     }
 
+    fun screenStuck() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SCREEN_STUCK)
+    }
+
+    fun screenUnreadable() {
+        diagnostic(GuideE2eContract.DIAGNOSTIC_SCREEN_UNREADABLE)
+    }
+
     private fun diagnostic(value: String) {
         if (!GuideE2eRunState.active) return
         context.sendBroadcast(
@@ -172,4 +180,6 @@ internal object GuideE2eContract {
     const val DIAGNOSTIC_SERVER_ERROR = "server_error"
     const val DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR = "client_configuration_error"
     const val DIAGNOSTIC_RESPONSE_PARSE_ERROR = "response_parse_error"
+    const val DIAGNOSTIC_SCREEN_STUCK = "screen_stuck"
+    const val DIAGNOSTIC_SCREEN_UNREADABLE = "screen_unreadable"
 }

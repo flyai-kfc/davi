@@ -120,6 +120,8 @@ internal object GuideE2eContract {
     const val DIAGNOSTIC_SERVER_ERROR = "server_error"
     const val DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR = "client_configuration_error"
     const val DIAGNOSTIC_RESPONSE_PARSE_ERROR = "response_parse_error"
+    const val DIAGNOSTIC_SCREEN_STUCK = "screen_stuck"
+    const val DIAGNOSTIC_SCREEN_UNREADABLE = "screen_unreadable"
 }
 
 /** 화면 원문 없이 결정 대기 실패 원인을 구분하는 debug 전용 관측 이벤트. */
@@ -130,6 +132,8 @@ internal enum class GuideE2eDiagnostic(val wire: String) {
     SERVER_ERROR(GuideE2eContract.DIAGNOSTIC_SERVER_ERROR),
     CLIENT_CONFIGURATION_ERROR(GuideE2eContract.DIAGNOSTIC_CLIENT_CONFIGURATION_ERROR),
     RESPONSE_PARSE_ERROR(GuideE2eContract.DIAGNOSTIC_RESPONSE_PARSE_ERROR),
+    SCREEN_STUCK(GuideE2eContract.DIAGNOSTIC_SCREEN_STUCK),
+    SCREEN_UNREADABLE(GuideE2eContract.DIAGNOSTIC_SCREEN_UNREADABLE),
     ;
 
     companion object {
@@ -141,17 +145,23 @@ internal enum class GuideE2eDiagnostic(val wire: String) {
 internal class GuideE2eDiagnosticState {
     private var rootUnavailable = false
     private var requestFailureCode: String? = null
+    private var screenFailureCode: String? = null
 
     @Synchronized
     fun observe(event: GuideE2eDiagnostic) {
         when (event) {
             GuideE2eDiagnostic.ROOT_UNAVAILABLE -> rootUnavailable = true
             GuideE2eDiagnostic.ROOT_RECOVERED -> rootUnavailable = false
-            GuideE2eDiagnostic.REQUEST_STARTED -> requestFailureCode = null
+            GuideE2eDiagnostic.REQUEST_STARTED -> {
+                requestFailureCode = null
+                screenFailureCode = null
+            }
             GuideE2eDiagnostic.SERVER_ERROR -> requestFailureCode = "server_error"
             GuideE2eDiagnostic.CLIENT_CONFIGURATION_ERROR ->
                 requestFailureCode = "client_configuration_error"
             GuideE2eDiagnostic.RESPONSE_PARSE_ERROR -> requestFailureCode = "response_parse_error"
+            GuideE2eDiagnostic.SCREEN_STUCK -> screenFailureCode = "screen_stuck"
+            GuideE2eDiagnostic.SCREEN_UNREADABLE -> screenFailureCode = "screen_unreadable"
         }
     }
 
@@ -159,12 +169,14 @@ internal class GuideE2eDiagnosticState {
     fun reset() {
         rootUnavailable = false
         requestFailureCode = null
+        screenFailureCode = null
     }
 
     @Synchronized
     fun timeoutFailureCode(): String = when {
         rootUnavailable -> "root_unavailable"
         requestFailureCode != null -> checkNotNull(requestFailureCode)
+        screenFailureCode != null -> checkNotNull(screenFailureCode)
         else -> "decision_timeout"
     }
 }

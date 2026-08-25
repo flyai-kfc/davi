@@ -25,4 +25,8 @@ class GuideE2ePublisher(@Suppress("UNUSED_PARAMETER") context: Context) {
     fun clientConfigurationError() = Unit
 
     fun responseParseError() = Unit
+
+    fun screenStuck() = Unit
+
+    fun screenUnreadable() = Unit
 }

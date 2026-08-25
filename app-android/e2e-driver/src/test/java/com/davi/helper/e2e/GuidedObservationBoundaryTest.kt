@@ -132,6 +132,13 @@ class GuidedObservationBoundaryTest {
         state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
         assertEquals("decision_timeout", state.timeoutFailureCode())
 
+        state.observe(GuideE2eDiagnostic.SCREEN_STUCK)
+        assertEquals("screen_stuck", state.timeoutFailureCode())
+        state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
+        assertEquals("decision_timeout", state.timeoutFailureCode())
+        state.observe(GuideE2eDiagnostic.SCREEN_UNREADABLE)
+        assertEquals("screen_unreadable", state.timeoutFailureCode())
+
         state.observe(GuideE2eDiagnostic.CLIENT_CONFIGURATION_ERROR)
         assertEquals("client_configuration_error", state.timeoutFailureCode())
         state.observe(GuideE2eDiagnostic.REQUEST_STARTED)
