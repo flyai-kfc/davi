@@ -126,9 +126,10 @@
             android:paddingRight="@dimen/davi_spacing_md"
             android:maxLines="1"
             android:layout_gravity="start"
+            android:layout_marginStart="@dimen/davi_step_chip_margin_start"
             android:layout_marginTop="@dimen/davi_step_row_margin_top"
             android:gravity="center"
-            android:elevation="@dimen/davi_badge_elevation"
+            android:elevation="@dimen/davi_step_chip_elevation"
             android:background="@drawable/bg_davi_step_chip"
             android:textAppearance="@style/TextAppearance.Davi.StepChip"
             android:visibility="gone" />
@@ -346,6 +347,7 @@
         <FrameLayout
             android:id="@+id/card_question_wrap"
             android:layout_width="match_parent"
+            android:elevation="@dimen/davi_card_elevation"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/davi_card_min_height_davi"
             android:layout_weight="176"
