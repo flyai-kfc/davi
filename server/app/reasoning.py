@@ -83,8 +83,6 @@ _EXPLICIT_FAILURE_KOREAN_TERMS = ("실패", "오류", "에러")
 _EXPLICIT_FAILURE_KOREAN_COMPLETED_SUFFIXES = (
     "함",
     "됨",
-    "됐",
-    "했",
     "했습니다",
     "하였습니다",
 )

@@ -87,7 +87,7 @@ class DeviceE2eReportTest(unittest.TestCase):
                 "verdict=inconclusive\n"
                 "I DaviE2e: step=2 action=tap "
                 "package=com.sec.android.app.clockpackage target=true verified=false "
-                "verdict=contradicted\n"
+                "verdict=inconclusive\n"
                 "I DaviE2e: step=2 deviation=unknown_clock_screen\n"
                 "I GuideSvc: event=request_started logical_request_id=opaque attempt=1\n"
                 "I DaviE2e: cleanup=success\n",
@@ -116,7 +116,7 @@ class DeviceE2eReportTest(unittest.TestCase):
                 report,
             )
             self.assertIn(
-                "| 2 | `com.sec.android.app.clockpackage` | `tap` | true | `contradicted` | `unknown_clock_screen` |",
+                "| 2 | `com.sec.android.app.clockpackage` | `tap` | true | `inconclusive` | `unknown_clock_screen` |",
                 report,
             )
             self.assertIn("| 비종료 이탈 | 1회 |", report)
