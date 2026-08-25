@@ -100,6 +100,25 @@ internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
  */
 internal const val EXTRA_DEBUG_HOME_STATUS = "com.davi.helper.extra.DEBUG_HOME_STATUS"
 
+/**
+ * 최종 확인 화면(MA-4)을 goal 문구로 띄운다(debug 전용).
+ *
+ * 이 화면은 **말로 목표를 말해야만** 닿는다 — 서버가 READY를 준 뒤에 열린다. 그래서 배치를
+ * 재려면 음성 세션을 매번 돌려야 했고, 문구 길이를 바꿔 가며 재는 것은 사실상 불가능했다.
+ * goal의 길이는 사용자가 무엇을 말하느냐가 정하므로 **앱이 못 정하는 값**이고, 그런 값이
+ * 배치를 흔드는 화면일수록 길게·짧게 넣어 봐야 한다(#372).
+ *
+ * 바로가기 행은 [EXTRA_DEBUG_CONFIRM_APP]이 있을 때만 뜬다 — 사전 점검이 통과한 경우다.
+ * **값은 패키지명이다** — 아이콘을 PackageManager가 그것으로 찾는다. 라벨은 설치된 앱에서
+ * 읽고, 안 깔린 패키지면 패키지명을 그대로 라벨로 쓴다.
+ *
+ *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *     --es com.davi.helper.extra.DEBUG_CONFIRM "'엄마에게 사진 보내기'" \
+ *     --es com.davi.helper.extra.DEBUG_CONFIRM_APP "'com.kakao.talk'"
+ */
+internal const val EXTRA_DEBUG_CONFIRM = "com.davi.helper.extra.DEBUG_CONFIRM"
+internal const val EXTRA_DEBUG_CONFIRM_APP = "com.davi.helper.extra.DEBUG_CONFIRM_APP"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -727,21 +746,46 @@ class ConversationActivity : AppCompatActivity() {
         BuildConfig.DEBUG && (
             intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
                 intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null ||
-                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null
+                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null ||
+                !intent.getStringExtra(EXTRA_DEBUG_CONFIRM).isNullOrBlank()
             )
 
     /**
      * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
      * release에 진입점을 남기지 않는다.
      *
-     * 메인 8이 먼저다. 둘을 같이 주면 어느 쪽이 이기는지 호출자가 알 수 있어야 하고,
-     * 실패 화면은 **상태 하나를 통째로 갈아 끼우는** 쪽이라 구체화 인자와 섞이지 않는다.
+     * **순서는 실패 → 최종 확인 → 구체화다.** 여럿을 같이 줘도 어느 쪽이 이기는지 호출자가
+     * 알 수 있어야 한다. 실패가 먼저인 이유는 **상태 하나를 통째로 갈아 끼우는** 쪽이라
+     * 다른 인자와 섞이지 않아서고, 최종 확인이 구체화보다 앞인 이유는 goal이 있으면 이미
+     * 되묻기가 끝난 뒤라서다.
+     *
+     * [EXTRA_DEBUG_HOME_STATUS]는 여기 없다 — 상태를 안 만들고 홈 말풍선 문구만 바꾼다.
      */
     private fun debugInjectedState(): ConversationUiState? {
         if (!BuildConfig.DEBUG) return null
         if (intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false)) {
             GuideTelemetry.voiceState("debug_failed_injected")
             return ConversationUiState.Failed
+        }
+        // **빈 문자열은 안 받는다** — 게이트만 열리고 화면은 빈 카드가 된다.
+        intent.getStringExtra(EXTRA_DEBUG_CONFIRM)?.takeIf { it.isNotBlank() }?.let { goal ->
+            GuideTelemetry.voiceState("debug_confirm_injected")
+            // **패키지명을 받는다 — 라벨이 아니다.** 아이콘은 PackageManager가 packageName으로
+            // 조회한다(renderShortcutRow). 빈 패키지를 넘기면 라벨만 뜨고 아이콘 슬롯이 빈
+            // 채로 남아, 정작 이 행에서 봐야 할 「어느 앱으로 가는가」가 안 보인다.
+            // 라벨은 설치된 앱에서 읽고, 없으면 패키지명을 그대로 보여 준다.
+            val pkg = intent.getStringExtra(EXTRA_DEBUG_CONFIRM_APP)
+            return ConversationUiState.Confirm(
+                goal = goal,
+                shortcutApp = pkg?.let {
+                    val label = runCatching {
+                        packageManager.getApplicationLabel(
+                            packageManager.getApplicationInfo(it, 0),
+                        ).toString()
+                    }.getOrDefault(it)
+                    ShortcutApp(packageName = it, label = label)
+                },
+            )
         }
         return debugClarificationState()
     }
