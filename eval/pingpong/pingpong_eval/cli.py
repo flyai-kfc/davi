@@ -17,16 +17,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .judge import judge as run_judge
+from .judge import judge_contract
 from .llm import ClaudeJudge, GeminiClient, LlmError, estimate_credits
 from .metrics import batch_of, in_batch, summarize, transcript_metrics
-from .models import (
-    JudgeBatch,
-    ScenarioFile,
-    ScenarioResult,
-    StopReason,
-    Transcript,
-    _judge_contract,
-)
+from .models import JudgeBatch, ScenarioFile, ScenarioResult, StopReason, Transcript
 from .report import render_completion_comparison, write_run
 from .runner import MAX_REQUESTS, run_scenario
 from .sut import PingpongError, SlotFillHttpAdapter
@@ -152,7 +146,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
     batch = JudgeBatch(
         model=judge_client.model,
         scenario_digest=current,
-        judge_contract=_judge_contract(),
+        judge_contract=judge_contract(),
     )
     judge_failures = 0
     for result in picked:
@@ -180,12 +174,15 @@ def cmd_judge(args: argparse.Namespace) -> int:
             f"{result.scenario_id} [{result.difficulty.value}] {result.judge.achievement.value}"
         )
 
-    # 선택 밖 결과에 다른 배치(다른 평가자 모델·시나리오 해시)의 채점이 남아 있으면
+    # 선택 밖 결과에 다른 배치(다른 평가자 모델·시나리오 해시·채점 계약)의 채점이 남아 있으면
     # 저장은 유지하되 집계에서 빠진다 — 조용히 섞이는 것도, 조용히 사라지는 것도 안 된다.
+    #
+    # **배치 튜플을 손으로 조립하지 않는다**(PR #448 리뷰). 축이 하나 늘었을 때 이 자리만 옛
+    # 길이로 남아 길이 불일치로 **전부 stale**이 됐다 — 집계는 멀쩡한데 경고만 "30건 제외"를
+    # 찍는 모양이라 로그로도 안 드러난다.
+    batch_key = (batch.model, batch.scenario_digest, batch.judge_contract)
     stale = sum(
-        1
-        for r in results
-        if r.judge is not None and not in_batch(r, (batch.model, batch.scenario_digest))
+        1 for r in results if r.judge is not None and not in_batch(r, batch_key)
     )
     if stale:
         print(
@@ -207,7 +204,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
             ),
             "채점범위": args.difficulty or args.only or "전체",
             "채점시_시나리오해시": current,
-            "채점계약": _judge_contract(),
+            "채점계약": judge_contract(),
         }
     )
     report = write_run(run_dir, results, meta)
@@ -295,7 +292,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 result.judge_batch = JudgeBatch(
                     model=judge_client.model,
                     scenario_digest=digest,
-                    judge_contract=_judge_contract(),
+                    judge_contract=judge_contract(),
                 )
             except LlmError as error:
                 print(f"[{scenario.id}] 채점 실패: {error}", file=sys.stderr)
@@ -314,7 +311,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "시나리오수": len(scenarios),
         "사용자모델": user_client.model,
         "평가자모델": judge_client.model if judge_client else None,
-        "채점계약": _judge_contract() if judge_client else None,
+        "채점계약": judge_contract() if judge_client else None,
         "평가자경유": judge_client.base_url if judge_client else None,
         "평가자_입력토큰": judge_client.input_tokens if judge_client else 0,
         "평가자_출력토큰": judge_client.output_tokens if judge_client else 0,
@@ -414,8 +411,10 @@ def cmd_compare(args: argparse.Namespace) -> int:
         and baseline_batch != candidate_batch
     ):
         print(
-            "평가자 모델·채점 시나리오 배치가 다르다 — goal·환각·선택 강요를 A/B로 "
-            "묶을 수 없다. 같은 배치로 다시 채점한다.",
+            "평가자 모델·채점 시나리오·채점 계약 배치가 다르다 — goal·환각·선택 강요를 "
+            f"A/B로 묶을 수 없다(기준 {baseline_batch} / 후보 {candidate_batch}). "
+            "같은 배치로 다시 채점한다. 모델과 해시가 같은데 걸린다면 채점 계약이 다른 "
+            "것이고, 그 필드가 생기기 전의 실행은 값이 비어 있어 재채점 없이는 못 맞댄다.",
             file=sys.stderr,
         )
         return 1

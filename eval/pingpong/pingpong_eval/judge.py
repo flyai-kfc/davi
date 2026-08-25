@@ -12,8 +12,40 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from .llm import ClaudeJudge, LlmError
-from .models import JudgeResult, Scenario, SlotScore, SlotVerdict, Transcript
+from .models import (
+    JudgeResult,
+    Scenario,
+    SlotScore,
+    SlotVerdict,
+    Transcript,
+    ViolationAxis,
+)
+
+# 채점 계약의 판. **위반 축을 더하거나 빼거나 아래 지시문의 판정 규칙을 바꾸면 올린다.**
+# 같은 평가자 모델·같은 시나리오라도 이 값이 다르면 한 수치로 섞지 않는다(PR #448 리뷰).
+#
+# [judge_contract]가 축 목록의 digest를 함께 물으므로 축을 고치고 이 상수를 깜빡해도 배치가
+# 갈린다. 반대로 **지시문 문구만 바꾼 경우는 digest가 안 움직이므로** 이 상수를 손으로 올려야
+# 한다 — 그게 이 상수가 따로 있는 이유다. 지시문 전체를 digest에 넣지 않는 것은 의도다:
+# 오타 하나에도 크레딧이 드는 전면 재채점이 강제된다.
+#
+# **1이 첫 판이다.** 이 필드가 생기기 전의 채점은 값이 비어 있고, 빈 값은 어느 현재 배치와도
+# 같지 않다(`JudgeBatch` 참고).
+JUDGE_CONTRACT_VERSION = 1
+
+
+def judge_contract() -> str:
+    """평가자에게 나가는 채점 계약의 식별자. 축 목록이 바뀌면 자동으로 달라진다.
+
+    **정렬해서 문다** — 열거 순서만 바꾸는 무해한 정리로 배치가 갈리지 않게 한다.
+    """
+    axes = ",".join(sorted(axis.value for axis in ViolationAxis))
+    digest = hashlib.sha256(axes.encode("utf-8")).hexdigest()[:12]
+    return f"v{JUDGE_CONTRACT_VERSION}:{digest}"
+
 
 _SYSTEM = """당신은 시니어용 스마트폰 안내 앱의 '목표 구체화' 대화를 채점하는 평가자입니다.
 채점 대상은 도우미(앱)이지 사용자가 아닙니다. 사용자 역할은 시나리오대로 연기한 것이므로

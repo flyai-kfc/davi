@@ -756,7 +756,9 @@ def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch
     assert summary["전체"]["충족"] == 0
 
 
-def test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않는다(monkeypatch, tmp_path):
+def test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않는다(
+    monkeypatch, tmp_path, capsys
+):
     """옛 모델 점수 2건 중 1건만 재채점하면, 나머지 1건은 저장은 유지하되
     집계에서 빠지고 표에 '다른 배치'로 드러나야 한다(리뷰 실측 재현)."""
 
@@ -836,6 +838,9 @@ def test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않�
     assert saved[first.id].judge_batch.model == "새모델"
     assert saved[second.id].judge.reason == "옛 채점"  # 저장은 지워지지 않는다
     assert saved[second.id].judge_batch.model == "옛모델"
+    # 경고가 세는 수도 고정한다 — 배치 축이 늘었을 때 이 자리만 옛 길이로 남으면
+    # 집계는 멀쩡한데 경고만 "전부 제외"를 찍는다(PR #448 리뷰에서 실제로 났다).
+    assert "다른 배치에서 채점된 1건은" in capsys.readouterr().err
 
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["전체"]["부분"] == 1  # 이번 배치의 새 점수만
@@ -984,13 +989,9 @@ def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는
     옛 축인데 둘 다 같은 배치로 판정돼 한 보고서에 섞인다(PR #448 리뷰). 모델이 달라지는
     경로는 위 `test_부분_재채점은_다른_배치의_점수를_섞어_집계하지_않는다`가 이미 막는다.
     """
+    from pingpong_eval.judge import judge_contract
     from pingpong_eval.metrics import batch_of, in_batch
-    from pingpong_eval.models import (
-        Achievement,
-        JudgeBatch,
-        JudgeResult,
-        _judge_contract,
-    )
+    from pingpong_eval.models import Achievement, JudgeBatch, JudgeResult
 
     def scored(contract: str):
         result = run_scenario(scenarios[0], _FakeUser(), _ClarificationAdapter())
@@ -1006,10 +1007,10 @@ def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는
         {
             "평가자모델": "같은모델",
             "시나리오해시": "같은해시",
-            "채점계약": _judge_contract(),
+            "채점계약": judge_contract(),
         }
     )
-    assert in_batch(scored(_judge_contract()), batch)
+    assert in_batch(scored(judge_contract()), batch)
     assert not in_batch(scored("v1:옛계약"), batch)
     # 이 필드가 생기기 전의 채점(빈 값)도 현재 배치가 아니다.
     assert not in_batch(scored(""), batch)

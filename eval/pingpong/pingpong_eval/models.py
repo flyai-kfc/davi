@@ -5,7 +5,6 @@ JSON 키는 한국어(팀이 손으로 쓰는 파일이라)이고 코드 식별�
 
 from __future__ import annotations
 
-import hashlib
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -206,22 +205,6 @@ class JudgeResult(BaseModel):
     reason: str = Field(description="판정 근거 한 문장")
     slot_scores: list[SlotScore]
     violations: list[Violation]
-
-
-# 채점 계약의 판. **위반 축을 더하거나 빼거나 지시문의 판정 규칙을 바꾸면 올린다.**
-# 같은 평가자 모델·같은 시나리오라도 이 값이 다르면 한 수치로 섞지 않는다(PR #448 리뷰).
-#
-# 아래 [JUDGE_CONTRACT]가 축 목록의 digest를 함께 물리므로, 축을 고치고 이 상수를 깜빡해도
-# 배치가 갈린다. 반대로 **지시문 문구만 바꾼 경우는 digest가 안 움직이므로** 이 상수를 손으로
-# 올려야 한다 — 그게 이 상수가 따로 있는 이유다.
-JUDGE_CONTRACT_VERSION = 2
-
-
-def _judge_contract() -> str:
-    """평가자에게 나가는 채점 계약의 식별자. 축 목록이 바뀌면 자동으로 달라진다."""
-    axes = ",".join(axis.value for axis in ViolationAxis)
-    digest = hashlib.sha256(axes.encode("utf-8")).hexdigest()[:12]
-    return f"v{JUDGE_CONTRACT_VERSION}:{digest}"
 
 
 class JudgeBatch(BaseModel):
