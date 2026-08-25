@@ -865,10 +865,16 @@ class ConversationActivity : AppCompatActivity() {
         // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
         // 캐릭터 53으로 따로 잡았다(x1.2 환산). 겹침을 카드의 음수 위 마진으로 만드는
         // 수법은 같고 값만 다르다.
+        // 카드 위 마진도 여기서 정한다 — 카드 기하를 한 곳에서 읽게 한다.
+        // **구체화는 양수다.** 이 화면에는 배지가 없어 파고들 대상이 없는데 음수를 그대로 두면
+        // 카드가 상태바에 붙는다.
         binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
             topMargin = resources.getDimensionPixelSize(
-                if (model.standVisible) R.dimen.davi_stand_overlap_negative
-                else R.dimen.davi_badge_overlap_negative,
+                when {
+                    model.clarificationVisible -> R.dimen.davi_spacing_md
+                    model.standVisible -> R.dimen.davi_stand_overlap_negative
+                    else -> R.dimen.davi_badge_overlap_negative
+                },
             )
         }
         // ─── 카드 크기는 여기서만 정한다 (하한 · 위 패딩 · 아래 패딩) ───────────────
@@ -883,6 +889,8 @@ class ConversationActivity : AppCompatActivity() {
         // **하한은 래퍼에도 걸려 있다** — 컨테이너만 낮췄더니 176이 그대로 남았다.
         val cardMin = when {
             collapsed -> 0
+            // **실패 화면만 고정 높이다** — 시안이 이 카드의 높이를 따로 잡았다(FIXED 200 -> 240dp).
+            // 다른 화면은 하한만 쓰고 내용만큼 자란다.
             model.standVisible -> resources.getDimensionPixelSize(R.dimen.davi_failed_card_height)
             else -> resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
         }
@@ -1662,7 +1670,9 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     /**
-     * 접힘/펼침 **상태만** 정한다 — 뷰는 안 건드린다.
+     * 접힘/펼침 **상태만** 정한다 — **카드 크기에 걸리는 속성은 안 건드린다.**
+     * (새 질문에서 보기 목록을 맨 위로 되돌리는 것 하나는 여기서 한다 — 상태가 바뀌는 그
+     * 순간에만 필요하고 카드 기하와 무관하다.)
      *
      * **뷰 적용보다 먼저 불려야 한다.** 카드의 하한·위아래 패딩이 이 값에 걸리는데, 그 셋은
      * render 한 곳에서 정한다(아래 「카드 크기는 여기서만 정한다」). 예전에는 판정과 적용이
@@ -1734,13 +1744,6 @@ class ConversationActivity : AppCompatActivity() {
             key
         } else {
             getString(R.string.clarification_prompt_collapsed)
-        }
-        // **구체화 카드는 조금 내려 앉는다.** 이 화면에는 배지가 없어 카드가 파고들 대상이
-        // 없는데 음수 위 마진(davi_badge_overlap_negative)이 그대로면 카드가 상태바에 붙는다.
-        if (model.clarificationVisible) {
-            binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
-                topMargin = resources.getDimensionPixelSize(R.dimen.davi_spacing_md)
-            }
         }
         // **접힌 카드는 스크롤 대상이 아니다.** movementMethod가 붙어 있으면 TextView가
         // clickable로 노출돼 **스크린리더가 누를 수 있는 것으로 읽는데 눌러도 아무 일이 없다**
