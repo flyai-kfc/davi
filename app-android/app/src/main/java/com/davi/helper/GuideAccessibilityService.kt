@@ -612,6 +612,11 @@ class GuideAccessibilityService : AccessibilityService() {
             now,
             hasLabeledElement,
             guidedTargetChanged = targetSlotChanged,
+            // 확인 대기 중에는 묻지 않는다(#139). **판정 단계에서 막는다**(#456) — 아래에서
+            // `SEND`를 받아 되돌아서면 [ScreenStabilityTracker.markSent]가 안 불려 판정이
+            // 영영 가라앉지 않는다. 폴링 자체는 그대로 돌아야 아래 redisplay가 사라진
+            // 확인 화면을 되살린다.
+            sendingBlocked = GuideSession.awaitingConfirm,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
         // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
@@ -688,12 +693,9 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.SEND -> {
-                // 확인 대기 중에는 묻지 않는다(#139). 폴링은 그대로 돌아야 위 redisplay가
-                // 사라진 확인 화면을 되살릴 수 있어서, 멈추는 것은 요청뿐이다.
-                if (GuideSession.awaitingConfirm) {
-                    scheduleSample(POLL_MS)
-                    return
-                }
+                // 확인 대기(#139)는 여기서 걸러지지 않는다 — `sendingBlocked`로 판정 단계에서
+                // 막아 `IDLE`로 온다(#456). 여기에 갈래를 되살리지 말 것: 요청만 막고 판정을
+                // 그대로 두면 `sentSignature`가 안 갱신돼 `SEND`가 무한 반복된다.
                 if (lastLoggedScreenSignature != signature) {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)

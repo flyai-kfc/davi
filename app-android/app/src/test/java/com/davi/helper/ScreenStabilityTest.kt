@@ -530,6 +530,31 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `요청이 막힌 동안에는 SEND 대신 IDLE로 가라앉는다`() {
+        // 중지 확인 대기(#139)처럼 호출자가 요청을 막는 구간. 여기서 SEND를 내면 markSent가
+        // 안 불려 판정이 영영 novel로 남고 폴링 주기마다 SEND가 반복된다(#456 실측 7분 30초).
+        tracker.onSample(sig("a"), 0, hasLabeledElement = true, sendingBlocked = true)
+
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(sig("a"), 100, hasLabeledElement = true, sendingBlocked = true),
+        )
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(sig("a"), 800, hasLabeledElement = true, sendingBlocked = true),
+        )
+    }
+
+    @Test
+    fun `요청 차단이 풀리면 그 화면을 다시 묻는다`() {
+        // 막는 동안 보낸 셈 치면 안 된다 — 「계속 볼래요」로 돌아온 사용자가 안내를 못 받는다.
+        tracker.onSample(sig("a"), 0, hasLabeledElement = true, sendingBlocked = true)
+        tracker.onSample(sig("a"), 100, hasLabeledElement = true, sendingBlocked = true)
+
+        assertEquals(Decision.SEND, tracker.onSample(sig("a"), 200, hasLabeledElement = true))
+    }
+
+    @Test
     fun `label 없는 화면은 반복돼도 보내지 않고 label이 생긴 뒤 다시 안정화한다`() {
         assertEquals(Decision.WAIT, tracker.onSample(sig("splash"), 0, hasLabeledElement = false))
         assertEquals(Decision.WAIT, tracker.onSample(sig("splash"), 100, hasLabeledElement = false))

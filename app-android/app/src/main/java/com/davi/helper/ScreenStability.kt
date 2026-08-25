@@ -215,6 +215,8 @@ internal fun Screen.guidedSlotLabelChanged(
  * - [Decision.STUCK] 안내를 했는데 화면이 그대로다. **서버를 다시 부르지 않고** 사용자에게 알린다(#39).
  * - [Decision.UNREADABLE] label 없는 상태가 오래 이어졌다. 서버 대신 로컬 안내를 표시한다(#350).
  * - [Decision.IDLE] 안정됐고 이미 처리한 화면이다. 아무것도 하지 않는다.
+ *   호출자가 요청을 막는 중일 때도([sendingBlocked]) 여기로 온다 — 보내지 못할 `SEND`를
+ *   내면 [markSent]가 안 불려 판정이 영영 가라앉지 않는다(#456).
  *
  * "직전에 보낸 화면과 다르다"의 판정이 2계층이다(#380) — **구조가 바뀌면** 새 화면이고,
  * **내용만 바뀌면 인과가 있어야** 새 화면이다(최근 조작 이벤트 또는 안내 대상 슬롯의 변화).
@@ -292,6 +294,7 @@ class ScreenStabilityTracker(
         nowMs: Long,
         hasLabeledElement: Boolean,
         guidedTargetChanged: Boolean = false,
+        sendingBlocked: Boolean = false,
     ): Decision {
         if (!hasLabeledElement) {
             // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
@@ -371,7 +374,14 @@ class ScreenStabilityTracker(
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
             // 영영 오지 않는다(PR #61 리뷰 P1). 응답이 끝나면 [markFinished]가 다시 열어 준다.
-            if (requestOutstanding) return Decision.IDLE
+            //
+            // [sendingBlocked]도 같은 이유로 여기서 받는다(#456). 호출자가 확인 대기(#139)로
+            // 요청을 막는 동안 `SEND`를 내면 [markSent]가 불리지 않아 [sentSignature]가 영영
+            // 낡은 채로 남고, **모든 샘플이 다시 `novel`이 되어 폴링 주기마다 `SEND`가
+            // 반복된다** — 2026-08-25 SM-S921N에서 중지 칩을 누른 뒤 7분 30초 동안
+            // 1.3초 간격으로 이 줄이 찍히는 것을 실측했다. 요청은 안 나가지만 결정이 영영
+            // 가라앉지 않아 화면이 정말 그대로인지를 아무도 못 본다.
+            if (requestOutstanding || sendingBlocked) return Decision.IDLE
             // 실패한 화면을 폴링 주기마다 다시 때리면 서버가 죽어 있을 때 초당 한 번씩 두드린다.
             // 무료 티어는 15 RPM이다(HANDOFF §10). 실기기에서 실제로 이 루프를 만들어 봤다.
             if (failures > 0 && nowMs < retryNotBeforeMs) return Decision.IDLE
