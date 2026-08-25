@@ -747,15 +747,19 @@ class ConversationActivity : AppCompatActivity() {
             intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
                 intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null ||
                 intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null ||
-                intent.getStringExtra(EXTRA_DEBUG_CONFIRM) != null
+                !intent.getStringExtra(EXTRA_DEBUG_CONFIRM).isNullOrBlank()
             )
 
     /**
      * debug 주입 전부를 한 자리에서 고른다. **`BuildConfig.DEBUG`가 아니면 항상 null이다** —
      * release에 진입점을 남기지 않는다.
      *
-     * 메인 8이 먼저다. 둘을 같이 주면 어느 쪽이 이기는지 호출자가 알 수 있어야 하고,
-     * 실패 화면은 **상태 하나를 통째로 갈아 끼우는** 쪽이라 구체화 인자와 섞이지 않는다.
+     * **순서는 실패 → 최종 확인 → 구체화다.** 여럿을 같이 줘도 어느 쪽이 이기는지 호출자가
+     * 알 수 있어야 한다. 실패가 먼저인 이유는 **상태 하나를 통째로 갈아 끼우는** 쪽이라
+     * 다른 인자와 섞이지 않아서고, 최종 확인이 구체화보다 앞인 이유는 goal이 있으면 이미
+     * 되묻기가 끝난 뒤라서다.
+     *
+     * [EXTRA_DEBUG_HOME_STATUS]는 여기 없다 — 상태를 안 만들고 홈 말풍선 문구만 바꾼다.
      */
     private fun debugInjectedState(): ConversationUiState? {
         if (!BuildConfig.DEBUG) return null
@@ -763,7 +767,8 @@ class ConversationActivity : AppCompatActivity() {
             GuideTelemetry.voiceState("debug_failed_injected")
             return ConversationUiState.Failed
         }
-        intent.getStringExtra(EXTRA_DEBUG_CONFIRM)?.let { goal ->
+        // **빈 문자열은 안 받는다** — 게이트만 열리고 화면은 빈 카드가 된다.
+        intent.getStringExtra(EXTRA_DEBUG_CONFIRM)?.takeIf { it.isNotBlank() }?.let { goal ->
             GuideTelemetry.voiceState("debug_confirm_injected")
             // **패키지명을 받는다 — 라벨이 아니다.** 아이콘은 PackageManager가 packageName으로
             // 조회한다(renderShortcutRow). 빈 패키지를 넘기면 라벨만 뜨고 아이콘 슬롯이 빈
