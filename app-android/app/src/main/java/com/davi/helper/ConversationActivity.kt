@@ -1602,6 +1602,7 @@ class ConversationActivity : AppCompatActivity() {
         // 좌표가 그대로 남는다.** 그러면 이미 화면에 없는 뷰의 옛 자리에 맞춰 걸치게 된다.
         if (!model.clarificationVisible || !card.isShown || card.height == 0) {
             if (chip.translationY != 0f) chip.translationY = 0f
+            if (chip.translationX != 0f) chip.translationX = 0f
             if (close.translationY != 0f) close.translationY = 0f
             return
         }
@@ -1624,6 +1625,12 @@ class ConversationActivity : AppCompatActivity() {
             val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
             val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
             if (chip.translationY != wanted) chip.translationY = wanted
+            // 카드 왼쪽 둥근 모서리에 물리지 않게 조금 민다. **걸칠 때만이다** — 마진으로
+            // 주면 배지가 서는 화면까지 따라 밀려 배지를 더 파고든다.
+            val offsetX = resources.getDimensionPixelSize(
+                R.dimen.davi_step_chip_perch_offset_x,
+            ).toFloat()
+            if (chip.translationX != offsetX) chip.translationX = offsetX
         }
     }
 
