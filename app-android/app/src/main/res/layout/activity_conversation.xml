@@ -128,6 +128,7 @@
             android:layout_gravity="start"
             android:layout_marginTop="@dimen/davi_step_row_margin_top"
             android:gravity="center"
+            android:elevation="@dimen/davi_badge_elevation"
             android:background="@drawable/bg_davi_step_chip"
             android:textAppearance="@style/TextAppearance.Davi.StepChip"
             android:visibility="gone" />
@@ -369,6 +370,7 @@
                 android:layout_marginBottom="@dimen/davi_glow_card_bleed_bottom"
                 android:importantForAccessibility="no" />
 
+
         <LinearLayout
             android:id="@+id/card_question_container"
             android:layout_width="match_parent"
@@ -417,6 +419,33 @@
                 android:textAppearance="@style/TextAppearance.Davi.Subtitle.Davi"
                 android:fontFamily="@font/cafe24_ssurround"
                 app:fontFamily="@font/cafe24_ssurround" />
+
+
+                <!--
+                  구체화 질문의 접기/펼치기 손잡이(#434). **글자 아래 흐름에 놓는다** —
+                  카드가 글자에 붙어 있어서 겹쳐 놓으면 글자 위에 올라앉는다(실측: 「선택해
+                  주세요」 가운데에 비쳤다). 흐름에 두면 카드가 손잡이만큼만 더 자란다.
+
+                  **카드 하단선에 절반을 걸쳐 봤다가 되돌렸다**(2026-08-25) — 밖으로 나온
+                  절반은 부모 밖이라 **터치가 안 닿는다**(clipChildren을 꺼도 터치는 부모
+                  경계에서 잘린다). 눌러야 하는 것이 반만 눌리면 안 된다.
+
+                  **글리프(v)를 안 쓴다** — 카드 문구가 Cafe24라 그 서체에 없는 글자면 두부가
+                  뜬다. 색은 ✕ 원형과 같다 — 이 카드에서 누를 수 있는 것이 둘뿐이라 같은 색이
+                  「누르는 것」을 묶어 준다.
+                -->
+                <ImageView
+                    android:id="@+id/btn_question_toggle"
+                    android:layout_width="@dimen/davi_size_touch_target"
+                    android:layout_height="@dimen/davi_size_touch_target"
+                    android:layout_gravity="center_horizontal"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_davi_caret"
+                    app:tint="@color/davi_button_primary"
+                    android:visibility="gone" />
 
             <!--
               메인 9 카드 안 지시문(#197). "새로 물어보시려면 먼저 안내를 종료해주세요" —

@@ -333,6 +333,14 @@ class ConversationActivity : AppCompatActivity() {
         }
         binding.homeBubble.addOnLayoutChangeListener(caneWatch)
         binding.micSlot.addOnLayoutChangeListener(caneWatch)
+        // **그리기 직전마다 다시 잡는다.** 레이아웃 리스너로는 모자랐다 — 카드 높이가 접기로
+        // 바뀌는 화면이라 마지막 배치 뒤에 한 번 더 움직이는 경우가 있고, 그러면 걸침이
+        // 이전 프레임 값에 묶여 칩과 ✕가 카드 위로 떠 버린다(실측). 그리기 직전은 배치가
+        // 확정된 시점이라 항상 맞다. 값이 같으면 아무것도 안 하므로 다시 그리지 않는다.
+        binding.root.viewTreeObserver.addOnPreDrawListener {
+            perchTopControlsOnCard(renderModelOf(uiState, guideActive = GuideSession.isActive))
+            true
+        }
         // 제목 폭은 글꼴 배율을 따라 자란다 — 배치가 끝나야 화살표를 침범하는지 알 수 있다.
         // **둘 다에 단다.** 제목에만 달았더니 화살표가 아직 안 재진 첫 배치에서 빠져나온 뒤
         // 제목이 다시 안 바뀌어 판정이 영영 안 돌았다.
@@ -840,7 +848,10 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
         }
-        binding.logo.isVisible(model.logoVisible)
+        // **구체화에서는 배지를 뺀다**(#434 시안). 칩과 ✕가 카드 위 모서리에 걸치는 자리라
+        // 배지가 그 가운데를 차지하면 걸칠 곳이 없고, 배지를 피하려던 카드 위 패딩이
+        // 접힌 카드의 하한을 끌어올려 접기의 이득을 먹는다.
+        binding.logo.isVisible(model.logoVisible && !model.clarificationVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
         // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
@@ -960,6 +971,8 @@ class ConversationActivity : AppCompatActivity() {
                 stepOutcome.questionCount,
             )
         }
+        renderQuestionFold(state, model)
+        perchTopControlsOnCard(model)
         if (state is ConversationUiState.Clarifying) {
             renderClarificationOptions(state)
         }
@@ -1563,6 +1576,157 @@ class ConversationActivity : AppCompatActivity() {
      * (시안 「가로 중앙」) 2026-08-25에 왼쪽 정렬로 바뀌었다 — 결론은 같고 이유가 달라졌다.
      * 여백은 아이콘 유무와 **무관하게** 같다.
      */
+    /**
+     * MA-3에서만 칩과 ✕를 **카드 위 모서리에 걸친다**(#434 시안). 파일 탭처럼 카드에 얹혀
+     * 「이 카드에 딸린 것」으로 읽힌다.
+     *
+     * **배지는 이 화면에서 빠진다.** 배지가 카드 위 가운데를 차지하면 걸칠 자리가 없고,
+     * 배지를 피하려고 잡아 둔 카드 위 패딩이 접힌 카드의 하한을 끌어올려 **접기의 이득을
+     * 먹는다**(접었는데도 181dp였다 — 하한 130을 잡아도 안 내려갔다).
+     *
+     * **자리는 translationY로 옮긴다 — 마진이 아니다.** 마진을 건드리면 다시 배치가 돌고,
+     * 그 배치가 다시 이 판정을 부르는 되먹임이 생긴다(오늘 배지에서 겪었다). 그리기 단계의
+     * 이동이라 다른 요소의 측정에 영향을 주지 않는다.
+     */
+    private fun perchTopControlsOnCard(model: ConversationRenderModel) {
+        val chip = binding.questionProgress
+        val close = binding.btnClose
+        val card = binding.cardQuestionWrap
+        if (!model.clarificationVisible || card.height == 0) {
+            if (chip.translationY != 0f) chip.translationY = 0f
+            if (close.translationY != 0f) close.translationY = 0f
+            return
+        }
+        val cardTop = IntArray(2).also { card.getLocationInWindow(it) }[1].toFloat()
+        // ✕는 카드 상단선에 **중심**을 맞춘다 — 카드에 걸린 것으로 읽힌다.
+        val closeTop = if (close.visibility == View.VISIBLE && close.height > 0) {
+            val topNow = IntArray(2).also { close.getLocationInWindow(it) }[1].toFloat()
+            val wanted = (cardTop - close.height / 2f) - (topNow - close.translationY)
+            if (close.translationY != wanted) close.translationY = wanted
+            cardTop - close.height / 2f
+        } else {
+            null
+        }
+        // **✕의 「원」은 뷰보다 작다** — 배경을 davi_close_circle_inset만큼 안으로 들였다.
+        // 칩을 맞출 기준은 뷰의 위가 아니라 **원의 위**다.
+        val circleInset = resources.getDimensionPixelSize(R.dimen.davi_close_circle_inset)
+        // **칩은 ✕의 맨 위에 수평을 맞춘다 — 중심이 아니다.** 둘은 높이가 달라(✕ 56dp,
+        // 칩은 글꼴 배율을 따라 자란다) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
+        if (chip.visibility == View.VISIBLE && chip.height > 0 && closeTop != null) {
+            val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
+            val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
+            if (chip.translationY != wanted) chip.translationY = wanted
+        }
+    }
+
+    /** 지금 화면의 질문 카드가 펼쳐져 있는가. 사용자가 손잡이를 누르면 뒤집힌다. */
+    private var questionExpanded = false
+
+    /** 이 질문에서 사용자가 손잡이를 눌렀는가. 눌렀으면 낭독 상태가 덮어쓰지 않는다. */
+    private var questionFoldTouched = false
+
+    /** 접힘 판정을 되돌리는 기준이 되는 질문. 질문이 바뀌면 손잡이 기록을 지운다. */
+    private var questionFoldKey: String? = null
+
+    /**
+     * 구체화 질문 카드를 접고 편다(#434).
+     *
+     * **접힌 카드의 높이는 상수다.** 펼친 높이는 `서버 문장 길이 x 글꼴 배율`로 정해져 앱이
+     * 어떤 값도 보장할 수 없고, 그래서 배율 2.0에서 보기 넷이 한 화면에 안 들어갔다. 접으면
+     * 「배율 2.0에서 넷이 들어오는가」를 한 번 재면 그게 계속 참이다 — 여백을 재배치해 우회하는
+     * 것이 아니라 원인을 없앤다.
+     *
+     * **원문은 사라지지 않고 접혀 있을 뿐이다.** 그래서 접힌 자리에 서버 문장의 축약형이
+     * 필요 없고 **계약을 안 바꿔도 된다.**
+     *
+     * **다비가 읽는 동안은 펼쳐 둔다.** 읽어 주는 말을 눈으로도 따라갈 수 있어야 한다.
+     * 낭독이 끝나면 접는다. **낭독이 아예 없으면 처음부터 접힌 채로 시작한다** — TTS가 꺼져
+     * 있거나 실패하는 갈래가 있어 「읽었다」는 신호가 안 오면 카드가 펼친 채로 남는다.
+     * 그때 잃는 것은 없다. 원문은 손잡이로 볼 수 있고 보기는 항상 한 화면에 들어온다.
+     *
+     * **사용자가 손잡이를 누른 뒤에는 낭독 상태가 덮어쓰지 않는다** — 펼쳐 놓고 읽는 중에
+     * 낭독이 끝났다고 접히면 읽던 것이 사라진다.
+     */
+    private fun renderQuestionFold(state: ConversationUiState, model: ConversationRenderModel) {
+        val toggle = binding.btnQuestionToggle
+        if (!model.clarificationVisible || model.questionText == null) {
+            toggle.isVisible(false)
+            questionFoldKey = null
+            return
+        }
+        val key = model.questionText
+        if (key != questionFoldKey) {
+            questionFoldKey = key
+            questionFoldTouched = false
+            // 읽어 주는 동안만 펼쳐 둔다. 안 읽으면 처음부터 접힌다.
+            questionExpanded = (state as? ConversationUiState.Clarifying)?.speaking == true
+            // 새 질문이면 보기도 맨 위부터 본다 — 앞 질문에서 내려 둔 자리가 남으면 안 된다.
+            binding.clarificationChoices.root.scrollTo(0, 0)
+        } else if (!questionFoldTouched) {
+            questionExpanded = (state as? ConversationUiState.Clarifying)?.speaking == true
+        }
+        binding.cardQuestion.text = if (questionExpanded) {
+            key
+        } else {
+            getString(R.string.clarification_prompt_collapsed)
+        }
+        // **접힌 카드는 내용에 붙는다 — 하한도 위 패딩도 걷는다.**
+        //
+        // 176 하한은 원문이 들어오는 카드의 값이고, 위 패딩은 배지를 피하려고 잡아 둔 값이다.
+        // 접힌 카드에는 둘 다 근거가 없다 — 이 화면에는 배지가 없고 문구는 한 줄이다. 그대로
+        // 두면 한 줄 아래가 빈 채로 그만큼을 보기 영역에서 뺏는다(실측: 접었는데도 181dp라
+        // 「직접 말하기」가 잘렸다). 접기의 이득이 통째로 사라진다.
+        //
+        // 남는 것은 문구 한 줄 + 얕은 여백 + 손잡이다. 손잡이가 그 여백 자리에 앉는다.
+        // **하한은 래퍼에도 걸려 있다.** 컨테이너만 낮췄더니 176이 그대로 남아 접힌 카드가
+        // 글자보다 97dp 컸다(실측). 둘 다 같이 움직여야 한다.
+        if (questionExpanded) {
+            binding.cardQuestionWrap.minimumHeight =
+                resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
+            binding.cardQuestionContainer.minimumHeight =
+                resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
+            binding.cardQuestionContainer.updatePadding(
+                top = resources.getDimensionPixelSize(R.dimen.davi_card_padding_top_guiding),
+                bottom = resources.getDimensionPixelSize(R.dimen.davi_card_padding_bottom_davi),
+            )
+        } else {
+            binding.cardQuestionWrap.minimumHeight = 0
+            binding.cardQuestionContainer.minimumHeight = 0
+            binding.cardQuestionContainer.updatePadding(
+                top = resources.getDimensionPixelSize(R.dimen.davi_spacing_xl),
+                bottom = resources.getDimensionPixelSize(R.dimen.davi_spacing_sm),
+            )
+        }
+        // **구체화 카드는 조금 내려 앉는다.** 이 화면에는 배지가 없어 카드가 파고들 대상이
+        // 없는데 음수 위 마진(davi_badge_overlap_negative)이 그대로면 카드가 상태바에 붙는다.
+        if (model.clarificationVisible) {
+            binding.cardQuestionWrap.updateLayoutParams<LinearLayout.LayoutParams> {
+                topMargin = resources.getDimensionPixelSize(R.dimen.davi_spacing_md)
+            }
+        }
+        toggle.isVisible(true)
+        // **삼각형은 돌려서 방향만 바꾼다** — 접혔을 때 아래(펼쳐진다), 펼쳤을 때 위(접힌다).
+        // 그림에는 말이 없으므로 **contentDescription이 그 말을 대신한다** — 스크린리더에서
+        // 「질문 다시 보기」/「질문 접기」로 읽혀 정보가 안 사라진다.
+        toggle.rotation = if (questionExpanded) 180f else 0f
+        toggle.contentDescription = getString(
+            if (questionExpanded) {
+                R.string.clarification_question_hide
+            } else {
+                R.string.clarification_question_show
+            },
+        )
+        toggle.setOnClickListener {
+            questionExpanded = !questionExpanded
+            questionFoldTouched = true
+            render(uiState)
+            // **접거나 펼치면 보기 목록을 맨 위로 되돌린다.** 카드 높이가 바뀌면 아래 목록이
+            // 그만큼 밀리는데, 스크롤 위치는 그대로라 **목록이 저 혼자 올라온 것처럼 보인다.**
+            // 펼친 사람은 질문을 읽으려는 것이지 목록을 넘기려는 것이 아니다.
+            binding.clarificationChoices.root.scrollTo(0, 0)
+        }
+    }
+
     private fun renderClarificationOptions(state: ConversationUiState.Clarifying) {
         val buttons = listOf(
             binding.clarificationChoices.btnOption1 to

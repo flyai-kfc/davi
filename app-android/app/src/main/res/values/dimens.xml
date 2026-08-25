@@ -242,6 +242,12 @@
     <dimen name="davi_spacing_md">12dp</dimen>
     <dimen name="davi_spacing_lg">16dp</dimen>
     <dimen name="davi_spacing_xl">24dp</dimen>
+    <!--
+      접기 손잡이가 카드 밖으로 내미는 깊이(#434). **터치 영역(56dp)의 절반이라 카드 하단선이
+      삼각형의 가운데를 정확히 지난다.** 값을 바꾸면 선이 삼각형을 비껴간다 — 손잡이 크기와
+      묶여 있으니 둘을 같이 읽는다.
+    -->
+    <dimen name="davi_caret_overhang_negative">-28dp</dimen>
     <!-- **지금 쓰는 곳이 없다**(#234). 강조 사각형이 마지막 사용처였는데 v2 반경 10
          (davi_overlay_target_radius)으로 갈았다. 척도의 작은 칸이라 남겨 둔다. -->
     <dimen name="davi_radius_sm">8dp</dimen>
@@ -250,6 +256,11 @@
     <!-- v2 카드 반경(#155). D3를 3단 → 4단으로 넓힌 근거는 DESIGN-CONVENTIONS.md D3. -->
     <dimen name="davi_radius_xl">28dp</dimen>
     <dimen name="davi_size_touch_target">56dp</dimen>
+    <!--
+      종료 ✕의 원이 터치 영역 안으로 들어가는 깊이(2026-08-25). 원은 56 - 6*2 = 44dp로 보이고
+      누를 자리는 56dp 그대로다 — 시니어 앱이라 누를 자리를 줄이지 않는다.
+    -->
+    <dimen name="davi_close_circle_inset">6dp</dimen>
 
     <!-- 컴포넌트 고정 크기 (Figma Components 실측) -->
     <!--
@@ -878,6 +889,16 @@
       내부가 약간 여유로워진다.
     -->
     <dimen name="davi_card_min_height_davi">176dp</dimen>
+    <!--
+      **접힌 질문 카드의 하한**(#434). 176은 원문이 들어오는 카드의 값이라 접힌 카드에 그대로
+      쓰면 한 줄짜리 문구 아래가 46dp 빈 채로 그만큼을 보기 영역에서 뺏는다 — 자리를 벌려고
+      접는 것과 반대가 된다(실측: 「직접 말하기」가 잘린 채였다).
+
+      값은 접힌 내용이 실제로 쓰는 만큼이다 — 문구 한 줄 + 손잡이 + 카드 위아래 여백.
+      배율 2.0에서 재서 잡았고, 그보다 작게 잡으면 배지가 파고드는 깊이(36dp)를 빼고 남는
+      글자 자리가 한 줄을 못 채운다.
+    -->
+    <dimen name="davi_card_min_height_collapsed">130dp</dimen>
     <dimen name="davi_card_min_height_senior">196dp</dimen>
     <!-- 카드 사이 간격. 시안 48 = 시니어 상단 332 - 다비 하단 284. -->
     <dimen name="davi_card_gap">48dp</dimen>
