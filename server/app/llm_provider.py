@@ -19,12 +19,11 @@
 
 ## 공급자별 결정
 
-- **Gemini** — **동작이 바뀐다.** 이전에는 세 호출부 어디도 `thinkingConfig`를 보내지 않았고
-  출력 상한이 1024/512/1024였다. 지금은 모든 호출에 `thinkingConfig`가 실리고 상한이
-  `thinking 상한 + 여유분`(기본 800 + 각 여유분)이 된다. thinking 토큰이 maxOutputTokens를
-  같이 먹어 응답이 잘리는 실패를 막으려는 것인데, 대가로 (a) thinking이 있는 모델의 dynamic
-  thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고 (b) 옛 1024 캡이 하던 "장문 폭주를
-  자른다"가 그만큼 느슨해진다. 아직 측정하지 않았다.
+- **Gemini** — 숫자 `thinkingBudget`은 이를 지원하는 2.5 계열에만 보낸다. 3.x는
+  `thinkingLevel` 계약이라 숫자 budget을 보내면 400이므로 생략하고 모델 기본 level을 쓴다
+  (#457 실기기 E2E). 알 수 없는 모델도 요청 전체를 깨지 않는 쪽으로 생략한다. 출력 상한에는
+  계속 `DAVI_GEMINI_THINKING_BUDGET`만큼 여유를 얹지만, 3.x에서는 하드캡이 아니라 hidden
+  thinking을 위한 reserve일 뿐이다.
 - **OpenAI** — Responses API. `text.format`에 strict json_schema를 싣는다. thinking에 해당하는
   것은 `reasoning.effort`이고, 속도를 위해 기본을 낮게 둔다(`DAVI_OPENAI_REASONING_EFFORT`).
   reasoning 토큰도 `max_output_tokens`를 같이 먹으므로 effort가 켜져 있으면 여유분을 더 얹는다.
@@ -349,9 +348,10 @@ class GeminiProvider(StructuredJsonProvider):
         generation_config: dict[str, Any] = {
             "responseMimeType": "application/json",
             "maxOutputTokens": self.max_output_tokens,
-            # thinking이 없는 모델(flash-lite 등)에 보내도 조용히 무시된다(실측).
-            "thinkingConfig": {"thinkingBudget": self.thinking_budget},
         }
+        thinking_config = _gemini_thinking_config(self.model, self.thinking_budget)
+        if thinking_config is not None:
+            generation_config["thinkingConfig"] = thinking_config
         if with_schema:
             generation_config["responseSchema"] = self.contract.gemini_schema
         return {
@@ -368,6 +368,22 @@ class GeminiProvider(StructuredJsonProvider):
             return extract_candidate_text(payload)
         except GeminiCandidateError as error:
             raise _ProviderResponseError(_GEMINI_REASONS[error.reason]) from error
+
+
+def _gemini_thinking_config(model: str, thinking_budget: int) -> dict[str, int] | None:
+    """숫자 thinking budget을 받는 Gemini 세대에만 해당 wire를 만든다.
+
+    Gemini 3.x는 `thinkingLevel`을 사용한다. 현재 숫자 환경변수를 임의 level로 번역하면 같은
+    설정이 모델마다 다른 깊이가 되므로, 새 level 계약을 정하기 전까지 모델 기본값을 쓴다.
+    2.5 Pro는 thinking을 끌 수 없어 0이면 생략해 기본 dynamic thinking을 유지한다.
+    """
+
+    model_id = model.rsplit("/", 1)[-1].casefold()
+    if model_id.startswith("gemini-2.5-flash"):
+        return {"thinkingBudget": thinking_budget}
+    if model_id.startswith("gemini-2.5-pro") and thinking_budget > 0:
+        return {"thinkingBudget": thinking_budget}
+    return None
 
 
 _GEMINI_REASONS: dict[GeminiCandidateErrorReason, ProviderResponseReason] = {

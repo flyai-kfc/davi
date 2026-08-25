@@ -349,6 +349,39 @@ def test_provider_call_error_keeps_the_http_status_for_the_schema_retry():
     assert provider.to_llm_error(raised.value).kind is ErrorKind.BAD_REQUEST
 
 
+@pytest.mark.parametrize(
+    ("model", "thinking_budget", "expected"),
+    [
+        ("gemini-2.5-flash", 800, {"thinkingBudget": 800}),
+        ("models/gemini-2.5-flash-lite-preview-09-2025", 0, {"thinkingBudget": 0}),
+        ("gemini-2.5-pro", 800, {"thinkingBudget": 800}),
+        ("gemini-2.5-pro", 0, None),
+        ("gemini-3.5-flash-lite", 800, None),
+        ("gemini-3.6-flash", 0, None),
+        ("gemini-unknown", 800, None),
+    ],
+)
+def test_gemini_only_sends_numeric_thinking_budget_to_supported_models(
+    model: str,
+    thinking_budget: int,
+    expected: dict[str, int] | None,
+):
+    provider = GeminiProvider(
+        api_key="test-key",
+        model=model,
+        operation="next_step",
+        contract=GUIDE_ACTION_CONTRACT,
+        max_output_tokens=1024,
+        thinking_budget=thinking_budget,
+    )
+
+    generation_config = provider._request("safe prompt", with_schema=False)["json"][
+        "generationConfig"
+    ]
+
+    assert generation_config.get("thinkingConfig") == expected
+
+
 # --- 설정에 따른 교체 ------------------------------------------------------
 
 

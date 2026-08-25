@@ -259,7 +259,7 @@ step과 안내 내용은 계속 비교해 같은 ID의 다른 작업은 409로 �
 
 | 공급자 | API | 기본 모델 | 필요한 키 | 추론 깊이 조절 |
 |---|---|---|---|---|
-| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | `DAVI_GEMINI_THINKING_BUDGET` |
+| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | 2.5 numeric budget / 3.x 모델 기본 level |
 | `openai` | Responses(`text.format`) | `gpt-5.6-luna` | `OPENAI_API_KEY` | `DAVI_OPENAI_REASONING_EFFORT` |
 | `anthropic` | Messages(`output_config.format`) | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` | 없음(모델을 올린다) |
 
@@ -280,8 +280,9 @@ Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모�
 **보이지 않는 추론 토큰이 출력 예산을 같이 먹는다.** thinking·reasoning 토큰이 예산을 다
 쓰면 응답이 잘려 PARSE 실패로 이어진다(2026-08-18 `gemini-3.6-flash` 실기기 재현). 그래서
 next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
-추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
-OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
+추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800)을
+출력 reserve로 더하고, OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048,
+Anthropic도 2048이다.
 slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 최대 2문항·문항별 3보기를 담는
 `needs_clarification`의 최대 유효 compact JSON 문자 수를 현재 Pydantic `maxLength`·`maxItems`에서
 파생하고 더 큰 쪽을 쓴다. 실제 공급자 토크나이저의 정확한 토큰 수를 흉내 내는 테스트는 두지
@@ -305,12 +306,13 @@ slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 �
 여러 목표의 2회 이내 ready율·goal 유효성·환각률·선택 편향·TTS 길이를 같은 eval에서 비교해 실제
 차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
-**Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
-상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실린다. next-step과
+**Gemini thinking wire는 모델 세대별로 다르다.** 숫자 `thinkingBudget`을 받는 2.5 계열에만
+`DAVI_GEMINI_THINKING_BUDGET`을 보내고, `thinkingLevel`을 쓰는 3.x와 알 수 없는 모델에는
+해당 필드를 생략해 모델 기본 level을 쓴다(#457). 2026-08-25 실제
+`gemini-3.5-flash-lite`·`gemini-3.6-flash`는 숫자 budget이 있으면 schema·fallback 모두 400,
+빼면 200이었다. 출력 상한은 세대와 무관하게 이 값만큼 reserve를 더한다. 따라서 2.5에서는
+thinking hard cap과 reserve이고, 3.x에서는 hidden thinking을 위한 reserve일 뿐이다. next-step과
 app-resolution은 기본 1824이고, slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다.
-대가로 thinking이 있는 모델의 dynamic thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로
-하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼 느슨해진다. 아직 측정하지 않았다 —
-추론 몫을 조정하려면 이 환경변수를 쓴다.
 
 ### 테스트 참가자 토큰
 
