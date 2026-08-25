@@ -93,6 +93,59 @@ class GuideSpeechGateTest {
     }
 
     /**
+     * 화면이 꺼지거나 전화가 들어와 문장 중간에 끊기면, 같은 안내가 다시 떠도 문구가 같다는
+     * 이유로 영영 안 읽히는 구멍이 생긴다 — 하필 소리에 기대는 사람이 반 토막만 듣는다.
+     */
+    @Test
+    fun `읽다 끊긴 안내는 다시 그려질 때 처음부터 읽는다`() {
+        gate.next("여기를 눌러 주세요")
+        gate.markInterrupted()
+        assertEquals("여기를 눌러 주세요", gate.next("여기를 눌러 주세요"))
+    }
+
+    @Test
+    fun `끊겼다 다시 읽은 뒤에는 또 읽지 않는다`() {
+        gate.next("여기를 눌러 주세요")
+        gate.markInterrupted()
+        gate.next("여기를 눌러 주세요")
+        assertNull(gate.next("여기를 눌러 주세요"))
+    }
+
+    /** 앞을 못 들은 사람에게 덧붙은 한마디만 주면 말이 안 된다. */
+    @Test
+    fun `끊긴 뒤 접미사가 붙으면 통째로 읽는다`() {
+        gate.next("여기를 눌러 주세요")
+        gate.markInterrupted()
+        assertEquals(
+            "여기를 눌러 주세요 한 번 더 해 주세요.",
+            gate.next("여기를 눌러 주세요\n한 번 더 해 주세요."),
+        )
+    }
+
+    @Test
+    fun `다시 듣기로 들려준 안내는 다시 그려질 때 또 읽지 않는다`() {
+        gate.next("여기를 눌러 주세요")
+        gate.markInterrupted()
+        assertEquals("여기를 눌러 주세요", gate.repeat())
+        assertNull(gate.next("여기를 눌러 주세요"))
+    }
+
+    /**
+     * 정규화를 정규식 대신 [Char.isWhitespace]로 하는 이유가 이 줄이다 — 기기 정규식(ICU)의
+     * `\s`는 NBSP를 접고 JVM의 `\s`는 안 접어, 이 테스트가 고정하는 것과 기기 동작이 갈린다.
+     * `isWhitespace`는 양쪽 다 `Character.isWhitespace() || isSpaceChar()`라 같은 정의를 본다.
+     */
+    @Test
+    fun `NBSP도 보통 공백으로 접는다`() {
+        assertEquals("첫 줄 둘째 줄", gate.next("첫 줄\u00A0둘째 줄"))
+    }
+
+    @Test
+    fun `앞뒤 공백은 턴다`() {
+        assertEquals("여기를 눌러 주세요", gate.next("\n  여기를 눌러 주세요  \n"))
+    }
+
+    /**
      * 억제(통화 중 등)는 **읽지 않는다**이지 **나중에 읽는다**가 아니다. 상태를 세워 두지 않으면
      * 통화가 끝난 뒤 접두 일치로 지나간 안내의 뒷부분만 읽는 조합이 생긴다 — 그래서 게이트는
      * 억제를 모른 채 늘 전진하고, 억제를 아는 쪽이 결과를 버린다.

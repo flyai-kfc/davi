@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 
@@ -67,6 +68,18 @@ class GuideSpeaker(context: Context) {
 
     private var focusHeld = false
 
+    /**
+     * 지금 한 문장을 읽는 중인가. [stop]이 **읽던 것을 끊었는지** 알아야 [GuideSpeechGate]에
+     * "안 읽은 것으로 되돌려라"를 전할 수 있다 — 아무것도 안 읽던 중의 [stop](세션 시작·
+     * 포커스만 정리)까지 되돌리면 같은 안내를 이유 없이 두 번 읽는다.
+     *
+     * **`@Volatile`인 이유는 지우는 쪽이 TTS 스레드이기 때문이다.** 세우는 것은 메인이다.
+     * 두 쓰기가 겹쳐 [stop]이 이미 끝난 발화를 "끊겼다"로 볼 수는 있는데, 그때 벌어지는 일은
+     * 같은 안내를 한 번 더 읽는 것뿐이라 [focusLock]까지 끌어오지 않는다.
+     */
+    @Volatile
+    private var speaking = false
+
     /** 직전에 로그로 남긴 억제 사유. 폴링마다 같은 줄을 찍지 않으려고 전이에서만 남긴다. */
     private var lastSuppression: String? = null
 
@@ -112,8 +125,10 @@ class GuideSpeaker(context: Context) {
      * 하게 두지 않는다 — 두 벌이 되면 갈린다.
      */
     fun repeat() {
-        val utterance = gate.repeat() ?: return
+        // **억제 판정이 먼저다.** [GuideSpeechGate.repeat]이 "들려줬다"로 상태를 옮기므로,
+        // 읽지도 못할 상황에서 먼저 부르면 끊겼던 안내가 조용히 읽은 것으로 적힌다.
         if (!canSpeak()) return
+        val utterance = gate.repeat() ?: return
         Log.i(TAG, "speech repeat")
         speakNow(utterance)
     }
@@ -124,13 +139,23 @@ class GuideSpeaker(context: Context) {
         gate.reset()
     }
 
-    /** 읽던 것을 끊는다(화면 꺼짐 등). 떠 있는 안내 자체는 [gate]가 그대로 들고 있다. */
+    /**
+     * 읽던 것을 끊는다(화면 꺼짐·포커스 상실·시스템의 피드백 중단 요청). 떠 있는 안내 자체는
+     * [gate]가 그대로 들고 있되, **문장 중간에 끊었다면 안 읽은 것으로 되돌린다** — 안 그러면
+     * 같은 안내가 다시 떠도 문구가 같다는 이유로 영영 안 읽히고, 하필 소리에 기대는 사람이
+     * 반 토막만 듣는다.
+     */
     fun stop() {
+        if (speaking) {
+            speaking = false
+            gate.markInterrupted()
+        }
         tts.stop()
         abandonFocus()
     }
 
     fun shutdown() {
+        speaking = false
         gate.reset()
         tts.shutdown()
         abandonFocus()
@@ -142,10 +167,21 @@ class GuideSpeaker(context: Context) {
         // 길이만 남기는 이유는 실기기 확인이 logcat 수동이라, 이 줄이 없으면 "소리가 안 났다"와
         // "읽을 것이 없어 안 읽었다"가 구별되지 않기 때문이다.
         Log.i(TAG, "speak len=${utterance.length}")
-        tts.speak(utterance, onDone = ::abandonFocus, onError = {
-            Log.w(TAG, "speech failed")
-            abandonFocus()
-        })
+        speaking = true
+        tts.speak(
+            utterance,
+            onDone = {
+                speaking = false
+                abandonFocus()
+            },
+            onError = {
+                // 발화 하나가 실패한 것이라 끊긴 것으로 되돌리지 않는다 — 되돌리면 못 읽는
+                // 문장을 다음 표시마다 다시 시도한다. 엔진 자체가 죽은 경우는 [canSpeak]가 막는다.
+                speaking = false
+                Log.w(TAG, "speech failed")
+                abandonFocus()
+            },
+        )
     }
 
     /**
@@ -158,8 +194,14 @@ class GuideSpeaker(context: Context) {
     /**
      * 지금 읽으면 안 되는 이유. 없으면 null.
      *
-     * 매 표시마다 두 번의 바인더 왕복이 있지만 표시는 초당 몇 회를 넘지 않고, **값을 캐시하면
-     * 통화가 시작된 뒤 한 문장이 그 위로 나가는 창이 생긴다** — 그쪽이 더 나쁘다.
+     * **바인더 왕복 둘이 도는 자리이지만 표시마다 도는 것은 아니다.** [speak]에서 `||`가
+     * 짧게 끊어, **읽을 것이 실제로 생겼을 때만** 여기까지 온다 — 재표시·강조 내림/되돌림·오류
+     * 재시도처럼 내용이 그대로인 호출은 [GuideSpeechGate]가 먼저 잘라낸다. 그래서 빈도는
+     * 폴링이 아니라 **안내가 바뀌는 빈도**(서버 왕복당 한 번)에 붙는다. 나머지 하나는 안내창
+     * 면 탭이라 사람 손 빠르기다.
+     *
+     * **값을 캐시하지 않는다.** 캐시하면 통화가 시작된 뒤 한 문장이 그 위로 나가는 창이
+     * 생기는데, 위 빈도에서 아낄 것보다 그쪽이 나쁘다.
      */
     private fun suppression(): String? {
         val reason = when {
@@ -186,8 +228,25 @@ class GuideSpeaker(context: Context) {
         }.getOrDefault(false)
     }
 
+    /**
+     * 통화 중인가. 셋을 본다 — 일반 통화(`MODE_IN_CALL`), 보이스톡 같은 VoIP
+     * (`MODE_IN_COMMUNICATION`), 벨이 울리는 중(`MODE_RINGTONE`).
+     *
+     * **`MODE_CALL_SCREENING`(API 30)도 넣는다** — 전화를 걸러 주는 동안은 시스템이 상대 소리를
+     * 다루는 중이라 안내가 얹히면 안 된다. 상수가 API 30이라 `minSdk 26`에서 `NewApi`
+     * (`lintVitalRelease`에서 fatal)에 걸리므로 버전으로 가른다.
+     *
+     * **`MODE_CALL_REDIRECT`·`MODE_COMMUNICATION_REDIRECT`(API 31)는 넣지 않는다** — 통화를
+     * 다른 앱으로 넘기는 **연결 단계**의 상태라 사용자가 통화 중이라는 뜻이 아니고, 실제로
+     * 통화가 서면 위 둘 중 하나로 넘어간다.
+     */
     private fun inCall(): Boolean {
         val mode = audioManager?.mode ?: return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            mode == AudioManager.MODE_CALL_SCREENING
+        ) {
+            return true
+        }
         return mode == AudioManager.MODE_IN_CALL ||
             mode == AudioManager.MODE_IN_COMMUNICATION ||
             mode == AudioManager.MODE_RINGTONE
