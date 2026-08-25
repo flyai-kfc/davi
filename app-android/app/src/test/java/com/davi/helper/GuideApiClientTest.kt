@@ -67,6 +67,7 @@ class GuideApiClientTest {
         assertTrue(body.contains("\"label\":\"•••\""))
         assertTrue(body.contains("\"editable\":true"))
         assertTrue(body.contains("\"focused\":true"))
+        assertTrue(body.contains("\"check_state\":\"partial\""))
         assertTrue(body.contains("\"ime_visible\":true"))
         assertTrue(body.contains("\"steps\""))
         assertTrue(body.contains("\"structure_signature\":\"${"b".repeat(64)}\""))
@@ -299,6 +300,7 @@ class GuideApiClientTest {
                     clickable = true,
                     editable = true,
                     focused = true,
+                    checkState = CheckState.PARTIAL,
                     bounds = listOf(1, 2, 3, 4),
                 ),
             ),

@@ -19,6 +19,7 @@ from .llm import LlmClient
 from .masking import MaskingPolicy, active_masking_policy, mask_text
 from .schemas import (
     ActionType,
+    CheckState,
     CompletionEvidenceKind,
     CompletionFeedbackStatus,
     CompletionVerdict,
@@ -26,6 +27,7 @@ from .schemas import (
     GuideAction,
     NextStepRequest,
     NextStepResponse,
+    ObservableState,
     Screen,
     SwipeDirection,
     UiElement,
@@ -227,7 +229,7 @@ def _keep_observable_expected_target_state(action: GuideAction, screen: Screen) 
         action.action_type is not ActionType.TAP
         or target is None
         or target not in visible_elements(screen.elements)
-        or getattr(target, expected.attribute.value) is None
+        or _observed_boolean_state(target, expected.attribute) is None
     ):
         return action.model_copy(update={"expected_target_state": None})
     return action
@@ -689,7 +691,7 @@ def _classify_completion(
     if element is None or not _evidence_quotes_element(action.evidence, element):
         return CompletionVerdict.INCONCLUSIVE
     if claim.state is not None:
-        observed = getattr(element, claim.state.attribute.value)
+        observed = _observed_boolean_state(element, claim.state.attribute)
         if observed is None or observed is not claim.state.value:
             return CompletionVerdict.INCONCLUSIVE
 
@@ -744,8 +746,26 @@ def _previous_expected_state_is_opposite(req: NextStepRequest) -> bool:
     # 전후에 이미 달라졌다면 실패가 아니라 관측 불가다.
     if step.target_label is None or element.label != step.target_label:
         return False
-    observed = getattr(element, expected.attribute.value)
+    observed = _observed_boolean_state(element, expected.attribute)
     return observed is not None and observed is not expected.value
+
+
+def _observed_boolean_state(element: UiElement, attribute: ObservableState) -> bool | None:
+    """기대 상태의 bool 계약으로 현재 관측을 안전하게 투영한다(#297 · C25).
+
+    체크 상태의 ``partial``은 관측 전용이고 ``unavailable``은 상태를 모른다는 뜻이다. 둘을
+    checked/unchecked 어느 쪽에도 붙이지 않아, 기대 상태 보존·완료 근거·직전 조작 반대 판정이
+    모두 같은 fail-closed 경계를 쓴다.
+    """
+
+    if attribute is ObservableState.CHECKED:
+        return {
+            CheckState.CHECKED: True,
+            CheckState.UNCHECKED: False,
+            CheckState.PARTIAL: None,
+            CheckState.UNAVAILABLE: None,
+        }[element.check_state]
+    return getattr(element, attribute.value)
 
 
 def _evidence_quotes_element(evidence: str, element: UiElement) -> bool:

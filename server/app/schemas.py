@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -97,6 +97,19 @@ class ObservableState(StrEnum):
     SHOWING_HINT_TEXT = "showing_hint_text"
 
 
+class CheckState(StrEnum):
+    """현재 접근성 요소에서 관측한 체크 상태(#297 · C25).
+
+    ``partial``은 관측 전용이다. 조작 뒤의 기대 상태는 ``ExpectedTargetState``가 계속
+    ``checked``의 bool만 허용하므로 부분 선택을 목표 상태로 표현할 수 없다.
+    """
+
+    CHECKED = "checked"
+    UNCHECKED = "unchecked"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
 class CompletionFeedbackStatus(StrEnum):
     """완료 확인 UI에서 사용자가 서버에 돌려주는 명시적 판정."""
 
@@ -122,8 +135,8 @@ class UiElement(BaseModel):
     #   None = 낡은 앱이 안 보냄(미관측). **False로 기본값을 두지 않는다** — 침묵을
     #   "비활성/꺼짐"으로 읽으면 안내가 통째로 막힌다(C10과 같은 세 상태 규약).
     enabled: bool | None = None
-    # 켤 수 없는 요소는 None이다. 그 False는 "꺼짐"이 아니라 해당 없음이다.
-    checked: bool | None = None
+    # Android 16의 부분 선택을 보존한다(C25). unavailable은 비-checkable·미관측이다.
+    check_state: CheckState = CheckState.UNAVAILABLE
     selected: bool | None = None
     # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
     showing_hint_text: bool | None = None
@@ -142,6 +155,28 @@ class UiElement(BaseModel):
     scroll_axis: ScrollAxis | None = None
     next_swipe_direction: SwipeDirection | None = None
     prev_swipe_direction: SwipeDirection | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_legacy_checked_input(cls, data: Any) -> Any:
+        """구 APK의 nullable bool을 새 단일 enum 입력으로만 접는다(C25).
+
+        서버 내부·출력 모델에는 ``checked`` 필드를 다시 만들지 않는다. 새 필드가 함께 오면
+        ``check_state``가 이기며, 구 입력은 서버 우선 배포를 위한 `/v1` 호환 경계에서만 읽는다.
+        """
+
+        if not isinstance(data, dict) or "check_state" in data or "checked" not in data:
+            return data
+        converted = dict(data)
+        legacy_checked = converted.pop("checked")
+        converted["check_state"] = (
+            CheckState.CHECKED
+            if legacy_checked is True
+            else CheckState.UNCHECKED
+            if legacy_checked is False
+            else CheckState.UNAVAILABLE
+        )
+        return converted
 
 
 class Screen(BaseModel):

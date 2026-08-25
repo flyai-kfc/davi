@@ -122,7 +122,7 @@ object UiTreeSerializer {
      * `ms`를 나눠 볼 분모가 [visits]다.
      *
      * @param visits [walk]가 들어간 노드 수. **`getChild()` 총 호출 수가 아니다** — 가림 판정
-     *   ([hasPaintedContent])과 라벨 병합([collectDescendantText]·[descendantCheckedState])이
+     *   ([hasPaintedContent])과 라벨 병합([collectDescendantText]·[descendantCheckState])이
      *   내는 IPC는 이 값 밖이다. 그 셋의 비율을 알아야 하면 보정 계측을 다시 붙여야 한다.
      * @param cuts [MAX_HIDDEN_RUN]에 걸려 끊은 서브트리 수. **잎은 뺀다 — 잎만 뺀다.**
      *   자식이 없으면 아무것도 안 버린다는 것은 확실하지만, 자식이 있는데 그 서브트리가 아무것도
@@ -232,7 +232,7 @@ object UiTreeSerializer {
         // **끊는 자리는 하나이고 근거가 다르다** — 아래 [exceedsHiddenChain]은 노드의 자기 보고가
         // 아니라 **안 보임이 연속된 길이**를 본다. 값의 근거는 [MAX_HIDDEN_RUN]에 있다.
         // **한 노드에서 바로 끊는 자리가 둘 남아 있고, 그대로 두기로 했다**(#382) — 라벨 병합·상태
-        // hoist([collectDescendantText]·[descendantCheckedState]). 같은 규칙으로 고쳤을 때 값이
+        // hoist([collectDescendantText]·[descendantCheckState]). 같은 규칙으로 고쳤을 때 값이
         // 달라지는 요소가 **20개 화면에서 0개**였다(2026-08-25 SM-S921N). 병합은 모든 화면에서
         // 돌았고(4~32회) 네이버 앱 홈에서는 완화 경로가 안 보이는 자식을 실제로 만나 내려갔는데도
         // (4회) label과 상태가 그대로였다 — 발화하려면 **병합 중인 노드 안**의 안 보이는 노드
@@ -296,13 +296,13 @@ object UiTreeSerializer {
             val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
             // 라벨을 흡수했으면 상태도 함께 올린다. 그러지 않으면 스위치가 든 행에서 켬/끔이
             // 통째로 사라진다 — 자식 스위치는 흡수돼 안 나가고, 행 자신은 checkable이 아니라
-            // null이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
-            val checked = if (merge) mergedCheckedState(node) else ownCheckedState(node)
+            // unavailable이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
+            val checkState = if (merge) mergedCheckState(node) else checkStateOf(node)
             // 이름 없는 클릭 노드는 내보내지 않는다. 모델이 가리킬 수단이 없어 잡음만 된다
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
             if (label.isNotBlank() || node.isEditable) {
-                ctx.elements.add(element(node, label, ctx, checked = checked, obscured = occluded))
+                ctx.elements.add(element(node, label, ctx, checkState = checkState, obscured = occluded))
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
@@ -503,7 +503,7 @@ object UiTreeSerializer {
         ctx: Ctx,
         role: String? = null,
         clickable: Boolean? = null,
-        checked: Boolean? = null,
+        checkState: CheckState? = null,
         obscured: Boolean = false,
     ): UiElement {
         ctx.counter++
@@ -529,7 +529,7 @@ object UiTreeSerializer {
             // 여기부터가 "지금 어떤 상태인가"다. clickable/editable은 뷰의 설정값이라 이걸 대신하지
             // 못한다 — 비활성 버튼도 clickable=true로 오고, 스위치를 켜도 label이 그대로다(#271).
             enabled = node.isEnabled,
-            checked = checked ?: ownCheckedState(node),
+            checkState = checkState ?: checkStateOf(node),
             selected = node.isSelected,
             showingHintText = hintTextState(
                 editable = node.isEditable,
@@ -699,7 +699,7 @@ object UiTreeSerializer {
      * 위 게이트를 Android 타입 없이 고정하기 위한 순수 함수.
      *
      * **게이트 자체에 테스트가 없으면 `>= 35`로 잘못 써도 초록이다**(PR #384 리뷰).
-     * 이 파일의 `resolveAxis`·`hoistedCheckedState`와 같은 컨벤션이다.
+     * 이 파일의 `resolveAxis`·`hoistedCheckState`와 같은 컨벤션이다.
      *
      * **[value]가 람다인 것이 이 함수의 요점이다.** 값으로 받으면 코틀린이 인자를 먼저 평가해
      * `getSupplementalDescription()`이 게이트 **밖에서** 호출되고, API 36 미만에서는 그 메서드가
@@ -711,9 +711,47 @@ object UiTreeSerializer {
         value: () -> CharSequence?,
     ): CharSequence? = if (sdkInt >= Build.VERSION_CODES.BAKLAVA) value() else null
 
-    /** 이 노드 자신의 켬/끔. 자손은 보지 않는다. */
-    private fun ownCheckedState(node: AccessibilityNodeInfo): Boolean? =
-        checkedState(checkable = node.isCheckable, checked = node.isChecked)
+    /** 이 노드 자신의 체크 상태. 자손은 보지 않는다. */
+    @SuppressLint("NewApi")
+    internal fun checkStateOf(node: AccessibilityNodeInfo): CheckState =
+        checkStateFor(
+            sdkInt = Build.VERSION.SDK_INT,
+            checkable = node.isCheckable,
+            modernState = { node.checked },
+            legacyChecked = { legacyChecked(node) },
+        )
+
+    /** API 36 미만 호환 경계. 새 API 경로에서는 호출되지 않는다. */
+    @Suppress("DEPRECATION")
+    private fun legacyChecked(node: AccessibilityNodeInfo): Boolean = node.isChecked
+
+    /**
+     * API 게이트와 non-checkable 단락을 Android 노드 없이 고정하기 위한 순수 경계.
+     *
+     * 두 상태 판독기를 람다로 받는 이유는 [supplementalDescriptionFor]와 같다. 값으로 받으면
+     * API 36 미만에서도 `getChecked()`가 인자 평가 중 먼저 호출돼 `NoSuchMethodError`가 난다.
+     */
+    internal fun checkStateFor(
+        sdkInt: Int,
+        checkable: Boolean,
+        modernState: () -> Int,
+        legacyChecked: () -> Boolean,
+    ): CheckState {
+        if (!checkable) return CheckState.UNAVAILABLE
+        return if (sdkInt >= Build.VERSION_CODES.BAKLAVA) {
+            checkState(modernState())
+        } else {
+            if (legacyChecked()) CheckState.CHECKED else CheckState.UNCHECKED
+        }
+    }
+
+    /** Android 16 `AccessibilityNodeInfo.getChecked()`의 네 가지 결과를 wire 상태로 옮긴다. */
+    internal fun checkState(platformState: Int): CheckState = when (platformState) {
+        AccessibilityNodeInfo.CHECKED_STATE_TRUE -> CheckState.CHECKED
+        AccessibilityNodeInfo.CHECKED_STATE_FALSE -> CheckState.UNCHECKED
+        AccessibilityNodeInfo.CHECKED_STATE_PARTIAL -> CheckState.PARTIAL
+        else -> CheckState.UNAVAILABLE
+    }
 
     /**
      * 라벨을 흡수한 노드의 켬/끔. 자기 것이 있으면 그것이고, 없으면 흡수한 자손에서 찾는다.
@@ -721,12 +759,12 @@ object UiTreeSerializer {
      * 행 전체가 clickable인 설정 목록에서 스위치 자식이 clickable이 아니면, 그 자식은 흡수돼
      * 별도 요소로 나가지 않는다. 그때 상태를 행으로 올리지 않으면 화면에서 켬/끔이 사라진다.
      */
-    private fun mergedCheckedState(node: AccessibilityNodeInfo): Boolean? =
-        hoistedCheckedState(ownCheckedState(node), descendantCheckedState(node, 0))
+    private fun mergedCheckState(node: AccessibilityNodeInfo): CheckState =
+        hoistedCheckState(checkStateOf(node), descendantCheckState(node, 0))
 
     /** 위 병합 규칙을 Android 타입 없이 고정하기 위한 순수 함수. 자기 것이 언제나 이긴다. */
-    internal fun hoistedCheckedState(own: Boolean?, descendant: Boolean?): Boolean? =
-        own ?: descendant
+    internal fun hoistedCheckState(own: CheckState, descendant: CheckState): CheckState =
+        own.takeUnless { it == CheckState.UNAVAILABLE } ?: descendant
 
     /**
      * 라벨 병합과 같은 깊이로 자손을 훑되, **clickable 자손은 자기 요소로 나갈 때만** 건너뛴다.
@@ -740,17 +778,19 @@ object UiTreeSerializer {
      * 그 `Switch`는 `clickable=true checkable=true`인데 text·content-desc가 **둘 다 없다.**
      * 라벨은 TextView에서 행으로 합쳐지는데 상태만 갈 곳이 없었다.
      */
-    private fun descendantCheckedState(node: AccessibilityNodeInfo, depth: Int): Boolean? {
-        if (depth >= MAX_MERGE_DEPTH) return null
+    private fun descendantCheckState(node: AccessibilityNodeInfo, depth: Int): CheckState {
+        if (depth >= MAX_MERGE_DEPTH) return CheckState.UNAVAILABLE
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             if (!child.isVisibleToUser) continue
             if (child.isClickable && emitsOwnElement(mergedLabel(child), child.isEditable)) continue
-            ownCheckedState(child)?.let { return it }
+            checkStateOf(child).takeUnless { it == CheckState.UNAVAILABLE }?.let { return it }
             if (child.isEditable) continue
-            descendantCheckedState(child, depth + 1)?.let { return it }
+            descendantCheckState(child, depth + 1)
+                .takeUnless { it == CheckState.UNAVAILABLE }
+                ?.let { return it }
         }
-        return null
+        return CheckState.UNAVAILABLE
     }
 
     /**
@@ -759,13 +799,6 @@ object UiTreeSerializer {
      */
     internal fun emitsOwnElement(label: String, editable: Boolean): Boolean =
         editable || label.isNotBlank()
-
-    /**
-     * 켤 수 없는 요소의 `isChecked=false`는 "꺼짐"이 아니라 **해당 없음**이다.
-     * 그 둘을 섞으면 모델이 화면의 모든 요소를 꺼진 토글로 읽는다.
-     */
-    internal fun checkedState(checkable: Boolean, checked: Boolean): Boolean? =
-        if (checkable) checked else null
 
     /** 입력칸이 아닌 요소에는 hint 개념이 없다. 위와 같은 이유로 `null`을 돌려준다. */
     internal fun hintTextState(editable: Boolean, showingHintText: Boolean): Boolean? =

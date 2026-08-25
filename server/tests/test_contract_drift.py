@@ -27,6 +27,7 @@ from app.schemas import (
     ActionType,
     AppCandidateAvailability,
     AppResolutionStatus,
+    CheckState,
     ClarificationAnswerSource,
     CompletionEvidenceKind,
     CompletionFeedbackStatus,
@@ -63,6 +64,7 @@ _ENUM_PAIRS = (
     ("CompletionVerdict", CompletionVerdict),
     ("CompletionEvidenceKind", CompletionEvidenceKind),
     ("ObservableState", ObservableState),
+    ("CheckState", CheckState),
     ("CompletionFeedbackStatus", CompletionFeedbackStatus),
     ("ConversationRole", ConversationRole),
     ("ClarificationAnswerSource", ClarificationAnswerSource),
@@ -254,6 +256,22 @@ def test_input_state_fields_exist_on_both_sides(contract_source: str) -> None:
     assert {"editable", "focused"} <= set(UiElement.model_fields)
     # `Screen.ime_visible`의 양쪽 존재는 아래 두 테스트가 덮는다(Kotlin 쪽은 wire 이름 순회,
     # Python 쪽은 필드 집합 고정) — 여기서 손으로 다시 세지 않는다.
+
+
+def test_check_state_replaces_nullable_checked_on_both_sides(contract_source: str) -> None:
+    """부분 선택을 bool로 접거나 구 필드를 병행하는 계약 드리프트를 막는다(#297 · C25)."""
+
+    element_block = _kotlin_class_body(contract_source, "UiElement")
+    expected_declaration = (
+        '@SerialName("check_state") val checkState: CheckState = CheckState.UNAVAILABLE'
+    )
+    assert expected_declaration in element_block
+    assert "val checked:" not in element_block
+
+    from app.schemas import UiElement
+
+    assert "check_state" in UiElement.model_fields
+    assert "checked" not in UiElement.model_fields
 
 
 def test_screen_wire_names_match_the_kotlin_serial_names(contract_source: str) -> None:

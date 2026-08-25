@@ -50,7 +50,7 @@ def screen_signature(screen: Screen) -> str:
                 # 행동 상태(C18). **이게 없으면 스위치를 켜도 같은 서명이 나온다** — label에
                 # 입력 원문도 토글 상태도 들어가지 않으므로 이 자리가 유일한 변화 신호다(#271).
                 "enabled": element.enabled,
-                "checked": element.checked,
+                "check_state": element.check_state.value,
                 "selected": element.selected,
                 "showing_hint_text": element.showing_hint_text,
                 # 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 앱 시그니처

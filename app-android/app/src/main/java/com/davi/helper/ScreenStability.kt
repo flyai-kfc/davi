@@ -50,7 +50,7 @@ object ScreenSignature {
                 // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
                 // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
                 append(state(element.enabled, on = 'a', off = 'x'))
-                append(state(element.checked, on = 'c', off = 'u'))
+                append(checkState(element.checkState))
                 append(state(element.selected, on = 's', off = 'n'))
                 append(state(element.showingHintText, on = 'h', off = 'v'))
                 // 모달이 뜨고 걷히면 같은 요소의 가림 여부가 뒤집힌다. 보통은 요소 수도 함께
@@ -91,6 +91,14 @@ object ScreenSignature {
         true -> on
         false -> off
         null -> '-'
+    }
+
+    /** 체크 네 상태를 모두 다른 글자로 남긴다. `partial`을 꺼짐이나 미관측에 접지 않는다. */
+    private fun checkState(value: CheckState): Char = when (value) {
+        CheckState.CHECKED -> 'c'
+        CheckState.UNCHECKED -> 'u'
+        CheckState.PARTIAL -> 'p'
+        CheckState.UNAVAILABLE -> '-'
     }
 
     /**
