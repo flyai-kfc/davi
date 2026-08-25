@@ -1455,11 +1455,25 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 새 질문이 왔다. **질문마다 읽어 준다**(2026-08-26, 실기기 확인에서 뒤집었다).
+     *
+     * 한때 첫 문항만 읽었고 근거는 「뒤 문항은 같은 화면에서 즉시 선택 가능해야 한다」였는데,
+     * **낭독이 선택을 막지 않는다** — 읽는 동안에도 보기 버튼은 다 보이고 눌린다. 근거가
+     * 요구하지 않는 침묵이었다.
+     *
+     * 그리고 #434의 접기가 들어오면서 그 침묵의 대가가 커졌다. 안 읽는 질문은
+     * `speaking = false`라 **처음부터 접힌 채로 뜨고**, 그러면 어르신이 두 번째 질문을
+     * **읽을 수도 들을 수도 없다** — 손잡이를 눌러야만 원문이 나온다. 예전에는 안 읽어 줘도
+     * 글자가 화면에 그냥 있었다.
+     *
+     * **여기는 새 질문이 올 때만 불린다.** 직접 말하기가 무발화로 실패해 같은 질문으로
+     * 돌아가는 갈래는 [handleSpeechError]가 `setState`로 따로 처리하므로, 질문이 반복해서
+     * 읽히지 않는다.
+     */
     private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
-        val speaking = shouldSpeakClarification(outcome)
-        setState(ConversationUiState.Clarifying(outcome, speaking = speaking))
+        setState(ConversationUiState.Clarifying(outcome, speaking = true))
         GuideTelemetry.voiceState("clarification_question")
-        if (!speaking) return
         // **끝 신호가 안 와도 접힌다**(#452). 카드가 접히는 유일한 계기가 이 콜백인데, TTS
         // 엔진이 말하다 죽거나 onDone을 안 부르면 그 신호가 영영 안 온다 — 그러면 카드가
         // 펼친 채로 굳어 보기가 화면 밖으로 밀린다. 상한의 근거는 [speechGuardMillis]에 있다.

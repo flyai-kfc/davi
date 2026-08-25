@@ -437,6 +437,3 @@ fun stateForOutcome(outcome: VoiceDialogueSession.Outcome): ConversationUiState 
     VoiceDialogueSession.Outcome.InvalidResponse -> ConversationUiState.Failed
 }
 
-/** 질문 계획은 첫 문항만 TTS로 읽는다. 뒤 문항은 같은 화면에서 즉시 선택 가능해야 한다. */
-fun shouldSpeakClarification(outcome: VoiceDialogueSession.Outcome.Clarify): Boolean =
-    outcome.questionIndex == 0
