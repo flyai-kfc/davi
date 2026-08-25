@@ -629,7 +629,7 @@ class ConversationActivity : AppCompatActivity() {
         if (sparkle.visibility == View.GONE || sparkle.width == 0) return
         val at = IntArray(2).also { sparkle.getLocationInWindow(it) }
         val hit = listOf(binding.homeTitle, binding.homeTitleAccent).any { text ->
-            if (text.visibility != View.VISIBLE || text.width == 0) return@any false
+            if (!text.isShown || text.width == 0) return@any false
             val t = IntArray(2).also { text.getLocationInWindow(it) }
             at[0] < t[0] + text.width && t[0] < at[0] + sparkle.width &&
                 at[1] < t[1] + text.height && t[1] < at[1] + sparkle.height
@@ -665,9 +665,11 @@ class ConversationActivity : AppCompatActivity() {
      */
     private fun updateCaneShrink() {
         val cane = binding.homeCane
-        if (cane.visibility != View.VISIBLE ||
-            binding.homeBubble.visibility != View.VISIBLE ||
-            binding.micSlot.visibility != View.VISIBLE ||
+        // **isShown이다** — 부모가 GONE이어도 자기 visibility는 VISIBLE로 남고, 그 뷰의
+        // 좌표는 마지막 프레임 값이라 이미 없는 것을 기준으로 재게 된다.
+        if (!cane.isShown ||
+            !binding.homeBubble.isShown ||
+            !binding.micSlot.isShown ||
             binding.homeBubble.height == 0
         ) {
             applyCaneShrink(0)
@@ -1595,14 +1597,17 @@ class ConversationActivity : AppCompatActivity() {
         val chip = binding.questionProgress
         val close = binding.btnClose
         val card = binding.cardQuestionWrap
-        if (!model.clarificationVisible || card.height == 0) {
+        // **isShown이다 — visibility가 아니다.** getVisibility()는 자기 플래그만 돌려줘서
+        // 부모가 GONE이어도 VISIBLE로 나오고, GONE 자식은 배치를 건너뛰어 **마지막 프레임의
+        // 좌표가 그대로 남는다.** 그러면 이미 화면에 없는 뷰의 옛 자리에 맞춰 걸치게 된다.
+        if (!model.clarificationVisible || !card.isShown || card.height == 0) {
             if (chip.translationY != 0f) chip.translationY = 0f
             if (close.translationY != 0f) close.translationY = 0f
             return
         }
         val cardTop = IntArray(2).also { card.getLocationInWindow(it) }[1].toFloat()
         // ✕는 카드 상단선에 **중심**을 맞춘다 — 카드에 걸린 것으로 읽힌다.
-        val closeTop = if (close.visibility == View.VISIBLE && close.height > 0) {
+        val closeTop = if (close.isShown && close.height > 0) {
             val topNow = IntArray(2).also { close.getLocationInWindow(it) }[1].toFloat()
             val wanted = (cardTop - close.height / 2f) - (topNow - close.translationY)
             if (close.translationY != wanted) close.translationY = wanted
@@ -1615,7 +1620,7 @@ class ConversationActivity : AppCompatActivity() {
         val circleInset = resources.getDimensionPixelSize(R.dimen.davi_close_circle_inset)
         // **칩은 ✕의 맨 위에 수평을 맞춘다 — 중심이 아니다.** 둘은 높이가 달라(✕ 56dp,
         // 칩은 글꼴 배율을 따라 자란다) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
-        if (chip.visibility == View.VISIBLE && chip.height > 0 && closeTop != null) {
+        if (chip.isShown && chip.height > 0 && closeTop != null) {
             val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
             val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
             if (chip.translationY != wanted) chip.translationY = wanted
