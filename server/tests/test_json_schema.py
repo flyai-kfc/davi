@@ -56,9 +56,11 @@ def test_property_order_follows_declaration_order():
         "expected_result",
         "screen_summary",
         "evidence",
+        "completion_evidence",
         "action_type",
         "direction",
         "target_node_id",
+        "expected_target_state",
         "input_text",
         "instruction",
     ]

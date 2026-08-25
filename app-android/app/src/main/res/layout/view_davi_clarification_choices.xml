@@ -13,6 +13,25 @@
 
   넘칠 때(2.0x 배율·긴 질문)만 이 ScrollView가 스크롤한다 — 질문 카드의 176dp 하한과
   한 줄을 먼저 보존한다는 결정(#326)의 구현이다.
+
+  **라벨은 왼쪽 정렬이고 좌우 여백이 다르다**(2026-08-25). 가운데 정렬은 여백이 좌우 대칭이라야
+  성립하는데, 그러면 아이콘 폭(76dp)을 **양쪽에서** 빼게 돼 글자가 쓸 폭이 120dp만 남는다.
+  20sp가 배율 2.0이면 한 글자 36dp라 **세 글자**가 한계다 — 「문자 메시지」·「인스타그램」·
+  「직접 말하기」가 전부 두 줄로 접혔고, 버튼이 고정 높이라 넘친 만큼 잘렸다(320x693dp 실측).
+  오른쪽을 14dp(davi_choice_label_inset_end)로 줄여 182dp를 확보하니 넷 다 한 줄이 됐다.
+
+  2026-08-23에 왼쪽 정렬을 한 번 되돌린 적이 있는데(「축이 둘이 된다」) 그건 기본 배율만 보고
+  내린 판정이었다. **큰 배율에서 글자가 잘리는 쪽이 더 나쁘다.**
+
+  **아이콘이 있든 없든 라벨의 첫 글자는 제자리다** — 왼쪽 여백이 아이콘 폭으로 고정이라
+  슬롯이 접혀도(「시간 정하기」처럼 앱이 아닌 답) 넷의 줄이 안 흐트러진다.
+
+  **버튼 높이는 minHeight다** — 앱 이름은 PackageManager에서 오는 실제 이름이라 길이를 우리가
+  정할 수 없다. 더 긴 이름이 오면 잘리는 대신 버튼이 자란다. **위아래 안쪽 여백을 함께 준다**
+  (davi_shortcut_row_padding_vertical 12dp) — 안 주면 두 줄이 되는 순간 자식이 TextView 하나뿐이라
+  버튼 높이가 글자 높이 그대로가 되고 **글자가 둥근 모서리에 붙는다.** MA-4가 같은 변경에서
+  실기기로 본 것이고(2026-08-24, #396) 그때 만든 토큰을 그대로 쓴다. 한 줄에서는 아이콘
+  48 + 12 + 12 = 72라 minHeight에 묻혀 배치가 안 바뀐다.
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -32,7 +51,10 @@
         <FrameLayout
             android:id="@+id/btn_option_1"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
             android:clickable="true"
@@ -55,26 +77,15 @@
                 android:visibility="gone"
                 android:importantForAccessibility="no" />
 
-            <!--
-              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
-              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
-              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
-
-              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
-              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
-              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
-
-              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
-              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
-            -->
+            <!-- 왼쪽 정렬·좌우 비대칭 여백의 근거는 이 파일 머리 주석에 있다. -->
             <TextView
                 android:id="@+id/option_1_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:paddingStart="@dimen/davi_choice_label_inset_icon"
-                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_end"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
@@ -83,7 +94,10 @@
         <FrameLayout
             android:id="@+id/btn_option_2"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_gap"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
@@ -107,26 +121,15 @@
                 android:visibility="gone"
                 android:importantForAccessibility="no" />
 
-            <!--
-              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
-              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
-              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
-
-              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
-              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
-              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
-
-              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
-              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
-            -->
+            <!-- 왼쪽 정렬·좌우 비대칭 여백의 근거는 이 파일 머리 주석에 있다. -->
             <TextView
                 android:id="@+id/option_2_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:paddingStart="@dimen/davi_choice_label_inset_icon"
-                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_end"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
@@ -135,7 +138,10 @@
         <FrameLayout
             android:id="@+id/btn_option_3"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_gap"
             android:background="@drawable/bg_davi_choice_option"
             android:elevation="@dimen/davi_choice_elevation"
@@ -159,26 +165,15 @@
                 android:visibility="gone"
                 android:importantForAccessibility="no" />
 
-            <!--
-              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
-              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
-              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
-
-              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
-              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
-              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
-
-              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
-              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
-            -->
+            <!-- 왼쪽 정렬·좌우 비대칭 여백의 근거는 이 파일 머리 주석에 있다. -->
             <TextView
                 android:id="@+id/option_3_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:paddingStart="@dimen/davi_choice_label_inset_icon"
-                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_end"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:textAppearance="@style/TextAppearance.Davi.ChoiceLabel" />
@@ -187,7 +182,10 @@
         <FrameLayout
             android:id="@+id/btn_direct_speak"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/davi_confirm_choice_height"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/davi_confirm_choice_height"
+            android:paddingTop="@dimen/davi_shortcut_row_padding_vertical"
+            android:paddingBottom="@dimen/davi_shortcut_row_padding_vertical"
             android:layout_marginTop="@dimen/davi_choice_group_gap"
             android:background="@drawable/bg_davi_choice_primary"
             android:elevation="@dimen/davi_choice_primary_elevation"
@@ -214,26 +212,15 @@
                 android:scaleType="fitCenter"
                 android:importantForAccessibility="no" />
 
-            <!--
-              **라벨은 다비 배지와 같은 세로 중심선에 선다**(시안 표 「가로 중앙」).
-              좌우 여백이 같아야 그 선에 맞는다 — 오른쪽에 뒤판 노출을 더해 「본체 기준」으로
-              맞추면 화면 중심에서 7dp 왼쪽으로 밀린다.
-
-              왼쪽 정렬을 시험했다가 되돌렸다(2026-08-23) — 시안 이미지에서 세 라벨의 첫
-              글자가 같은 x에 서 보였는데, 실기기에서는 **글자가 한쪽으로 쏠려** 보였다.
-              배지·카드·마이크가 전부 화면 중심에 있는 화면이라 라벨만 왼쪽에 붙으면 축이 둘이 된다.
-
-              **아이콘이 있든 없든 라벨은 제자리다** — 여백이 좌우 대칭이라 슬롯이 접혀도
-              중심선이 안 움직인다. 앱이 아닌 답(「시간 정하기」)이 섞여도 목록이 흐트러지지 않는다.
-            -->
+            <!-- 왼쪽 정렬·좌우 비대칭 여백의 근거는 이 파일 머리 주석에 있다. -->
             <TextView
                 android:id="@+id/direct_speak_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:paddingStart="@dimen/davi_choice_label_inset_icon"
-                android:paddingEnd="@dimen/davi_choice_label_inset_icon"
+                android:paddingEnd="@dimen/davi_choice_label_inset_end"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:text="@string/clarification_direct_speak"

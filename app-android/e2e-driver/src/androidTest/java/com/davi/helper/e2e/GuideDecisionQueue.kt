@@ -107,6 +107,9 @@ internal class GuideDecisionQueue(private val context: Context) : Closeable {
         targetClickable = getBooleanExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, false),
         targetEditable = getBooleanExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, false),
         verified = getBooleanExtra(GuideE2eContract.EXTRA_VERIFIED, false),
+        completionVerdict = GuidedCompletionVerdict.fromWire(
+            getStringExtra(GuideE2eContract.EXTRA_COMPLETION_VERDICT),
+        ),
         requestJson = unzip(GuideE2eContract.EXTRA_REQUEST_GZIP),
         responseJson = unzip(GuideE2eContract.EXTRA_RESPONSE_GZIP),
     )

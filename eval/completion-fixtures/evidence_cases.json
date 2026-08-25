@@ -1,5 +1,5 @@
 {
-  "dataset_version": 2,
+  "dataset_version": 3,
   "description": "완료 신뢰도 정책을 비교하는 개인정보 없는 실기기 참조·eval 사례",
   "cases": [
     {
@@ -19,6 +19,7 @@
       "evidence": "카카오톡이 열렸습니다",
       "evidence_label": "카카오톡",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -38,6 +39,7 @@
       "evidence": "Wi-Fi, 사용 중, 테스트망 연결됨",
       "evidence_label": "Wi-Fi 사용 중 테스트망 연결됨",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -50,6 +52,7 @@
       "evidence": "홈 화면에 전화가 보입니다",
       "evidence_label": "전화",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n5", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -69,6 +72,7 @@
       "evidence": "화면에 채팅 목록이 보입니다",
       "evidence_label": "채팅",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -88,6 +92,7 @@
       "evidence": "오전 8시 알람 사용 중입니다",
       "evidence_label": "오전 8시 알람 사용 중",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -107,6 +112,7 @@
       "evidence": "사진들이 보입니다",
       "evidence_label": "사진",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -126,6 +132,7 @@
       "evidence": "카메라라고 표시되어 있습니다",
       "evidence_label": "카메라",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -145,6 +152,7 @@
       "evidence": "직전 화면은 시계였습니다",
       "evidence_label": "시계",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -164,6 +172,7 @@
       "evidence": "설정에서는 상태를 확인했습니다",
       "evidence_label": "설정",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "inconclusive"
     },
     {
@@ -183,6 +192,7 @@
       "evidence": "무선 인터넷이 켜져 있습니다",
       "evidence_label": "Wi-Fi 사용 중",
       "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
       "expected_verdict": "verified"
     },
     {
@@ -203,7 +213,7 @@
       "evidence": "채팅방 목록이 보입니다",
       "evidence_label": "채팅방 목록",
       "expected_verified": false,
-      "expected_verdict": "contradicted"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-empty-screen",
@@ -258,7 +268,7 @@
       "evidence": "저장하고 목록으로 돌아왔습니다",
       "evidence_label": "저장",
       "expected_verified": false,
-      "expected_verdict": "contradicted"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-negated-visible-label",
@@ -277,6 +287,7 @@
       "evidence": "'연결'이 끊겼습니다",
       "evidence_label": "연결",
       "expected_verified": false,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
       "expected_verdict": "inconclusive"
     },
     {
@@ -299,7 +310,7 @@
       "evidence": "3을 눌러 잠금이 풀렸습니다",
       "evidence_label": "3",
       "expected_verified": false,
-      "expected_verdict": "contradicted"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-unrelated-visible-label",
@@ -310,7 +321,7 @@
       "evidence": "화면에 전화가 보이므로 완료됐습니다",
       "evidence_label": "전화",
       "expected_verified": false,
-      "expected_verdict": "contradicted"
+      "expected_verdict": "inconclusive"
     },
     {
       "id": "invalid-app-name-on-launcher",
@@ -320,6 +331,308 @@
       "expected_result": "카메라가 열려 있다",
       "evidence": "카메라가 열렸습니다",
       "evidence_label": "카메라",
+      "expected_verified": false,
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "verified-observed-toggle-state",
+      "axis": "accessibility_state",
+      "source": "eval_case",
+      "request": {
+        "goal": "기능 켜기",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "기능 사용 중", "role": "Switch", "clickable": true, "checked": true}
+          ]
+        }
+      },
+      "expected_result": "기능이 켜져 있다",
+      "evidence": "'기능 사용 중' 스위치가 켜져 있습니다",
+      "evidence_label": "기능 사용 중",
+      "expected_verified": true,
+      "completion_evidence": {
+        "node_id": "n1",
+        "kind": "success",
+        "state": {"attribute": "checked", "value": true}
+      },
+      "expected_verdict": "verified"
+    },
+    {
+      "id": "contradicted-explicit-save-failure",
+      "axis": "explicit_failure",
+      "source": "eval_case",
+      "request": {
+        "goal": "항목 저장",
+        "screen": {
+          "package_name": "com.example.form",
+          "elements": [
+            {"node_id": "n1", "label": "저장 실패", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "항목이 저장되어 있다",
+      "evidence": "화면에 '저장 실패' 오류가 보입니다",
+      "evidence_label": "저장 실패",
+      "expected_verified": false,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "contradicted-error-occurred",
+      "axis": "explicit_failure_occurrence",
+      "source": "eval_case",
+      "request": {
+        "goal": "작업 완료",
+        "screen": {
+          "package_name": "com.example.task",
+          "elements": [
+            {"node_id": "n1", "label": "오류가 발생했습니다", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "작업이 완료되어 있다",
+      "evidence": "화면에 '오류가 발생했습니다' 상태가 보입니다",
+      "evidence_label": "오류가 발생했습니다",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "contradicted-error-occurrence",
+      "axis": "explicit_failure_occurrence",
+      "source": "eval_case",
+      "request": {
+        "goal": "작업 완료",
+        "screen": {
+          "package_name": "com.example.task",
+          "elements": [
+            {"node_id": "n1", "label": "오류 발생", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "작업이 완료되어 있다",
+      "evidence": "화면에 '오류 발생' 상태가 보입니다",
+      "evidence_label": "오류 발생",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "contradicted-permission-required",
+      "axis": "explicit_rejection",
+      "source": "eval_case",
+      "request": {
+        "goal": "사진 저장",
+        "screen": {
+          "package_name": "com.example.camera",
+          "elements": [
+            {"node_id": "n1", "label": "권한이 필요합니다", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "사진이 저장되어 있다",
+      "evidence": "'권한이 필요합니다'라는 거절 상태가 보입니다",
+      "evidence_label": "권한이 필요합니다",
+      "expected_verified": false,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "inconclusive-asynchronous-loading",
+      "axis": "asynchronous_result",
+      "source": "eval_case",
+      "request": {
+        "goal": "메시지 전송",
+        "screen": {
+          "package_name": "com.example.messages",
+          "elements": [
+            {"node_id": "n1", "label": "전송 중", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "메시지가 전송되어 있다",
+      "evidence": "화면에 '전송 중' 상태가 보입니다",
+      "evidence_label": "전송 중",
+      "expected_verified": false,
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-report-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "오류 신고", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류 신고'가 있어 실패 상태입니다",
+      "evidence_label": "오류 신고",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-report-action",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "오류 신고하기", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류 신고하기'가 있어 실패 상태입니다",
+      "evidence_label": "오류 신고하기",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-log-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "Error log", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 'Error log'가 있어 실패 상태입니다",
+      "evidence_label": "Error log",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-error-report-send-menu",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.settings",
+          "elements": [
+            {"node_id": "n1", "label": "에러 리포트 보내기", "role": "Button", "clickable": true}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '에러 리포트 보내기'가 있어 실패 상태입니다",
+      "evidence_label": "에러 리포트 보내기",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-zero-error-count",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.status",
+          "elements": [
+            {"node_id": "n1", "label": "Errors: 0", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 'Errors: 0'이 있어 실패 상태입니다",
+      "evidence_label": "Errors: 0",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "inconclusive-negated-error-occurrence",
+      "axis": "explicit_failure_false_positive",
+      "source": "eval_case",
+      "request": {
+        "goal": "시스템 상태 확인",
+        "screen": {
+          "package_name": "com.example.status",
+          "elements": [
+            {"node_id": "n1", "label": "오류가 발생하지 않았습니다", "role": "TextView", "clickable": false}
+          ]
+        }
+      },
+      "expected_result": "오류 상태가 없다",
+      "evidence": "화면에 '오류가 발생하지 않았습니다'가 있어 실패 상태입니다",
+      "evidence_label": "오류가 발생하지 않았습니다",
+      "expected_verified": true,
+      "completion_evidence": {"node_id": "n1", "kind": "failure"},
+      "expected_verdict": "inconclusive"
+    },
+    {
+      "id": "contradicted-user-rejection",
+      "axis": "user_feedback",
+      "source": "eval_case",
+      "request": {
+        "goal": "작업 완료",
+        "screen": {
+          "package_name": "com.example.task",
+          "content_signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "elements": [
+            {"node_id": "n1", "label": "완료 화면", "role": "TextView", "clickable": false}
+          ]
+        },
+        "completion_feedback": {
+          "status": "user_rejected",
+          "structure_signature": "c6692a9af1a79991fa2d94d01d25f2dd568055fe201d162178ccea2d3928d381",
+          "content_signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "expected_result": "작업이 완료되어 있다",
+      "evidence": "화면에 '완료 화면'이 보입니다",
+      "evidence_label": "완료 화면",
+      "expected_verified": false,
+      "completion_evidence": {"node_id": "n1", "kind": "success"},
+      "expected_verdict": "contradicted"
+    },
+    {
+      "id": "contradicted-performed-toggle-unchanged",
+      "axis": "before_after_state",
+      "source": "eval_case",
+      "request": {
+        "goal": "기능 켜기",
+        "screen": {
+          "package_name": "com.example.settings",
+          "content_signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "elements": [
+            {"node_id": "n1", "label": "기능 꺼짐", "role": "Switch", "clickable": true, "checked": false}
+          ]
+        },
+        "steps": [
+          {
+            "instruction": "'기능 꺼짐' 스위치를 눌러 주세요.",
+            "action_type": "tap",
+            "target_label": "기능 꺼짐",
+            "target_node_id": "n1",
+            "expected_target_state": {"attribute": "checked", "value": true},
+            "structure_signature": "4341d38cb743169744f11f28adadf15f020028876d48de365c22dff072fb50d7",
+            "screen_changed": false,
+            "performed": true,
+            "content_signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expected_result": "기능이 켜져 있다",
+      "evidence": "화면에 '기능 꺼짐' 상태가 보입니다",
+      "evidence_label": "기능 꺼짐",
       "expected_verified": false,
       "expected_verdict": "contradicted"
     }

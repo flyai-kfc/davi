@@ -39,6 +39,11 @@ class GuideE2ePublisher(private val context: Context) {
             .putExtra(GuideE2eContract.EXTRA_TARGET_CLICKABLE, target?.clickable ?: false)
             .putExtra(GuideE2eContract.EXTRA_TARGET_EDITABLE, target?.editable ?: false)
             .putExtra(GuideE2eContract.EXTRA_VERIFIED, response.verified)
+            .putExtra(
+                GuideE2eContract.EXTRA_COMPLETION_VERDICT,
+                response.completionVerdict?.name?.lowercase()
+                    ?: if (response.verified) "verified" else "inconclusive",
+            )
             // 실기기 E2E test process만 파일로 남긴다. Binder 상한을 피하려고 JSON을 압축한다.
             .putExtra(GuideE2eContract.EXTRA_REQUEST_GZIP, gzip(JSON.encodeToString(request)))
             .putExtra(GuideE2eContract.EXTRA_RESPONSE_GZIP, gzip(JSON.encodeToString(response)))
@@ -117,6 +122,7 @@ internal object GuideE2eContract {
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
     const val EXTRA_VERIFIED = "verified"
+    const val EXTRA_COMPLETION_VERDICT = "completion_verdict"
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
 }

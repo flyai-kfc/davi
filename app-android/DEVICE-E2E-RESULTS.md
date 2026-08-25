@@ -128,6 +128,29 @@ adb shell am instrument -w -r \
 두 계측 실행은 발화·선택·goal 원문을 logcat에 쓰지 않았다. 서버 로그에도 요청 id, 단계
 (`plan`/`finalize`), 답 개수, status와 지연만 남는 것을 확인했다.
 
+## 2026-08-25 · #424 완료 신뢰도 3상태 실기기 검증
+
+SM-S921N(Android 15 / One UI 7.0), 기본 개인정보 마스킹, 로컬 실제 모델 서버
+(`stub_llm=false`, OpenAI `gpt-5.6-luna`)에서
+`completion-verdict-device-smoke`와 같은 테스트 클래스를 실행했다(실행 당시 registry id는
+`completion-verdict-verified-smoke`). 삼성 시계 알람 목록을 이미 도달한 목표 화면으로
+두어 기기 데이터를 바꾸지 않았고, 첫 응답 뒤 완료 확인의 「아직」 버튼까지 UIAutomator가 눌렀다.
+
+| 단계 | action | completion verdict | 앱 동작 | 결과 |
+|---:|---|---|---|---|
+| 1 | `done` | `verified` | 확신 있는 완료 확인 표시 | 통과 |
+| 2 | `done` | `contradicted` | 완료 확인 없이 고정 복구 문구 후 재탐색 | 통과 |
+
+비식별 `GuideSvc` 로그에서 `done verified, asking user` → `confirm rejected` →
+`done contradicted, retrying` 순서를 확인했다. E2E 기본 보고서에도 같은 두 verdict가 기록됐으며,
+화면 label·안내문·목표 원문·API 키·기기 serial은 로그와 보고서에 넣지 않았다. 테스트 전용 데이터는
+생성하지 않았고 cleanup은 성공했다.
+
+같은 날 기존 `samsung-clock-create-alarm-focused`도 실행했다. 네 개의 실제 모델 응답이 모두
+`inconclusive`인 일반 조작으로 정상 표시됐지만, 네 번째 scroll 뒤 화면이 변하지 않아 5단계
+`decision_timeout`으로 시나리오 자체는 실패했다. 이는 3상태 wire 관측에는 포함하되 알람 생성 품질
+통과로 주장하지 않는다.
+
 ## 이후 실행 결과 확인
 
 OS에 맞는 `run-device-e2e.sh` 또는 `run-device-e2e.ps1`을 실행하면 매번 타임스탬프 문서가

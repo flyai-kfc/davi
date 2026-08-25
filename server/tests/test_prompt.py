@@ -1,6 +1,7 @@
 import pytest
 from app.prompt import (
     ACTIONABLE_RESULT_INSTRUCTION,
+    COMPLETION_EVIDENCE_INSTRUCTION,
     EVIDENCE_INSTRUCTION,
     FOCUSED_INPUT_INSTRUCTION,
     FOCUSED_INPUT_KEYBOARD_CLOSED,
@@ -18,6 +19,7 @@ from app.prompt import (
     SCROLLABLE_NOT_OBSERVED,
     SCROLLABLE_OBSERVED,
     STEP_CHANGED,
+    STEP_HISTORY_EARLIER,
     STEP_HISTORY_HEADER,
     STEP_PRESSED,
     STEP_PRESSED_ELSEWHERE,
@@ -32,9 +34,13 @@ from app.prompt import (
 from app.schemas import (
     MAX_STEPS,
     ActionType,
+    CompletionFeedback,
+    CompletionFeedbackStatus,
+    ExpectedTargetState,
     GuideAction,
     GuideStep,
     NextStepRequest,
+    ObservableState,
     Screen,
     ScrollAxis,
     SwipeDirection,
@@ -51,11 +57,12 @@ def _request(**screen_fields) -> NextStepRequest:
     return NextStepRequest(goal="다음 항목 보기", screen=Screen(**screen_fields))
 
 
-def _with_steps(*steps: GuideStep) -> NextStepRequest:
+def _with_steps(*steps: GuideStep, earlier: int = 0) -> NextStepRequest:
     return NextStepRequest(
         goal="다음 항목 보기",
         screen=Screen(package_name="com.example.app"),
         steps=list(steps),
+        earlier_steps=earlier,
     )
 
 
@@ -113,6 +120,64 @@ def test_prompt_asks_for_evidence_that_the_verifier_can_check():
     assert "닫는 따옴표 뒤" in EVIDENCE_INSTRUCTION
     assert EVIDENCE_INSTRUCTION.count("쓰세요") == 1
     assert "판단 근거인 이유까지 쓰세요" in EVIDENCE_INSTRUCTION
+    assert "그 node_id와 같은 요소의 label" in EVIDENCE_INSTRUCTION
+
+
+def test_prompt_explains_direct_completion_evidence_and_inconclusive_default():
+    prompt = build_prompt(_request())
+
+    assert COMPLETION_EVIDENCE_INSTRUCTION in prompt
+    assert "명시적 오류·거절·취소" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "결과가 로딩 중인 것은" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "label 자체가" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "그 node_id의 label" in COMPLETION_EVIDENCE_INSTRUCTION
+    assert "화면만으로 정할 수 없으면" in COMPLETION_EVIDENCE_INSTRUCTION
+
+
+def test_prompt_only_includes_user_rejection_for_the_exact_current_screen():
+    screen = Screen(
+        package_name="com.example.app",
+        elements=[UiElement(node_id="n1", label="완료 상태")],
+        content_signature="c" * 64,
+    )
+    feedback = CompletionFeedback(
+        status=CompletionFeedbackStatus.USER_REJECTED,
+        structure_signature=screen_signature(screen),
+        content_signature=screen.content_signature,
+    )
+    matching = NextStepRequest(goal="작업 완료", screen=screen, completion_feedback=feedback)
+    mismatching = matching.model_copy(
+        update={
+            "completion_feedback": feedback.model_copy(
+                update={"content_signature": "d" * 64},
+            )
+        }
+    )
+
+    assert "사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다" in build_prompt(
+        matching
+    )
+    assert "사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다" not in build_prompt(
+        mismatching
+    )
+    assert "\n\n\n현재 화면 요소:" not in build_prompt(mismatching)
+    assert (
+        "- 없음\n- 사용자가 현재 화면에서 목표가 아직 완료되지 않았다고 명시했습니다.\n"
+        in build_prompt(matching)
+    )
+
+
+def test_prompt_echoes_the_previous_expected_target_state():
+    request = _with_steps(
+        _step(
+            expected_target_state=ExpectedTargetState(
+                attribute=ObservableState.CHECKED,
+                value=True,
+            )
+        )
+    )
+
+    assert "기대 상태 checked=true" in build_prompt(request)
 
 
 def test_schema_description_of_evidence_agrees_with_the_prompt():
@@ -127,6 +192,7 @@ def test_schema_description_of_evidence_agrees_with_the_prompt():
     assert "작은따옴표로 감싸 글자 그대로 인용" in described
     assert "닫는 따옴표 뒤" in described
     assert "판단 근거인 이유까지" in described
+    assert "같은 요소의 label" in described
     assert "짧" not in described
 
 
@@ -580,6 +646,36 @@ def test_step_history_carries_every_step_the_contract_allows():
     assert len(lines) == MAX_STEPS
     for index, line in enumerate(lines):
         assert f"{index}번째 안내" in line
+
+
+def test_step_history_says_how_many_guides_fell_out_of_the_window():
+    """창이 꽉 찬 이유를 개수로 말한다(#418).
+
+    `steps` 열 개만 보면 세션이 이제 열 걸음짜리인지 마흔 걸음째인지 구분되지 않는다.
+    **목록 앞**에 붙는 이유는 그 안내들이 시간상 앞서기 때문이고, 접두어가 `- `가 아닌 이유는
+    모델이 안내 하나로 세면 요소 줄의 `tried=`·회귀 표시와 어긋나기 때문이다.
+    """
+
+    prompt = build_prompt(_with_steps(_step(instruction="마지막 안내"), earlier=23))
+
+    block = prompt.split(STEP_HISTORY_HEADER, 1)[1].split("현재 화면 요소:", 1)[0]
+    first = block.strip().splitlines()[0]
+    assert first == "(이 목록 앞에 안내 23번이 더 있었지만 오래되어 빠졌습니다.)"
+    assert not first.startswith("- ")
+    assert prompt.index(first) < prompt.index("마지막 안내")
+
+
+def test_step_history_stays_silent_when_nothing_fell_out():
+    """0은 적지 않는다 — 미관측·해당없음에 침묵하는 C10 규약과 같다.
+
+    이 값을 아직 안 채우는 낡은 앱도 0으로 오므로, 침묵이 곧 호환이다.
+    """
+
+    prompt = build_prompt(_with_steps(_step()))
+
+    # 문구에서 파생한 조각으로 본다 — 리터럴을 적으면 문구를 고쳤을 때 이 검사가 **통과한 채로**
+    # 아무것도 안 보게 되고, 커버리지가 사라진 것이 드러나지 않는다.
+    assert STEP_HISTORY_EARLIER.split("{")[0] not in prompt
 
 
 def test_step_history_omits_the_screen_clause_when_the_summary_is_missing():

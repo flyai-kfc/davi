@@ -37,6 +37,9 @@ object GuideSession {
         val generation: Long,
         val goal: String,
         val steps: List<GuideStep>,
+        /** [steps] 앞에 있었지만 상한에 밀려 빠진 안내 수(#418). */
+        val earlierSteps: Int,
+        val completionFeedback: CompletionFeedback?,
     )
 
     /**
@@ -50,6 +53,8 @@ object GuideSession {
                 generation = generation,
                 goal = it,
                 steps = steps.toList(),
+                earlierSteps = earlierSteps,
+                completionFeedback = completionFeedback,
             )
         }
 
@@ -77,6 +82,12 @@ object GuideSession {
      * 서비스의 네트워크 스레드가 읽고 메인 스레드가 쓰므로 접근을 잠금으로 막는다.
      */
     private val steps = ArrayDeque<GuideStep>()
+
+    /**
+     * [steps]에서 상한에 밀려 빠진 안내 수(#418). 보관하지 않고 **세기만** 한다 — 밀려난 스텝의
+     * 내용을 남기는 안은 세션 길이에 선형으로 붙어 접었다(#418).
+     */
+    private var earlierSteps = 0
 
     /**
      * 마지막 스텝이 표시된 화면의 **기기 시그니처**([ScreenSignature]).
@@ -158,6 +169,7 @@ object GuideSession {
 
     /** 확인 화면을 띄운 화면의 서명. ×아직요를 받으면 이 값이 부정 이력이 된다. */
     private var pendingConfirmSignature: String? = null
+    private var pendingConfirmContentSignature: String? = null
 
     /**
      * 사용자가 "아직요"로 완료를 부정한 화면의 서명. 그 화면에서 다시 오는 done은 확인 화면을
@@ -168,6 +180,9 @@ object GuideSession {
      * ([recordStep], PR #153 리뷰 P2).
      */
     private var rejectedSignature: String? = null
+
+    /** 다음 요청에서 한 번 이상 서버에 전달할, 화면 서명에 묶인 사용자 부정. */
+    private var completionFeedback: CompletionFeedback? = null
 
     /** `done` 응답 하나를 세션이 어떻게 처리할지. [onDone]이 돌려준다. */
     enum class DoneOutcome {
@@ -185,6 +200,12 @@ object GuideSession {
          * 대신 문구만 띄운다 — 같은 질문을 다시 하지 않으면서 재질의도 멈춘다.
          */
         NOTICE_ONLY,
+
+        /** 명시적인 반대 사실을 확인했다. 완료 UI 없이 같은 화면을 다시 탐색한다. */
+        RECOVER_CONTRADICTED,
+
+        /** 명시 반대가 재시도 상한에 닿았다. 성공 확인 없이 반대 상태 문구만 유지한다. */
+        NOTICE_CONTRADICTED,
     }
 
     /**
@@ -192,8 +213,9 @@ object GuideSession {
      * 완료도 확인 화면을 거치고, 종료는 사용자의 "됐어요"([confirmAccepted])만이 만든다.
      * 성공 경로가 오버레이만 조용히 사라지던 무표시 종료를 없애려는 것이다.
      *
-     * `verified=false`인 done은 완료 검증(#54)이 화면 근거를 못 찾은 것이라 종료 신호로 믿지
-     * 않는다(#55). 대신 몇 번 다시 물었는지 세고, 상한부터는 확인 화면으로 넘긴다.
+     * `inconclusive`인 done은 완료 검증(#424)이 화면 근거를 확정하지 못한 것이라 종료 신호로
+     * 믿지 않는다. 대신 몇 번 다시 물었는지 세고, 상한부터는 확신 없는 확인 화면으로 넘긴다.
+     * `contradicted`는 명시 반대이므로 상한에서도 완료 확인을 띄우지 않는다.
      * **상한에서도 done으로 끝내지 않는다** — 막힘을 성공으로 오인시킨다(server/CLAUDE.md C11이
      * fallback에서 done을 배제한 것과 같은 근거).
      *
@@ -203,29 +225,43 @@ object GuideSession {
      * 이전 세대의 늦은 done은 여기서도 버린다(null).
      */
     @Synchronized
-    fun onDone(generation: Long, verified: Boolean, screenSignature: String): DoneOutcome? {
+    fun onDone(
+        generation: Long,
+        verdict: CompletionVerdict,
+        screenSignature: String,
+        contentSignature: String?,
+    ): DoneOutcome? {
         if (!isCurrent(generation)) return null
 
         // 사용자가 부정한 그 화면인가. 다른 화면이면 진행했다는 뜻이라 기억을 버린다.
         val rejected = screenSignature == rejectedSignature
-        if (!rejected) rejectedSignature = null
+        if (!rejected) {
+            rejectedSignature = null
+            completionFeedback = null
+        }
 
-        if (verified && !rejected) {
-            awaitConfirm(screenSignature)
+        if (verdict == CompletionVerdict.VERIFIED && !rejected) {
+            awaitConfirm(screenSignature, contentSignature)
             return DoneOutcome.CONFIRM_CONFIDENT
         }
 
         // 부정된 화면의 done은 검증 여부와 무관하게 여기서 센다. 사용자가 아니라고 한 이상
         // 그 화면의 완료 신호는 근거가 없고, 세는 이유도 재질의 총량을 묶는 것으로 같다.
         val perScreen = incrementUnverifiedDone(screenSignature)
-        if (
+        val belowCap =
             perScreen < MAX_UNVERIFIED_DONE &&
             unverifiedDonesSinceProgress < MAX_UNVERIFIED_DONE_TOTAL
-        ) {
+        if (verdict == CompletionVerdict.CONTRADICTED && belowCap) {
+            return DoneOutcome.RECOVER_CONTRADICTED
+        }
+        if (belowCap) {
             return DoneOutcome.RETRY
         }
+        // 명시 반대는 상한에서도 성공처럼 묻지 않는다. 안내 문구만 남겨 사용자가 중지하거나
+        // 화면을 바꿀 수 있게 한다.
+        if (verdict == CompletionVerdict.CONTRADICTED) return DoneOutcome.NOTICE_CONTRADICTED
         if (rejected) return DoneOutcome.NOTICE_ONLY
-        awaitConfirm(screenSignature)
+        awaitConfirm(screenSignature, contentSignature)
         return DoneOutcome.CONFIRM_UNSURE
     }
 
@@ -247,9 +283,10 @@ object GuideSession {
         unverifiedDonesSinceProgress = 0
     }
 
-    private fun awaitConfirm(screenSignature: String) {
+    private fun awaitConfirm(screenSignature: String, contentSignature: String?) {
         awaitingConfirm = true
         pendingConfirmSignature = screenSignature
+        pendingConfirmContentSignature = contentSignature
     }
 
     /**
@@ -328,7 +365,15 @@ object GuideSession {
     fun confirmRejected() {
         if (!consumeConfirm()) return
         rejectedSignature = pendingConfirmSignature
+        completionFeedback = pendingConfirmSignature?.let { structure ->
+            CompletionFeedback(
+                status = CompletionFeedbackStatus.USER_REJECTED,
+                structureSignature = structure,
+                contentSignature = pendingConfirmContentSignature,
+            )
+        }
         pendingConfirmSignature = null
+        pendingConfirmContentSignature = null
         resetUnverifiedDones()
     }
 
@@ -359,11 +404,14 @@ object GuideSession {
         // 확인 대신 "확인하지 못했어요"가 뜬다(PR #153 리뷰 P2).
         // 무한 반복 가드는 그대로 산다: 그 경로에서는 done만 반복되고 안내가 나가지 않는다.
         rejectedSignature = null
+        completionFeedback = null
         // 재질의 토큰은 직전 안내의 눌림에 매인 근거다. 새 안내가 나가면 그 근거는 소멸한다.
         pressRequeryArmed = false
         steps.addLast(step.copy(instruction = step.instruction.trim()))
         while (steps.size > MAX_HISTORY) {
-            steps.removeFirst()
+            // **줄이 만들어지는 스텝만 센다** — 서버의 창 안 목록이 빈 안내문을 빼기 때문이다.
+            // 근거는 `server/CLAUDE.md`의 「밀려난 안내 수」.
+            if (steps.removeFirst().instruction.isNotBlank()) earlierSteps++
         }
         lastStepSignature = screenSignature
     }
@@ -479,6 +527,8 @@ object GuideSession {
             // 세대가 달라지고, 그 사이에 떠 있던 응답이 새 세션에 섞이지 않는다.
             generation++
             steps.clear()
+            // 개수도 이력의 일부다 — 세대가 갈리면 함께 비운다.
+            earlierSteps = 0
             lastStepSignature = null
             // 내용 서명의 salt도 세션에 매인다(#410). 남기면 이전 세션의 이력과 해시가 맞아
             // 서버가 세션을 넘어 같은 화면으로 읽는다.
@@ -489,7 +539,9 @@ object GuideSession {
             // 부정당한 화면이라는 이유로 확인 화면을 건너뛴다.
             awaitingConfirm = false
             pendingConfirmSignature = null
+            pendingConfirmContentSignature = null
             rejectedSignature = null
+            completionFeedback = null
         }
         listeners.forEach { it.onSessionChanged(next) }
     }

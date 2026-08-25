@@ -28,9 +28,13 @@ from app.schemas import (
     AppCandidateAvailability,
     AppResolutionStatus,
     ClarificationAnswerSource,
+    CompletionEvidenceKind,
+    CompletionFeedbackStatus,
+    CompletionVerdict,
     ConversationRole,
     ErrorKind,
     IntentDialogueStatus,
+    ObservableState,
     RateLimitScope,
     ScrollAxis,
     SwipeDirection,
@@ -56,6 +60,10 @@ _ENUM_PAIRS = (
     ("ScrollAxis", ScrollAxis),
     ("ApiErrorKind", ErrorKind),
     ("RateLimitScope", RateLimitScope),
+    ("CompletionVerdict", CompletionVerdict),
+    ("CompletionEvidenceKind", CompletionEvidenceKind),
+    ("ObservableState", ObservableState),
+    ("CompletionFeedbackStatus", CompletionFeedbackStatus),
     ("ConversationRole", ConversationRole),
     ("ClarificationAnswerSource", ClarificationAnswerSource),
     ("IntentDialogueStatus", IntentDialogueStatus),
@@ -146,7 +154,9 @@ def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
     from app.schemas import GuideAction, GuideStep, NextStepRequest, NextStepResponse
 
     assert "steps" in NextStepRequest.model_fields
+    assert "completion_feedback" in NextStepRequest.model_fields
     assert "screen_signature" in NextStepResponse.model_fields
+    assert "completion_verdict" in NextStepResponse.model_fields
     assert "screen_summary" in GuideAction.model_fields
     assert {
         "instruction",
@@ -154,6 +164,7 @@ def test_step_history_fields_exist_on_both_sides(contract_source: str) -> None:
         "direction",
         "target_label",
         "target_node_id",
+        "expected_target_state",
         "screen_hint",
         "structure_signature",
         "screen_changed",

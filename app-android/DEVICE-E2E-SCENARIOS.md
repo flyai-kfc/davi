@@ -143,8 +143,10 @@ override fun textFor(state: State, step: Int, decision: DisplayedDecision): Stri
 막으므로, **전용 테스트 회선을 쓰는 것은 운영 규칙으로 지킨다.**
 
 runner는 공통 설정 경계를 항상 먼저 평가한 뒤 시나리오 경계를 등록 순서대로 평가하며, 첫 failure
-code로 테스트를 종료한다. `done`은 손동작이 아니라 세션 종료 신호이므로 경계를 평가하지 않고 독립
-목표 상태와 `verified`에 따라 성공 또는 `done_before_goal`·`done_unverified`로 종료한다.
+code로 테스트를 종료한다. `done`은 손동작이 아니라 세션 종료 후보이므로, `verified`일 때만 독립
+목표 상태를 확인해 성공하거나 `done_before_goal`로 종료한다. `inconclusive`·`contradicted`는 각각
+deviation으로 기록하고 앱의 복구를 기다린다. 이후 `verified`에 도달하지 못하면 시나리오의 전체
+step 예산에서 `step_limit`로 실패한다.
 
 ## 3. test class 연결
 

@@ -29,6 +29,19 @@ enum class GuidedSwipeDirection(val wire: String) {
     }
 }
 
+enum class GuidedCompletionVerdict(val wire: String) {
+    VERIFIED("verified"),
+    INCONCLUSIVE("inconclusive"),
+    CONTRADICTED("contradicted"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): GuidedCompletionVerdict =
+            entries.firstOrNull { it.wire == value }
+                ?: throw IllegalArgumentException("unknown completion verdict")
+    }
+}
+
 data class ObservedGuideAction(
     val actionType: GuidedActionType,
     val direction: GuidedSwipeDirection?,
@@ -48,6 +61,8 @@ data class DisplayedDecision(
     val targetClickable: Boolean,
     val targetEditable: Boolean,
     val verified: Boolean,
+    val completionVerdict: GuidedCompletionVerdict =
+        if (verified) GuidedCompletionVerdict.VERIFIED else GuidedCompletionVerdict.INCONCLUSIVE,
     /** 앱이 서버로 보낸 1차 마스킹 완료 요청과 파싱한 구조화 응답. 로컬 상세 보고서 전용이다. */
     val requestJson: String,
     val responseJson: String,
@@ -91,6 +106,7 @@ internal object GuideE2eContract {
     const val EXTRA_TARGET_CLICKABLE = "target_clickable"
     const val EXTRA_TARGET_EDITABLE = "target_editable"
     const val EXTRA_VERIFIED = "verified"
+    const val EXTRA_COMPLETION_VERDICT = "completion_verdict"
     const val EXTRA_REQUEST_GZIP = "request_gzip"
     const val EXTRA_RESPONSE_GZIP = "response_gzip"
 }

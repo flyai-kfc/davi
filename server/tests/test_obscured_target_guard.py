@@ -21,6 +21,8 @@ from app.prompt import (
 from app.reasoning import _no_scroll_target_reason, _verify_done, next_step
 from app.schemas import (
     ActionType,
+    CompletionEvidence,
+    CompletionEvidenceKind,
     ErrorKind,
     GuideAction,
     NextStepRequest,
@@ -365,6 +367,10 @@ def test_completion_evidence_cannot_lean_on_a_hidden_label():
         expected_result="주문이 완료된 화면",
         screen_summary="배달 앱 화면",
         evidence="주문이 완료되었습니다",
+        completion_evidence=CompletionEvidence(
+            node_id="n2",
+            kind=CompletionEvidenceKind.SUCCESS,
+        ),
         action_type=ActionType.DONE,
         instruction="주문이 끝났어요.",
     )
@@ -385,6 +391,10 @@ def test_completion_evidence_still_passes_on_a_visible_label():
         expected_result="주문이 완료된 화면",
         screen_summary="배달 앱 화면",
         evidence="주문이 완료되었습니다",
+        completion_evidence=CompletionEvidence(
+            node_id="n1",
+            kind=CompletionEvidenceKind.SUCCESS,
+        ),
         action_type=ActionType.DONE,
         instruction="주문이 끝났어요.",
     )
