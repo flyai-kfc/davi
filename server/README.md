@@ -512,8 +512,10 @@ workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, 
 
 `DAVI_DOGFOOD_DEVICE_IDS`(콤마 구분)에 등록된 기기의 `/v1/next-step` 왕복만
 `DAVI_DOGFOOD_RAW_DIR`(기본 `server/.dogfood-raw/`, gitignore)에 요청+응답 봉투 JSON으로
-저장한다. **영구 보존**이며 자동 삭제가 없다 — 정리는 수동. 디렉터리는 0700, 파일은 0600으로
-생성한다(접근 범위 = 각 머신 소유자, SPEC §3). **LLM 단계의 실패 응답**(`LlmError` →
+저장한다. **영구 보존**이며 자동 삭제가 없다 — 정리는 수동. 봉투의 label에는 1차 마스킹이
+못 지우는 **고유명(사람 이름·기기명·대화방 제목)이 그대로 남는다** — 알고 그대로 두기로 한
+결정이고(#375), 저장 대상을 넓히려면 `../SPEC.md` §3 「대상을 넓히려면」을 먼저 본다.
+디렉터리는 0700, 파일은 0600으로 생성한다(접근 범위 = 각 머신 소유자, SPEC §3). **LLM 단계의 실패 응답**(`LlmError` →
 4xx/5xx `ApiError`)도 저장한다 — 실패 화면이 픽스처의 주 수집 대상이다. 미들웨어에서 끊기는
 401/429는 엔드포인트에 도달하지 않아 저장되지 않는다. 운영 로그와 **별개 채널**이라 요청
 로그의 비식별 원칙은 그대로다(CLAUDE.md 실행 절).
@@ -593,7 +595,7 @@ pytest
   `tap`, `target_node_id=n1` 구조화 응답을 받았다. 이 모델 ID가 응답한다는 확인일 뿐, 모델 확정은 평가 체계가 선 뒤에 한다.
 - `app/config.py` — development/production 실행 프로필과 기동 전 설정 검증.
 - `app/raw_store.py` — 도그푸딩 화이트리스트 왕복의 봉투 저장(#41). `/v1/next-step`이
-  `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 5건. 위 "도그푸딩 raw 보존" 절.
+  `should_store_raw()`로 판정해 호출한다. `tests/test_raw_store.py` 9건. 위 "도그푸딩 raw 보존" 절.
 
 **최소만 구현** (동작하지만 의도적으로 얕음)
 - `reasoning._classify_completion` — 모델의 구조화 근거가 가리킨 **같은 현재 node**의 최소

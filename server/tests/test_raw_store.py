@@ -133,6 +133,26 @@ def test_existing_wide_directory_is_tightened(monkeypatch, tmp_path):
     assert stat.S_IMODE(raw_dir.stat().st_mode) == 0o700
 
 
+def test_out_of_pattern_proper_nouns_stay_in_the_envelope(monkeypatch, tmp_path):
+    """봉투는 label·창 제목을 지우지 않는다 — 알고 그대로 두기로 한 결정이다(#375).
+
+    1차 마스킹이 패턴만 지우므로 사람 이름·기기명은 그대로 저장된다(#312 실측이 그 값이다).
+    지우는 쪽으로 뒤집으려면 `SPEC.md` §2 「패턴 밖 고유명」과 §3이 먼저 바뀌어야 한다.
+    """
+    monkeypatch.setattr(settings, "davi_dogfood_device_ids", WHITELISTED)
+    monkeypatch.setattr(settings, "davi_dogfood_raw_dir", str(tmp_path))
+    body = _payload(WHITELISTED)
+    body["screen"]["window_title"] = "김민준"
+    body["screen"]["elements"][0]["label"] = "김민준의 Galaxy Buds"
+
+    assert client.post("/v1/next-step", json=body).status_code == 200
+
+    envelope = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    stored_screen = envelope["request"]["screen"]
+    assert stored_screen["elements"][0]["label"] == "김민준의 Galaxy Buds"
+    assert stored_screen["window_title"] == "김민준"
+
+
 def test_relative_raw_dir_resolves_under_server_root():
     resolved = raw_store_dir(".dogfood-raw")
     assert resolved.name == ".dogfood-raw"

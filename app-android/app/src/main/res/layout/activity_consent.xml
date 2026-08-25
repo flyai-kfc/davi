@@ -10,8 +10,9 @@
 
   **항목 순서**: 필수①②③ → 제3자 고지(strings.xml 주석 "필수 항목 셋 아래, 선택 항목
   위에 둔다") → 선택①카카오 → 수집하지 않는 것 → 제외 불가 → 모두 동의 → 다음으로/그만두기
-  → 처리방침 링크 → 철회 안내. 선택②개선 기록은 화면에 서지 않는다(#375 대기, strings.xml
-  주석 "화면에 안 서는 것이 하나 있다").
+  → 처리방침 링크 → 철회 안내. 선택②개선 기록은 화면에 서지 않는다 — **서는 조건은 저장
+  대상이 팀 밖으로 넓어질 때다**(#375에서 보유기간을 넣지 않기로 정했다, `../SPEC.md` §3
+  「대상을 넓히려면」 · strings.xml 주석 "화면에 안 서는 것이 하나 있다").
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
