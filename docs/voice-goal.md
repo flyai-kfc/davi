@@ -86,8 +86,9 @@ status는 `needs_clarification` / `ready` / `unable_to_finalize`다.
     │                                     {decision_basis, status,
     │                                      message, goal, clarification}
     │                                     ⑥ 요청당 공급자 호출은 한 번:
-    │                                        첫 계약 오류 → PARSE
-    │                                        최종 계약 오류 → 안전 종료
+    │                                        질문 문구 불일치 → 첫 질문으로 정규화
+    │                                        질문 계획 없음·첫 질문 무효·최종 계약 오류 → 안전 종료
+    │                                        그 밖의 첫 계약 오류 → PARSE
     │                       ◀──────────  SlotFillState{status, message, goal,
     │                                                  clarification}
     │                       │
@@ -388,7 +389,9 @@ W5가 들어오기 전에 깔아 두는 안전망이다. 초기 초안은 #259(�
 구체화) 이전 구조를 기준으로 했으므로, 구현 기준은 최신 이슈 #103과 현재 main이다.
 
 - **옛 `_REPAIR_GUIDANCE` 항목은 더 이상 해당하지 않는다.** 직접 인덱싱과 교정 사전이 사라졌고,
-  첫 판단 계약 위반은 고정 reason code PARSE, 최종화 계약 위반은 재호출 없는 안전 종료로 닫힌다.
+  첫 판단의 질문 문구 불일치는 결정론적으로 정규화하며 질문 계획이 없거나 첫 질문을 쓸 수 없으면
+  안전 종료한다. 그 밖의 첫 판단 계약 위반은 고정 reason code PARSE, 최종화 계약 위반은 재호출
+  없는 안전 종료로 닫힌다.
 - **slot-fill 응답 최소선은 현재 계약에서 파생한다.** `ready`뿐 아니라 최대 2문항·문항별 3보기를
   담는 `needs_clarification`도 각각 최대 유효 compact JSON을 만들고, Pydantic의 `maxLength`·
   `maxItems`에서 더 큰 쪽을 계산한다. 이는 실제 공급자 토크나이저의 정확한 토큰 수를 가장하지
@@ -580,3 +583,4 @@ W5가 들어오기 전에 깔아 두는 안전망이다. 초기 초안은 #259(�
 | 2026-08-21 | 핑퐁 `f5ada5d` (되묻기 형식, #316 이전) | 손작성 30개 (쉬움·중간·어려움 각 10) | **목표 달성 48.3** / 슬롯 정확 68.7 / 무위반 46.7 | — (`completion_type` 미도입) | `@hyeineom12` · `eval/pingpong`(#329). 종합 54점(목표 .5+슬롯 .3+무위반 .2, 가중치 잠정). 티어별 충족 6/4/0. 상세 `eval/pingpong/BASELINE.md` |
 | 2026-08-24 | 핑퐁 `f961ee4` (#316 두 번 요청 후보) | 같은 손작성 30개, seed 1 | **미채점** — 외부 평가자 호출 전 후보 실행 | — (미측정) | Codex · **ready 96.7%**(새 형식은 2호출 상한이라 2호출 ready와 같음) / 보기 선택 19.4% / 당시 전체 실행당 TTS 58.6자(현재 ready 실행 분모로 재측정 필요). 사용자 역할 `gemini-3.5-flash-lite`, 서버 OpenAI `gpt-5.6-luna`. `h08`만 안전 종료. 이전 흐름의 같은 코드 지표와 goal·환각 비교는 아직 미측정이며, 상세와 이유는 `eval/pingpong/BASELINE.md` |
 | 2026-08-24 | 핑퐁 `f5ada5d` → `25c35c1` (#316 동일 조건 A/B) | 같은 손작성 30개, seed 1, 요청 상한 5, 전부 같은 `claude-opus-5` 배치로 채점 | **goal 유효 16.7% → 86.7%** / 누락 정보 환각 6.7% → 3.3% / 선택 강요 16.7% → 0% | — (미측정) | Codex · ready 50.0% → 90.0%, 2호출 ready 20.0% → 90.0%, 성공 여정당 TTS 89.1자 → 55.3자. 사용자 `gemini-3.5-flash-lite`, 서버 OpenAI `gpt-5.6-luna` low. 후보 PARSE 502 한 건도 실패 분모에 유지했다. 깨끗한 합성 시나리오의 1회 표본이며 상세 `eval/pingpong/BASELINE.md` |
+| 2026-08-24 | 핑퐁 `c06941b` (#421 계약 복구) | 같은 손작성 30개, seed 1, 요청 상한 5, `claude-opus-5` 채점 | 서버 호출 29건 중 **HTTP 오류·PARSE 0건**, goal 유효 24/29(82.8%) | — (미측정) | Codex · 사용자 시뮬레이터 슬롯 누출로 `h07`은 서버 호출 전 중단. 나머지는 ready 26·안전 종료 3이며 이전 PARSE였던 `m09`는 ready. 별도 모델 표본이라 #316 성능 전후 비교로 쓰지 않고, 두 복구 분기는 합성 fixture로 고정했다. 상세 `eval/pingpong/BASELINE.md` |

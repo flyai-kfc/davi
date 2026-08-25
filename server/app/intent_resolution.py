@@ -55,7 +55,10 @@ class _IntentDialogueDecision(BaseModel):
     message: str = Field(
         min_length=1,
         max_length=MAX_INTENT_MESSAGE_LENGTH,
-        description="TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장",
+        description=(
+            "TTS로 읽을 질문, 목표 준비 완료 또는 안전 종료 안내 한 문장. "
+            "needs_clarification이면 clarification.questions의 첫 prompt와 정확히 같아야 한다."
+        ),
     )
     goal: str | None = Field(
         default=None,
@@ -282,8 +285,9 @@ class RemoteIntentResolver(IntentResolver):
         try:
             return self._parse_state(response_text, finalizing=finalizing)
         except _IntentContractViolation as error:
-            self._log_contract_recovery(error.reason, action="safe_end" if finalizing else "fail")
-            if finalizing:
+            safe_end = finalizing or error.reason == "status_clarification_mismatch"
+            self._log_contract_recovery(error.reason, action="safe_end" if safe_end else "fail")
+            if safe_end:
                 return self._safe_end_state()
             raise LlmError(
                 ErrorKind.PARSE,
@@ -303,24 +307,13 @@ class RemoteIntentResolver(IntentResolver):
         if not isinstance(payload, dict):
             self._raise_parse_error("invalid_shape", TypeError("응답이 객체가 아님"))
 
-        normalized = dict(payload)
-        if (
-            normalized.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
-            and normalized.get("goal") is not None
-        ):
-            normalized["goal"] = None
-            try:
-                decision = _IntentDialogueDecision.model_validate(normalized)
-            except ValidationError as error:
-                self._raise_or_recover(normalized, error)
-            self._log_contract_recovery("status_goal_mismatch", action="normalize")
-            state = decision.to_wire_state()
-            return self._finalize_or_return(state, finalizing=finalizing)
-
+        normalized, normalization_reasons = _normalize_clarification_decision(payload)
         try:
             decision = _IntentDialogueDecision.model_validate(normalized)
         except ValidationError as error:
             self._raise_or_recover(normalized, error)
+        for reason in normalization_reasons:
+            self._log_contract_recovery(reason, action="normalize")
         state = decision.to_wire_state()
         return self._finalize_or_return(state, finalizing=finalizing)
 
@@ -378,6 +371,46 @@ class RemoteIntentResolver(IntentResolver):
         )
 
 
+def _normalize_clarification_decision(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """복구 가능한 교차 필드를 맞추고, 첫 질문을 쓸 수 없으면 계약 위반으로 닫는다."""
+
+    normalized = dict(payload)
+    if normalized.get("status") != IntentDialogueStatus.NEEDS_CLARIFICATION:
+        return normalized, ()
+
+    reasons: list[str] = []
+    if normalized.get("goal") is not None:
+        normalized["goal"] = None
+        reasons.append("status_goal_mismatch")
+
+    first_prompt = _first_clarification_prompt(normalized)
+    if first_prompt is None:
+        raise _IntentContractViolation("status_clarification_mismatch")
+    message = normalized.get("message")
+    if not isinstance(message, str) or message.strip() != first_prompt:
+        normalized["message"] = first_prompt
+        reasons.append("status_clarification_mismatch")
+
+    return normalized, tuple(reasons)
+
+
+def _first_clarification_prompt(payload: dict[str, Any]) -> str | None:
+    """올바른 질문 배열의 첫 prompt만 wire 텍스트와 같은 strip 규칙으로 읽는다."""
+
+    clarification = payload.get("clarification")
+    if not isinstance(clarification, dict):
+        return None
+    questions = clarification.get("questions")
+    if not isinstance(questions, list) or not questions or not isinstance(questions[0], dict):
+        return None
+    prompt = questions[0].get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    return prompt.strip()
+
+
 def _contract_violation_reason(
     payload: dict[str, Any],
     error: ValidationError,
@@ -388,20 +421,6 @@ def _contract_violation_reason(
         goal = payload.get("goal")
         if goal is None or (isinstance(goal, str) and not goal.strip()):
             return "status_goal_mismatch"
-    if (
-        payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION
-        and payload.get("clarification") is None
-    ):
-        return "status_clarification_mismatch"
-    if payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION:
-        clarification = payload.get("clarification")
-        questions = clarification.get("questions") if isinstance(clarification, dict) else None
-        first_prompt = (
-            questions[0].get("prompt") if questions and isinstance(questions[0], dict) else None
-        )
-        if first_prompt != payload.get("message"):
-            return "status_clarification_mismatch"
-
     relevant_fields = {"decision_basis", "message", "goal", "clarification"}
     for detail in error.errors(
         include_url=False,
