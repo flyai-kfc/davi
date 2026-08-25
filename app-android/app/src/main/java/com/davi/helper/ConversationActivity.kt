@@ -85,6 +85,21 @@ internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
  */
 internal const val EXTRA_DEBUG_FAILED = "com.davi.helper.extra.DEBUG_FAILED"
 
+/**
+ * 홈 말풍선 문구를 갈아 끼운다(debug 전용). **상태를 바꾸지 않는다** — 홈 화면 그대로에서
+ * 문구만 길게 만들어 배치를 재는 자리다.
+ *
+ * 이 문구의 길이는 서버·오류 상황이 정하고 앱이 못 정한다. 그런데 「길어지면 말풍선이
+ * 마이크를 덮는다」가 실제 결함이라, **길어진 화면을 띄울 길이 없으면 고쳤는지 확인할 수
+ * 없다.** 줄바꿈은 **따옴표 안에서 줄을 바꿔서** 넣는다 — `am`은 `--es` 값의 이스케이프를
+ * 풀지 않는다.
+ *
+ *   adb shell am start -n com.davi.helper.debug/com.davi.helper.ConversationActivity \
+ *     --es com.davi.helper.extra.DEBUG_HOME_STATUS "'인터넷 연결이 원활하지 않아요.
+ *     연결을 확인하고 다시 해 주세요.'"
+ */
+internal const val EXTRA_DEBUG_HOME_STATUS = "com.davi.helper.extra.DEBUG_HOME_STATUS"
+
 /** Activity가 리소스를 읽기 전 배율을 주입하는 debug 계측 전용 메모리 값. */
 internal object ConversationInstrumentationConfiguration {
     @Volatile
@@ -307,6 +322,25 @@ class ConversationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityConversationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 말풍선 높이는 문구 길이 x 글꼴 배율로 정해져 배치가 끝나야 알 수 있다.
+        // **둘 다에 단다**(2026-08-25 리뷰). 루트는 자식을 순서대로 놓는데 card_column이
+        // mic_slot보다 앞이라, 말풍선 콜백에서 잰 마이크 자리는 **이번 패스가 아직 안 옮긴
+        // 옛 자리**다. 마이크는 홈이냐 아니냐로 50dp 움직여서(davi_mic_margin_bottom 32 <->
+        // davi_home_mic_margin_bottom 82), 청취에서 홈으로 돌아오는 렌더에서 겹침이 50dp
+        // 작게 읽힌다 — 그러면 shrink가 0이 되고 **값이 안 바뀌니 다음 패스도 없어 굳는다.**
+        val caneWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateCaneShrink()
+        }
+        binding.homeBubble.addOnLayoutChangeListener(caneWatch)
+        binding.micSlot.addOnLayoutChangeListener(caneWatch)
+        // 제목 폭은 글꼴 배율을 따라 자란다 — 배치가 끝나야 화살표를 침범하는지 알 수 있다.
+        // **둘 다에 단다.** 제목에만 달았더니 화살표가 아직 안 재진 첫 배치에서 빠져나온 뒤
+        // 제목이 다시 안 바뀌어 판정이 영영 안 돌았다.
+        val sparkleWatch = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateSparkleOcclusion()
+        }
+        binding.homeTitle.addOnLayoutChangeListener(sparkleWatch)
+        binding.homeSparkle.addOnLayoutChangeListener(sparkleWatch)
         // 파형 계산을 미리 해 둔다 — 처음 울릴 때 메인 스레드에서 하면 소리가 늦다(#313).
         micTone.prepare()
         launchableAppIndex.start()
@@ -473,7 +507,13 @@ class ConversationActivity : AppCompatActivity() {
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         intent = newIntent
-        debugInjectedState()?.let { setState(it) }
+        // **주입이 아니어도 다시 그린다**(2026-08-25 리뷰). DEBUG_HOME_STATUS는 상태를 안
+        // 만들고 문구만 갈아 끼우는 extra라 debugInjectedState()가 null을 준다 — 그러면 두
+        // 번째 am start가 render를 못 돌려 화면이 옛 문구 그대로다. 그런데 intent는 갱신돼
+        // 있어 나중에 상관없는 render가 돌 때 새 문구가 뒤늦게 튀어나온다. 아무 일도 안
+        // 일어나는 것보다 나쁘다.
+        val injected = debugInjectedState()
+        if (injected != null) setState(injected) else render(uiState)
     }
 
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
@@ -562,6 +602,105 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     /**
+     * 화살표가 제목을 침범하면 **숨긴다**(2026-08-25).
+     *
+     * 화살표는 프레임 오른쪽 끝에 고정이고 제목은 가운데 정렬이다. 글꼴 배율이 커지면 제목이
+     * 그 자리까지 자란다 — 배율 2.0·320dp 폭에서 「어려운 건」을 가로 17.1dp, 「물어보세요」를
+     * 30.5dp 덮었다(실측).
+     *
+     * **배율 숫자로 걸지 않는다.** 화면이 좁으면 더 낮은 배율에서도 부딪히고, 문구가 바뀌어도
+     * 달라진다. 실제로 겹치는지를 재는 규칙이라야 어느 기기·배율·문구에서도 맞는다.
+     *
+     * **여기서는 숨겨도 안전하다.** 화살표는 FrameLayout 위에 얹힌 오버레이라 자리를 비우든
+     * 그림만 지우든 **다른 요소의 배치가 안 움직인다** — 흐름 안의 요소를 숨겨 연쇄가 나는
+     * 것과 사정이 다르다. 자리를 남기는 INVISIBLE로 둬 판정을 다시 할 수 있게 한다.
+     */
+    private fun updateSparkleOcclusion() {
+        val sparkle = binding.homeSparkle
+        if (sparkle.visibility == View.GONE || sparkle.width == 0) return
+        val at = IntArray(2).also { sparkle.getLocationInWindow(it) }
+        val hit = listOf(binding.homeTitle, binding.homeTitleAccent).any { text ->
+            if (text.visibility != View.VISIBLE || text.width == 0) return@any false
+            val t = IntArray(2).also { text.getLocationInWindow(it) }
+            at[0] < t[0] + text.width && t[0] < at[0] + sparkle.width &&
+                at[1] < t[1] + text.height && t[1] < at[1] + sparkle.height
+        }
+        val wanted = if (hit) View.INVISIBLE else View.VISIBLE
+        if (sparkle.visibility != wanted) sparkle.visibility = wanted
+    }
+
+    /** 캐릭터의 기준 높이(px). 처음 볼 때 치수에서 한 번 읽는다. */
+    private var caneBaseHeight = 0
+
+    /** 말풍선에 자리를 내주려고 캐릭터를 줄인 양(px). 0이면 기준 높이다. */
+    private var caneShrink = 0
+
+    /**
+     * 말풍선이 마이크를 파고들면 **캐릭터를 그만큼 줄인다**(2026-08-25).
+     *
+     * 홈은 말풍선이 열 안에 있고 마이크는 **열 밖에서 바닥에 못 박혀 있다.** 그래서 문구가
+     * 길어지면 말풍선이 밀리는 대신 마이크를 **덮는다** — 배율 2.0의 기본 문구에서 이미 6.22dp
+     * 겹쳤고(실측), 줄바꿈이 박힌 문구(voice_network_error)는 네 줄이라 더 나쁘다.
+     *
+     * **줄일 것은 문구가 아니라 캐릭터다** — 「이보다 긴 문구를 넣으면 그때 접어야 하는 것은
+     * 안내 문구가 아니라 캐릭터다」(#235 결정). 안내를 자르면 어르신이 무엇을 해야 할지 잃지만,
+     * 캐릭터는 작아져도 같은 것을 가리킨다.
+     *
+     * **줄인 만큼을 되돌려 「줄이기 전」 기준으로 잰다** — 안 그러면 줄여서 겹침이 사라진 다음
+     * 판정에서 되돌리고, 되돌리면 또 겹쳐 무한히 오간다.
+     *
+     * **한 번에 수렴하는 것은 홈 열의 사정 덕이다** — 홈은 아래 여백(space_home_mid)이 걷혀
+     * 있고(#231) 겹치는 구간에서는 위 여백(space_flex_top)이 0에 눌려 있어, 캐릭터를 X 줄이면
+     * 말풍선이 정확히 X 올라온다. **홈 열에 weight를 가진 자식이 하나라도 살아나면** 그
+     * 전제가 깨져 한 번에 안 맞고 여러 프레임에 걸쳐 수렴한다 — 그때는 이 계산을 다시 본다.
+     */
+    private fun updateCaneShrink() {
+        val cane = binding.homeCane
+        if (cane.visibility != View.VISIBLE ||
+            binding.homeBubble.visibility != View.VISIBLE ||
+            binding.micSlot.visibility != View.VISIBLE ||
+            binding.homeBubble.height == 0
+        ) {
+            applyCaneShrink(0)
+            return
+        }
+        if (caneBaseHeight == 0) {
+            caneBaseHeight = resources.getDimensionPixelSize(R.dimen.davi_home_cane_height)
+        }
+        val bubbleAt = IntArray(2).also { binding.homeBubble.getLocationInWindow(it) }
+        val micAt = IntArray(2).also { binding.micSlot.getLocationInWindow(it) }
+        val bubbleBottomAtBase = bubbleAt[1] + binding.homeBubble.height + caneShrink
+        // **말풍선 아래 여백을 지키고 잰다**(2026-08-25 리뷰). 마이크 윗변만 기준으로 삼으면
+        // 둘이 딱 붙어 davi_home_bubble_margin_bottom이 통째로 0이 된다 — 여유가 있는데도
+        // 붙일 이유가 없다. 여유가 없을 때만 하한이 걸려 이 여백부터 먹힌다.
+        val gap = resources.getDimensionPixelSize(R.dimen.davi_home_bubble_margin_bottom)
+        // **위 여백이 실제로 먹은 만큼을 뺀다**(2026-08-25 리뷰). 안 그러면 줄어든 캐릭터가
+        // 영영 안 돌아온다.
+        //
+        // davi_home_control_reserve(173) = davi_home_mic_margin_bottom(82) + davi_mic_button_size(91)이라
+        // **열이 안 넘치는 구간에서 말풍선 바닥은 정확히 micTop - gap에 못 박힌다** — 남는 세로를
+        // space_flex_top 혼자 위에서 먹기 때문이다. 그 값을 넣으면 overflow == caneShrink가 되고,
+        // applyCaneShrink가 「값이 같으면 아무것도 안 한다」로 빠져 되돌아올 기울기가 사라진다.
+        // (긴 문구 -> 설정 다녀오기 -> 짧은 문구에서 캐릭터가 큰 채로 굳는다.)
+        //
+        // space_flex_top의 높이가 곧 **열에 남은 여유**다(홈에서 weight를 가진 자식이 그것뿐이다).
+        // 그래서 이 한 항이 두 구간을 하나로 합친다 — 넘치는 구간에서는 0이라 식이 그대로고,
+        // 안 넘치는 구간에서는 남은 여유만큼 음수로 끌어내려 한 패스에 0으로 수렴한다.
+        val overflow = bubbleBottomAtBase + gap - micAt[1] - binding.spaceFlexTop.height
+        val floor = resources.getDimensionPixelSize(R.dimen.davi_home_cane_min_height)
+        applyCaneShrink(overflow.coerceIn(0, (caneBaseHeight - floor).coerceAtLeast(0)))
+    }
+
+    /** 캐릭터를 기준 높이에서 [shrink]px 줄인다. 값이 같으면 아무것도 하지 않는다. */
+    private fun applyCaneShrink(shrink: Int) {
+        if (shrink == caneShrink || caneBaseHeight == 0) return
+        caneShrink = shrink
+        binding.homeCane.updateLayoutParams<LinearLayout.LayoutParams> {
+            height = caneBaseHeight - shrink
+        }
+    }
+
+    /**
      * debug 주입이 붙어 왔는가. **[debugInjectedState]와 달리 상태를 만들지도 기록을 남기지도
      * 않는다** — 그쪽은 부르면 텔레메트리가 찍혀서, 판정에만 쓰면 같은 주입이 두 번 기록된다.
      *
@@ -574,7 +713,8 @@ class ConversationActivity : AppCompatActivity() {
     private fun debugInjectionRequested(): Boolean =
         BuildConfig.DEBUG && (
             intent.getBooleanExtra(EXTRA_DEBUG_FAILED, false) ||
-                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null
+                intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) != null ||
+                intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS) != null
             )
 
     /**
@@ -688,7 +828,18 @@ class ConversationActivity : AppCompatActivity() {
         // (voice_permission_open_settings)가 글꼴 배율 2.0에서 세 줄까지 들어가는 것을
         // 실기기로 확인했다(PR #235). 이보다 긴 문구를 넣으면 그때는 잘리고, 그때 접어야
         // 하는 것은 안내 문구가 아니라 캐릭터다.
-        binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
+        // **주입이 있으면 그것으로 갈아 끼운다**(debug 전용). 상태는 안 바꾼다 —
+        // 긴 문구에서 말풍선이 마이크를 덮는지 재려면 긴 문구를 띄울 길이 있어야 한다.
+        val debugStatus = if (BuildConfig.DEBUG) {
+            intent.getStringExtra(EXTRA_DEBUG_HOME_STATUS)
+        } else {
+            null
+        }
+        if (debugStatus != null) {
+            binding.homeBubbleText.text = debugStatus
+        } else {
+            binding.homeBubbleText.setText(model.statusRes ?: R.string.voice_home_bubble)
+        }
         binding.logo.isVisible(model.logoVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
