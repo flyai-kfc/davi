@@ -385,19 +385,29 @@ def _normalize_clarification_decision(
         normalized["goal"] = None
         reasons.append("status_goal_mismatch")
 
-    clarification = normalized.get("clarification")
-    questions = clarification.get("questions") if isinstance(clarification, dict) else None
-    first_prompt = (
-        questions[0].get("prompt") if questions and isinstance(questions[0], dict) else None
-    )
-    if isinstance(first_prompt, str) and first_prompt.strip():
-        first_prompt = first_prompt.strip()
+    first_prompt = _first_clarification_prompt(normalized)
+    if first_prompt is not None:
         message = normalized.get("message")
         if not isinstance(message, str) or message.strip() != first_prompt:
             normalized["message"] = first_prompt
             reasons.append("status_clarification_mismatch")
 
     return normalized, tuple(reasons)
+
+
+def _first_clarification_prompt(payload: dict[str, Any]) -> str | None:
+    """올바른 질문 배열의 첫 prompt만 wire 텍스트와 같은 strip 규칙으로 읽는다."""
+
+    clarification = payload.get("clarification")
+    if not isinstance(clarification, dict):
+        return None
+    questions = clarification.get("questions")
+    if not isinstance(questions, list) or not questions or not isinstance(questions[0], dict):
+        return None
+    prompt = questions[0].get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    return prompt.strip()
 
 
 def _contract_violation_reason(
@@ -416,12 +426,10 @@ def _contract_violation_reason(
     ):
         return "status_clarification_mismatch"
     if payload.get("status") == IntentDialogueStatus.NEEDS_CLARIFICATION:
-        clarification = payload.get("clarification")
-        questions = clarification.get("questions") if isinstance(clarification, dict) else None
-        first_prompt = (
-            questions[0].get("prompt") if questions and isinstance(questions[0], dict) else None
-        )
-        if first_prompt != payload.get("message"):
+        first_prompt = _first_clarification_prompt(payload)
+        message = payload.get("message")
+        normalized_message = message.strip() if isinstance(message, str) else None
+        if first_prompt is not None and first_prompt != normalized_message:
             return "status_clarification_mismatch"
 
     relevant_fields = {"decision_basis", "message", "goal", "clarification"}

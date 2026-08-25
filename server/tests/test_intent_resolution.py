@@ -612,6 +612,72 @@ def test_llm_safe_ends_clarification_without_a_question_plan(caplog):
     )
 
 
+def test_llm_keeps_unrelated_blank_error_when_clarification_prompt_has_spaces(caplog):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "decision_basis": "   ",
+                    "status": "needs_clarification",
+                    "message": "다른 문장입니다.",
+                    "clarification": _clarification("  어느 앱인가요?  "),
+                },
+                add_basis=False,
+            ),
+        )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"),
+        pytest.raises(LlmError) as raised,
+    ):
+        _resolver(handler).resolve(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "decision_basis_blank" and event.get("action") == "fail"
+        for event in _events(caplog)
+    )
+    assert not any(
+        event.get("reason") == "status_clarification_mismatch" for event in _events(caplog)
+    )
+
+
+def test_llm_rejects_non_array_clarification_questions_as_parse_without_crashing(caplog):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        question = _clarification("어느 앱인가요?")["questions"][0]
+        return httpx.Response(
+            200,
+            json=_gemini_response(
+                {
+                    "status": "needs_clarification",
+                    "message": "어느 앱인가요?",
+                    "clarification": {"questions": question},
+                }
+            ),
+        )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="uvicorn.error.davi.llm"),
+        pytest.raises(LlmError) as raised,
+    ):
+        _resolver(handler).resolve(_request())
+
+    assert raised.value.kind is ErrorKind.PARSE
+    assert len(requests) == 1
+    assert any(
+        event.get("reason") == "invalid_intent_dialogue" and event.get("action") == "fail"
+        for event in _events(caplog)
+    )
+
+
 def test_llm_rejects_ready_without_goal_without_retry():
     requests: list[dict] = []
 
