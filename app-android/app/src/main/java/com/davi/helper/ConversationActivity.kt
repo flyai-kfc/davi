@@ -1343,6 +1343,7 @@ class ConversationActivity : AppCompatActivity() {
 
     private fun submitVoiceTurn(text: String) {
         speechRecognizerHelper?.stop()
+        ConversationLog.utterance("voice", text)
         val pending = voiceSession.nextRequest(text) ?: return
         submitPendingRequest(pending, text)
     }
@@ -1409,6 +1410,18 @@ class ConversationActivity : AppCompatActivity() {
     private fun submitClarificationAnswer(source: ClarificationAnswerSource, answer: String) {
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.stop()
+        // **답을 넘기기 전에 찍는다** — answerCurrent가 상태를 갈아 치우면 몇 번째 질문이었는지가
+        // 사라진다. 보기를 눌렀으면 몇 번째인지, 직접 말했으면 길이만 남는다(#470).
+        (uiState as? ConversationUiState.Clarifying)?.outcome?.let { asked ->
+            GuideTelemetry.clarificationAnswer(
+                questionIndex = asked.questionIndex,
+                questionCount = asked.questionCount,
+                source = source.name.lowercase(),
+                optionIndex = optionIndexOf(source, asked.question.options, answer),
+                answerLength = answer.length,
+            )
+        }
+        ConversationLog.answer(source.name.lowercase(), answer)
         when (val outcome = voiceSession.answerCurrent(source, answer)) {
             is VoiceDialogueSession.AnswerOutcome.NextQuestion -> showClarification(outcome.outcome)
             is VoiceDialogueSession.AnswerOutcome.FinalRequest -> {
@@ -1461,6 +1474,25 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * 응답이 **무엇을 담고 있었는지**를 비식별 수치로 남긴다(#470).
+     *
+     * 계약이 `NEEDS_CLARIFICATION`에서만 `clarification`을 채우고 `READY`에서만 `goal`을
+     * 채우므로(SlotFillApiClient.requireValidState), 없는 축은 null로 두면 그 자체가
+     * **상태와 어긋났다는 신호**가 된다 — 값을 0으로 지어내면 그 어긋남이 안 보인다.
+     */
+    private fun logResponseShape(request: LogicalRequestAttempt, state: SlotFillState) {
+        val shape = responseShapeOf(state)
+        GuideTelemetry.voiceResponseShape(
+            request = request,
+            status = shape.status,
+            messageLength = shape.messageLength,
+            questionCount = shape.questionCount,
+            optionCounts = shape.optionCounts,
+            hasGoal = shape.hasGoal,
+        )
+    }
+
     private fun handleSlotFillResult(
         pending: VoiceDialogueSession.PendingRequest,
         logicalRequest: LogicalRequestAttempt,
@@ -1470,6 +1502,9 @@ class ConversationActivity : AppCompatActivity() {
     ) {
         when (result) {
             is SlotFillResult.Success -> {
+                // **폐기 판정보다 먼저 찍는다**(#470). 버려진 응답도 「무엇이 왔는지」는
+                // 남아야 한다 — 폐기 자체는 `voice_response_dropped`가 따로 말한다.
+                logResponseShape(logicalRequest, result.state)
                 val outcome = voiceSession.applyResponse(pending, result.state)
                 if (outcome == null) {
                     GuideTelemetry.voiceResponseDropped(logicalRequest, "dialogue_changed")
@@ -1547,6 +1582,12 @@ class ConversationActivity : AppCompatActivity() {
     private fun showClarificationInTurn(outcome: VoiceDialogueSession.Outcome.Clarify) {
         setState(ConversationUiState.Clarifying(outcome, speaking = true))
         GuideTelemetry.voiceState("clarification_question")
+        ConversationLog.question(
+            outcome.questionIndex,
+            outcome.questionCount,
+            outcome.question.prompt,
+            outcome.question.options,
+        )
         // **끝 신호가 안 와도 접힌다**(#452). 카드가 접히는 유일한 계기가 이 콜백인데, TTS
         // 엔진이 말하다 죽거나 onDone을 안 부르면 그 신호가 영영 안 온다 — 그러면 카드가
         // 펼친 채로 굳어 보기가 화면 밖으로 밀린다. 상한의 근거는 [speechGuardMillis]에 있다.
@@ -1624,6 +1665,7 @@ class ConversationActivity : AppCompatActivity() {
         appAvailability: AppAvailabilityPreflight?,
         launchableApp: LaunchableAppRecord? = null,
     ) {
+        ConversationLog.goal(outcome.goal)
         val warning = appAvailability == AppAvailabilityPreflight.UNCONFIRMED
         val goalConfirmation = stateForOutcome(outcome) as ConversationUiState.Confirm
         val confirmation = if (warning) {
@@ -2022,6 +2064,16 @@ class ConversationActivity : AppCompatActivity() {
             TransitionManager.beginDelayedTransition(
                 binding.cardColumn,
                 ChangeBounds().setDuration(FOLD_TRANSITION_MS),
+            )
+        }
+        // **바뀔 때만 찍는다**(#470). render는 부분 인식마다 돌아서, 매번 찍으면 로그가
+        // 화면을 덮는다. `questionFoldShown`이 곧 「마지막으로 화면에 적용한 값」이라
+        // 그것과 다른 순간이 그대로 변화 시점이다.
+        if (questionFoldShown != questionExpanded) {
+            GuideTelemetry.clarificationFold(
+                expanded = questionExpanded,
+                speaking = (uiState as? ConversationUiState.Clarifying)?.speaking == true,
+                suppressed = foldTransitionSuppressed,
             )
         }
         questionFoldShown = questionExpanded
