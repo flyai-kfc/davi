@@ -772,7 +772,7 @@ class ConversationActivity : AppCompatActivity() {
      * 않는다** — 그쪽은 부르면 텔레메트리가 찍혀서, 판정에만 쓰면 같은 주입이 두 번 기록된다.
      *
      * **실패 화면 주입도 함께 본다** — 그쪽도 안내를 안 돌리는 순수 배치 확인이라 근거가 같다.
-     * 다만 실패 상태는 5초 뒤 홈으로 돌아간다(FAILED_RETURN_DELAY_MS) — **재기 전에 사라지니
+     * 다만 실패 상태는 [FAILED_RETURN_DELAY_MS] 뒤 홈으로 돌아간다 — **재기 전에 사라지니
      * 그 화면을 잴 때는 그 안에 찍어야 한다.**
      * 키 유무(`hasExtra`)가 아니라 **값의 형태**를 본다. 문자열이 아닌 값을 같은 키로 넣으면
      * 게이트만 열리고 주입은 안 돼, 권한이 없는 기기에서 빈 화면이 뜬다.
@@ -941,7 +941,11 @@ class ConversationActivity : AppCompatActivity() {
         // 접힘 상태를 **먼저** 정한다 — 아래 카드 크기 블록이 이 값에 걸린다.
         lastRenderModel = model
         val foldActive = resolveQuestionFold(state, model)
-        binding.logo.isVisible(model.logoVisible && !model.clarificationVisible)
+        // **판정은 모델에 있다**([ConversationRenderModel.badgeVisible]). 여기와 카드 위 패딩이
+        // 같은 값을 읽어야 하는데, 액티비티 지역 변수로 두면 그 「같음」을 잡는 그물이 실기기
+        // 확인뿐이 된다 — 2026-08-26에 그 어긋남으로 배지가 질문 글자를 12dp 덮었다(#473).
+        //
+        binding.logo.isVisible(model.badgeVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
         // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
@@ -982,12 +986,22 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
         }
-        // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **구체화에는 배지가 없으니 접힘에서 걷는다.**
+        // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **배지가 없는 화면에서만 걷는다.**
         //
-        // **inClarificationFlow를 본다 — clarificationVisible이 아니다.** 그쪽은 「직접
-        // 말하기」로 넘어가는 순간 꺼져서 위 패딩이 갈리고, **카드 위치는 그대로인 채 질문
-        // 글자만 4dp 밀린다**(눈에 잘 안 띈다, 2026-08-23 리뷰). 카드 안팎이 함께 움직이려면
-        // 배지 위 여백·칩 자리와 같은 신호를 봐야 한다.
+        // **`clarificationVisible`을 본다 — `inClarificationFlow`가 아니다**(2026-08-26 · #473).
+        // 한때 반대였다: 흐름 신호만 보고 걷었더니 **배지가 서는 청취까지 걷혀 배지가 질문
+        // 글자를 12dp 덮었다.** 걷는 근거가 「배지가 없다」이고, 흐름 안에서 배지가 서고 안 서고를
+        // 가르는 것이 이 신호다 — 그래서 배지 표시([ConversationRenderModel.badgeVisible])와 이
+        // 패딩이 **같은 것을 읽는다.**
+        //
+        // **대가는 흐름 안에서 글자가 뛰는 것이다** — 2026-08-23 리뷰가 4.74dp로 기록해 둔
+        // 자리가 29dp가 됐다. 그 리뷰는 「카드 안팎이 함께 움직이려면 배지 위 여백·칩 자리와
+        // 같은 신호를 봐야 한다」고 적었는데, **배지 자체가 흐름 안에서 갈리므로**(구체화는
+        // 칩에 자리를 내주고 청취는 선다) 그 요구는 이 화면에서 성립하지 않는다. 두 화면이
+        // 정말 다른 패딩을 필요로 한다 — 근거는 아래 when 안에 있다.
+        //
+        // **이 조건을 `inClarificationFlow`로 되돌리지 말 것.** 되돌리면 12dp 겹침이 그대로
+        // 재발한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
@@ -996,7 +1010,33 @@ class ConversationActivity : AppCompatActivity() {
                     // 적용된 상태였다. 그 20dp가 **「직접 말하기」를 19dp 잘라 먹고 있었다**
                     // (실측 320×686dp: 마지막 버튼이 72dp 규격인데 53dp만 보였다). 안내 화면
                     // (guidingVisible)에는 배지가 서므로 그쪽은 그대로 둔다.
-                    model.inClarificationFlow || collapsed -> R.dimen.davi_spacing_xl
+                    //
+                    // **걷는 근거가 「배지가 없다」이므로 배지를 직접 본다**(2026-08-26 · #473).
+                    // `inClarificationFlow`만 보면 배지가 서는 청취까지 걷혀 **배지가 질문
+                    // 글자를 12dp 덮는다** — `dimens.xml`이 「36(배지가 파고든 깊이)보다 얕으면
+                    // 배지가 글자를 덮는다」고 미리 적어 둔 그대로다. 그 겹침은 #465가 이 조건을
+                    // 넓히면서 들어왔다(그 전에는 청취가 48dp를 받아 안 겹쳤다).
+                    //
+                    // **대가는 흐름 안에서 글자가 29dp 뛰는 것이다**(2026-08-23 리뷰가 4.74dp로
+                    // 기록해 둔 자리). 두 화면이 **정말 다른 값을 필요로 한다** — 구체화는 보기
+                    // 셋 + 「직접 말하기」가 들어가려면 24dp여야 하고(44dp면 마지막 버튼이 19dp
+                    // 잘린다, #465 실측), 청취는 배지를 피하려면 36dp 이상이어야 한다. 배지를
+                    // 두는 한 둘은 못 만난다. **글자가 가려지는 것보다 뛰는 것이 낫다**로 정했다
+                    // (2026-08-26) — 가려지면 못 읽고, 뛰면 읽을 수는 있다.
+                    //
+                    // 배지를 빼서 맞추는 안은 접었다 — 근거는 [ConversationRenderModel.badgeVisible].
+                    //
+                    // **`clarificationVisible`이라고 쓴다**(#474 재리뷰 2). 한때
+                    // `inClarificationFlow && !badgeVisible`로 적었는데, 도달 가능한 아홉 상태
+                    // 전부에서 그 식은 `clarificationVisible`과 **결과가 같다** — 흐름 안의 두
+                    // 화면이 다 `logoVisible`이라 `!badgeVisible`이 곧 `clarificationVisible`이고,
+                    // 그것이 `inClarificationFlow`를 함의한다. 이름만 흐름 신호를 달고 있어,
+                    // 「흐름 신호로 되돌리지 말 것」이라 적어 둔 조건이 정작 그 이름으로 읽혔다.
+                    //
+                    // 2026-08-23 리뷰가 물리쳤던 신호로 **의도적으로 되돌아온 것**이고, 그렇게
+                    // 쓰면 위 트레이드오프와 말이 맞는다 — 「두 화면이 정말 다른 값을 필요로
+                    // 한다」가 곧 「선택 영역이 화면에 있는가로 가른다」다.
+                    model.clarificationVisible || collapsed -> R.dimen.davi_spacing_xl
                     model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi
                 },
@@ -1162,6 +1202,12 @@ class ConversationActivity : AppCompatActivity() {
                     // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
                     // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
                     // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
+                    //
+                    // **카드 위 패딩과 신호가 다른 것은 의도다**(2026-08-26 · #473). 이쪽이
+                    // 지키는 것은 **카드의 위치**라 흐름 내내 이어져야 하고, 저쪽이 지키는 것은
+                    // **배지를 피하는 것**이라 배지가 서고 안 서고를 따라가야 한다. 배지가 흐름
+                    // 안에서 갈리므로(구체화는 칩에 자리를 내주고 청취는 선다) 두 결정도 갈린다.
+                    // **둘을 한 신호로 「통일」하지 말 것** — 어느 쪽으로 맞춰도 하나가 깨진다.
                     model.inClarificationFlow -> R.dimen.davi_badge_margin_top_clarification
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
