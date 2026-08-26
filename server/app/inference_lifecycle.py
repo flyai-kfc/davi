@@ -172,6 +172,9 @@ def _request_identity(request: BaseModel) -> dict:
     # 앱은 network/timeout retry에서 화면을 다시 직렬화한다. 구조가 같은 동안에도 시계·배지
     # label, 정착 중 bounds, 직렬화 node id는 달라질 수 있으므로 본문 전체를 비교하면 정상
     # 재전송을 409로 오판한다. 요소 순서·수와 아래 행동 상태는 Android 구조 서명과 같다.
+    # **`role`만 갈린다**(#456) — 앱은 구조 축에서 뺐고 여기에는 남아 있다. 캐러셀처럼 소재마다
+    # 위젯 종류가 바뀌는 화면은 재전송 사이 회전이 끼면 앱이 같은 논리 ID로 다른 본문을 보내
+    # 409가 된다. 여기서도 뺄지는 계약 결정이라 별도로 정한다.
     identity = request.model_dump(mode="json", exclude={"screen", "steps"})
     identity["screen"] = {
         "package_name": request.screen.package_name,

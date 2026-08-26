@@ -398,9 +398,13 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 화면·목표·세션 변경 또는 정상 응답 뒤의 새 추론은 새 UUID를 쓴다. UUID는 goal·label·화면 서명·
 `device_id`에서 파생하지 않고 프로세스 밖에 저장하지 않는다. 서버는 인증 범위+endpoint+UUID를
 key로 같은 검증 본문의 진행 중 작업을 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다.
-next-step 본문의 동일성은 앱 화면 구조 축과 맞추고 label·window title·node id·bounds·스크롤 위치
-메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
+next-step 본문의 동일성은 앱 화면 구조 축을 기준으로 삼고 label·window title·node id·bounds·스크롤
+위치 메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
 내용·과도기 값만 달라진 정상 network retry를 본문 충돌로 오판하지 않기 위해서다.
+**두 축은 `role`에서 갈린다**(#456) — 앱은 구조 축에서 `role`을 뺐고 서버 identity에는 남아 있다.
+그래서 캐러셀처럼 소재마다 위젯 종류가 바뀌는 화면에서는 재전송 사이에 회전이 끼면 앱이 같은
+논리 ID를 유지한 채 다른 본문을 보내 409가 난다. 다음 요청이 새 ID로 자가 복구하지만 왕복
+하나를 잃는다. 서버 identity에서도 뺄지는 계약 결정이라 별도로 정한다.
 같은 key의 다른 본문은 409로 닫고 실패 결과는 저장하지 않는다. 공급자 HTTP는 호출당 최대 20초,
 논리 작업은 복구 호출을 모두 합쳐 최대 40초이고 Android 추론 호출 전체 상한은 45초다. 연결이
 끊겨도 공유 작업은 즉시 취소하지 않고 hard deadline까지만 계속해 재전송이 합류하게 하며, deadline

@@ -583,13 +583,10 @@ class ScreenStabilityTrackerTest {
         assertEquals(Decision.SEND, send("a", 63_000))
 
         // 걸쇠가 살아 있으면 회전 구성원은 **첫 복귀에서 바로** 접힌다. 풀렸다면 여기서
-        // 4회 묶음이 되살아난다.
+        // 4회 묶음이 되살아난다. 뒤에 `a`를 한 줄 더 두지 않는 이유는 그 시점의
+        // `sentSignature`가 `a`라 걸쇠와 무관하게 SEND가 안 나오기 때문이다 — 통과만 하는
+        // 단언이 된다.
         assertEquals(Decision.IDLE, send("b", 68_000))
-        assertNotEquals(
-            "걸쇠가 풀려 4회 묶음이 되살아났다",
-            Decision.SEND,
-            send("a", 73_000),
-        )
     }
 
     @Test
