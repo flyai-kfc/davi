@@ -24,6 +24,10 @@ class QuestionFoldGateTest {
     @Test
     fun `안 읽어 주면 처음부터 접힌다`() {
         // TTS가 꺼져 있거나 읽을 이유가 없는 갈래. 잃는 것은 없다 — 원문은 손잡이로 돌아온다.
+        //
+        // **이 규칙이 「첫 문항만 읽는다」를 뒤집게 만들었다**(2026-08-26). 그 규칙이 있는 동안
+        // 두 번째 질문은 안 읽혀서 여기 걸렸고, 그러면 어르신이 그 질문을 **읽을 수도 들을 수도
+        // 없다** — 손잡이를 눌러야만 원문이 나온다(showClarification KDoc).
         val gate = QuestionFoldGate()
 
         gate.sync("어느 앱으로 보낼까요?", speaking = false)

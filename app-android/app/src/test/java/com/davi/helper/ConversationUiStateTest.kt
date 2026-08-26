@@ -303,18 +303,6 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `읽어 주지 않는 질문은 처음부터 접혀 있다`() {
-        // 「첫 문항만 읽는다」를 2026-08-26에 뒤집었다(showClarification KDoc) — 그 규칙이
-        // 있던 동안 **두 번째 질문은 읽을 수도 들을 수도 없었다.** 안 읽으면 접힌 채로 뜨고,
-        // 그러면 손잡이를 눌러야만 원문이 나오기 때문이다. 그 연결을 여기 못 박아 둔다.
-        val gate = QuestionFoldGate()
-
-        gate.sync("두 번째 질문", speaking = false)
-
-        assertFalse("안 읽는 질문이 펼쳐져 있으면 접기의 이득이 없다", gate.expanded)
-    }
-
-    @Test
     fun `구체화 직접 발화는 무발화 계열 오류에서만 질문으로 돌아간다`() {
         assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NO_MATCH))
         assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_SPEECH_TIMEOUT))

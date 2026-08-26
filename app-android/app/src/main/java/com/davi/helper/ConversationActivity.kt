@@ -654,6 +654,9 @@ class ConversationActivity : AppCompatActivity() {
         destroyed = true
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         micReadyHandler.removeCallbacks(micReadyFallback)
+        // 낭독 그물은 최대 63초짜리다 — 안 걷으면 액티비티가 죽은 뒤에 메인 루퍼에서 깨어나
+        // 사라진 화면에 setState/render를 친다(#465 리뷰). 형제 둘과 같은 자리에 둔다.
+        cancelClarificationSpeechGuard()
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
         micTone.release()
@@ -1477,11 +1480,15 @@ class ConversationActivity : AppCompatActivity() {
         // **끝 신호가 안 와도 접힌다**(#452). 카드가 접히는 유일한 계기가 이 콜백인데, TTS
         // 엔진이 말하다 죽거나 onDone을 안 부르면 그 신호가 영영 안 온다 — 그러면 카드가
         // 펼친 채로 굳어 보기가 화면 밖으로 밀린다. 상한의 근거는 [speechGuardMillis]에 있다.
-        armClarificationSpeechGuard(outcome)
+        val guard = armClarificationSpeechGuard(outcome)
         speak(
             outcome.question.prompt,
             onFinished = {
-                cancelClarificationSpeechGuard()
+                // **이 speak가 건 그물만 걷는다**(#465 리뷰). TTS 바인더 스레드가
+                // runOnUiThread를 post한 직후 사용자가 보기를 눌러 다음 질문이 뜨면, 큐에서
+                // 뒤늦게 풀린 이 콜백이 **새 질문의 그물을 지운다** — 이 PR이 세우려는 바로
+                // 그 그물이 조용히 사라지는 갈래다. 창이 몇 ms라 드물어서 더 위험하다.
+                cancelClarificationSpeechGuard(only = guard)
                 val current = uiState as? ConversationUiState.Clarifying
                 if (
                     current?.outcome?.generation == outcome.generation &&
@@ -1496,7 +1503,8 @@ class ConversationActivity : AppCompatActivity() {
     /** 낭독 끝 신호가 안 올 때 대신 접는 그물. 근거는 [speechGuardMillis]. */
     private var clarificationSpeechGuard: Runnable? = null
 
-    private fun armClarificationSpeechGuard(outcome: VoiceDialogueSession.Outcome.Clarify) {
+    /** 그물을 걸고 **그 그물을 돌려준다** — 부른 쪽이 자기 것만 걷을 수 있게. */
+    private fun armClarificationSpeechGuard(outcome: VoiceDialogueSession.Outcome.Clarify): Runnable {
         cancelClarificationSpeechGuard()
         val guard = Runnable {
             clarificationSpeechGuard = null
@@ -1515,10 +1523,18 @@ class ConversationActivity : AppCompatActivity() {
         }
         clarificationSpeechGuard = guard
         binding.root.postDelayed(guard, speechGuardMillis(outcome.question.prompt.length))
+        return guard
     }
 
-    private fun cancelClarificationSpeechGuard() {
-        clarificationSpeechGuard?.let(binding.root::removeCallbacks)
+    /**
+     * 걸린 그물을 걷는다. [only]를 주면 **그것이 아직 걸려 있을 때만** 걷는다 — 늦게 도착한
+     * 옛 콜백이 이미 갈린 새 질문의 그물을 지우지 않게. [only]가 이미 갈렸다면 그것은 갈아 끼운
+     * 쪽이 큐에서 뺐으므로 여기서 더 할 일이 없다.
+     */
+    private fun cancelClarificationSpeechGuard(only: Runnable? = null) {
+        val current = clarificationSpeechGuard ?: return
+        if (only != null && only !== current) return
+        binding.root.removeCallbacks(current)
         clarificationSpeechGuard = null
     }
 
