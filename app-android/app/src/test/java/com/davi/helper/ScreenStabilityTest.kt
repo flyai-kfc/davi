@@ -485,6 +485,62 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `회전이 이어지는 동안에는 접기가 풀리지 않는다`() {
+        // 접히면 markSent가 안 불려 이력을 갱신하는 것이 아무것도 없다. 접은 방문을 적지
+        // 않으면 창이 만료되며 ROTATION_WINDOW_MS마다 접기가 재무장한다 — 2026-08-26 실기기
+        // 실측에서 152초에 요청 21회, 4회 묶음의 간격이 30.2~30.7초였다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        send("b", 15_000)
+
+        // 창(30초)을 여러 번 넘겨 돌린다. 한 번이라도 SEND가 나오면 재무장한 것이다.
+        // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
+        // IDLE로 못 박으면 정체 알림이 정상 발화한 것을 실패로 읽는다.
+        // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
+        // IDLE로 못 박으면 정체 알림이 정상 발화한 것을 실패로 읽는다.
+        var at = 20_000L
+        repeat(24) { turn ->
+            assertNotEquals(
+                "회전 ${turn + 1}바퀴째에 접기가 풀렸다",
+                Decision.SEND,
+                send(if (turn % 2 == 0) "a" else "b", at),
+            )
+            at += 5_000
+        }
+    }
+
+    @Test
+    fun `회전을 떠나면 이력을 비우고 돌아왔을 때 다시 묻는다`() {
+        // 접은 방문을 적는 것만으로는 회전 화면을 떠났다 돌아왔을 때 영구히 접힌다 —
+        // 재무장보다 나쁜 실패다. 회전에 없던 구조를 실제로 물었으면 떠난 것으로 본다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        send("b", 15_000)
+        assertEquals(Decision.IDLE, send("a", 20_000))
+
+        assertEquals(Decision.SEND, send("다른화면", 25_000))
+
+        assertEquals(Decision.SEND, send("a", 30_000))
+    }
+
+    @Test
+    fun `조작이 관측되면 회전 이력을 비운다`() {
+        // 인과 창(5초)만으로는 이력에 남은 옛 왕복이 그 뒤의 정상 복귀를 접는다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        send("b", 15_000)
+        assertEquals(Decision.IDLE, send("a", 20_000))
+        tracker.markInteraction(21_000)
+
+        // 인과 창이 닫힌 뒤에도 보낸다 — 이력이 비었기 때문이지 조작 창 때문이 아니다.
+        // 마지막으로 물어본 것이 b라, 복귀를 보려면 a로 돌아와야 novel 갈래를 탄다.
+        assertEquals(Decision.SEND, send("a", 27_000))
+    }
+
+    @Test
     fun `같은 화면을 다시 물은 것은 복귀로 세지 않는다`() {
         // 실패 재시도·눌림 확인 재질의·앵커 재질의는 화면을 옮기지 않은 채 markSent를 다시
         // 부른다(#456 리뷰 P1). 그대로 세면 이력에 두 줄이 남아 **첫 복귀가 두 번째로
