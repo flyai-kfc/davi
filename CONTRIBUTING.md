@@ -54,16 +54,22 @@ git config core.hooksPath .githooks
 ## PR
 
 - PR 하나는 **스택 하나**를 원칙으로 한다. 앱·서버 동시 변경이 불가피하면 PR 본문에 계약 변경을 명시한다.
-- **아직 손볼 게 남은 PR은 draft로 연다.** draft에서는 비싼 잡(Android·macOS)이 돌지 않고,
-  `Ready for review`로 올릴 때 처음 돈다. 저장소 전역 검사와 Backend는 draft에서도 돌아
-  린트·테스트 피드백은 계속 받는다. **대가는 있다** — Ready 첫 런이 빨갛게 뜰 수 있다.
-  그게 싫으면 올리기 전에 로컬에서 돌린다(아래 "로컬 검사 (푸시 전)").
+- **아직 손볼 게 남은 PR은 draft로 연다.** draft에서는 비싼 잡(Android·macOS)이 돌지 않고
+  `Ready for review`로 올릴 때 처음 돈다. 저장소 전역 검사는 draft에서도 돌고,
+  `server/`·`eval/`·`infra/`를 건드린 PR이면 Backend도 draft에서 돈다.
+  **앱 PR은 draft 동안 앱 피드백이 없다** — 단위 테스트도, release 경계 관문(마스킹 우회 거부·
+  평문 host 제한 등)도 Android 잡 안에 있어 Ready 전에는 안 돈다. 그동안은 로컬
+  `app-android/scripts/dev-install.ps1`과 `./gradlew test`로 대신한다.
+  Ready로 올린 뒤 Android·macOS가 계속 `skipped`면 빈 커밋을 한 번 밀어 새 런을 띄운다.
 - **승인 1명**이 필요하다. 단 **리뷰어는 직접 지정해야 한다** — 무료 private 플랜에서는 CODEOWNERS
   자동 지정이 동작하지 않는다(아래 "저장소 설정" 참고).
 - CI가 초록이어야 머지한다. **시스템이 막아주지 않으니 눈으로 확인한다.**
   `skipped`는 **「변경 감지 + 저장소 전역 검사」가 초록일 때만** 정상이다(경로 필터로 안 도는 잡).
   그 잡이 빨간불이면 아래 잡들은 **안 돈 것이지 통과한 게 아니다.** 집계 잡을 지운 뒤로
   이 구분은 사람이 한다.
+  **`skipped`의 원인은 둘이다** — 경로 필터, 그리고 draft. draft PR에서는 Android·macOS가
+  경로와 무관하게 `skipped`다. **draft 시절 런의 `skipped`를 통과로 읽지 않는다** —
+  Ready로 올린 뒤 새로 뜬 런에서 다시 본다.
 - **Backend 잡은 PR에서만 돈다.** main 푸시에서는 저장소 전역 검사와 해당되는 Android 잡만
   실행한다(#363). 서버·인프라 변경은 같은 main 푸시의 Azure development deploy가 image 빌드와
   `/health`를 확인하지만 `pytest`·`ruff`는 다시 돌리지 않는다. eval만 바뀐 main 푸시에는 대체
@@ -94,6 +100,8 @@ header 이름·UUID·attempt 규칙을 바꾸면 두 파일과 서버 계약 드
 - **남의 리뷰를 반영한 커밋도 예외가 아니다.** 리뷰어가 짚어 줬다는 것이 반영분까지 검토됐다는
   뜻은 아니다. 반영분은 아무도 안 본 새 코드이므로 라운드마다 다시 본다.
 - **고칠 것이 나오면 로컬에서 다 검증한 뒤 한 번만 민다.** 지적마다 나눠 밀지 않는다.
+- **범위는 명령으로 못 박는다.** 첫 푸시는 `git diff origin/main...HEAD`, 두 번째부터는
+  `git diff @{push}..HEAD` — 이번에 새로 미는 것만 본다. 라운드마다 전체를 다시 읽지 않는다.
 
 취향이 아니라 비용이다. 푸시마다 CI가 돌고 GitHub은 잡마다 1분 단위로 올려 청구한다.
 2026-08 측정에서 PR CI 5,291분 중 **리뷰 전 반복이 41%(2,147분)** 였다 — 아무도 안 본 상태에서
@@ -175,6 +183,8 @@ GET /repos/flyai-kfc/davi/branches/main/protection
 
 로컬 방어선으로 pre-push 훅을 제공한다(위 "시작하기"). 각자 한 번 켜면 된다. 훅이 하는 일은
 둘이다 — **main 직접 푸시 거부**, 그리고 **`server/`가 바뀐 푸시에 한해 `ruff` 두 검사**.
+`ruff`가 PATH에 없으면 **막지 않고 건너뛴다**(venv를 안 켠 셸에서 매번 걸리면 `--no-verify`가
+습관이 되고, 그러면 main 방어선까지 같이 죽는다). 훅을 켰다고 검사가 돌았다는 뜻은 아니다.
 앱 빌드와 `pytest`는 넣지 않았다. 앱 빌드는 로컬 4분대이고, `pytest`는 `server/tests/`가
 `bash`를 부르는 테스트를 갖고 있어 **Windows에서 초록이 아니다**(CI는 Linux라 초록). 둘 다
 넣으면 `--no-verify`가 습관이 되고 그러면 main 방어선까지 같이 죽는다.

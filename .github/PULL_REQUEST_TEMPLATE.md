@@ -34,6 +34,7 @@
 
 | 검사 | |
 |---|---|
+| 셀프리뷰: 작성 세션과 분리해 변경분을 다시 읽었다 (도구·범위 명시) | ⬜ |
 | 서버: `ruff check .` · `ruff format --check .` · `pytest` | ⬜ |
 | 앱: `app-android/scripts/dev-install.ps1` (빌드·설치) | ⬜ |
 | 앱: 실기기 확인 (기기·One UI 버전 명시) | ⬜ |

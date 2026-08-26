@@ -9,10 +9,16 @@ name: CI
 # 그대로 발화하므로(실측 — draft로 연 PR에서 CI가 돌았다) 안 돌게 하려면 잡마다 명시해야 한다.
 # `ready_for_review`를 types에 **반드시 함께** 넣는다 — 기본 타입에 없어서, 빠지면 draft를
 # Ready로 올려도 CI가 영영 안 돈다(#468).
+#
+# `converted_to_draft`는 이유가 반대다. **돌게 하려고가 아니라 돌던 것을 끊으려고** 넣는다 —
+# Ready 상태에서 Android(최대 30분)·macOS(10배 과금)가 돌기 시작한 뒤 draft로 되돌리면 아무
+# 이벤트도 안 떠서 그 런이 끝까지 청구된다. types에 넣으면 새 런이 뜨고 아래 concurrency 가
+# 이전 런을 취소한다. 새 런 자신은 draft라 비싼 잡을 건너뛰므로 비용은 `changes` 1분뿐이다.
+# **지우지 말 것** — "draft에선 안 도는데 왜 있지"로 읽히기 쉬운 자리다.
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches: [main]
 
@@ -79,6 +85,9 @@ jobs:
             # lib/, 그리고 bash 를 실제로 실행하는 테스트 파일 하나가 전부다. `scripts/**`로 두면
             # 렌더러 `.py`·`.ps1`만 고친 PR도 10배 러너를 부른다.
             # **여기 대상을 늘리면 bash32 잡의 스텝도 같이 봐야 한다.**
+            # `ci.yml`이 들어 있어 **이 워크플로 주석만 고쳐도 10배 러너가 돈다.** 잡의 스텝이
+            # ci.yml 안에 있는 한 빼면 검사 정의가 바뀌어도 안 도는 구멍이 생기고, GitHub은
+            # 잡별 paths 필터를 주지 않아 더 좁힐 방법이 없다. 알고 남긴 비용이다.
             devscripts:
               - 'app-android/scripts/*.sh'
               - 'app-android/scripts/lib/**'
@@ -113,6 +122,18 @@ jobs:
           done
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
           ./scripts/run-device-e2e.sh --list-scenarios
+
+          # **macOS Bash 3.2 잡은 test_dev_install_sh.py 하나만 돌린다**(아래 devscripts 필터와
+          # bash32 잡의 `-p` 패턴). bash 를 실제로 실행하는 테스트가 그것뿐이라는 가정 위에
+          # 서 있는데, 새 테스트가 생기면 필터에도 `-p`에도 안 걸려 3.2 커버리지가 조용히
+          # 사라진다. 항상 도는 이 잡이 몇 초짜리라 관문을 여기 두는 추가 비용은 0이다.
+          # `subprocess.run(` 과 `"/bin/bash"` 가 다른 줄이라 호출 패턴이 아니라 **인자 리터럴**을 본다.
+          bash_tests=$(grep -rlE '"(/bin/)?bash"' scripts/tests/test_*.py | sort | tr '\n' ' ')
+          if [ "$bash_tests" != "scripts/tests/test_dev_install_sh.py " ]; then
+            echo "bash를 실행하는 테스트 목록이 바뀌었다: [$bash_tests]" >&2
+            echo "ci.yml의 devscripts 필터와 bash32 잡의 -p 패턴을 같이 고쳐라." >&2
+            exit 1
+          fi
 
       - name: Windows PowerShell 실행기 구문·registry 테스트
         working-directory: app-android

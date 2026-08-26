@@ -13,6 +13,8 @@
 #
 # **외부 도구에 기대지 않는다.** 판정이 awk·grep 같은 것에 걸리면 그게 없는 환경에서
 # 훅이 조용히 통과한다 — 막으라고 있는 것이 fail-open 이 되는 방향이다.
+# **단 ②의 ruff 자체는 예외다** — 없으면 막지 않고 건너뛴다(아래 command -v). 여기서 막으면
+# venv 를 활성화하지 않은 셸에서 매번 걸려 --no-verify 가 습관이 되고, 그러면 ①까지 죽는다.
 #
 # 설치:  git config core.hooksPath .githooks
 # 우회:  git push --no-verify   (정말 필요할 때만)
@@ -94,6 +96,14 @@ server/"*) server_touched=1 ;;
 done
 IFS=$old_ifs
 set +f
+
+# **여기가 규약이 사람에게 닿는 유일한 순간이다.** 셀프리뷰는 저장소에 흔적을 안 남겨 훅이
+# 검사할 수가 없다(물어볼 수도 없다 — pre-push 의 stdin 은 ref 목록으로 이미 차 있다).
+# 그래서 막지 않고 상기만 시킨다. 막으면 --no-verify 가 습관이 되어 ①까지 같이 죽는다.
+echo "" >&2
+echo "  푸시 전 셀프리뷰 했나? 범위는 첫 푸시가 git diff origin/main...HEAD," >&2
+echo "  두 번째부터는 git diff @{push}..HEAD 다. (CONTRIBUTING.md \"로컬 검사 (푸시 전)\")" >&2
+echo "" >&2
 
 [ "$server_touched" -eq 1 ] || exit 0
 
