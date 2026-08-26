@@ -6,6 +6,8 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 
@@ -40,8 +42,12 @@ import android.view.accessibility.AccessibilityManager
  * [MicTone]이 같은 이유로 거기에 맞춰져 있다. 갈라 두면 무음 모드에서 **한쪽만 나는** 조합이
  * 생긴다. 대가도 그 클래스에 적힌 것과 같다 — **미디어 볼륨이 0이면 아무 소리도 없다.**
  *
- * 메인 스레드에서 만든다. [speak]·[repeat]·[stop]도 메인이고, TTS 완료 콜백만 다른 스레드에서
- * 와 [focusLock]으로 만난다.
+ * **끝 신호가 안 오는 갈래에 그물을 건다**([speechGuardMillis], #452·#465가 대화 화면에서
+ * 세운 그 상한을 그대로 쓴다 — 같은 엔진의 같은 결함이라 규칙을 두 벌로 두지 않는다).
+ * 그 신호가 유일하게 포커스를 놓는 계기라, 안 오면 **상대 앱이 영영 낮아진 채**로 남는다.
+ *
+ * 메인 스레드에서 만든다. [speak]·[repeat]·[stop] 전부 메인이고, TTS 콜백은 엔진 스레드에서
+ * 오지만 [mainHandler]로 넘겨 **상태는 메인 한 곳에서만** 만진다.
  *
  * 생성자 `context`는 필드로 들지 않는다 — 아래 초기화에서만 쓰고, 붙잡으면 서비스 Context가
  * 이 객체 수명에 묶인다([TextToSpeechHelper]는 applicationContext를 따로 잡는다).
@@ -63,8 +69,7 @@ class GuideSpeaker(context: Context) {
     private val accessibilityManager =
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
 
-    /** 포커스 상태를 만지는 자리. TTS 완료 콜백이 엔진 스레드에서 들어온다. */
-    private val focusLock = Any()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var focusHeld = false
 
@@ -72,13 +77,15 @@ class GuideSpeaker(context: Context) {
      * 지금 한 문장을 읽는 중인가. [stop]이 **읽던 것을 끊었는지** 알아야 [GuideSpeechGate]에
      * "안 읽은 것으로 되돌려라"를 전할 수 있다 — 아무것도 안 읽던 중의 [stop](세션 시작·
      * 포커스만 정리)까지 되돌리면 같은 안내를 이유 없이 두 번 읽는다.
-     *
-     * **`@Volatile`인 이유는 지우는 쪽이 TTS 스레드이기 때문이다.** 세우는 것은 메인이다.
-     * 두 쓰기가 겹쳐 [stop]이 이미 끝난 발화를 "끊겼다"로 볼 수는 있는데, 그때 벌어지는 일은
-     * 같은 안내를 한 번 더 읽는 것뿐이라 [focusLock]까지 끌어오지 않는다.
      */
-    @Volatile
     private var speaking = false
+
+    /**
+     * 발화의 세대. **늦게 도착한 콜백과 늦게 깨어난 그물을 가르는 축이다** — 엔진 스레드가
+     * 앞 발화의 `onDone`을 늦게 풀면 그것이 **새 발화의 상태를 지운다**(#465 리뷰가 대화
+     * 화면에서 실제로 겪은 갈래다). 자기 세대가 아니면 아무 일도 하지 않는다.
+     */
+    private var generation = 0
 
     /** 직전에 로그로 남긴 억제 사유. 폴링마다 같은 줄을 찍지 않으려고 전이에서만 남긴다. */
     private var lastSuppression: String? = null
@@ -156,31 +163,72 @@ class GuideSpeaker(context: Context) {
 
     fun shutdown() {
         speaking = false
+        // **그물을 걷는다.** 상한이 문구 길이에 비례해 길어서, 안 걷으면 서비스가 내려간 뒤에
+        // 메인 루퍼에서 깨어난다(#465가 액티비티에서 같은 것을 겪었다).
+        mainHandler.removeCallbacksAndMessages(GUARD_TOKEN)
         gate.reset()
         tts.shutdown()
         abandonFocus()
     }
 
     private fun speakNow(utterance: String) {
+        val current = ++generation
         requestFocus()
         // **문구 자체는 로그에 남기지 않는다** — 안내문에는 화면 label 인용이 들어간다(#58).
         // 길이만 남기는 이유는 실기기 확인이 logcat 수동이라, 이 줄이 없으면 "소리가 안 났다"와
         // "읽을 것이 없어 안 읽었다"가 구별되지 않기 때문이다.
         Log.i(TAG, "speak len=${utterance.length}")
         speaking = true
+        armGuard(current, utterance.length)
         tts.speak(
             utterance,
-            onDone = {
-                speaking = false
-                abandonFocus()
-            },
+            onDone = { finish(current) },
             onError = {
                 // 발화 하나가 실패한 것이라 끊긴 것으로 되돌리지 않는다 — 되돌리면 못 읽는
                 // 문장을 다음 표시마다 다시 시도한다. 엔진 자체가 죽은 경우는 [canSpeak]가 막는다.
-                speaking = false
                 Log.w(TAG, "speech failed")
+                finish(current)
+            },
+            // **낭독이 실제로 시작하면 그물의 시계를 다시 출발시킨다**(#465가 대화 화면에서
+            // 세운 것과 같은 이유). 엔진을 처음 바인딩하는 호출은 speak()가 즉시 돌아온 뒤
+            // init이 끝날 때까지 한 글자도 안 읽는데, 그 대기를 상한이 먹으면 짧은 문구일수록
+            // 읽는 도중에 그물이 돈다. **처음 건 그물을 그대로 두고 갈아 끼운다** — 시작
+            // 신호가 영영 안 오는 갈래가 이 그물이 막으려는 바로 그것이다.
+            onStarted = { mainHandler.post { armGuard(current, utterance.length) } },
+        )
+    }
+
+    /**
+     * 발화 하나가 끝났다(성공이든 실패든). **엔진 스레드에서 오므로 메인으로 넘긴다.**
+     */
+    private fun finish(forGeneration: Int) {
+        mainHandler.post {
+            if (forGeneration != generation) return@post
+            speaking = false
+            abandonFocus()
+        }
+    }
+
+    /**
+     * 끝 신호가 안 올 때 포커스만 대신 놓는 그물. 상한은 [speechGuardMillis]를 그대로 쓴다.
+     *
+     * **[GuideSpeechGate.markInterrupted]는 부르지 않는다.** 이 그물은 문장이 끝났어야 할
+     * 시각보다 뒤에 도는 것이라, 십중팔구 **다 읽었는데 신호만 잃은** 경우다. 끊긴 것으로
+     * 치면 다음 재표시가 같은 문장을 이유 없이 한 번 더 읽는다. 정말 중간에 죽은 경우는
+     * 여기서 알 길이 없고, 그 자리의 답은 다시 듣기 탭이다.
+     */
+    private fun armGuard(forGeneration: Int, length: Int) {
+        if (forGeneration != generation) return
+        mainHandler.removeCallbacksAndMessages(GUARD_TOKEN)
+        mainHandler.postAtTime(
+            {
+                if (forGeneration != generation || !speaking) return@postAtTime
+                Log.w(TAG, "speech end signal missing, releasing focus")
+                speaking = false
                 abandonFocus()
             },
+            GUARD_TOKEN,
+            android.os.SystemClock.uptimeMillis() + speechGuardMillis(length),
         )
     }
 
@@ -254,29 +302,28 @@ class GuideSpeaker(context: Context) {
 
     private fun requestFocus() {
         val manager = audioManager ?: return
-        synchronized(focusLock) {
-            if (focusHeld) return
-            val granted = manager.requestAudioFocus(focusRequest)
-            // 거절돼도 읽는다. 포커스는 상대를 잠깐 낮춰 달라는 부탁이지 소리를 낼 자격이 아니고,
-            // 안 낮아지는 기기에서 안내가 통째로 조용해지는 편이 더 나쁘다.
-            if (granted != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                Log.w(TAG, "audio focus denied=$granted")
-                return
-            }
-            focusHeld = true
+        if (focusHeld) return
+        val granted = manager.requestAudioFocus(focusRequest)
+        // 거절돼도 읽는다. 포커스는 상대를 잠깐 낮춰 달라는 부탁이지 소리를 낼 자격이 아니고,
+        // 안 낮아지는 기기에서 안내가 통째로 조용해지는 편이 더 나쁘다.
+        if (granted != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(TAG, "audio focus denied=$granted")
+            return
         }
+        focusHeld = true
     }
 
     private fun abandonFocus() {
         val manager = audioManager ?: return
-        synchronized(focusLock) {
-            if (!focusHeld) return
-            focusHeld = false
-            manager.abandonAudioFocusRequest(focusRequest)
-        }
+        if (!focusHeld) return
+        focusHeld = false
+        manager.abandonAudioFocusRequest(focusRequest)
     }
 
     private companion object {
         const val TAG = GuideAccessibilityService.TAG
+
+        /** 그물만 골라 걷으려고 쓰는 토큰. 다른 post와 섞이지 않는다. */
+        val GUARD_TOKEN = Any()
     }
 }
