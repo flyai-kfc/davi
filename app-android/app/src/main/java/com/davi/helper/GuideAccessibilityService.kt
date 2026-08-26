@@ -65,7 +65,9 @@ class GuideAccessibilityService : AccessibilityService() {
      * 구조가 같은 채 목록이 재정렬되면(새 메시지로 순서가 밀리는 대화방 목록) 강조가 엉뚱한
      * 줄을 가리키게 되는데, 그 순간 이 슬롯의 label이 달라지므로 조작 이벤트 없이도 재질의를
      * 연다. node id는 직렬화 순서 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다 — 앵커를
-     * 쓰는 자리도 정확히 그 경우뿐이다(구조가 다르면 어차피 구조 축이 재질의를 연다).
+     * 쓰는 자리도 정확히 그 경우뿐이다 — 구조가 다르면 구조 축이 재질의를 연다.
+     * **회전 복귀로 접히는 경우만 예외다**(#456): 그때는 재질의가 안 나가므로, 안내가
+     * 폐기되면 걸쇠를 풀어 다시 나가게 한다.
      */
     private var guidedTargetNodeId: String? = null
     private var guidedTargetStableLabel: String? = null
@@ -654,6 +656,11 @@ class GuideAccessibilityService : AccessibilityService() {
             GuideDisplayState.RedisplayResult.Clear -> {
                 Log.i(TAG, "clear unreadable guide")
                 overlay?.clear()
+                // 이 갈래도 보존 안내를 **폐기**한다(다른 화면이면 `reset()`). 접힌 화면에서
+                // 타면 안내는 사라졌는데 재질의가 안 나가 `Discarded`와 같은 침묵이 된다
+                // (#456 3차 리뷰 P2). 보존분이 없어 폐기가 아닌 경우에 걸쇠를 푸는 것은
+                // 손해가 아니다 — 그 화면을 한 번 더 묻고 다시 접힌다.
+                stability.forgetRotation()
             }
             is GuideDisplayState.RedisplayResult.Show -> {
                 Log.i(TAG, "redisplay guide")

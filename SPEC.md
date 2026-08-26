@@ -48,12 +48,21 @@
 | 기기 | 성격 | 용도 |
 |---|---|---|
 | **SM-S918N** (Galaxy S23 Ultra, One UI 8.5) | 개인 기기 | HANDOFF의 모든 실측이 이 기기 기준이다. **개인 데이터가 있으므로 로그·픽스처 취급에 주의.** |
-| **SM-S921N** (Galaxy S24, Android 15 / One UI 7.0) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+| **SM-S921N** (Galaxy S24, Android 16 / One UI 8.5) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
 
 **SM-S921N 버전 정정(2026-08-24):** 같은 실기기에서 `getprop ro.build.version.release=15`,
 `ro.build.version.oneui=70000`을 다시 읽었다. 2026-08-13의 Android 15 실기기 결과와도 일치한다.
 기존 문서·fixture의 Android 16 / One UI 8.x 표기는 이를 뒷받침하는 속성 기록 없이 같은 기기에
 붙어 있어 Android 15 / One UI 7.0으로 정정했다. 동작 관측의 날짜·내용·기기 모델은 바꾸지 않았다.
+
+**SM-S921N 재정정(2026-08-26):** 같은 기기가 이제 Android 16 / One UI 8.5를 보고한다.
+`adb -s R3CXC051AAY shell getprop`으로 시리얼을 지정해 읽었다 — `ro.product.model=SM-S921N`,
+`ro.build.version.release=16`, `ro.build.version.sdk=36`, `ro.build.version.oneui=80500`,
+`ro.build.version.incremental=S921NKSSGDZG1`(빌드 2026-07-03). **위 2026-08-24 판독과 왜
+다른지는 확정하지 못했다** — 그 사이 OS 업데이트가 있었을 수도, 앞선 판독이 다른 기기를
+읽었을 수도 있다. 추측을 사실로 적지 않는다. 앞으로 이 표기를 고칠 때는 **시리얼을 지정해**
+읽고 그 명령을 함께 남긴다. 날짜 붙은 과거 실측 기록(`DEVICE-E2E-RESULTS.md`,
+`app-android/README.md`, `eval/README.md`의 fixture 값)은 그때의 관측이므로 바꾸지 않았다.
 
 둘 다 삼성·One UI라 **제조사 차이는 여전히 검증되지 않는다.** 다기기 매트릭스는 비목표 그대로다(§5-6).
 

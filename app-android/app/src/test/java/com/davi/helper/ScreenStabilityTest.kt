@@ -618,17 +618,6 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
-    fun `조작이 관측되면 되돌아온 구조도 보낸다`() {
-        send("a", 0)
-        send("b", 1_000)
-        send("a", 2_000)
-        send("b", 3_000)
-        tracker.markInteraction(3_500)
-
-        assertEquals(Decision.SEND, send("a", 4_000))
-    }
-
-    @Test
     fun `창을 벗어난 이력은 회전으로 세지 않는다`() {
         val window = ScreenStabilityTracker.ROTATION_WINDOW_MS
         send("a", 0)

@@ -369,13 +369,14 @@ class ScreenStabilityTracker(
         // 있기 전까지 한 번만** 연다([anchorRequeryUsed]).
         val anchorOpened = contentOnly && guidedTargetChanged && !anchorRequeryUsed
         // 구조가 바뀌었는데 **전에 물어본 구조로 되돌아온** 것인가(#456).
-        val rotating = sent != null &&
-            signature.structure != sent.structure &&
-            !interactedRecently(nowMs) &&
-            (
-                signature.structure in rotatingStructures ||
-                    returnsSeen(signature.structure, nowMs) >= ROTATION_RETURNS
-                )
+        // 조작 여부를 여기서 다시 보지 않는다 — [markInteraction]이 이력과 걸쇠를 **비우므로**
+        // 조작 뒤에는 아래 둘 다 성립하지 않는다. 가드를 겹쳐 두면 그 가드만 지웠을 때
+        // 아무 테스트도 안 깨져 죽은 조건이 된다(#456 3차 리뷰 P3).
+        val structureReturned = sent != null && signature.structure != sent.structure
+        val latched = structureReturned && signature.structure in rotatingStructures
+        val concluded = structureReturned &&
+            returnsSeen(signature.structure, nowMs) >= ROTATION_RETURNS
+        val rotating = latched || concluded
         val novel = when {
             sent == null -> true
             signature.structure != sent.structure -> !rotating
@@ -392,7 +393,15 @@ class ScreenStabilityTracker(
         // 둘 다 그 회전의 구성원이다.
         if (rotating) {
             rotatingStructures.add(signature.structure)
-            sent?.let { rotatingStructures.add(it.structure) }
+            // 반대쪽도 회전 구성원이다 — 접기 갈래로 오는 것은 언제나 [sentSignature]가 아닌
+            // 쪽이라, 들어온 구조만 넣으면 반대쪽이 걸쇠 밖에 남아 떠남으로 오독된다.
+            //
+            // **[concluded]로 좁히지만 닫지는 못한다**(#456 3차 리뷰 P2, #476으로 이관).
+            // 회전 밖 화면 X로 잠깐 나갔다 돌아오면 그때의 [sentSignature]가 X이고, X가 아직
+            // 이력에 있으면 이 갈래가 그대로 참이라 X가 걸쇠에 딸려 들어간다. 그 뒤 X는 그
+            // 세션에서 접힌다. 좁히는 값어치는 있어 남기되(순수 걸쇠 갈래에서는 안 넣는다),
+            // **고쳤다고 적지 않는다** — 걸쇠의 수명주기를 #476에서 함께 정한다.
+            if (concluded) sent?.let { rotatingStructures.add(it.structure) }
         }
         // **조건부로 적지 않는다.** `if (novel)`로 두면 STUCK 샘플(정의상 novel=false)이
         // 갱신을 건너뛰어 직전 SEND의 값이 남고, 눌림 확인 재질의가 그 옛 값을 실어
