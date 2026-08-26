@@ -229,13 +229,16 @@ class GuideAccessibilityService : AccessibilityService() {
      */
     private fun comeForwardIfOnboardingSentUs() {
         if (!AccessibilityReturnStore(this).consume()) return
-        // **CLEAR_TOP은 스택에 대화 화면이 이미 있는 갈래를 위한 것이다**(#471 리뷰 5번).
-        // 안내 중 권한이 회수됐다 복구되는 갈래(#212)가 그 모양이고(`[대화, 온보딩]`),
-        // 거기서는 CLEAR_TOP이 위를 걷어내 뒤로가기가 「권한을 켜세요」로 안 돌아간다.
+        // **두 갈래가 서로 다른 이유로 맞는다**(#471 리뷰 5번·2차 지적).
         //
-        // **갓 설치한 사람은 스택이 `[온보딩]`뿐이라 걷을 것이 없다** — 그냥 위에 쌓인다.
-        // 그 갈래에서 온보딩으로 안 돌아가는 진짜 이유는 `OnboardingActivity.onResume`이
-        // 권한을 보고 **스스로 끝내는** 것이다. 동작은 양쪽 다 맞지만 이유가 다르다.
+        // 안내 중 권한이 회수됐다 복구되는 갈래(#212)는 스택이 `[대화, 온보딩]`이라
+        // **CLEAR_TOP이 실제로 위를 걷어낸다** — 뒤로가기가 「권한을 켜세요」로 안 돌아간다.
+        //
+        // **갓 설치한 사람은 스택이 `[로그인, 온보딩]`이라 대화 화면이 없다**(진입점이
+        // `LoginActivity`다) — CLEAR_TOP이 걷을 것이 없고 그냥 위에 쌓인다. 그 갈래가
+        // 괜찮은 이유는 **설정이 이 작업 밖에 있기 때문**이다(온보딩이 `NEW_TASK`로 띄운다) —
+        // 한때 설정이 이 작업 안에 쌓여 **뒤로가기가 접근성 설정으로 갔고**, 그것을 실기기로
+        // 재서 잡았다. 온보딩은 `onResume`에서 스스로 끝나므로 그 위에 남지도 않는다.
         val intent = Intent(this, ConversationActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val requestedAt = SystemClock.elapsedRealtime()
