@@ -511,6 +511,19 @@
       아이콘에 마진이 붙거나 프레임 paddingLeft가 바뀌면 이 값도 같이 봐야 한다.
     -->
     <dimen name="davi_confirm_accept_label_inset">72dp</dimen>
+    <!--
+      MA-4 ① 라벨의 **끝 쪽** 여백(#463). 시작 쪽과 짝이다.
+
+      이 버튼의 배경은 두 겹이고 분홍 뒤판이 본체(흰 면) 오른쪽으로
+      `davi_choice_backplate_reveal`(14dp) 삐져나온다. 바깥 프레임의 `davi_shortcut_inset`
+      (14dp)만으로는 그 14를 뒤판이 통째로 먹어 **본체 안쪽 숨 여백이 0이 되고, 글자가
+      경계에 붙어 잘릴 듯 보인다**(실측 320×693dp: 라벨 상자 끝과 본체 끝이 둘 다 282.1dp).
+      여기서 한 번 더 물러나 ②와 같은 자리(268dp)에 선다.
+
+      **`davi_shortcut_inset`을 직접 쓰지 않는다** — 그쪽을 조정하는 사람이 이 화면이 딸려
+      오는 것을 모른다. `davi_choice_label_inset_end`를 따로 둔 것과 같은 이유다.
+    -->
+    <dimen name="davi_confirm_accept_label_inset_end">14dp</dimen>
 
     <!--
       메인 9 안내 중 화면과 메인 10 종료 확인 모달(#197). 기하는 배율 1.2로 환산하고
@@ -686,7 +699,10 @@
       **그래도 14로 둔다.** 28(노출 14 + 본체 안쪽 14)로 하면 라벨 폭이 168dp가 되어
       「인스타그램」이 두 줄로 넘어가는데, **한 줄 유지가 더 중요하다.** 실측으로도 여유가
       있다 — 배율 2.0·320dp에서 「인스타그램」의 잉크는 100~250dp라 테두리까지 30dp 남는다.
-      MA-4 ①도 같은 기하다(bg_davi_confirm_choice의 right=14 + paddingRight 14).
+      **MA-4 ①은 2026-08-26에 갈라졌다**(#463) — 거기는 뒤판 몫을 한 번 더 물러나 본체 안쪽에
+      14dp가 남는다(`davi_confirm_accept_label_inset_end`). 기하는 같고 **저울이 다르다**:
+      그 화면은 버튼이 셋이라 두 줄을 받아 줄 세로 여유가 있고, 여기는 넷이 한 화면에 들어가야
+      한다. 갈린 이유는 SCREENS.md MA-4 절에 적었다.
     -->
     <dimen name="davi_choice_label_inset_end">14dp</dimen>
     <!--
