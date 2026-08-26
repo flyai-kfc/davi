@@ -123,18 +123,28 @@ class Case:
     settle_s: float = 1.2
 
 
-def clarification_case(option_count: int, question_count: int) -> Case:
-    """구체화(MA-3) 한 칸. 보기 0~3개 × 질문 1~2개."""
+def clarification_case(option_count: int, question_count: int, expanded: bool = False) -> Case:
+    """구체화(MA-3) 한 칸. 보기 0~3개 × 질문 1~2개 × 접힘/펼침.
+
+    **펼침 축이 늦게 들어왔다**(2026-08-26). 주입 기본값이 접힘이라 격자가 **접힌 카드만**
+    재고 있었고, 그 사이 「칩 자리 예약(63dp) + 펼친 카드」 조합에서 **「직접 말하기」가 19dp
+    잘린 채로 main에 들어갔다.** 도착 직후·낭독 중이 곧 펼침이라 그 조합이 드문 것도 아니었다.
+    **기본값이 덮은 축은 격자가 못 본다.**
+    """
     labels = "|".join(OPTION_LABELS[:option_count])
     prompt = PROMPT_WITH_OPTIONS if option_count else PROMPT_FREEFORM
+    extras = [
+        ("--es", f"{E}.DEBUG_CLARIFICATION", labels),
+        ("--es", f"{E}.DEBUG_CLARIFICATION_PROMPT", prompt),
+        ("--ei", f"{E}.DEBUG_CLARIFICATION_COUNT", str(question_count)),
+    ]
+    if expanded:
+        # 「읽는 중」 상태만 만든다 — 도착 직후 화면이 이것이다.
+        extras.append(("--ez", f"{E}.DEBUG_CLARIFICATION_STUCK_SPEAKING", "true"))
     return Case(
         screen="MA-3 구체화",
-        label=f"보기 {option_count} · 질문 {question_count}",
-        extras=(
-            ("--es", f"{E}.DEBUG_CLARIFICATION", labels),
-            ("--es", f"{E}.DEBUG_CLARIFICATION_PROMPT", prompt),
-            ("--ei", f"{E}.DEBUG_CLARIFICATION_COUNT", str(question_count)),
-        ),
+        label=f"보기 {option_count} · 질문 {question_count} · {'펼침' if expanded else '접힘'}",
+        extras=tuple(extras),
         options=str(option_count),
         chip="있음" if question_count > 1 else "없음",
         perched=True,
@@ -180,6 +190,9 @@ def default_cases() -> list:
         for questions in (2, 1)
         for options in (3, 2, 1, 0)
     ]
+    # **펼침은 가장 빡빡한 조합만 넣는다** — 보기 3개(세로가 제일 길다) × 질문 1·2개.
+    # 전 조합을 펼치면 격자가 두 배가 되는데, 잘림은 보기가 많을수록 먼저 난다.
+    cases.extend(clarification_case(3, questions, expanded=True) for questions in (2, 1))
     cases.extend(listening_case(questions) for questions in (2, 1))
     cases.append(Case(screen="MA-1 홈", label="기본", anchor="title", expect="home_title"))
     cases.append(

@@ -378,8 +378,27 @@ class GridTest(unittest.TestCase):
                 case.extras,
             )
 
+    def test_the_grid_covers_the_expanded_card_too(self):
+        """**기본값이 덮은 축은 격자가 못 본다**(2026-08-26). 주입 기본값이 접힘이라
+        격자가 접힌 카드만 쟀고, 그 사이 「칩 자리 + 펼친 카드」에서 「직접 말하기」가
+        19dp 잘린 채로 main에 들어갔다. 도착 직후가 곧 펼침이다."""
+        expanded = [
+            c
+            for c in MODULE.default_cases()
+            if any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
+        ]
+
+        self.assertTrue(expanded, "펼침 축이 격자에 없다")
+        self.assertEqual({c.chip for c in expanded}, {"있음", "없음"})
+        for case in expanded:
+            self.assertEqual(case.options, "3", "잘림은 보기가 많을수록 먼저 난다")
+
     def test_grid_covers_every_option_and_question_count_the_contract_allows(self):
-        clarification = [c for c in MODULE.default_cases() if c.perched]
+        clarification = [
+            c
+            for c in MODULE.default_cases()
+            if c.perched and not any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
+        ]
         combinations = {(case.options, case.chip) for case in clarification}
 
         self.assertEqual(
