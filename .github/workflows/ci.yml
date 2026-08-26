@@ -27,9 +27,21 @@ permissions:
   pull-requests: read
 
 # 같은 브랜치에 새 푸시가 오면 이전 실행을 취소한다(러너 낭비 방지).
+#
+# **단 draft 상태의 `synchronize` 는 아무것도 죽이지 않는다.** 푸시와 Ready 전환이 몇 초 안에
+# 겹치면 런 둘이 같은 그룹에 뜨는데(둘 다 `refs/pull/N/merge`), 늦게 시작한 쪽이 이기므로
+# **draft 페이로드 런이 `ready_for_review` 런을 죽일 수 있다.** 그러면 PR 은 Ready 인데 비싼
+# 잡은 skipped 이고 더 올 이벤트가 없어 그대로 갇힌다. 결과가 초록으로 보여서 더 나쁘다 —
+# 브랜치 보호가 없어 "눈으로 확인"이 유일한 관문인 저장소다. #469 에서 실측했다(1초 차로
+# 떠서 좋은 런이 취소됐다).
+#
+# 그룹을 쪼개는 방법도 있지만, 그러면 `converted_to_draft` 가 다른 그룹의 비싼 런을 못 끊어
+# 위 types 결정이 죽는다. **취소 조건으로 거는 쪽이 둘 다 지킨다.**
+# 대가는 draft 에서 연속 푸시할 때 이전 런이 안 죽는 것 — draft 런은 2분짜리라 작다.
+# (push 이벤트에는 `action` 이 없어 첫 항이 참이 되므로 main 푸시 동작은 그대로다.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'synchronize' || github.event.pull_request.draft == false }}
 
 jobs:
   # 어느 스택이 바뀌었는지 판정하고, 스택에 매이지 않는 저장소 전역 검사를 함께 돌린다.

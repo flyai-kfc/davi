@@ -61,8 +61,11 @@ git config core.hooksPath .githooks
   평문 host 제한 등)도 Android 잡 안에 있어 Ready 전에는 안 돈다. 그동안은 로컬
   `app-android/scripts/dev-install.ps1`과 `./gradlew test`로 대신한다.
   Ready로 올린 뒤에도 Android·macOS가 `skipped`면 **먼저 「변경 감지」 잡의 필터 출력을 본다.**
-  해당 스택이 `false`면 `skipped`가 정상이다. `true`인데 `skipped`면 draft 설정 문제이므로
+  해당 스택이 `false`면 `skipped`가 정상이다. `true`인데 `skipped`면 설정 문제이므로
   빈 커밋으로 덮지 말고 `ci.yml`을 본다 — 빈 커밋 한 번이 full 런 하나다.
+  Actions 탭에 **같은 시각 런이 둘 있고 하나가 `cancelled`면** 푸시와 Ready 전환이 겹쳐
+  draft 런이 Ready 런을 죽인 경우다. 취소된 쪽을 Re-run 한다 — Re-run은 원래 페이로드를
+  다시 쓰므로 살아남은 draft 런을 Re-run하면 또 `skipped`다.
 - **승인 1명**이 필요하다. 단 **리뷰어는 직접 지정해야 한다** — 무료 private 플랜에서는 CODEOWNERS
   자동 지정이 동작하지 않는다(아래 "저장소 설정" 참고).
 - CI가 초록이어야 머지한다. **시스템이 막아주지 않으니 눈으로 확인한다.**
