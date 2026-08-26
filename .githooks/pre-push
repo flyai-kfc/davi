@@ -109,10 +109,17 @@ echo "" >&2
 
 # ── ② server 검사 ────────────────────────────────────────────────────
 # **`ruff` 만 돈다. `pytest` 는 아직 안 넣는다.** `server/tests/test_shared_dev_scripts.py` 가
-# `subprocess.run(["bash", ...])` 를 쓰는데 Windows 의 venv 파이썬은 Git Bash 의 bash 를 못 찾아
-# exit 127 로 죽는다 — 이 훅과 무관한 기존 상태이고 CI(Linux)는 초록이다. 그대로 넣으면 Windows
-# 개발자가 `server/` 를 고칠 때마다 막혀 `--no-verify` 가 습관이 되고, 그러면 ①까지 같이 죽는다.
-# 앱 빌드를 뺀 것과 같은 논리다. 수트가 Windows 에서 초록이 된 뒤에 넣는다(#468).
+# Windows 에서 깨져 있다 — 이 훅과 무관한 기존 상태이고 CI(Linux)는 초록이다. 그대로 넣으면
+# Windows 개발자가 `server/` 를 고칠 때마다 막혀 `--no-verify` 가 습관이 되고, 그러면 ①까지
+# 같이 죽는다. 앱 빌드를 뺀 것과 같은 논리다. 수트가 Windows 에서 초록이 된 뒤에 넣는다(#468).
+#
+# **원인은 bash 를 못 찾는 것이 아니다.** bash 는 찾아진다(`C:\Program Files\Git\usr\bin\bash.EXE`).
+# 그 테스트가 `subprocess.run(["bash", "-n", str(path)])` 로 **Windows 경로를 그대로** 넘기는데,
+# bash 가 역슬래시를 이스케이프로 먹어 `D:\a\b.sh` 가 `D:ab.sh` 가 되고 그 파일이 없어 127 이다:
+#
+#   /bin/bash: D:KimDongkunProjectsWorkspacesdavi...shared-dev-common.sh: No such file or directory
+#
+# 그래서 후속 수정은 PATH 가 아니라 **테스트가 POSIX 경로를 넘기게 하는 쪽**이다(`Path.as_posix()`).
 if ! command -v ruff >/dev/null 2>&1; then
     echo "" >&2
     echo "  건너뜀: ruff 를 찾지 못해 server 검사를 생략한다." >&2

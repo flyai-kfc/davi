@@ -60,7 +60,9 @@ git config core.hooksPath .githooks
   **앱 PR은 draft 동안 앱 피드백이 없다** — 단위 테스트도, release 경계 관문(마스킹 우회 거부·
   평문 host 제한 등)도 Android 잡 안에 있어 Ready 전에는 안 돈다. 그동안은 로컬
   `app-android/scripts/dev-install.ps1`과 `./gradlew test`로 대신한다.
-  Ready로 올린 뒤 Android·macOS가 계속 `skipped`면 빈 커밋을 한 번 밀어 새 런을 띄운다.
+  Ready로 올린 뒤에도 Android·macOS가 `skipped`면 **먼저 「변경 감지」 잡의 필터 출력을 본다.**
+  해당 스택이 `false`면 `skipped`가 정상이다. `true`인데 `skipped`면 draft 설정 문제이므로
+  빈 커밋으로 덮지 말고 `ci.yml`을 본다 — 빈 커밋 한 번이 full 런 하나다.
 - **승인 1명**이 필요하다. 단 **리뷰어는 직접 지정해야 한다** — 무료 private 플랜에서는 CODEOWNERS
   자동 지정이 동작하지 않는다(아래 "저장소 설정" 참고).
 - CI가 초록이어야 머지한다. **시스템이 막아주지 않으니 눈으로 확인한다.**
@@ -186,7 +188,8 @@ GET /repos/flyai-kfc/davi/branches/main/protection
 `ruff`가 PATH에 없으면 **막지 않고 건너뛴다**(venv를 안 켠 셸에서 매번 걸리면 `--no-verify`가
 습관이 되고, 그러면 main 방어선까지 같이 죽는다). 훅을 켰다고 검사가 돌았다는 뜻은 아니다.
 앱 빌드와 `pytest`는 넣지 않았다. 앱 빌드는 로컬 4분대이고, `pytest`는 `server/tests/`가
-`bash`를 부르는 테스트를 갖고 있어 **Windows에서 초록이 아니다**(CI는 Linux라 초록). 둘 다
+`bash`에 Windows 경로를 그대로 넘기는 테스트를 갖고 있어 **Windows에서 초록이 아니다**
+(CI는 Linux라 초록). 둘 다
 넣으면 `--no-verify`가 습관이 되고 그러면 main 방어선까지 같이 죽는다.
 **나머지는 훅이 대신 봐주지 않는다** — 위 "로컬 검사 (푸시 전)"을 사람이 지킨다.
 
