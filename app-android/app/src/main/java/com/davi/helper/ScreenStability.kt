@@ -509,7 +509,9 @@ class ScreenStabilityTracker(
         // 한 샘플만 다른 구조로 관측되면, 그 샘플은 홀드가 WAIT로 버리는데 상한만 열려
         // 회전마다 앵커 재질의가 되살아난다 — #32 때문에 버린 과도기 트리를 진행으로
         // 인정하는 셈이다. 홀드를 통과하고 요청까지 나간 구조 전환이 여기다.
-        if (sentSignature != null && signature.structure != sentSignature?.structure) {
+        val structureProgressed =
+            sentSignature != null && signature.structure != sentSignature?.structure
+        if (structureProgressed) {
             anchorRequeryUsed = false
         }
         // 조용함 예산은 **[sentSignature]가 아니라 예산이 속한 구조**로 판정한다
@@ -527,6 +529,16 @@ class ScreenStabilityTracker(
             if (sendWasQuietCold) quietColdOpens++
             quietOpenedAtMs = nowMs
         }
+        // **요청이 실제로 나간 구조 전환도 연속 창을 연다**(PR #445 리뷰 확인 2). 앵커 상한을
+        // 다시 여는 것과 같은 진행 신호다. 안 열면 클릭 없는 앱에서 0↔1 경계(코레일 인원
+        // 시트의 「인원감소」 활성화가 구조를 바꾸는 자리) 직후의 연속 조작이 조용함 미달로
+        // 막혀, 이 PR이 없애려던 거짓 정체 문구가 이웃 행에서 그대로 선다 — 어린이·유아처럼
+        // 0에서 시작하는 행이 정확히 그 경로다(JVM 재현: 두 번째 탭이 IDLE→STUCK).
+        //
+        // 이 창을 탄 재질의도 [quietOpens]에 세이므로 최악은 구조당 [QUIET_OPENS]회다 —
+        // 클릭 없는 앱에서 구조 churn 뒤 내용 churn이 그만큼 탈 수 있다는 뜻이고, 그 값을
+        // 받아들이는 것이 이 결정이다. 클릭을 쏘는 앱은 문 자체를 안 쓰므로 무관하다.
+        if (structureProgressed) quietOpenedAtMs = nowMs
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
         sentAtMs = nowMs

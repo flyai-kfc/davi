@@ -1095,6 +1095,52 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
+    fun `구조 전환 요청 뒤의 연속 조작도 연속 창을 탄다`() {
+        // 코레일 인원 시트의 0↔1 경계는 구조 변화다(「인원감소」 활성화 + 행 추가). 그 전환
+        // 요청이 창을 안 열면, 4초 안의 다음 탭이 조용함 미달로 막혀 거짓 정체 문구가 뜬다
+        // (PR #445 리뷰 확인 2 — JVM 재현 뒤 고침). 요청이 실제로 나간 구조 전환은 앵커
+        // 상한을 다시 여는 것과 같은 진행 신호다.
+        fun s(at: Long, sig: ScreenSig) =
+            tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
+
+        val child0 = ScreenSig("sheet-child0", "어린이 0")
+        s(0, child0); s(700, child0)
+        tracker.markSent(child0, 700)
+        tracker.markFinished()
+        s(10_000, child0)
+
+        // 탭① 0→1: 구조 전환. 요청이 실제로 나간다.
+        val child1 = ScreenSig("sheet-child1", "어린이 1")
+        s(11_000, child1)
+        assertEquals(Decision.SEND, s(11_700, child1))
+        tracker.markSent(child1, 11_700)
+        tracker.markFinished()
+
+        // 탭② 2초 뒤 1→2: 내용만 변화, 조용함 미달 — 구조 전환이 연 창으로 열려야 한다.
+        val child2 = ScreenSig("sheet-child1", "어린이 2")
+        s(13_700, child2) // 홀드 1샘플
+        assertEquals(Decision.SEND, s(14_400, child2))
+    }
+
+    @Test
+    fun `요청 없는 구조 변화는 연속 창을 못 연다`() {
+        // 창을 여는 것은 markSent(요청이 실제로 나감)이지 raw 샘플의 구조 변화가 아니다 —
+        // 앵커 상한과 같은 경계다(#399 리뷰). 세션 첫 요청(sentSignature 없음)도 전환이
+        // 아니므로 안 연다: 첫 화면 진입만으로 회전 배너가 창을 타면 안 된다.
+        fun s(at: Long, sig: ScreenSig) =
+            tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
+
+        val home = ScreenSig("home", "배너 A")
+        s(0, home); s(700, home)
+        tracker.markSent(home, 700) // 세션 첫 요청 — 전환 아님
+        tracker.markFinished()
+
+        // 3초 안의 내용 변화(조용함 미달·창 없음)는 막혀야 한다.
+        assertNotEquals(Decision.SEND, s(1_400, ScreenSig("home", "배너 B")))
+        assertNotEquals(Decision.SEND, s(2_100, ScreenSig("home", "배너 B")))
+    }
+
+    @Test
     fun `분 단위로 도는 숫자는 천장까지만 연다`() {
         // 「자기발생은 조용할 틈이 없다」는 실측은 **초 단위**로 도는 값의 이야기다. 인앱 시계나
         // 「N분 전」 목록은 정반대라 조용함 조건을 매번 만족한다(PR #445 리뷰). 클릭을 안 쏘는
