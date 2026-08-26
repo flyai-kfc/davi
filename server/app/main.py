@@ -41,6 +41,8 @@ from .kakao_auth import (
     verify_session_token,
 )
 from .llm import get_llm_client
+from .loop_axes import log_fields
+from .loop_axes import snapshot as loop_axes_snapshot
 from .observability import (
     ATTEMPT_HEADER,
     LOGICAL_REQUEST_ID_HEADER,
@@ -610,6 +612,26 @@ def health() -> dict:
     }
 
 
+def _log_loop_axes(req: NextStepRequest) -> None:
+    """배제 가드의 발화 조건을 요청마다 남긴다(#429 1단계 계측).
+
+    **안내를 막지 않는다.** 계측 버그로 요청이 죽으면 재는 대상이 사라지므로, raw 봉투
+    보존과 같은 규율로 실패를 삼키고 비식별 메타만 남긴다.
+    """
+
+    try:
+        axes = loop_axes_snapshot(req)
+    except Exception as exc:  # noqa: BLE001 - 계측이 안내를 막으면 안 된다
+        log_event(
+            request_logger,
+            logging.WARNING,
+            "loop_axes_failed",
+            exception_class=type(exc).__name__,
+        )
+        return
+    log_event(request_logger, logging.INFO, "loop_axes", **log_fields(axes))
+
+
 @app.post("/v1/next-step", response_model=NextStepResponse)
 def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse | JSONResponse:
     request.state.request_metadata = {
@@ -617,6 +639,7 @@ def post_next_step(req: NextStepRequest, request: Request) -> NextStepResponse |
         "element_count": len(req.screen.elements),
         "client_version": req.client_version,
     }
+    _log_loop_axes(req)
     execution: CoordinatedExecution | None = None
     try:
         execution = _execute_inference(

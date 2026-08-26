@@ -89,7 +89,11 @@ def test_logical_request_headers_are_echoed_without_changing_json_body(caplog):
     assert response.headers[REQUEST_ID_HEADER]
     assert "logical_request_id" not in response.json()
     events = _events(caplog, "uvicorn.error.davi.requests")
-    assert [event["event"] for event in events] == ["request_received", "request_finished"]
+    assert [event["event"] for event in events] == [
+        "request_received",
+        "loop_axes",
+        "request_finished",
+    ]
     assert all(
         event["logical_request_id"] == headers[LOGICAL_REQUEST_ID_HEADER] for event in events
     )

@@ -398,7 +398,37 @@ def test_production_next_step_logs_only_safe_metadata(
 
     assert r.status_code == 200
     events = _request_events(caplog)
-    assert [event["event"] for event in events] == ["request_received", "request_finished"]
+    assert [event["event"] for event in events] == [
+        "request_received",
+        "loop_axes",
+        "request_finished",
+    ]
+    # 계측 이벤트는 **수치만** 싣는다(#429 1단계). 문자열은 추적 메타뿐이라, 새 필드가
+    # label·goal을 물고 들어오면 여기서 걸린다.
+    axes = events[1]
+    assert {key for key, value in axes.items() if not isinstance(value, int)} == {
+        "event",
+        "timestamp",
+        "request_id",
+        "level",
+    }
+    # **필드가 빠져도 안 되는 이유**: 세는 도구(`scripts/loop_axes_report.py`)가 이 이름들을
+    # 읽는다. 이름이 바뀌거나 사라지면 리포트가 오류 없이 0건을 낸다.
+    assert {
+        "steps",
+        "tried_max",
+        "returned_marks",
+        "loop_tried",
+        "loop_returned",
+        "target_identifiable",
+        "target_repeat_identifiable",
+        "causal_performed",
+        "causal_observed",
+        "causal_widened",
+        "axes_all",
+        "axes_all_observed",
+        "axes_all_narrow",
+    } <= axes.keys()
     finished = events[-1]
     assert finished["package_name"] == "com.sec.android.app.launcher"
     assert finished["element_count"] == 2

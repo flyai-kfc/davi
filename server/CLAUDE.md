@@ -73,6 +73,9 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   대화 `session_id`, 모델의 질문/goal, 요청 본문, API 키·access token은 어떤 프로필에서도 기록하지 않는다.
 - 정상 요청은 Logical Request ID/attempt와 서버 request ID로 앱→LLM 단계를 연결한다(#81).
   시도 로그는 `llm_attempt_started`/`llm_attempt_finished`이고 `provider` 필드로 공급자를 남긴다.
+  `/v1/next-step`은 여기에 `loop_axes`를 하나 더 남긴다(#429) — 배제 가드가 발화할 세 축의
+  상태를 **bool·정수로만** 적은 계측이고, 판정은 `app/loop_axes.py`가 프롬프트의 함수를 그대로
+  읽는다. 세는 도구는 `scripts/loop_axes_report.py`(dev-only)다.
   정상 `/health`와 기본 access log는 남기지 않으며 IP/port·User-Agent도 보존하지 않는다.
   로그 형식은 UTC timestamp가 있는 JSON Lines다. 공용 맥 스크립트는 7일, Azure Log Analytics는
   30일 보존한다. Azure에서는 도그푸딩 device allowlist를 비워 raw 저장을 끈다.
