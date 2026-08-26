@@ -581,6 +581,10 @@ class ConversationActivity : AppCompatActivity() {
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
     override fun onResume() {
         super.onResume()
+        // **화면에 섰다는 것을 남긴다**(#451 · #471 리뷰 2번). 접근성 복귀가 실제로 통했는지를
+        // 서비스가 이 표시로 판정한다 — `startActivity`가 안 던졌다는 것은 화면이 떴다는 뜻이
+        // 아니기 때문이다(백그라운드 시작 차단은 조용히 드롭한다).
+        ConversationForeground.markResumed()
         // 접근성은 밖에서 꺼질 수 있다(설정 회수·앱 업데이트). 없는 채로 ○를 누르면
         // GuideSession은 시작되는데 화면을 못 읽어 사용자가 런처에 혼자 남는다 —
         // 시작 자체를 막고 온보딩으로 되돌린다(SCREENS ON-2 상태③).
@@ -1412,15 +1416,14 @@ class ConversationActivity : AppCompatActivity() {
         textToSpeechHelper?.stop()
         // **답을 넘기기 전에 찍는다** — answerCurrent가 상태를 갈아 치우면 몇 번째 질문이었는지가
         // 사라진다. 보기를 눌렀으면 몇 번째인지, 직접 말했으면 길이만 남는다(#470).
-        (uiState as? ConversationUiState.Clarifying)?.outcome?.let { asked ->
-            GuideTelemetry.clarificationAnswer(
-                questionIndex = asked.questionIndex,
-                questionCount = asked.questionCount,
-                source = source.name.lowercase(),
-                optionIndex = optionIndexOf(source, asked.question.options, answer),
-                answerLength = answer.length,
-            )
-        }
+        //
+        // **두 상태를 다 본다**(#471 리뷰 1번). 보기를 누르는 쪽은 구체화 화면에서 오지만
+        // **직접 말하기는 청취 화면에서 온다** — [onFinalResult]가 `Listening.clarification`이
+        // 있을 때만 이리로 보내기 때문이다. 구체화만 보면 **직접 말한 답이 한 번도 안 찍히고**,
+        // 하필 그쪽이 이 이벤트를 넣은 이유의 절반이다.
+        val asked = (uiState as? ConversationUiState.Clarifying)?.outcome
+            ?: (uiState as? ConversationUiState.Listening)?.clarification
+        asked?.let { GuideTelemetry.clarificationAnswer(answerShapeOf(it, source, answer)) }
         ConversationLog.answer(source.name.lowercase(), answer)
         when (val outcome = voiceSession.answerCurrent(source, answer)) {
             is VoiceDialogueSession.AnswerOutcome.NextQuestion -> showClarification(outcome.outcome)
@@ -1482,15 +1485,7 @@ class ConversationActivity : AppCompatActivity() {
      * **상태와 어긋났다는 신호**가 된다 — 값을 0으로 지어내면 그 어긋남이 안 보인다.
      */
     private fun logResponseShape(request: LogicalRequestAttempt, state: SlotFillState) {
-        val shape = responseShapeOf(state)
-        GuideTelemetry.voiceResponseShape(
-            request = request,
-            status = shape.status,
-            messageLength = shape.messageLength,
-            questionCount = shape.questionCount,
-            optionCounts = shape.optionCounts,
-            hasGoal = shape.hasGoal,
-        )
+        GuideTelemetry.voiceResponseShape(request, responseShapeOf(state))
     }
 
     private fun handleSlotFillResult(

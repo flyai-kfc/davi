@@ -9,7 +9,9 @@ package com.davi.helper
  * 대가가 훨씬 크다 — `SPEC.md` §4가 이 경로에 패턴 마스킹을 일부러 안 걸었고 그 결정이
  * 성립하는 근거가 「로그에 안 남는다」 하나다.
  *
- * 그래서 이 타입에는 **문자열 필드가 [status] 하나뿐**이고 그것은 계약의 enum 이름이다.
+ * 그래서 이 타입의 **문자열 축은 둘 다 사용자 입력이 아니다** — [status]는 계약 enum의 이름이고
+ * [optionCounts]는 숫자와 쉼표뿐이다. **「문자열 필드가 하나뿐」이 아니다**(#471 리뷰 3번:
+ * 그렇게 적었다가 지적받았다) — 안전의 근거는 개수가 아니라 **각 축이 무엇에서 오는가**이고,
  * 테스트가 그 사실을 직접 단정한다.
  */
 data class ResponseShape(
@@ -54,3 +56,44 @@ fun optionIndexOf(source: ClarificationAnswerSource, options: List<String>, answ
     if (source != ClarificationAnswerSource.OPTION) return null
     return options.indexOf(answer).takeIf { it >= 0 }
 }
+
+/**
+ * 사용자의 답을 **비식별 수치로 줄인 것**(#470).
+ *
+ * **[ResponseShape]와 같은 이유로 타입이다**(#471 리뷰 6번). 텔레메트리 함수가 인자를 낱개로
+ * 받으면 **그 인자 목록을 지키는 그물이 없다** — 나중에 누가 `answer: String`을 하나 더 다는
+ * 것을 아무도 못 잡고, 그 함수는 main 소스라 **release에도 실린다.** 값을 이 타입으로만 만들 수
+ * 있게 해서, 원문이 새려면 여기를 고쳐야 하고 여기에는 테스트가 걸려 있게 한다.
+ *
+ * 문자열 축은 [source] 하나이고 계약 enum([ClarificationAnswerSource])의 이름이다.
+ */
+data class AnswerShape(
+    val questionIndex: Int,
+    val questionCount: Int,
+    val source: String,
+    /** 보기를 눌렀을 때만. 직접 말했거나 보기에 없는 값이면 null. */
+    val optionIndex: Int?,
+    /** 답의 **길이만**. 자유 발화에서 남는 유일한 크기다. */
+    val answerLength: Int,
+)
+
+/**
+ * 지금 묻고 있던 질문과 사용자의 답에서 남길 수치만 뽑는다.
+ *
+ * **[asked]를 인자로 받는 이유**가 이 함수의 존재 이유다(#471 리뷰 1번). 예전에는 호출부가
+ * `uiState as? Clarifying`으로 질문을 꺼냈는데, **자유 발화는 그 상태에서 오지 않는다** —
+ * 청취 화면(`Listening.clarification`)에서 온다. 그래서 「보기를 눌렀는지 직접 말했는지」를
+ * 알려고 넣은 이벤트가 **직접 말한 쪽에서는 한 번도 안 찍혔다.** 질문을 어디서 꺼내는지를
+ * 호출부에 맡기지 않는다.
+ */
+fun answerShapeOf(
+    asked: VoiceDialogueSession.Outcome.Clarify,
+    source: ClarificationAnswerSource,
+    answer: String,
+): AnswerShape = AnswerShape(
+    questionIndex = asked.questionIndex,
+    questionCount = asked.questionCount,
+    source = source.name.lowercase(),
+    optionIndex = optionIndexOf(source, asked.question.options, answer),
+    answerLength = answer.length,
+)

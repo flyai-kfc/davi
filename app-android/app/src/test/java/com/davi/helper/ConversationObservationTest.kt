@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -97,8 +98,60 @@ class ConversationObservationTest {
                 !rendered.contains(secret),
             )
         }
-        // 문자열 축은 계약 enum 이름 하나뿐이다.
-        assertEquals("needs_clarification", shape.status)
+        // **문자열 축이 둘이고 둘 다 사용자 입력이 아니다**(#471 리뷰 3번 — 「하나뿐」이라고
+        // 적었다가 지적받았다). 개수가 아니라 **각 축이 무엇에서 오는가**가 안전의 근거라,
+        // 그것을 직접 단정한다.
+        assertEquals("계약 enum의 이름", "needs_clarification", shape.status)
+        assertTrue(
+            "option_counts에 숫자와 쉼표 말고 다른 것이 들어갔다: ${shape.optionCounts}",
+            shape.optionCounts!!.all { it.isDigit() || it == ',' },
+        )
+    }
+
+    // ── 답의 형태 (#471 리뷰 1번·6번) ──────────────────────────────────────
+
+    private fun asked(options: List<String>) = VoiceDialogueSession.Outcome.Clarify(
+        generation = 0L,
+        question = question("app", "어느 앱으로 보낼까요?", options),
+        questionIndex = 1,
+        questionCount = 2,
+    )
+
+    @Test
+    fun `보기를 누르면 번호로 남는다`() {
+        val shape = answerShapeOf(
+            asked(listOf("카카오톡", "문자 메시지")),
+            ClarificationAnswerSource.OPTION,
+            "문자 메시지",
+        )
+
+        assertEquals(1, shape.questionIndex)
+        assertEquals(2, shape.questionCount)
+        assertEquals("option", shape.source)
+        assertEquals(1, shape.optionIndex)
+        assertEquals("문자 메시지".length, shape.answerLength)
+    }
+
+    /**
+     * **이 갈래가 통째로 안 찍히고 있었다**(#471 리뷰 1번) — 호출부가 구체화 상태에서만
+     * 질문을 꺼냈는데 직접 말하기는 청취 상태에서 온다. 그래서 「보기냐 직접 말하기냐」를
+     * 알려고 넣은 이벤트가 **직접 말한 쪽에서는 한 번도 안 나갔다.**
+     */
+    @Test
+    fun `직접 말하면 번호가 없고 길이만 남는다`() {
+        val shape = answerShapeOf(
+            asked(listOf("카카오톡", "문자 메시지")),
+            ClarificationAnswerSource.FREEFORM,
+            "김영희 언니한테",
+        )
+
+        assertEquals("freeform", shape.source)
+        assertNull("직접 말한 답에는 보기 번호가 없다", shape.optionIndex)
+        assertEquals(8, shape.answerLength)
+        assertFalse(
+            "답 원문이 관측 값에 실렸다: $shape",
+            shape.toString().contains("김영희"),
+        )
     }
 
     @Test

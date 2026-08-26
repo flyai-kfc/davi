@@ -33,6 +33,12 @@ import androidx.core.content.edit
  * | 재부팅 | 이미 소비돼 없음 | 아무 일 없음 |
  * | 재설치 | 앱 데이터가 지워져 없음 | 아무 일 없음 |
  * | 안내 중 회수→복구(#212) | 온보딩을 안 거쳤으니 없음 | 아무 일 없음 |
+ * | **보냈는데 안 켜고 나옴** | **무기한 남는다** | **나중에 켜는 날 다비가 나온다** |
+ *
+ * **마지막 줄이 시계를 안 쓴 결정의 유일한 반례다**(#471 리뷰 4번). [clear]는 온보딩이 스스로
+ * 넘어갈 때만 불리므로, 설정에서 그냥 뒤로 나온 사람의 표시는 안 지워진다. **결과 자체는
+ * 받아들인다** — 그 사람은 다비를 켜려다 만 사람이고 온보딩을 못 끝냈으므로, 나중에 접근성을
+ * 켜는 날 다비가 나오는 것이 맞다. 시간을 뒀다면 이 사람만 복귀를 못 받았을 것이다.
  *
  * 시간을 두면 오히려 **설정에서 헤매는 사람이 창을 넘겨 복귀를 못 받는다** — 이 기능이 가장
  * 필요한 사람이 그 사람이다. 값에 근거가 없는 상수를 하나 더 만들지 않는 쪽이기도 하다.
@@ -82,4 +88,28 @@ class AccessibilityReturnStore(private val storage: MarkStorage) {
         const val PREFS_NAME = "davi_accessibility_return"
         const val KEY_SENT_TO_SETTINGS = "sent_to_settings"
     }
+}
+
+/**
+ * 대화 화면이 **마지막으로 화면에 선 시각**(`elapsedRealtime`). 프로세스 안에서만 쓴다.
+ *
+ * 접근성 복귀가 실제로 통했는지를 재려고 둔다(#471 리뷰 2번). **`startActivity`가 안 던졌다는
+ * 것은 화면이 떴다는 뜻이 아니다** — 백그라운드 액티비티 시작 차단은 예외 없이 조용히
+ * 드롭되고 `ActivityTaskManager`에 줄만 남는다. 그래서 「요청했다」와 「떴다」를 갈라야 하고,
+ * 후자는 액티비티만 알 수 있다.
+ *
+ * **저장하지 않는다.** 프로세스가 죽으면 0으로 돌아가는데, 그때는 복귀 요청도 함께 사라지므로
+ * 판정할 것이 없다. 값이 시계가 아니라 `elapsedRealtime`인 것은 사용자가 기기 시각을 바꿔도
+ * 흔들리지 않게 하려는 것이다.
+ */
+object ConversationForeground {
+    @Volatile
+    private var lastResumedAt: Long = 0L
+
+    fun markResumed() {
+        lastResumedAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    /** [since] 이후에 화면에 선 적이 있는가. */
+    fun resumedSince(since: Long): Boolean = lastResumedAt >= since
 }
