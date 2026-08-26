@@ -2,6 +2,9 @@
 
 - ``check``  : 키 없이 시나리오 파일만 검증한다. CI에 걸 수 있는 유일한 층이다.
 - ``run``    : 사용자 LLM ↔ 핑퐁 ↔ 평가자 LLM 한 바퀴.
+
+키는 환경변수로 읽는다. [load_env]가 진입점에서 `.env`를 한 번 올려 주므로 파일에 적어 두면
+된다 — 자세한 것은 그 함수 주석.
 """
 
 from __future__ import annotations
@@ -469,7 +472,33 @@ def _davi_sha(repo: str | None) -> str | None:
         return None
 
 
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
+
+def load_env(path: Path | None = None) -> None:
+    """`eval/pingpong/.env`를 환경변수로 올린다.
+
+    키를 읽는 곳이 셋인데(`GeminiClient`·`ClaudeJudge`가 쓰는 anthropic SDK·개발 토큰) 셋 다
+    ``os.getenv``만 본다. **이 호출이 없으면 `.env.example`을 복사해도 아무 효과가 없고**,
+    README가 안내하는 준비 절차가 성립하지 않는다.
+
+    **이미 있는 값은 덮지 않는다**(``override=False``) — 한 번만 다른 모델·게이트웨이로 돌려 볼
+    때 파일을 고쳤다 되돌리는 절차가 생기지 않게 한다. 파일이 없으면 조용히 넘어간다.
+
+    **import를 함수 안에 둔다** — `llm.py`가 `anthropic`에 쓰는 것과 같은 관례다. 이 폴더의
+    `requirements.txt`를 설치하는 CI 잡이 없어(실제 모델을 부르는 층은 CI 게이트가 아니다,
+    `../CLAUDE.md`) 최상단 import는 남의 스택 설치에 기대게 된다.
+
+    기본 경로를 인자 기본값으로 굳히지 않는 것은 테스트가 [ENV_FILE]을 갈아끼울 수 있게
+    하려는 것이다.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv(path or ENV_FILE, override=False)
+
+
 def main(argv: list[str] | None = None) -> int:
+    load_env()
     parser = argparse.ArgumentParser(prog="pingpong_eval", description="핑퐁 eval")
     sub = parser.add_subparsers(dest="command", required=True)
 

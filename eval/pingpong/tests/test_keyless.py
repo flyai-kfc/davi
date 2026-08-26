@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -1014,3 +1015,58 @@ def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는
     assert not in_batch(scored("v1:옛계약"), batch)
     # 이 필드가 생기기 전의 채점(빈 값)도 현재 배치가 아니다.
     assert not in_batch(scored(""), batch)
+
+
+def test_env_파일은_셸에_있는_값을_덮지_않는다(tmp_path, monkeypatch):
+    """`.env`는 기본값 공급이지 강제가 아니다.
+
+    한 번만 다른 모델·게이트웨이로 돌려 보는 자리에서 셸이 이겨야 한다 — 덮어쓰면 파일을
+    고쳤다 되돌리는 절차가 생긴다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        """PINGPONG_TEST_ONLY_FILE=파일값
+PINGPONG_TEST_ONLY_SHELL=파일값
+""",
+        encoding="utf-8",
+    )
+    # `delenv`만 쓰면 원래 없던 변수를 복원 대상으로 기록하지 않아 세션에 남는다.
+    # `setenv`로 먼저 등록해 두고 지운다 — `override=False`는 빈 문자열도 "있는 값"으로 친다.
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_FILE", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_FILE")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_SHELL", "셸값")
+
+    load_env(env_file)
+
+    assert os.environ["PINGPONG_TEST_ONLY_FILE"] == "파일값"
+    assert os.environ["PINGPONG_TEST_ONLY_SHELL"] == "셸값"
+
+
+def test_env_파일이_없어도_진입점이_죽지_않는다(tmp_path):
+    """저장소를 갓 클론한 사람과 CI가 이 경로로 온다."""
+    from pingpong_eval.cli import load_env
+
+    load_env(tmp_path / "없는파일.env")
+
+
+def test_진입점이_env를_읽는다(tmp_path, monkeypatch, capsys):
+    """`load_env` 호출이 빠지면 `.env`는 다시 장식이 된다.
+
+    함수 자체는 위 둘이 지키지만 **아무도 안 부르면** 아무것도 안 걸린다 — 이 저장소가
+    `.env.example`만 두고 로딩이 없던 상태가 정확히 그것이었다.
+    **호출 여부가 아니라 결과를 본다** — 대역을 세면 `main` 맨 끝으로 옮겨도 통과한다.
+    """
+    from pingpong_eval import cli
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_ENTRY=진입점", encoding="utf-8")
+    monkeypatch.setattr(cli, "ENV_FILE", env_file)
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_ENTRY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_ENTRY")
+
+    cli.main(["check"])
+    capsys.readouterr()
+
+    assert os.environ["PINGPONG_TEST_ONLY_ENTRY"] == "진입점"
