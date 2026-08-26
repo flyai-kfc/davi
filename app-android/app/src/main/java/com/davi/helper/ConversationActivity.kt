@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.speech.SpeechRecognizer
+import android.transition.ChangeBounds
+import android.transition.TransitionManager
 import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
@@ -67,6 +69,20 @@ internal const val EXTRA_DEBUG_CLARIFICATION_PROMPT =
 /** 질문 개수. 1이면 칩이 숨는 경우를 볼 수 있다(`--ei ... 1`). 기본 2. */
 internal const val EXTRA_DEBUG_CLARIFICATION_COUNT =
     "com.davi.helper.extra.DEBUG_CLARIFICATION_COUNT"
+
+/**
+ * **낭독이 끝나지 않는 갈래**를 debug에서 재현한다(#452, `--ez ... true`).
+ *
+ * 카드가 접히는 유일한 계기는 TTS의 끝 신호인데, 엔진이 말하다 죽거나 `onDone`을 안 부르면
+ * **그 신호가 영영 안 온다** — 안드로이드 TTS에서 드물지 않다. 그러면 카드가 펼친 채로 굳어
+ * 보기가 화면 밖으로 밀린다. 그 갈래를 막으려고 [speechGuardMillis] 상한을 뒀는데,
+ * **주입으로는 그 상황을 만들 수 없어 그물이 실제로 도는지 볼 방법이 없었다.**
+ *
+ * 이 extra는 「읽는 중」 상태만 만들고 **TTS를 부르지 않는다** — 끝 신호가 절대 안 오므로,
+ * 그물이 없으면 영영 펼친 채이고 있으면 상한 뒤에 스스로 접힌다. 눈으로 갈린다.
+ */
+internal const val EXTRA_DEBUG_CLARIFICATION_STUCK_SPEAKING =
+    "com.davi.helper.extra.DEBUG_CLARIFICATION_STUCK_SPEAKING"
 
 /**
  * 메인 8(응답 이해 실패)을 **서버 없이** 띄우는 debug 전용 진입점(#263 검증).
@@ -524,7 +540,7 @@ class ConversationActivity : AppCompatActivity() {
 
         // MA-3·메인 8 모양을 서버 없이 보기 위한 debug 전용 상태 주입(#374·#263).
         // release에서는 무시된다.
-        debugInjectedState()?.let { setState(it) }
+        debugInjectedState()?.let(::applyDebugInjection)
 
 
         render(uiState)
@@ -544,7 +560,22 @@ class ConversationActivity : AppCompatActivity() {
         // 있어 나중에 상관없는 render가 돌 때 새 문구가 뒤늦게 튀어나온다. 아무 일도 안
         // 일어나는 것보다 나쁘다.
         val injected = debugInjectedState()
-        if (injected != null) setState(injected) else render(uiState)
+        if (injected != null) applyDebugInjection(injected) else render(uiState)
+    }
+
+    /**
+     * 주입한 상태를 세운다. **onCreate와 onNewIntent가 같은 자리를 쓴다** — 갈라 두면
+     * 이미 떠 있는 화면에 다시 주입할 때만 빠지는 갈래가 생긴다(실제로 겪었다: 낭독 그물이
+     * 첫 실행에서만 걸렸다).
+     *
+     * **주입한 「읽는 중」에도 그물을 건다** — TTS를 안 불렀으니 끝 신호가 절대 안 온다.
+     * 그물이 실제로 도는지 눈으로 보는 자리다([EXTRA_DEBUG_CLARIFICATION_STUCK_SPEAKING]).
+     */
+    private fun applyDebugInjection(injected: ConversationUiState) {
+        setState(injected)
+        (injected as? ConversationUiState.Clarifying)
+            ?.takeIf { it.speaking }
+            ?.let { armClarificationSpeechGuard(it.outcome) }
     }
 
     /** 권한·세션 상태는 화면 밖에서 바뀐다 — 돌아올 때마다 다시 본다. */
@@ -624,6 +655,9 @@ class ConversationActivity : AppCompatActivity() {
         destroyed = true
         autoReturnHandler.removeCallbacks(autoReturnRunnable)
         micReadyHandler.removeCallbacks(micReadyFallback)
+        // 낭독 그물은 최대 63초짜리다 — 안 걷으면 액티비티가 죽은 뒤에 메인 루퍼에서 깨어나
+        // 사라진 화면에 setState/render를 친다(#465 리뷰). 형제 둘과 같은 자리에 둔다.
+        cancelClarificationSpeechGuard()
         speechRecognizerHelper?.stop()
         textToSpeechHelper?.shutdown()
         micTone.release()
@@ -798,6 +832,8 @@ class ConversationActivity : AppCompatActivity() {
     private fun debugClarificationState(): ConversationUiState.Clarifying? {
         if (!BuildConfig.DEBUG) return null
         val raw = intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION) ?: return null
+        val stuckSpeaking =
+            intent.getBooleanExtra(EXTRA_DEBUG_CLARIFICATION_STUCK_SPEAKING, false)
         val options = raw.split('|').map(String::trim).filter(String::isNotEmpty).take(3)
         val prompt = intent.getStringExtra(EXTRA_DEBUG_CLARIFICATION_PROMPT)
             ?: "어느 앱으로 사진을 보낼까요?"
@@ -814,8 +850,9 @@ class ConversationActivity : AppCompatActivity() {
                 questionIndex = 0,
                 questionCount = intent.getIntExtra(EXTRA_DEBUG_CLARIFICATION_COUNT, 2),
             ),
-            // 읽어 주지 않는다 — 모양만 보는 자리다.
-            speaking = false,
+            // 읽어 주지 않는다 — 모양만 보는 자리다. **다만 「읽는 중」으로 둘 수는 있다**
+            // ([EXTRA_DEBUG_CLARIFICATION_STUCK_SPEAKING]) — 끝 신호가 안 오는 갈래를 재현한다.
+            speaking = stuckSpeaking,
         )
     }
 
@@ -928,7 +965,7 @@ class ConversationActivity : AppCompatActivity() {
         // **순서가 곧 우선순위**가 됐고, 읽어서는 어느 값이 이기는지 알 수 없었다 — 접힘의
         // 위 패딩은 같은 render 뒷부분에 덮여 한 프레임도 안 나갔고, 아래 패딩은 구체화를
         // 떠나도 안 돌아왔다. **되돌리는 자리를 따로 두지 않으려면 매번 셋 다 줘야 한다.**
-        val collapsed = foldActive && !questionExpanded
+        val collapsed = foldActive && !questionFold.expanded
         // 접힌 카드는 내용에 붙는다 — 하한이 있으면 한 줄 아래가 빈 채로 그만큼을 보기
         // 영역에서 뺏는다(실측: 접었는데도 181dp라 「직접 말하기」가 잘렸다).
         // **하한은 래퍼에도 걸려 있다** — 컨테이너만 낮췄더니 176이 그대로 남았다.
@@ -954,9 +991,13 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
-                    collapsed -> R.dimen.davi_spacing_xl
-                    model.guidingVisible || model.inClarificationFlow ->
-                        R.dimen.davi_card_padding_top_guiding
+                    // **구체화는 접혔든 펼쳤든 배지가 없다.** 이 44dp는 배지를 피하려고 잡아
+                    // 둔 값인데, 접힘에서만 걷고 펼침에는 남겨 두었다 — 근거는 같은데 한쪽만
+                    // 적용된 상태였다. 그 20dp가 **「직접 말하기」를 19dp 잘라 먹고 있었다**
+                    // (실측 320×686dp: 마지막 버튼이 72dp 규격인데 53dp만 보였다). 안내 화면
+                    // (guidingVisible)에는 배지가 서므로 그쪽은 그대로 둔다.
+                    model.inClarificationFlow || collapsed -> R.dimen.davi_spacing_xl
+                    model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi
                 },
             ),
@@ -1422,14 +1463,73 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 새 질문이 왔다. **질문마다 읽어 준다**(2026-08-26, 실기기 확인에서 뒤집었다).
+     *
+     * 한때 첫 문항만 읽었고 근거는 「뒤 문항은 같은 화면에서 즉시 선택 가능해야 한다」였는데,
+     * **낭독이 선택을 막지 않는다** — 읽는 동안에도 보기 버튼은 다 보이고 눌린다. 근거가
+     * 요구하지 않는 침묵이었다.
+     *
+     * 그리고 #434의 접기가 들어오면서 그 침묵의 대가가 커졌다. 안 읽는 질문은
+     * `speaking = false`라 **처음부터 접힌 채로 뜨고**, 그러면 어르신이 두 번째 질문을
+     * **읽을 수도 들을 수도 없다** — 손잡이를 눌러야만 원문이 나온다. 예전에는 안 읽어 줘도
+     * 글자가 화면에 그냥 있었다.
+     *
+     * **여기는 새 질문이 올 때만 불린다.** 직접 말하기가 무발화로 실패해 같은 질문으로
+     * 돌아가는 갈래는 [handleSpeechError]가 `setState`로 따로 처리하므로, 질문이 반복해서
+     * 읽히지 않는다.
+     */
     private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
-        val speaking = shouldSpeakClarification(outcome)
-        setState(ConversationUiState.Clarifying(outcome, speaking = speaking))
+        // **질문이 도착한 이 턴 안에서는 접힘 전이를 끈다**(#465 리뷰). TTS가 없는 기기에서는
+        // `speak`가 그 자리에서 `onError`를 부르고 `runOnUiThread`가 인라인이라, **한 번의
+        // 도착이 렌더 둘**(펼침 -> 접힘)을 만든다 — 그러면 질문이 뜨자마자 스스로 접히는
+        // 것처럼 보인다.
+        //
+        // **첫 렌더만 빼는 것으로는 안 닫힌다** — 접힘은 그 질문의 **두 번째** 렌더에서 오고,
+        // 첫 렌더 끝에서 `questionFoldShown`이 다시 채워지기 때문이다(한 번 그렇게 고쳤다가
+        // 리뷰에서 잡혔다). 턴 전체를 덮어야 그 두 렌더가 함께 조용해진다.
+        //
+        // 정상 낭독 뒤의 접힘은 이 턴 밖(콜백)이라 애니메이션이 그대로 남는다.
+        foldTransitionSuppressed = true
+        try {
+            showClarificationInTurn(outcome)
+        } finally {
+            foldTransitionSuppressed = false
+        }
+    }
+
+    private fun showClarificationInTurn(outcome: VoiceDialogueSession.Outcome.Clarify) {
+        setState(ConversationUiState.Clarifying(outcome, speaking = true))
         GuideTelemetry.voiceState("clarification_question")
-        if (!speaking) return
+        // **끝 신호가 안 와도 접힌다**(#452). 카드가 접히는 유일한 계기가 이 콜백인데, TTS
+        // 엔진이 말하다 죽거나 onDone을 안 부르면 그 신호가 영영 안 온다 — 그러면 카드가
+        // 펼친 채로 굳어 보기가 화면 밖으로 밀린다. 상한의 근거는 [speechGuardMillis]에 있다.
+        var guard = armClarificationSpeechGuard(outcome)
         speak(
             outcome.question.prompt,
+            // **낭독이 실제로 시작하면 시계를 다시 출발시킨다**(#465 리뷰). 엔진을 처음
+            // 바인딩하는 호출에서는 speak()가 즉시 돌아온 뒤 init이 끝날 때까지 한 글자도
+            // 안 읽는데, 그 대기를 상한이 먹으면 **짧은 문구일수록 읽는 도중에 접힌다**
+            // (10자면 상한 6초 중 낭독이 1.8초라 init에 4.2초밖에 안 남는다).
+            // **처음 건 그물을 안 없앤다** — 시작 신호가 영영 안 오는 갈래가 이 그물이
+            // 막으려던 바로 그것이다. 시작하면 그때 갈아 끼운다.
+            // **재장전에도 같은 술어를 건다**(#465 리뷰 4차). cancel에만 `only`를 붙이고
+            // arm을 무조건 두면 **막은 구멍이 반대편으로 다시 열린다**: 바인더 스레드가 q1의
+            // onStart를 post한 뒤 UI가 탭을 처리해 q2가 장전되면, 큐에서 풀린 이 람다가
+            // arm 안의 무조건 cancel로 **q2의 그물을 걷고** q1 기준 그물을 건다 — 그 그물은
+            // id 불일치로 아무 일도 안 하므로 **q2에 그물이 하나도 안 남는다.**
+            // 콜드 바인드에서는 onStart가 speak() 뒤 수백 ms라 onDone 때보다 창이 넓다.
+            onStarted = {
+                if (speechGuardApplies(outcome, uiState)) {
+                    guard = armClarificationSpeechGuard(outcome)
+                }
+            },
             onFinished = {
+                // **이 speak가 건 그물만 걷는다**(#465 리뷰). TTS 바인더 스레드가
+                // runOnUiThread를 post한 직후 사용자가 보기를 눌러 다음 질문이 뜨면, 큐에서
+                // 뒤늦게 풀린 이 콜백이 **새 질문의 그물을 지운다** — 이 PR이 세우려는 바로
+                // 그 그물이 조용히 사라지는 갈래다. 창이 몇 ms라 드물어서 더 위험하다.
+                cancelClarificationSpeechGuard(only = guard)
                 val current = uiState as? ConversationUiState.Clarifying
                 if (
                     current?.outcome?.generation == outcome.generation &&
@@ -1439,6 +1539,38 @@ class ConversationActivity : AppCompatActivity() {
                 }
             },
         )
+    }
+
+    /** 낭독 끝 신호가 안 올 때 대신 접는 그물. 근거는 [speechGuardMillis]. */
+    private var clarificationSpeechGuard: Runnable? = null
+
+    /** 그물을 걸고 **그 그물을 돌려준다** — 부른 쪽이 자기 것만 걷을 수 있게. */
+    private fun armClarificationSpeechGuard(outcome: VoiceDialogueSession.Outcome.Clarify): Runnable {
+        cancelClarificationSpeechGuard()
+        val guard = Runnable {
+            clarificationSpeechGuard = null
+            // **그 사이 화면이 넘어갔으면 아무 일도 안 한다** — 늦게 도착한 그물이 다음 질문의
+            // 펼침을 걷어 가면 안 된다. 판정은 [speechGuardApplies]에 있다.
+            if (!speechGuardApplies(outcome, uiState)) return@Runnable
+            val current = uiState as ConversationUiState.Clarifying
+            GuideTelemetry.voiceState("clarification_speech_guard_fired")
+            setState(current.copy(speaking = false))
+        }
+        clarificationSpeechGuard = guard
+        binding.root.postDelayed(guard, speechGuardMillis(outcome.question.prompt.length))
+        return guard
+    }
+
+    /**
+     * 걸린 그물을 걷는다. [only]를 주면 **그것이 아직 걸려 있을 때만** 걷는다 — 늦게 도착한
+     * 옛 콜백이 이미 갈린 새 질문의 그물을 지우지 않게. [only]가 이미 갈렸다면 그것은 갈아 끼운
+     * 쪽이 큐에서 뺐으므로 여기서 더 할 일이 없다.
+     */
+    private fun cancelClarificationSpeechGuard(only: Runnable? = null) {
+        val current = clarificationSpeechGuard ?: return
+        if (only != null && only !== current) return
+        binding.root.removeCallbacks(current)
+        clarificationSpeechGuard = null
     }
 
     private fun showReadyGoal(
@@ -1463,7 +1595,7 @@ class ConversationActivity : AppCompatActivity() {
         )
     }
 
-    private fun speak(message: String, onFinished: () -> Unit) {
+    private fun speak(message: String, onFinished: () -> Unit, onStarted: () -> Unit = {}) {
         val helper = textToSpeechHelper ?: TextToSpeechHelper(this).also {
             textToSpeechHelper = it
         }
@@ -1472,6 +1604,8 @@ class ConversationActivity : AppCompatActivity() {
             onDone = { runOnUiThread { if (!destroyed) onFinished() } },
             // TTS가 없어도 질문은 화면에 보인다. 대화 상태를 멈추지 않고 같은 흐름을 잇는다.
             onError = { runOnUiThread { if (!destroyed) onFinished() } },
+            // 엔진 콜백은 바인더 스레드로 온다.
+            onStarted = { runOnUiThread { if (!destroyed) onStarted() } },
         )
     }
 
@@ -1485,7 +1619,11 @@ class ConversationActivity : AppCompatActivity() {
             // 시작 실패까지 여기서 삼키면 직접 말하기가 무반응으로 반복되므로 그 오류는 아래의
             // 기존 홈 오류 문구로 종료한다.
             speechRecognizerHelper?.stop()
-            setState(ConversationUiState.Clarifying(clarification, speaking = false))
+            // **펼친 채로 돌려준다**(#465 리뷰) — 답을 못 해서 돌아온 순간이 질문이 가장
+            // 필요한 순간인데, 접힌 채로 뜨면 읽을 수도 들을 수도 없다.
+            setState(
+                ConversationUiState.Clarifying(clarification, speaking = false, resumed = true),
+            )
             return
         }
         voiceSession.cancel()
@@ -1751,39 +1889,47 @@ class ConversationActivity : AppCompatActivity() {
      * **뷰 적용보다 먼저 불려야 한다.** 카드의 하한·위아래 패딩이 이 값에 걸리는데, 그 셋은
      * render 한 곳에서 정한다(아래 「카드 크기는 여기서만 정한다」). 예전에는 판정과 적용이
      * 한 함수에 섞여 있었고, 그러면 **순서가 곧 우선순위**가 돼 읽어서는 어느 값이 이기는지
-     * 알 수 없었다 — 실제로 접힘이 준 위 패딩은 같은 render 뒷부분에 덮여 한 프레임도 화면에
-     * 안 나갔고, 아래 패딩은 구체화를 떠나도 안 돌아왔다(2026-08-25 리뷰).
+     * 알 수 없었다(2026-08-25 리뷰).
+     *
+     * **판정 자체는 [QuestionFoldGate]에 있다**(#452) — 뷰가 필요 없는 순수 규칙이라
+     * JVM 테스트가 덮는다. 여기 남은 것은 「언제 넘기는가」와 목록 스크롤 되돌리기뿐이다.
      */
     private fun resolveQuestionFold(state: ConversationUiState, model: ConversationRenderModel): Boolean {
-        if (!model.clarificationVisible || model.questionText == null) {
-            questionFoldKey = null
-            return false
-        }
-        val key = model.questionText
-        val speaking = (state as? ConversationUiState.Clarifying)?.speaking == true
-        if (key != questionFoldKey) {
-            questionFoldKey = key
-            questionFoldTouched = false
-            // 읽어 주는 동안만 펼쳐 둔다. 안 읽으면 처음부터 접힌다.
-            questionExpanded = speaking
+        val clarifying = state as? ConversationUiState.Clarifying
+        // **키는 문구가 아니라 「세대:질문 id」다**(#465 리뷰). 계약이 묶는 것은 **한 계획 안에서의**
+        // id 유일성뿐이다 — prompt가 같은 두 문항도, 다른 세션의 첫 질문이 또 `q1`인 것도
+        // 계약 위반이 아니다. 어느 쪽이든 같은 질문으로 보이면 손잡이 기록이 안 지워지고
+        // 보기 스크롤도 안 되감긴다. **그물(speechGuardApplies)이 세대와 id를 함께 보므로
+        // 두 축을 같이 실어야 진짜로 맞는다.**
+        val key = clarifying?.outcome
+            ?.let { "${it.generation}:${it.question.id}" }
+            ?.takeIf { model.clarificationVisible }
+        val newQuestion = key != null && key != questionFoldKey
+        questionFoldKey = key
+        questionFold.sync(key, clarifying?.speaking == true, resumed = clarifying?.resumed == true)
+        if (newQuestion) {
             // 새 질문이면 보기도 맨 위부터 본다 — 앞 질문에서 내려 둔 자리가 남으면 안 된다.
             binding.clarificationChoices.root.scrollTo(0, 0)
-        } else if (!questionFoldTouched) {
-            questionExpanded = speaking
         }
-        return true
+        return key != null
     }
 
-    /** 지금 화면의 질문 카드가 펼쳐져 있는가. 사용자가 손잡이를 누르면 뒤집힌다. */
-    private var questionExpanded = false
+    /** 접힘 규칙. 뷰가 필요 없는 순수 판정이라 밖에 있다(#452). */
+    private val questionFold = QuestionFoldGate()
 
-    /** 이 질문에서 사용자가 손잡이를 눌렀는가. 눌렀으면 낭독 상태가 덮어쓰지 않는다. */
-    private var questionFoldTouched = false
+    /** 마지막으로 화면에 적용한 펼침 상태. 바뀔 때만 접힘을 애니메이션한다. */
+    private var questionFoldShown: Boolean? = null
+
+    /**
+     * **지금이 「질문이 도착한 턴」 안인가.** 참인 동안의 렌더는 접힘을 애니메이션하지 않는다 —
+     * 근거는 [showClarification]. 턴이 끝나면 거짓으로 돌아온다.
+     */
+    private var foldTransitionSuppressed = false
 
     /** 마지막 render가 만든 모델. 레이아웃 리스너가 다시 만들지 않고 이것을 쓴다. */
     private var lastRenderModel: ConversationRenderModel? = null
 
-    /** 접힘 판정을 되돌리는 기준이 되는 질문. 질문이 바뀌면 손잡이 기록을 지운다. */
+    /** 지금 화면에 뜬 질문. 바뀌는 순간에만 보기 목록을 되감는다. */
     private var questionFoldKey: String? = null
 
     /**
@@ -1809,10 +1955,30 @@ class ConversationActivity : AppCompatActivity() {
         val toggle = binding.btnQuestionToggle
         if (!foldActive) {
             toggle.isVisible(false)
+            questionFoldShown = null
             // 다른 화면의 카드는 예전대로 끌어서 스크롤한다.
             binding.cardQuestion.movementMethod = ScrollingMovementMethod.getInstance()
             return
         }
+        val questionExpanded = questionFold.expanded
+        // **접히는 것이 보여야 한다**(#452). 글자가 그냥 갈리면 「사라졌다」로 읽히는데, 접힘은
+        // 되돌릴 수 있는 일이라 그렇게 읽히면 안 된다. 카드 **상단은 안 움직이므로**(시작선이
+        // 고정이다) 자라고 줄어드는 것은 아래쪽뿐이고, 보기 버튼이 따라 올라온다.
+        //
+        // **바뀔 때만 건다** — render는 부분 인식마다 돌아서, 매번 걸면 글자가 바뀔 때마다
+        // 화면 전체가 흔들린다. 모션을 끈 기기에서는 안드로이드가 지속시간을 0으로 만들어
+        // 이 호출이 그대로 즉시 적용이 된다(별도 분기가 필요 없다).
+        if (
+            !foldTransitionSuppressed &&
+            questionFoldShown != null &&
+            questionFoldShown != questionExpanded
+        ) {
+            TransitionManager.beginDelayedTransition(
+                binding.cardColumn,
+                ChangeBounds().setDuration(FOLD_TRANSITION_MS),
+            )
+        }
+        questionFoldShown = questionExpanded
         val key = model.questionText
         binding.cardQuestion.text = if (questionExpanded) {
             key
@@ -1849,8 +2015,7 @@ class ConversationActivity : AppCompatActivity() {
             },
         )
         toggle.setOnClickListener {
-            questionExpanded = !questionExpanded
-            questionFoldTouched = true
+            questionFold.toggle()
             render(uiState)
             // **접거나 펼치면 보기 목록을 맨 위로 되돌린다.** 카드 높이가 바뀌면 아래 목록이
             // 그만큼 밀리는데, 스크롤 위치는 그대로라 **목록이 저 혼자 올라온 것처럼 보인다.**
@@ -2030,6 +2195,9 @@ class ConversationActivity : AppCompatActivity() {
     }
 
     private companion object {
+        /** 접힘/펼침이 눈에 보이는 데 필요한 만큼. 길면 조작이 굼떠 보인다. */
+        const val FOLD_TRANSITION_MS = 200L
+
         const val AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
         const val NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
 

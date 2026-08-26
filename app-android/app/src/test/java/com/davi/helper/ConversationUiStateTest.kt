@@ -303,12 +303,6 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `구체화 질문은 첫 문항만 읽는다`() {
-        assertTrue(shouldSpeakClarification(clarificationOutcome(questionIndex = 0, questionCount = 2)))
-        assertFalse(shouldSpeakClarification(clarificationOutcome(questionIndex = 1, questionCount = 2)))
-    }
-
-    @Test
     fun `구체화 직접 발화는 무발화 계열 오류에서만 질문으로 돌아간다`() {
         assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_NO_MATCH))
         assertTrue(canResumeClarificationAfterSpeechError(SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
