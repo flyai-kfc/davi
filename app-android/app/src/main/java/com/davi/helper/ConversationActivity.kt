@@ -1480,6 +1480,28 @@ class ConversationActivity : AppCompatActivity() {
      * 읽히지 않는다.
      */
     private fun showClarification(outcome: VoiceDialogueSession.Outcome.Clarify) {
+        // **질문이 도착한 이 턴 안에서는 접힘 전이를 끈다**(#465 리뷰). TTS가 없는 기기에서는
+        // `speak`가 그 자리에서 `onError`를 부르고 `runOnUiThread`가 인라인이라, **한 번의
+        // 도착이 렌더 둘**(펼침 -> 접힘)을 만든다 — 그러면 질문이 뜨자마자 스스로 접히는
+        // 것처럼 보인다.
+        //
+        // **첫 렌더만 빼는 것으로는 안 닫힌다** — 접힘은 그 질문의 **두 번째** 렌더에서 오고,
+        // 첫 렌더 끝에서 `questionFoldShown`이 다시 채워지기 때문이다(한 번 그렇게 고쳤다가
+        // 리뷰에서 잡혔다). 턴 전체를 덮어야 그 두 렌더가 함께 조용해진다.
+        //
+        // 정상 낭독 뒤의 접힘은 이 턴 밖(콜백)이라 애니메이션이 그대로 남는다.
+        foldTransitionSuppressed = true
+        try {
+            showClarificationInTurn(outcome)
+        } finally {
+            foldTransitionSuppressed = false
+        }
+    }
+
+    /** 질문이 도착한 턴이 끝났는가. 그 안의 렌더는 접힘을 애니메이션하지 않는다. */
+    private var foldTransitionSuppressed = false
+
+    private fun showClarificationInTurn(outcome: VoiceDialogueSession.Outcome.Clarify) {
         setState(ConversationUiState.Clarifying(outcome, speaking = true))
         GuideTelemetry.voiceState("clarification_question")
         // **끝 신호가 안 와도 접힌다**(#452). 카드가 접히는 유일한 계기가 이 콜백인데, TTS
@@ -1891,10 +1913,6 @@ class ConversationActivity : AppCompatActivity() {
         if (newQuestion) {
             // 새 질문이면 보기도 맨 위부터 본다 — 앞 질문에서 내려 둔 자리가 남으면 안 된다.
             binding.clarificationChoices.root.scrollTo(0, 0)
-            // **그 질문의 첫 프레임은 애니메이션 없이 선다.** TTS가 없는 기기에서는 speak()가
-            // 그 자리에서 onError를 불러 한 번의 showClarification이 펼침 -> 접힘 두 렌더를
-            // 만드는데, 그러면 **질문이 뜨자마자 스스로 접히는 것처럼 보인다**(#465 리뷰).
-            questionFoldShown = null
         }
         return key != null
     }
@@ -1947,7 +1965,11 @@ class ConversationActivity : AppCompatActivity() {
         // **바뀔 때만 건다** — render는 부분 인식마다 돌아서, 매번 걸면 글자가 바뀔 때마다
         // 화면 전체가 흔들린다. 모션을 끈 기기에서는 안드로이드가 지속시간을 0으로 만들어
         // 이 호출이 그대로 즉시 적용이 된다(별도 분기가 필요 없다).
-        if (questionFoldShown != null && questionFoldShown != questionExpanded) {
+        if (
+            !foldTransitionSuppressed &&
+            questionFoldShown != null &&
+            questionFoldShown != questionExpanded
+        ) {
             TransitionManager.beginDelayedTransition(
                 binding.cardColumn,
                 ChangeBounds().setDuration(FOLD_TRANSITION_MS),

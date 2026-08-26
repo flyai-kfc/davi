@@ -101,8 +101,6 @@ class Case:
     extras: tuple = ()
     options: str = "-"
     chip: str = "-"
-    #: 시작선을 카드 상단이 아니라 「칩·✕의 윗변」으로 읽는 화면(MA-3).
-    perched: bool = False
     #: **이 칸의 시작선을 무엇으로 재는가.** 「없으면 다른 것으로」가 아니라 **못 찾으면 못 잰
     #: 것**이다 — 갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고, 대신 엉뚱한 값이 판정에
     #: 들어간다(실측: 청취 칸이 홈 제목으로 갈아타 「폭 0.0dp · OK」가 떴다).
@@ -147,7 +145,6 @@ def clarification_case(option_count: int, question_count: int, expanded: bool = 
         extras=tuple(extras),
         options=str(option_count),
         chip="있음" if question_count > 1 else "없음",
-        perched=True,
         anchor="perch",
         expect="btn_close",
         start_line_chain=MA3_START_LINE_CHAIN,
@@ -177,7 +174,6 @@ def listening_case(question_count: int) -> Case:
         options="3",
         chip="있음" if question_count > 1 else "없음",
         # **✕가 걸치지 않는 화면이다** — 걸치기는 구체화에서만 한다. 시작선은 카드 상단이다.
-        perched=False,
         expect="btn_direct_speak",
         tap="btn_direct_speak",
         expect_after="card_utterance_wrap",
@@ -350,7 +346,6 @@ def measure(
     density: int,
     inset_top_px: int,
     screen_height_px: int,
-    perched: bool,
     close_circle_inset_px: int = 0,
     anchor: str = "card",
     fixed_heights_px: dict = None,
@@ -820,7 +815,6 @@ def run(args) -> int:
                     density,
                     inset_top,
                     screen_height,
-                    case.perched,
                     close_circle_inset_px,
                     anchor=case.anchor,
                     fixed_heights_px=fixed_heights_px,
@@ -846,7 +840,11 @@ def run(args) -> int:
                         # 경고가 매번 떠서 **진짜 못 찾은 날에 아무도 안 본다.**
                         missing=tuple(
                             name
-                            for name in (("card_question_wrap", "btn_close") if case.perched else ())
+                            for name in (
+                                ("card_question_wrap", "btn_close")
+                                if case.anchor == "perch"
+                                else ()
+                            )
                             if name not in nodes
                         ),
                         **metrics,

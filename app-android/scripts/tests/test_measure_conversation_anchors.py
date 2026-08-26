@@ -88,7 +88,6 @@ class MeasureTest(unittest.TestCase):
             DENSITY,
             INSET_TOP_PX,
             SCREEN_HEIGHT_PX,
-            perched,
             CLOSE_CIRCLE_INSET_PX,
             anchor=anchor or ("perch" if perched else "card"),
             fixed_heights_px=FIXED_HEIGHTS_PX,
@@ -357,11 +356,10 @@ class StartLineChainTest(unittest.TestCase):
 
 class GridTest(unittest.TestCase):
     def test_every_case_declares_what_its_start_line_is_measured_from(self):
-        # 「없으면 다른 것으로」가 아니라 **칸이 정한 기준 하나**다.
+        # 「없으면 다른 것으로」가 아니라 **칸이 정한 기준 하나**다. 축이 하나뿐이라
+        # 「둘이 어긋나지 않는가」를 따로 단언할 것도 없다(#465 리뷰).
         for case in MODULE.default_cases():
             self.assertIn(case.anchor, {"perch", "card", "title"}, case.screen)
-            if case.perched:
-                self.assertEqual(case.anchor, "perch", case.screen)
 
     def test_the_grid_also_covers_the_screen_that_still_uses_the_badge_margin(self):
         """구체화에서 배지를 뺀 뒤에도 **청취에는 배지가 선다** — 배지 위 여백이 카드를
@@ -397,7 +395,8 @@ class GridTest(unittest.TestCase):
         clarification = [
             c
             for c in MODULE.default_cases()
-            if c.perched and not any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
+            if c.anchor == "perch"
+            and not any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
         ]
         combinations = {(case.options, case.chip) for case in clarification}
 
@@ -424,7 +423,7 @@ class GridTest(unittest.TestCase):
         client_questions = self.constant(SLOT_FILL_CLIENT, "MAX_CLARIFICATION_QUESTIONS")
         self.assertEqual(session_questions, client_questions, "두 겹의 질문 상한이 서로 다르다")
 
-        clarification = [c for c in MODULE.default_cases() if c.perched]
+        clarification = [c for c in MODULE.default_cases() if c.anchor == "perch"]
 
         self.assertEqual(max(int(case.options) for case in clarification), session_max)
         self.assertEqual(session_questions, 2)  # 칩 유무가 곧 질문 1개/2개다
