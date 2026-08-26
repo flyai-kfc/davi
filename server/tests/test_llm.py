@@ -96,9 +96,8 @@ def test_llm_sends_prompt_and_response_schema():
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         assert body["generationConfig"]["maxOutputTokens"] == 1824
         assert body["generationConfig"]["responseSchema"] == GUIDE_ACTION_SCHEMA
-        # thinking 모델의 보이지 않는 thinking 토큰이 maxOutputTokens 예산을 다 써
-        # 응답이 잘리는 걸 막는다(실기기 재현, 2026-08-18). 캡을 빼먹으면 회귀한다.
-        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
+        # 알 수 없는/3.x 모델에는 2.5 전용 numeric budget을 보내지 않는다(#457).
+        assert "thinkingConfig" not in body["generationConfig"]
         assert request.headers["x-goog-api-key"] == "test-key"
         return httpx.Response(200, json=_action_response())
 
