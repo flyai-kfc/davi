@@ -56,7 +56,30 @@ class OnboardingActivity : AppCompatActivity() {
         }
 
         binding.btnAccessibility.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            // **보냈다는 것을 남긴다**(#451). 스위치를 켜는 순간 서비스가 이 표시를 소비하고
+            // 다비를 앞으로 불러낸다 — 사용자가 설정에서 스스로 길을 찾아 돌아오지 않아도 된다.
+            accessibilityReturn.markSentToSettings()
+            // **`NEW_TASK | CLEAR_TOP` 둘 다 필요하다**(#451 · #471 리뷰 ③, 실기기로 셋을 갈랐다).
+            //
+            // 플래그가 **없으면** 설정이 다비 작업 안에 쌓여, 복귀한 대화 화면 **밑에 설정이
+            // 깔린다** — 어르신이 「이제 됐나?」 하고 뒤로가기를 누르면 방금 나온 접근성 설정
+            // 으로 돌아간다. 첫 화면에서 겪는 일이다.
+            //
+            // **`NEW_TASK`만 주면** 설정 앱의 **기존 작업이 있을 때 그 작업만 앞으로 끌려온다**
+            // — 「접근성 서비스 켜기」를 눌렀는데 **아까 보던 와이파이 설정이 뜬다**(실측:
+            // 플랫폼은 ACCESSIBILITY_SETTINGS를 START했다고 적는데 앞에 선 것은
+            // WifiSettingsActivity였다).
+            //
+            // `CLEAR_TOP`이 그 작업을 접근성 설정까지 걷어 **눌린 것이 실제로 뜨게** 한다.
+            //
+            //     설정 작업 없음   버튼 -> 접근성 설정 · 켠 뒤 -> 대화 화면 · 뒤로 -> 대화 화면 유지
+            //     설정 작업 있음   버튼 -> 접근성 설정 · 켠 뒤 -> 대화 화면 · 뒤로 -> 대화 화면 유지
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                    ),
+            )
         }
     }
 
@@ -70,10 +93,16 @@ class OnboardingActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (canStartGuide()) {
+            // **여기서도 표시를 지운다**(#451). 사용자가 설정에서 손으로 돌아오면 이 화면이
+            // 먼저 대화 화면을 띄우는데, 그때 표시를 남겨 두면 **다음 부팅에서 소비되어**
+            // 아무 맥락 없이 앱이 튀어나온다.
+            accessibilityReturn.clear()
             startActivity(Intent(this, ConversationActivity::class.java))
             finish()
         }
     }
+
+    private val accessibilityReturn by lazy { AccessibilityReturnStore(this) }
 
     companion object {
         /** 안내 중 접근성이 꺼져 서비스가 되돌린 복귀인가(#190). */

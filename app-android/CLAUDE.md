@@ -51,7 +51,13 @@ Kotlin/Android 앱. **안내만** 한다(대신 조작 금지). 추론은 서버
   마지막 요청으로 goal을 확정한다(#316). 직접 말하기의 무발화·인식 불일치는 질문 선택 화면으로
   돌아가 원발화·앞 답을 보존하고, 권한·서비스·시작 오류는 홈에 원인을 표시한다. 완성 goal은 최종
   확인을 거치고 자동으로 안내를 시작하지 않는다.
-  발화·질문·답·goal·대화 UUID는 logcat에 남기지 않는다.
+  **제품 빌드는 발화·질문·답·goal·대화 UUID를 logcat에 남기지 않는다.** 남기는 것은 비식별
+  수치뿐이다 — `voice_response_shape`(상태·질문 수·질문별 보기 수·문구 길이) ·
+  `clarification_answer`(몇 번째 질문에 보기 몇 번, 자유 발화면 길이만) ·
+  `clarification_fold`(접힘/펼침). **debug 빌드는 스위치를 켰을 때만 전문을 낸다**(#470):
+  `adb shell setprop log.tag.GuideSvcRaw D`로 켜고 `INFO`로 되돌린다. 기본이 꺼짐이라
+  **켜는 것을 잊으면 관측을 놓칠 뿐이고, 끄는 것을 잊는 사고는 안 난다.** `ConversationLog`의
+  release 구현이 no-op이고 CI 관문이 dex 문자열로 그 경계를 지킨다(`GuideScreenLog`와 같은 구조).
 - **실행 가능 앱 index** — `QUERY_ALL_PACKAGES` 없이 `LauncherApps`의 현재 profile launcher
   activity만 메모리에 유지한다. 서버의 최대 5개 후보를 package exact→정규화 alias 순으로 기기
   안에서 대조한다. `launchable` 후보가 없거나 후보 요청이 실패하면 가능성 경고를 보여 주며, 앱

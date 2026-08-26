@@ -213,12 +213,76 @@ class GuideAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * **온보딩이 설정으로 보낸 사람을 여기서 되돌린다**(#451).
+     *
+     * 이 콜백은 사용자가 스위치를 켠 순간만이 아니라 부팅·재설치·안내 중 권한 회수 후
+     * 복구에도 불린다. 아무 때나 다비가 튀어나오면 그게 더 나쁘므로,
+     * [AccessibilityReturnStore]의 **일회용 표시**가 있을 때만 앞으로 나온다 — 그 표시는
+     * 온보딩이 설정으로 보낼 때만 찍히고 여기서 소비되며 사라진다.
+     *
+     * **되는 것은 실측으로 확인했다**(SM-S918N · Android 15): `BAL_ALLOW_PERMISSION`으로
+     * 백그라운드 액티비티 시작이 허용됐고 차단 로그는 없었다. 예외의 근거가 접근성 서비스로
+     * 묶여 있다는 것 자체라 따로 받아 둘 권한이 없다. **그래도 던지는 것은 감싼다** —
+     * 제조사·버전에 따라 막힐 수 있고, 그때 서비스가 죽으면 **접근성 자체가 안 붙어**
+     * 고치려던 것보다 나쁜 상태가 된다.
+     */
+    private fun comeForwardIfOnboardingSentUs() {
+        if (!AccessibilityReturnStore(this).consume()) return
+        // **두 갈래가 서로 다른 이유로 맞는다**(#471 리뷰 5번·2차 지적).
+        //
+        // 안내 중 권한이 회수됐다 복구되는 갈래(#212)는 스택이 `[대화, 온보딩]`이라
+        // **CLEAR_TOP이 실제로 위를 걷어낸다** — 뒤로가기가 「권한을 켜세요」로 안 돌아간다.
+        //
+        // **갓 설치한 사람은 스택이 `[온보딩]` 하나다.** 진입점은 `LoginActivity`지만 그 화면도
+        // 사이에 끼는 `ConsentActivity`도 `startActivity` 다음 줄에서 스스로 `finish()`한다 —
+        // 버튼을 누르는 시점에 남아 있는 것은 온보딩뿐이다(실측: `Hist #0`가 하나).
+        // 어느 쪽이든 **대화 화면이 없어** CLEAR_TOP이 걷을 것이 없고 그냥 위에 쌓인다. 그 갈래가
+        // 괜찮은 이유는 **설정이 이 작업 밖에 있기 때문**이다(온보딩이 `NEW_TASK`로 띄운다) —
+        // 한때 설정이 이 작업 안에 쌓여 **뒤로가기가 접근성 설정으로 갔고**, 그것을 실기기로
+        // 재서 잡았다. 온보딩은 `onResume`에서 스스로 끝나므로 그 위에 남지도 않는다.
+        val intent = Intent(this, ConversationActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val requestedAt = SystemClock.elapsedRealtime()
+        val thrown = try {
+            startActivity(intent)
+            null
+        } catch (e: Exception) {
+            e
+        }
+        GuideTelemetry.accessibilityReturn(thrown?.javaClass?.simpleName)
+        if (thrown != null) return
+        // **정말 떴는지는 잠깐 뒤에 따로 잰다**(#471 리뷰 2번). 백그라운드 액티비티 시작
+        // 차단은 **예외를 안 던지고** 조용히 드롭되므로, 위 줄만으로는 막히는 기기에서도
+        // 초록으로 보인다 — 그 줄이 차선(알림 폴백)을 안 만든 근거인데 근거가 못 된다.
+        //
+        // 상한의 근거는 실측이다: 「허용」을 누른 지 **1초 안에** 다비가 나왔다(#451 실측,
+        // A15·A16 양쪽). 두 배로 잡아 느린 기기를 받는다. **못 떴다고 무엇을 하지는 않는다** —
+        // 지금은 재기만 한다. `not_shown`이 도는 기기가 나오면 그때 차선을 만든다.
+        val verify = Runnable {
+            GuideTelemetry.accessibilityReturnResult(
+                ConversationForeground.resumedSince(requestedAt),
+                RETURN_VERIFY_DELAY_MS,
+            )
+            returnVerify = null
+        }
+        returnVerify = verify
+        mainHandler.postDelayed(verify, RETURN_VERIFY_DELAY_MS)
+    }
+
+    /**
+     * 걸어 둔 복귀 확인. **회수하려고 들고 있는다** — 서비스가 그 사이에 풀리면 판정할 대상이
+     * 없는데도 줄이 하나 나간다. 같은 자리에서 리시버와 예약 샘플이 먼저 지적받았다(onUnbind 주석).
+     */
+    private var returnVerify: Runnable? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // **서비스가 살아났다는 것이 곧 "안내 기능이 꺼졌어요" 알림의 전제가 사라졌다는 뜻이다**
         // (#212 · PR #240 리뷰). AUTO_CANCEL은 탭에만 걸리므로, 사용자가 알림을 누르지 않고
         // 설정에서 접근성을 다시 켜면 그 알림이 계속 남아 있었다. 첫 바인드에서는 지울 것이 없다.
         GuideNotifier.clear(this)
+        comeForwardIfOnboardingSentUs()
         // 칩 클릭은 메인 스레드다(GuideSession의 스레드 계약 충족). 세션이 끝나면 위 리스너가
         // 오버레이를 걷는데, 그 경로가 mainHandler.post라 클릭 디스패치 안에서 자기 창을 걷지 않는다.
         // 로그를 남기는 이유: 사용자가 끝낸 세션은 그 외에 아무 흔적도 안 남아, 로그만 보면
@@ -1515,6 +1579,9 @@ class GuideAccessibilityService : AccessibilityService() {
         // 읽으므로 stop()은 뒤여야 하고, 창을 미리 걷으면 복귀가 기대는
         // `BAL_ALLOW_NON_APP_VISIBLE_WINDOW`를 스스로 없앤다(4차 리뷰).
         cancelSample()
+        // 복귀 확인도 같이 걷는다 — 서비스가 풀렸으면 「떴는가」를 물을 대상이 없다.
+        returnVerify?.let { mainHandler.removeCallbacks(it) }
+        returnVerify = null
         runCatching { unregisterReceiver(screenReceiver) }
             .onFailure { Log.w(TAG, "screen receiver 해제 실패", it) }
 
@@ -1546,6 +1613,12 @@ class GuideAccessibilityService : AccessibilityService() {
 
     companion object {
         const val TAG = "GuideSvc"
+
+        /**
+         * 접근성 복귀를 요청한 뒤 **떴는지 확인하기까지**(#451). 실측에서 1초 안에 떴으므로
+         * 두 배로 잡는다 — 재기만 하는 값이라 길어도 잃는 것이 없다.
+         */
+        private const val RETURN_VERIFY_DELAY_MS = 2_000L
 
         /**
          * [findEditableNode]의 순회 상한. 직렬화의 요소 상한과 같은 정신이다 — 클릭 디스패치
