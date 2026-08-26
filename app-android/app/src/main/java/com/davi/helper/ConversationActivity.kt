@@ -772,7 +772,7 @@ class ConversationActivity : AppCompatActivity() {
      * 않는다** — 그쪽은 부르면 텔레메트리가 찍혀서, 판정에만 쓰면 같은 주입이 두 번 기록된다.
      *
      * **실패 화면 주입도 함께 본다** — 그쪽도 안내를 안 돌리는 순수 배치 확인이라 근거가 같다.
-     * 다만 실패 상태는 5초 뒤 홈으로 돌아간다(FAILED_RETURN_DELAY_MS) — **재기 전에 사라지니
+     * 다만 실패 상태는 [FAILED_RETURN_DELAY_MS] 뒤 홈으로 돌아간다 — **재기 전에 사라지니
      * 그 화면을 잴 때는 그 안에 찍어야 한다.**
      * 키 유무(`hasExtra`)가 아니라 **값의 형태**를 본다. 문자열이 아닌 값을 같은 키로 넣으면
      * 게이트만 열리고 주입은 안 돼, 권한이 없는 기기에서 빈 화면이 뜬다.
@@ -941,7 +941,12 @@ class ConversationActivity : AppCompatActivity() {
         // 접힘 상태를 **먼저** 정한다 — 아래 카드 크기 블록이 이 값에 걸린다.
         lastRenderModel = model
         val foldActive = resolveQuestionFold(state, model)
-        binding.logo.isVisible(model.logoVisible && !model.clarificationVisible)
+        // **배지가 실제로 서는가.** 뽑아 두는 이유는 **이 판정을 두 군데가 써야 하기 때문이다** —
+        // 여기(보일까)와 카드 위 패딩(배지를 피할까). 한때 그 둘이 서로 다른 신호를 봐서
+        // **배지가 서는 청취 화면이 배지 없는 화면의 패딩을 받았고, 배지가 질문 글자를
+        // 12dp 덮었다**(실측 SM-S921N, 밀도 480·540 양쪽).
+        val badgeVisible = model.logoVisible && !model.clarificationVisible
+        binding.logo.isVisible(badgeVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
         // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
@@ -996,7 +1001,14 @@ class ConversationActivity : AppCompatActivity() {
                     // 적용된 상태였다. 그 20dp가 **「직접 말하기」를 19dp 잘라 먹고 있었다**
                     // (실측 320×686dp: 마지막 버튼이 72dp 규격인데 53dp만 보였다). 안내 화면
                     // (guidingVisible)에는 배지가 서므로 그쪽은 그대로 둔다.
-                    model.inClarificationFlow || collapsed -> R.dimen.davi_spacing_xl
+                    //
+                    // **걷는 근거가 「배지가 없다」이므로 배지를 직접 본다**(2026-08-26 실측).
+                    // `inClarificationFlow`만 보면 **청취 화면(직접 말하기)까지 걷힌다** — 거기는
+                    // `clarificationVisible`이 꺼져 배지가 서는 화면인데도. `dimens.xml`의
+                    // `davi_card_padding_top_guiding`이 「36(배지가 파고든 깊이)보다 얕으면
+                    // 배지가 글자를 덮는다」고 이미 적어 둔 그대로 24dp에서 12dp가 덮였다.
+                    (model.inClarificationFlow && !badgeVisible) || collapsed ->
+                        R.dimen.davi_spacing_xl
                     model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi
                 },

@@ -88,7 +88,7 @@ sealed interface ConversationUiState {
      */
     data object StopConfirm : ConversationUiState
 
-    /** 이해 실패. 5초 뒤 홈 복귀 타이머는 Activity가 담당한다. */
+    /** 이해 실패. [FAILED_RETURN_DELAY_MS] 뒤 홈 복귀 타이머는 Activity가 담당한다. */
     data object Failed : ConversationUiState
 }
 
@@ -390,7 +390,8 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
  * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
  *
  * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
- * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
+ * 화면이 계속 켜진 채 남는다. **[CONFIRM_TIMEOUT_MS]에는 아직 근거가 없다** — 무한을 막는
+ * 상한일 뿐이고 실사용을 보고 조정한다. 실패 화면 쪽은 근거가 생겼다([FAILED_RETURN_DELAY_MS]).
  */
 /**
  * 메인 9 안내 중 화면(#197). **마이크·파도·글로우가 없다** — 안내가 도는 동안은 새 목표를
@@ -414,6 +415,27 @@ fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     else -> null
 }
 
+/**
+ * MA-5 실패 화면이 스스로 홈으로 돌아가기까지(#437).
+ *
+ * **5초를 유지하기로 정했다**(2026-08-26, 실기기로 보고 판정). 예전에는 이 값에 근거가 없었고
+ * 코드가 그 사실을 적고 있었다 — "무한을 막는 상한일 뿐이고 실사용을 보고 조정한다".
+ *
+ * **계산상으로는 경계에 가깝다.** `conversation_failed`는 공백을 빼고 20자이고, 이 저장소가
+ * 쓰는 한국어 낭독 속도(초당 5~6자, [speechGuardMillis]와 같은 값)로 3.3~4.0초다. 시니어가
+ * 또박또박 읽는 쪽인 **초당 4자면 5.0초** — 딱 맞닿는다. 배율 2.0에서는 같은 두 줄이 네 줄이
+ * 되어 눈이 줄을 옮기는 시간이 더 든다(실기기 확인: 문구는 잘리지 않고 카드 안에 다 들어간다).
+ *
+ * **그런데도 5초로 두는 이유는 실기기에서 보고 「충분하다」고 판정했기 때문이다.** 계산은
+ * 낭독 속도를 소리 내어 읽는 속도로 옮긴 어림이고, 실제로 화면을 본 판단이 그보다 앞선다.
+ * **실사용에서 「다 읽기 전에 사라진다」가 관측되면 그때 늘린다** — 8초(한 번 읽기 + 문구를
+ * 찾는 시간)가 그때의 후보다. 두 번 읽기(10초)까지는 안 받는다: 여기서 할 수 있는 일이
+ * 하나뿐이라 오래 세워 둘 이유가 없고, 돌아간 홈에서 다시 말하면 된다.
+ *
+ * **버튼을 두지 않는 결정은 그대로다.** 선택지가 하나인 결정을 시니어에게 시키지 않는다
+ * (`docs/SCREENS.md` MA-5). 완료 화면이 버튼을 쓰는 것과 갈리는 지점이고, 그 차이는
+ * **거기서는 고를 것이 있다**는 것이다.
+ */
 const val FAILED_RETURN_DELAY_MS = 5_000L
 const val CONFIRM_TIMEOUT_MS = 120_000L
 

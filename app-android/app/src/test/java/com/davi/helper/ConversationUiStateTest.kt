@@ -224,6 +224,10 @@ class ConversationUiStateTest {
     @Test
     fun `스스로 끝나지 않는 상태만 복귀 타이머를 갖는다`() {
         assertEquals(FAILED_RETURN_DELAY_MS, autoReturnDelayMs(ConversationUiState.Failed))
+        // **값 자체를 못 박는다**(#437). 근거가 「문구를 한 번 읽는 시간」이라, 조용히 줄면
+        // 또박또박 읽는 사람이 마지막 글자에서 화면을 잃는다 — 그게 옛 값 5초의 실패였다.
+        // 근거는 `docs/SCREENS.md` MA-5 절과 상수 KDoc에 있다.
+        assertEquals(5_000L, FAILED_RETURN_DELAY_MS)
         // ×/○ 탭 말고 빠져나갈 길이 없어 화면이 계속 켜진 채 남는다
         assertEquals(CONFIRM_TIMEOUT_MS, autoReturnDelayMs(ConversationUiState.Confirm("카카오톡 열기")))
         assertNull(autoReturnDelayMs(ConversationUiState.Home()))
