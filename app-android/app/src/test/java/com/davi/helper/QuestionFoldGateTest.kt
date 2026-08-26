@@ -1,6 +1,7 @@
 package com.davi.helper
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -89,8 +90,9 @@ class QuestionFoldGateTest {
     fun `낭독 상한은 문구가 길수록 길고 계약 상한에서 멈춘다`() {
         // **이 값이 낭독보다 짧으면 읽는 도중에 접힌다** — 지금 고치려는 것보다 나쁘다.
         val short = speechGuardMillis("어느 앱으로 보낼까요?".length)
-        // 계약이 문구를 200자로 묶는다(SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH — private다).
-        val long = speechGuardMillis(200)
+        // **계약 상수를 직접 읽는다**(#465 리뷰). 200을 베껴 두면 계약이 늘어도 이 테스트가
+        // 옛 값만 재서 「상한이 무한이 아니다」가 조용히 거짓이 된다.
+        val long = speechGuardMillis(SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH)
 
         assertTrue(short > 0)
         assertTrue("긴 문구가 더 짧게 잡혔다", long > short)
@@ -101,8 +103,51 @@ class QuestionFoldGateTest {
     }
 
     @Test
-    fun `글자 수가 0이어도 상한이 음수가 되지 않는다`() {
+    fun `글자 수는 음수일 수 없다는 것이 계약이다`() {
+        // 방어가 아니라 계약이다 — 입력은 String.length 한 곳에서만 온다.
         assertTrue(speechGuardMillis(0) > 0)
-        assertTrue(speechGuardMillis(-5) > 0)
+        assertThrows(IllegalArgumentException::class.java) { speechGuardMillis(-1) }
     }
+
+    @Test
+    fun `복귀한 화면은 낭독 없이도 펼쳐 둔다`() {
+        // 답을 못 해서 돌아온 순간이 **질문이 가장 필요한 순간**이다 — 접힌 채로 뜨면
+        // 어르신이 그것을 읽을 수도 들을 수도 없다(#465 리뷰).
+        val gate = QuestionFoldGate()
+        gate.sync("q1", speaking = true)
+        gate.sync(null, speaking = false) // 「직접 말하기」 청취로 나갔다
+
+        gate.sync("q1", speaking = false, resumed = true)
+
+        assertTrue("복귀 화면이 접힌 채로 떴다", gate.expanded)
+    }
+
+    @Test
+    fun `그물은 세션 세대 질문 낭독 세 축이 다 맞을 때만 유효하다`() {
+        // 늦게 깨어난 그물이 그 사이 갈린 화면을 건드리면 안 된다.
+        val armed = clarifyOutcome(generation = 1L, id = "q1")
+
+        assertTrue(speechGuardApplies(armed, clarifying(armed, speaking = true)))
+        assertFalse("낭독이 끝났는데 그물이 돌았다", speechGuardApplies(armed, clarifying(armed, speaking = false)))
+        assertFalse(
+            "다음 질문의 펼침을 걷어 갔다",
+            speechGuardApplies(armed, clarifying(clarifyOutcome(1L, "q2"), speaking = true)),
+        )
+        assertFalse(
+            "다음 세션의 화면을 건드렸다",
+            speechGuardApplies(armed, clarifying(clarifyOutcome(2L, "q1"), speaking = true)),
+        )
+        assertFalse("구체화가 아닌 화면을 건드렸다", speechGuardApplies(armed, ConversationUiState.Home()))
+        assertFalse(speechGuardApplies(armed, null))
+    }
+
+    private fun clarifyOutcome(generation: Long, id: String) = VoiceDialogueSession.Outcome.Clarify(
+        generation = generation,
+        question = ClarificationQuestion(id, "어느 앱으로 보낼까요?", listOf("카카오톡"), true),
+        questionIndex = 0,
+        questionCount = 1,
+    )
+
+    private fun clarifying(outcome: VoiceDialogueSession.Outcome.Clarify, speaking: Boolean) =
+        ConversationUiState.Clarifying(outcome, speaking = speaking)
 }

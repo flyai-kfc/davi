@@ -33,7 +33,7 @@ class QuestionFoldGate {
      * `questionKey`가 null이면 구체화 화면이 아니다 — **기록을 통째로 지운다.** 남겨 두면
      * 다른 화면을 거쳐 같은 질문으로 돌아왔을 때 옛 손잡이 기록이 되살아난다.
      */
-    fun sync(questionKey: String?, speaking: Boolean) {
+    fun sync(questionKey: String?, speaking: Boolean, resumed: Boolean = false) {
         if (questionKey == null) {
             key = null
             touched = false
@@ -43,8 +43,11 @@ class QuestionFoldGate {
         if (questionKey != key) {
             key = questionKey
             touched = false
-            // 읽어 주는 동안만 펼쳐 둔다. 안 읽으면 처음부터 접힌다.
-            expanded = speaking
+            // 읽어 주는 동안 펼쳐 둔다. **돌아온 화면도 펼쳐 둔다** — 직접 말하기가 무발화로
+            // 실패해 이 질문으로 되돌아온 순간이 곧 **질문이 가장 필요한 순간**인데, 접힌 채로
+            // 뜨면 어르신이 그것을 읽을 수도 들을 수도 없다(#465 리뷰). 낭독을 다시 하지는
+            // 않는다 — 방금 말하려던 사람에게 같은 문장을 또 읽어 주는 것은 시끄럽다.
+            expanded = speaking || resumed
             return
         }
         if (!touched) expanded = speaking
@@ -68,11 +71,38 @@ class QuestionFoldGate {
  * 것보다 나쁘다. 한국어 TTS는 기본 속도에서 초당 대여섯 자를 읽으므로 글자당 300ms는
  * 1.5배 남짓의 여유다.
  *
- * **상한이 무한이 아닌 근거는 계약에 있다** — 질문 문구는 200자를 못 넘는다
- * (`SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH`). 그래서 이 값도 1분 남짓에서 멈춘다.
+ * **상한이 무한이 아닌 근거는 계약에 있다** — 질문 문구는
+ * [SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH]자를 못 넘는다. **그 상수를 직접 읽는다** —
+ * 숫자를 베껴 두면 계약이 늘어도 이 문장만 조용히 거짓이 된다.
+ *
+ * **시계는 낭독이 실제로 시작한 뒤 다시 출발한다**(ConversationActivity). 엔진을 처음
+ * 바인딩하는 호출에서는 speak()가 즉시 돌아온 뒤 init이 끝날 때까지 한 글자도 안 읽는데,
+ * 그 대기를 여기 상한이 먹으면 **짧은 문구일수록 읽는 도중에 접힌다.**
  */
-fun speechGuardMillis(promptLength: Int): Long =
-    SPEECH_GUARD_BASE_MS + SPEECH_GUARD_PER_CHAR_MS * promptLength.coerceAtLeast(0)
+fun speechGuardMillis(promptLength: Int): Long {
+    require(promptLength >= 0) { "문구 길이는 음수일 수 없다" }
+    return SPEECH_GUARD_BASE_MS + SPEECH_GUARD_PER_CHAR_MS * promptLength
+}
+
+/**
+ * 걸어 둔 그물이 **지금 화면에 대해 아직 유효한가.**
+ *
+ * 늦게 깨어난 그물이 그 사이 갈린 화면을 건드리면 안 된다 — 세 축을 다 본다:
+ * 세션 세대 · 질문 id · 아직 읽는 중인가. 셋 중 하나라도 어긋나면 할 일이 없다.
+ *
+ * **이 판정을 액티비티 밖에 둔다.** 같은 자리에서 리뷰 한 라운드에 구멍이 둘 났고
+ * (onDestroy 미회수 · 늦게 온 옛 콜백이 새 그물을 걷어감) 둘 다 뷰가 필요 없는 순수
+ * 판정이었는데, 고친 뒤에도 회귀를 잡는 그물이 실기기뿐이었다(#465 리뷰).
+ */
+fun speechGuardApplies(
+    armed: VoiceDialogueSession.Outcome.Clarify,
+    current: ConversationUiState?,
+): Boolean {
+    val clarifying = current as? ConversationUiState.Clarifying ?: return false
+    return clarifying.outcome.generation == armed.generation &&
+        clarifying.outcome.question.id == armed.question.id &&
+        clarifying.speaking
+}
 
 private const val SPEECH_GUARD_BASE_MS = 3_000L
 private const val SPEECH_GUARD_PER_CHAR_MS = 300L

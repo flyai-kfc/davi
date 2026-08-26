@@ -53,6 +53,11 @@ sealed interface ConversationUiState {
     data class Clarifying(
         val outcome: VoiceDialogueSession.Outcome.Clarify,
         val speaking: Boolean = true,
+        /**
+         * 직접 말하기가 무발화로 실패해 **이 질문으로 되돌아온** 화면인가.
+         * 낭독은 안 하지만 카드는 펼쳐 둔다 — 근거는 [QuestionFoldGate.sync].
+         */
+        val resumed: Boolean = false,
     ) : ConversationUiState
 
     /** 두 번째 호출로도 안전한 목표를 만들지 못한 종료 화면. 사용자가 재시작 또는 홈을 고른다. */
@@ -382,7 +387,7 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
 
 /**
  * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
- * (Listening=인식 타임아웃, Clarifying의 첫 질문=TTS 완료, Requesting=서버 응답).
+ * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
  *
  * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
  * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
