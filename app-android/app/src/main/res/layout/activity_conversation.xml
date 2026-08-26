@@ -657,6 +657,15 @@
               라벨은 가로 중앙이다. 한때 LinearLayout에 아이콘과 같은 폭의 Space를 균형추로
               두었는데, **라벨에 남는 폭이 174dp뿐이라 기본 배율에서도 두 줄로 흘렀다**
               (2026-08-24 실측, #396).
+
+              **끝 쪽에도 물러난다**(#463). 이 버튼의 배경은 두 겹이고 분홍 뒤판이 흰 면
+              오른쪽으로 davi_choice_backplate_reveal(14dp)만큼 삐져나온다 — 그래서 흰 면의
+              끝은 버튼 경계보다 14dp 안쪽이다. 바깥 프레임의 패딩(davi_shortcut_inset)만으로는
+              그 14dp를 뒤판이 통째로 먹어 **흰 면 안쪽 숨 여백이 0이 되고, 글자가 경계에
+              붙어 잘릴 듯 보인다**(실측 320×693dp: 라벨 상자와 흰 면 끝이 둘 다 282.1dp).
+
+              **②는 이미 이렇게 되어 있다** — shortcut_label의 layout_marginRight가 같은 값을
+              같은 뜻으로 준다(뒤판 14 + 숨 14 = 28dp). ①에만 끝 쪽 짝이 없었다.
             -->
             <TextView
                 android:id="@+id/confirm_accept_label"
@@ -667,6 +676,7 @@
                 android:ellipsize="end"
                 android:gravity="center_vertical|start"
                 android:paddingStart="@dimen/davi_confirm_accept_label_inset"
+                android:paddingEnd="@dimen/davi_confirm_accept_label_inset_end"
                 android:textAppearance="@style/TextAppearance.Davi.ConfirmChoice" />
 
             <ImageView
