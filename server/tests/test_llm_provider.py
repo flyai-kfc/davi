@@ -11,6 +11,7 @@ import logging
 
 import httpx
 import pytest
+from app.gemini_thinking import gemini_thinking_policy
 from app.llm import GUIDE_ACTION_CONTRACT, RemoteLlmClient, get_llm_client
 from app.llm_provider import (
     AnthropicProvider,
@@ -43,6 +44,8 @@ def _request() -> NextStepRequest:
 
 
 def _provider(cls, handler, **kwargs):
+    if cls is GeminiProvider:
+        kwargs.setdefault("thinking_budget", 800)
     return cls(
         api_key="test-key",
         model="test-model",
@@ -355,9 +358,10 @@ def test_provider_call_error_keeps_the_http_status_for_the_schema_retry():
         ("gemini-2.5-flash", 800, {"thinkingBudget": 800}),
         ("models/gemini-2.5-flash-lite-preview-09-2025", 0, {"thinkingBudget": 0}),
         ("gemini-2.5-pro", 800, {"thinkingBudget": 800}),
-        ("gemini-2.5-pro", 0, None),
         ("gemini-3.5-flash-lite", 800, None),
-        ("gemini-3.6-flash", 0, None),
+        ("gemini-3.6-flash", 800, None),
+        ("gemini-2.5-flash-image", 800, None),
+        ("gemini-2.5-flash-preview-tts", 800, None),
         ("gemini-unknown", 800, None),
     ],
 )
@@ -380,6 +384,64 @@ def test_gemini_only_sends_numeric_thinking_budget_to_supported_models(
     ]
 
     assert generation_config.get("thinkingConfig") == expected
+
+
+@pytest.mark.parametrize(
+    ("model", "thinking_budget"),
+    [
+        ("gemini-2.5-pro", 0),
+        ("gemini-2.5-pro", 100),
+        ("gemini-2.5-pro", 32769),
+        ("gemini-2.5-flash-lite", 100),
+        ("gemini-2.5-flash-lite", 24577),
+        ("gemini-2.5-flash", 24577),
+        ("gemini-3.5-flash-lite", 0),
+        ("gemini-flash-latest", 0),
+    ],
+)
+def test_gemini_rejects_budgets_that_cannot_preserve_a_valid_wire_and_output_reserve(
+    model: str,
+    thinking_budget: int,
+):
+    with pytest.raises(ValueError, match="DAVI_GEMINI_THINKING_BUDGET"):
+        gemini_thinking_policy(model, thinking_budget)
+
+
+@pytest.mark.parametrize(
+    ("model", "thinking_budget", "expected_reserve"),
+    [
+        ("gemini-2.5-pro", 128, 128),
+        ("gemini-2.5-flash-lite", 0, 0),
+        ("gemini-2.5-flash-lite", 512, 512),
+        ("gemini-2.5-flash", 0, 0),
+        ("gemini-3.5-flash-lite", 800, 800),
+        ("gemini-flash-latest", 800, 800),
+    ],
+)
+def test_gemini_policy_keeps_request_config_and_output_reserve_together(
+    model: str,
+    thinking_budget: int,
+    expected_reserve: int,
+):
+    policy = gemini_thinking_policy(model, thinking_budget)
+
+    assert policy.output_reserve == expected_reserve
+
+
+def test_gemini_models_resource_prefix_is_normalized_once_in_the_request_url():
+    provider = GeminiProvider(
+        api_key="test-key",
+        model="models/gemini-2.5-flash-lite",
+        operation="next_step",
+        contract=GUIDE_ACTION_CONTRACT,
+        max_output_tokens=1024,
+        thinking_budget=0,
+    )
+
+    request = provider._request("safe prompt", with_schema=False)
+
+    assert request["url"].endswith("/models/gemini-2.5-flash-lite:generateContent")
+    assert "/models/models/" not in request["url"]
 
 
 # --- 설정에 따른 교체 ------------------------------------------------------
@@ -456,6 +518,38 @@ def test_output_budget_leaves_room_for_hidden_reasoning_tokens(set_runtime_profi
         anthropic_api_key="server-side-key",
     )
     assert _built().max_output_tokens == 2048 + 1024
+
+
+@pytest.mark.parametrize(
+    ("model", "thinking_budget", "expected_max", "expected_config"),
+    [
+        ("gemini-2.5-pro", 128, 1152, {"thinkingBudget": 128}),
+        ("gemini-2.5-flash-lite", 0, 1024, {"thinkingBudget": 0}),
+        ("gemini-3.5-flash-lite", 800, 1824, None),
+    ],
+)
+def test_build_provider_keeps_model_validation_wire_and_output_budget_in_sync(
+    set_runtime_profile,
+    model: str,
+    thinking_budget: int,
+    expected_max: int,
+    expected_config: dict[str, int] | None,
+):
+    set_runtime_profile(
+        davi_use_stub_llm=False,
+        davi_llm_provider="gemini",
+        davi_model=model,
+        gemini_api_key="server-side-key",
+        davi_gemini_thinking_budget=thinking_budget,
+    )
+
+    provider = _built()
+    generation_config = provider._request("safe prompt", with_schema=False)["json"][
+        "generationConfig"
+    ]
+
+    assert provider.max_output_tokens == expected_max
+    assert generation_config.get("thinkingConfig") == expected_config
 
 
 def test_max_output_tokens_override_wins(set_runtime_profile):

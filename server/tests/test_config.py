@@ -348,9 +348,49 @@ def test_llm_thinking_budget_rejects_negative_values():
 
 
 def test_llm_thinking_budget_allows_zero():
-    configured = _settings(davi_gemini_thinking_budget=0)
+    configured = _settings(
+        davi_model="gemini-2.5-flash-lite",
+        davi_gemini_thinking_budget=0,
+    )
 
     assert configured.davi_gemini_thinking_budget == 0
+
+
+@pytest.mark.parametrize(
+    ("model", "thinking_budget"),
+    [
+        ("gemini-2.5-pro", 0),
+        ("gemini-2.5-pro", 100),
+        ("gemini-2.5-flash-lite", 100),
+        ("gemini-3.5-flash-lite", 0),
+        ("gemini-flash-latest", 0),
+    ],
+)
+def test_llm_thinking_budget_rejects_model_specific_invalid_values(
+    model: str,
+    thinking_budget: int,
+):
+    with pytest.raises(ValidationError, match="DAVI_GEMINI_THINKING_BUDGET"):
+        _settings(davi_model=model, davi_gemini_thinking_budget=thinking_budget)
+
+
+def test_non_gemini_provider_does_not_validate_unused_gemini_budget():
+    configured = _settings(
+        davi_llm_provider="openai",
+        davi_model="gpt-5.6-luna",
+        davi_gemini_thinking_budget=0,
+    )
+
+    assert configured.davi_gemini_thinking_budget == 0
+
+
+def test_non_gemini_provider_still_rejects_negative_gemini_budget():
+    with pytest.raises(ValidationError, match="DAVI_GEMINI_THINKING_BUDGET"):
+        _settings(
+            davi_llm_provider="openai",
+            davi_model="gpt-5.6-luna",
+            davi_gemini_thinking_budget=-1,
+        )
 
 
 def test_test_access_token_must_be_long_enough():

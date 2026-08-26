@@ -102,7 +102,10 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   `maxLength`·`maxItems`에서 파생**해 더 큰 쪽을 쓴다. 이는 실제 공급자 토크나이저의 정확한
   토큰 수를 가장하는 값이 아니라, 옛 512처럼 계약 최대보다 명백히 작은 설정을 막는 최소선이다.
   여기에 Gemini thinking reserve 또는 OpenAI·Anthropic reasoning 여유분을 더한다. Gemini의 숫자
-  `thinkingBudget` wire는 2.5 지원 모델에만 보내고, 3.x·알 수 없는 모델은 생략한다(#457).
+  `thinkingBudget` wire와 허용 범위는 2.5 텍스트 생성 모델별 정책으로 검증하고, 3.x·rolling
+  alias·알 수 없는 모델·image/TTS/live/audio 변형은 wire를 생략하되 양수 reserve를 유지한다
+  (#457). 0은 thinking을 끌 수 있는 2.5 Flash 계열만 허용한다. 모델 id의 `models/` 접두어는
+  URL 조립 전에 한 번 제거한다.
   `DAVI_MAX_OUTPUT_TOKENS`는 이 합 이상으로만 덮을 수 있고 더 작으면 설정 오류다(`README.md`).
   세 operation 공급자는 FastAPI startup에서 미리 만들어 한 경로만 첫 요청부터 500이 되는 부분
   기동을 막는다. schema 400 무스키마 폴백에도 같은 상한을 쓴다.

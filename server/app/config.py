@@ -7,6 +7,8 @@ from typing import Literal, Self
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .gemini_thinking import gemini_thinking_policy
+
 # 공급자별 기본 모델과 키 환경변수. `DAVI_MODEL`을 비워 두면 여기 값이 쓰인다.
 # 셋 다 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다 — 품질이 더 필요하면 DAVI_MODEL로
 # 올린다(예: gemini-3.6-flash, gpt-5.6-terra, claude-sonnet-5).
@@ -49,11 +51,9 @@ class Settings(BaseSettings):
     # 이 값은 모델을 바꿔 자동 계산보다 더 큰 예산이 필요할 때만 올리는 안전한 상향 override다.
     davi_max_output_tokens: int = 0
 
-    # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는
-    # 늘되 느려지고 maxOutputTokens 예산을 다 써 응답이 잘릴 위험도 커진다(2026-08-18
-    # gemini-3.6-flash PARSE 실패 실기기 재현). 세 호출부가 각자 maxOutputTokens = 이 값 +
-    # 정상 응답 여유분으로 맞춰 잘림을 막는다. thinking이 없는 모델(flash-lite 등)에 보내도
-    # 조용히 무시된다(실측).
+    # Gemini 2.5에서는 모델별 범위를 검증한 numeric thinking hard cap, 3.x·알 수 없는 모델에서는
+    # wire로 보내지 않는 출력 reserve다. 0은 thinking을 끌 수 있는 2.5 Flash 계열만 허용한다.
+    # 세 호출부가 maxOutputTokens = reserve + 정상 응답 여유분으로 맞춰 잘림을 막는다.
     davi_gemini_thinking_budget: int = 800
     # OpenAI에서 thinking에 해당하는 값. 속도를 위해 낮게 둔다. none이면 reasoning 토큰
     # 여유분도 얹지 않는다. 판단이 얕으면 여기를 올리기 전에 모델을 올리는 편이 낫다.
@@ -188,6 +188,8 @@ class Settings(BaseSettings):
             )
         if self.davi_gemini_thinking_budget < 0:
             raise ValueError("DAVI_GEMINI_THINKING_BUDGET은 0 이상이어야 합니다")
+        if self.davi_llm_provider == "gemini":
+            gemini_thinking_policy(self.resolved_model, self.davi_gemini_thinking_budget)
         if self.davi_max_output_tokens < 0:
             raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
         if self.davi_env != "development" and dev_access_token:

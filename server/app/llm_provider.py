@@ -19,11 +19,11 @@
 
 ## 공급자별 결정
 
-- **Gemini** — 숫자 `thinkingBudget`은 이를 지원하는 2.5 계열에만 보낸다. 3.x는
-  `thinkingLevel` 계약이라 숫자 budget을 보내면 400이므로 생략하고 모델 기본 level을 쓴다
-  (#457 실기기 E2E). 알 수 없는 모델도 요청 전체를 깨지 않는 쪽으로 생략한다. 출력 상한에는
-  계속 `DAVI_GEMINI_THINKING_BUDGET`만큼 여유를 얹지만, 3.x에서는 하드캡이 아니라 hidden
-  thinking을 위한 reserve일 뿐이다.
+- **Gemini** — 숫자 `thinkingBudget`은 모델별 범위를 검증한 2.5 계열에만 보낸다. 3.x는
+  `thinkingLevel`이 권장 계약이고 숫자 0이 400으로 거부되므로 numeric wire를 생략해 모델
+  기본 level을 쓴다(#457 실기기 E2E). 알 수 없는 모델도 요청 전체를 깨지 않는 쪽으로
+  생략한다. 출력 상한에는 계속 `DAVI_GEMINI_THINKING_BUDGET`만큼 여유를 얹지만, 3.x에서는
+  hard cap이 아니라 hidden thinking을 위한 reserve일 뿐이다.
 - **OpenAI** — Responses API. `text.format`에 strict json_schema를 싣는다. thinking에 해당하는
   것은 `reasoning.effort`이고, 속도를 위해 기본을 낮게 둔다(`DAVI_OPENAI_REASONING_EFFORT`).
   reasoning 토큰도 `max_output_tokens`를 같이 먹으므로 effort가 켜져 있으면 여유분을 더 얹는다.
@@ -63,6 +63,7 @@ from .gemini_response import (
     extract_candidate_text,
 )
 from .gemini_schema import build_response_schema
+from .gemini_thinking import GeminiThinkingPolicy, gemini_thinking_policy
 from .inference_lifecycle import provider_call_timeout_seconds
 from .json_schema import build_json_schema
 from .observability import LLM_LOGGER_NAME, log_event
@@ -339,6 +340,9 @@ class GeminiProvider(StructuredJsonProvider):
     def __init__(self, *, thinking_budget: int = 0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.thinking_budget = thinking_budget
+        self.thinking_policy: GeminiThinkingPolicy = gemini_thinking_policy(
+            self.model, thinking_budget
+        )
 
     @property
     def contract_schema(self) -> dict:
@@ -349,13 +353,13 @@ class GeminiProvider(StructuredJsonProvider):
             "responseMimeType": "application/json",
             "maxOutputTokens": self.max_output_tokens,
         }
-        thinking_config = _gemini_thinking_config(self.model, self.thinking_budget)
+        thinking_config = self.thinking_policy.request_config
         if thinking_config is not None:
             generation_config["thinkingConfig"] = thinking_config
         if with_schema:
             generation_config["responseSchema"] = self.contract.gemini_schema
         return {
-            "url": f"{self._BASE_URL}/models/{self.model}:generateContent",
+            "url": (f"{self._BASE_URL}/models/{self.thinking_policy.model_id}:generateContent"),
             "headers": {"x-goog-api-key": self.api_key},
             "json": {
                 "contents": [{"parts": [{"text": prompt}]}],
@@ -368,22 +372,6 @@ class GeminiProvider(StructuredJsonProvider):
             return extract_candidate_text(payload)
         except GeminiCandidateError as error:
             raise _ProviderResponseError(_GEMINI_REASONS[error.reason]) from error
-
-
-def _gemini_thinking_config(model: str, thinking_budget: int) -> dict[str, int] | None:
-    """숫자 thinking budget을 받는 Gemini 세대에만 해당 wire를 만든다.
-
-    Gemini 3.x는 `thinkingLevel`을 사용한다. 현재 숫자 환경변수를 임의 level로 번역하면 같은
-    설정이 모델마다 다른 깊이가 되므로, 새 level 계약을 정하기 전까지 모델 기본값을 쓴다.
-    2.5 Pro는 thinking을 끌 수 없어 0이면 생략해 기본 dynamic thinking을 유지한다.
-    """
-
-    model_id = model.rsplit("/", 1)[-1].casefold()
-    if model_id.startswith("gemini-2.5-flash"):
-        return {"thinkingBudget": thinking_budget}
-    if model_id.startswith("gemini-2.5-pro") and thinking_budget > 0:
-        return {"thinkingBudget": thinking_budget}
-    return None
 
 
 _GEMINI_REASONS: dict[GeminiCandidateErrorReason, ProviderResponseReason] = {
@@ -531,9 +519,10 @@ def build_provider(
 
     if provider is ProviderName.GEMINI:
         thinking_budget = settings.davi_gemini_thinking_budget
+        thinking_policy = gemini_thinking_policy(model, thinking_budget)
         max_output_tokens = _max_output_tokens(
             override=override,
-            required=thinking_budget + response_headroom,
+            required=thinking_policy.output_reserve + response_headroom,
             operation=operation,
         )
         return GeminiProvider(

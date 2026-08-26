@@ -306,13 +306,21 @@ slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 �
 여러 목표의 2회 이내 ready율·goal 유효성·환각률·선택 편향·TTS 길이를 같은 eval에서 비교해 실제
 차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
-**Gemini thinking wire는 모델 세대별로 다르다.** 숫자 `thinkingBudget`을 받는 2.5 계열에만
-`DAVI_GEMINI_THINKING_BUDGET`을 보내고, `thinkingLevel`을 쓰는 3.x와 알 수 없는 모델에는
-해당 필드를 생략해 모델 기본 level을 쓴다(#457). 2026-08-25 실제
-`gemini-3.5-flash-lite`·`gemini-3.6-flash`는 숫자 budget이 있으면 schema·fallback 모두 400,
-빼면 200이었다. 출력 상한은 세대와 무관하게 이 값만큼 reserve를 더한다. 따라서 2.5에서는
-thinking hard cap과 reserve이고, 3.x에서는 hidden thinking을 위한 reserve일 뿐이다. next-step과
-app-resolution은 기본 1824이고, slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다.
+**Gemini thinking wire는 모델 세대별로 다르다.** 2.5 텍스트 생성 Pro는 128..32768, Flash는
+0..24576, Flash-Lite는 0 또는 512..24576 범위의 numeric `thinkingBudget`을 받는다. 0은
+thinking을 끌 수 있는 2.5 Flash 계열만 허용하며, 나머지 잘못된 조합은 첫 요청의 400이 아니라
+서버 기동 시 설정 오류로 닫는다. `thinkingLevel`이 권장 계약인 3.x와 실제 세대를 확정할 수 없는
+rolling alias·알 수 없는 모델에는 numeric wire를 생략해 모델 기본 level을 쓴다(#457).
+image·TTS·live/audio 변형도 이 서버의 JSON 텍스트 계약 대상이 아니므로 numeric wire를 보내지 않는다.
+
+2026-08-25 `gemini-3.5-flash-lite` 최소 실호출은 budget 0에서 400, 800과 wire 생략에서
+각각 200이었다. 따라서 3.x에서 모든 numeric budget이 거부된다고 일반화하지 않고, 값·세대가
+바뀌어도 안전한 생략 정책만 채택한다. 출력 상한은 세대와 무관하게 설정값만큼 reserve를 더한다.
+2.5에서는 thinking hard cap과 reserve이고, 3.x·alias·알 수 없는 모델에서는 hidden thinking
+reserve다. 이 경로들은 0 reserve를 허용하지 않는다. next-step과 app-resolution은 기본 1824이고,
+slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다. `DAVI_MODEL`은 bare id와
+`models/<id>`를 모두 받되 요청 URL에는 `models/`를 한 번만 붙인다. 재지정 가능한 alias는
+2.5로 해석되더라도 numeric cap을 적용하지 않으므로, 고정 cap이 필요하면 버전 모델 id를 쓴다.
 
 ### 테스트 참가자 토큰
 
