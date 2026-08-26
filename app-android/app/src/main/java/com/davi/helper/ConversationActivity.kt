@@ -988,10 +988,11 @@ class ConversationActivity : AppCompatActivity() {
         }
         // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **배지가 없는 화면에서만 걷는다.**
         //
-        // **[ConversationRenderModel.badgeVisible]을 본다 — `inClarificationFlow`가 아니다**
-        // (2026-08-26 · #473). 한때 반대였다: 흐름 신호만 보고 걷었더니 **배지가 서는 청취까지
-        // 걷혀 배지가 질문 글자를 12dp 덮었다.** 걷는 근거가 「배지가 없다」이므로 배지를 직접
-        // 봐야 하고, 그래서 배지 표시와 이 패딩이 **같은 값**을 읽는다.
+        // **`clarificationVisible`을 본다 — `inClarificationFlow`가 아니다**(2026-08-26 · #473).
+        // 한때 반대였다: 흐름 신호만 보고 걷었더니 **배지가 서는 청취까지 걷혀 배지가 질문
+        // 글자를 12dp 덮었다.** 걷는 근거가 「배지가 없다」이고, 흐름 안에서 배지가 서고 안 서고를
+        // 가르는 것이 이 신호다 — 그래서 배지 표시([ConversationRenderModel.badgeVisible])와 이
+        // 패딩이 **같은 것을 읽는다.**
         //
         // **대가는 흐름 안에서 글자가 뛰는 것이다** — 2026-08-23 리뷰가 4.74dp로 기록해 둔
         // 자리가 29dp가 됐다. 그 리뷰는 「카드 안팎이 함께 움직이려면 배지 위 여백·칩 자리와
@@ -1024,8 +1025,18 @@ class ConversationActivity : AppCompatActivity() {
                     // (2026-08-26) — 가려지면 못 읽고, 뛰면 읽을 수는 있다.
                     //
                     // 배지를 빼서 맞추는 안은 접었다 — 근거는 [ConversationRenderModel.badgeVisible].
-                    (model.inClarificationFlow && !model.badgeVisible) || collapsed ->
-                        R.dimen.davi_spacing_xl
+                    //
+                    // **`clarificationVisible`이라고 쓴다**(#474 재리뷰 2). 한때
+                    // `inClarificationFlow && !badgeVisible`로 적었는데, 도달 가능한 아홉 상태
+                    // 전부에서 그 식은 `clarificationVisible`과 **결과가 같다** — 흐름 안의 두
+                    // 화면이 다 `logoVisible`이라 `!badgeVisible`이 곧 `clarificationVisible`이고,
+                    // 그것이 `inClarificationFlow`를 함의한다. 이름만 흐름 신호를 달고 있어,
+                    // 「흐름 신호로 되돌리지 말 것」이라 적어 둔 조건이 정작 그 이름으로 읽혔다.
+                    //
+                    // 2026-08-23 리뷰가 물리쳤던 신호로 **의도적으로 되돌아온 것**이고, 그렇게
+                    // 쓰면 위 트레이드오프와 말이 맞는다 — 「두 화면이 정말 다른 값을 필요로
+                    // 한다」가 곧 「선택 영역이 화면에 있는가로 가른다」다.
+                    model.clarificationVisible || collapsed -> R.dimen.davi_spacing_xl
                     model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi
                 },
