@@ -131,8 +131,9 @@ data class ConversationRenderModel(
      * [clarificationVisible]과 다르다. 그쪽은 **선택 영역이 화면에 있는가**라 「직접 말하기」로
      * 넘어가는 순간 꺼진다. 이쪽은 **되묻기 흐름 안에 있는가**라 청취까지 이어진다.
      *
-     * **이것을 보는 것은 배지 위 여백 하나다**(2026-08-26 현재). 배지를 보일까
-     * ([badgeVisible])와 카드 위 패딩은 **`clarificationVisible`을 본다** — 한때 셋을 이
+     * **이것을 보는 것은 「흐름 내내 이어져야 하는 자리」 둘이다**(2026-08-26 현재) —
+     * 배지 위 여백(`ConversationActivity`)과 칩 자리 예약([StepChipSlot]). 배지를 보일까
+     * ([badgeVisible])와 카드 위 패딩은 **`clarificationVisible`을 본다** — 한때 넷을 이
      * 신호로 모으려 했다가 되돌렸다(#473).
      *
      * **갈라 두는 것이 의도다.** 이쪽이 지키는 것은 **카드의 위치**라 흐름 내내 이어져야 하고,
