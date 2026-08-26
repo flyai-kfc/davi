@@ -1490,7 +1490,17 @@ class ConversationActivity : AppCompatActivity() {
             // (10자면 상한 6초 중 낭독이 1.8초라 init에 4.2초밖에 안 남는다).
             // **처음 건 그물을 안 없앤다** — 시작 신호가 영영 안 오는 갈래가 이 그물이
             // 막으려던 바로 그것이다. 시작하면 그때 갈아 끼운다.
-            onStarted = { guard = armClarificationSpeechGuard(outcome) },
+            // **재장전에도 같은 술어를 건다**(#465 리뷰 4차). cancel에만 `only`를 붙이고
+            // arm을 무조건 두면 **막은 구멍이 반대편으로 다시 열린다**: 바인더 스레드가 q1의
+            // onStart를 post한 뒤 UI가 탭을 처리해 q2가 장전되면, 큐에서 풀린 이 람다가
+            // arm 안의 무조건 cancel로 **q2의 그물을 걷고** q1 기준 그물을 건다 — 그 그물은
+            // id 불일치로 아무 일도 안 하므로 **q2에 그물이 하나도 안 남는다.**
+            // 콜드 바인드에서는 onStart가 speak() 뒤 수백 ms라 onDone 때보다 창이 넓다.
+            onStarted = {
+                if (speechGuardApplies(outcome, uiState)) {
+                    guard = armClarificationSpeechGuard(outcome)
+                }
+            },
             onFinished = {
                 // **이 speak가 건 그물만 걷는다**(#465 리뷰). TTS 바인더 스레드가
                 // runOnUiThread를 post한 직후 사용자가 보기를 눌러 다음 질문이 뜨면, 큐에서
@@ -1863,11 +1873,14 @@ class ConversationActivity : AppCompatActivity() {
      */
     private fun resolveQuestionFold(state: ConversationUiState, model: ConversationRenderModel): Boolean {
         val clarifying = state as? ConversationUiState.Clarifying
-        // **키는 문구가 아니라 question.id다**(#465 리뷰). 계약이 묶는 것은 id의 유일성뿐이고
-        // **prompt가 같은 두 문항은 계약 위반이 아니다** — 문구로 키를 잡으면 그때 Q1→Q2가
-        // 같은 질문으로 보여 손잡이 기록이 안 지워지고 보기 스크롤도 안 되감긴다.
-        // 그물도 id로 재므로(speechGuardApplies) 축이 하나로 맞는다.
-        val key = clarifying?.outcome?.question?.id?.takeIf { model.clarificationVisible }
+        // **키는 문구가 아니라 「세대:질문 id」다**(#465 리뷰). 계약이 묶는 것은 **한 계획 안에서의**
+        // id 유일성뿐이다 — prompt가 같은 두 문항도, 다른 세션의 첫 질문이 또 `q1`인 것도
+        // 계약 위반이 아니다. 어느 쪽이든 같은 질문으로 보이면 손잡이 기록이 안 지워지고
+        // 보기 스크롤도 안 되감긴다. **그물(speechGuardApplies)이 세대와 id를 함께 보므로
+        // 두 축을 같이 실어야 진짜로 맞는다.**
+        val key = clarifying?.outcome
+            ?.let { "${it.generation}:${it.question.id}" }
+            ?.takeIf { model.clarificationVisible }
         val newQuestion = key != null && key != questionFoldKey
         questionFoldKey = key
         questionFold.sync(key, clarifying?.speaking == true, resumed = clarifying?.resumed == true)

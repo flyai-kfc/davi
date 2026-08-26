@@ -50,7 +50,10 @@ class QuestionFoldGate {
             expanded = speaking || resumed
             return
         }
-        if (!touched) expanded = speaking
+        // **resumed는 첫 호출에만 걸리는 규칙이 아니다**(#465 리뷰). 같은 상태로 render가
+        // 한 번 더 돌면 복귀 화면이 도로 접힌다 — 「첫 호출에만 성립하는 규칙」은 이 게이트를
+        // 순수 규칙으로 뺀 취지와 어긋난다.
+        if (!touched) expanded = speaking || resumed
     }
 
     /** 손잡이를 눌렀다. */
@@ -72,8 +75,9 @@ class QuestionFoldGate {
  * 1.5배 남짓의 여유다.
  *
  * **상한이 무한이 아닌 근거는 계약에 있다** — 질문 문구는
- * [SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH]자를 못 넘는다. **그 상수를 직접 읽는다** —
- * 숫자를 베껴 두면 계약이 늘어도 이 문장만 조용히 거짓이 된다.
+ * [SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH]자를 못 넘는다. **테스트가 그 상수를 직접
+ * 읽는다** — 숫자를 베껴 두면 계약이 늘어도 상한만 조용히 따라가고 아무도 모른다.
+ * (이 함수 자체는 길이를 받기만 한다 — 상한을 아는 것은 계약을 검사하는 쪽이다.)
  *
  * **시계는 낭독이 실제로 시작한 뒤 다시 출발한다**(ConversationActivity). 엔진을 처음
  * 바인딩하는 호출에서는 speak()가 즉시 돌아온 뒤 init이 끝날 때까지 한 글자도 안 읽는데,

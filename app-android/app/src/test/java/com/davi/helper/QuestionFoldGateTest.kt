@@ -118,8 +118,12 @@ class QuestionFoldGateTest {
         gate.sync(null, speaking = false) // 「직접 말하기」 청취로 나갔다
 
         gate.sync("q1", speaking = false, resumed = true)
-
         assertTrue("복귀 화면이 접힌 채로 떴다", gate.expanded)
+
+        // **같은 상태로 render가 한 번 더 돌아도 펼친 채다** — 첫 호출에만 성립하는 규칙이면
+        // 뒤따르는 render가 조용히 접는다.
+        gate.sync("q1", speaking = false, resumed = true)
+        assertTrue("두 번째 render가 복귀 화면을 접었다", gate.expanded)
     }
 
     @Test
