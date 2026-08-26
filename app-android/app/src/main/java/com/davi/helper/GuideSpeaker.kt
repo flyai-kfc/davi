@@ -210,7 +210,16 @@ class GuideSpeaker(context: Context) {
     }
 
     /**
-     * 끝 신호가 안 올 때 포커스만 대신 놓는 그물. 상한은 [speechGuardMillis]를 그대로 쓴다.
+     * 끝 신호가 안 올 때 포커스만 대신 놓는 그물. 공식은 [speechGuardMillis]를 그대로 쓴다.
+     *
+     * **공식은 물려받되 상한의 근거는 물려받지 못한다**(PR #461 재리뷰 2). 그 함수는
+     * 「상한이 무한이 아닌 근거는 계약에 있다 — 질문 문구는
+     * [SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH]자를 못 넘는다」로 서 있는데, **여기서 재는
+     * 것은 `GuideAction.instruction`이고 그 필드에는 서버 스키마의 길이 제한이 없다.** 모델이
+     * 500자를 쓰면 153초짜리 그물이 되고 그동안 상대 앱이 낮아진 채다(실사용은 20~60자다).
+     *
+     * 그래서 **그 공식이 감당하도록 설계된 최대치에서 끊는다** — 곧 그 계약 길이를 넣었을 때의
+     * 값이다. 숫자를 새로 지어내지 않고, 계약이 늘면 이 상한도 함께 는다.
      *
      * **[GuideSpeechGate.markInterrupted]는 부르지 않는다.** 이 그물은 문장이 끝났어야 할
      * 시각보다 뒤에 도는 것이라, 십중팔구 **다 읽었는데 신호만 잃은** 경우다. 끊긴 것으로
@@ -228,7 +237,7 @@ class GuideSpeaker(context: Context) {
                 abandonFocus()
             },
             GUARD_TOKEN,
-            android.os.SystemClock.uptimeMillis() + speechGuardMillis(length),
+            android.os.SystemClock.uptimeMillis() + guideSpeechGuardMillis(length),
         )
     }
 
@@ -325,5 +334,25 @@ class GuideSpeaker(context: Context) {
 
         /** 그물만 골라 걷으려고 쓰는 토큰. 다른 post와 섞이지 않는다. */
         val GUARD_TOKEN = Any()
+
     }
 }
+
+/**
+ * 안내 낭독 그물의 상한(ms). 공식은 [speechGuardMillis] 그대로이고, **그 공식이 감당하도록
+ * 설계된 최대치에서 끊는다.**
+ *
+ * **공식은 물려받되 상한의 근거는 물려받지 못한다**(PR #461 재리뷰 2). [speechGuardMillis]는
+ * 「상한이 무한이 아닌 근거는 계약에 있다 — 질문 문구는 [SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH]자를
+ * 못 넘는다」로 서 있는데, **여기서 재는 것은 `GuideAction.instruction`이고 그 필드에는 서버
+ * 스키마의 길이 제한이 없다**(`server/app/schemas.py`). 모델이 500자를 쓰면 153초짜리 그물이
+ * 되고 그동안 상대 앱이 낮아진 채다. 실사용은 20~60자라 지금 터질 자리는 아니지만, 그 근거
+ * 문장이 이 호출부에서는 참이 아니다.
+ *
+ * **숫자를 새로 지어내지 않는다** — 계약 길이를 넣었을 때의 값이 곧 상한이라, 계약이 늘면
+ * 이 상한도 함께 는다. **최상위 함수인 이유는 JVM 테스트다** — [GuideSpeaker]는 Android
+ * 타입에 매여 있어 단위 테스트에서 만들 수 없다.
+ */
+internal fun guideSpeechGuardMillis(length: Int): Long =
+    speechGuardMillis(length)
+        .coerceAtMost(speechGuardMillis(SlotFillApiClient.MAX_QUESTION_PROMPT_LENGTH))
