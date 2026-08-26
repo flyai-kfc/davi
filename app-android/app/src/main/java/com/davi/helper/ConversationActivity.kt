@@ -986,12 +986,21 @@ class ConversationActivity : AppCompatActivity() {
         } else {
             resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
         }
-        // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **구체화에는 배지가 없으니 접힘에서 걷는다.**
+        // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **배지가 없는 화면에서만 걷는다.**
         //
-        // **inClarificationFlow를 본다 — clarificationVisible이 아니다.** 그쪽은 「직접
-        // 말하기」로 넘어가는 순간 꺼져서 위 패딩이 갈리고, **카드 위치는 그대로인 채 질문
-        // 글자만 4dp 밀린다**(눈에 잘 안 띈다, 2026-08-23 리뷰). 카드 안팎이 함께 움직이려면
-        // 배지 위 여백·칩 자리와 같은 신호를 봐야 한다.
+        // **[ConversationRenderModel.badgeVisible]을 본다 — `inClarificationFlow`가 아니다**
+        // (2026-08-26 · #473). 한때 반대였다: 흐름 신호만 보고 걷었더니 **배지가 서는 청취까지
+        // 걷혀 배지가 질문 글자를 12dp 덮었다.** 걷는 근거가 「배지가 없다」이므로 배지를 직접
+        // 봐야 하고, 그래서 배지 표시와 이 패딩이 **같은 값**을 읽는다.
+        //
+        // **대가는 흐름 안에서 글자가 뛰는 것이다** — 2026-08-23 리뷰가 4.74dp로 기록해 둔
+        // 자리가 29dp가 됐다. 그 리뷰는 「카드 안팎이 함께 움직이려면 배지 위 여백·칩 자리와
+        // 같은 신호를 봐야 한다」고 적었는데, **배지 자체가 흐름 안에서 갈리므로**(구체화는
+        // 칩에 자리를 내주고 청취는 선다) 그 요구는 이 화면에서 성립하지 않는다. 두 화면이
+        // 정말 다른 패딩을 필요로 한다 — 근거는 아래 when 안에 있다.
+        //
+        // **이 조건을 `inClarificationFlow`로 되돌리지 말 것.** 되돌리면 12dp 겹침이 그대로
+        // 재발한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
@@ -1182,6 +1191,12 @@ class ConversationActivity : AppCompatActivity() {
                     // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
                     // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
                     // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
+                    //
+                    // **카드 위 패딩과 신호가 다른 것은 의도다**(2026-08-26 · #473). 이쪽이
+                    // 지키는 것은 **카드의 위치**라 흐름 내내 이어져야 하고, 저쪽이 지키는 것은
+                    // **배지를 피하는 것**이라 배지가 서고 안 서고를 따라가야 한다. 배지가 흐름
+                    // 안에서 갈리므로(구체화는 칩에 자리를 내주고 청취는 선다) 두 결정도 갈린다.
+                    // **둘을 한 신호로 「통일」하지 말 것** — 어느 쪽으로 맞춰도 하나가 깨진다.
                     model.inClarificationFlow -> R.dimen.davi_badge_margin_top_clarification
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
