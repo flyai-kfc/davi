@@ -497,8 +497,6 @@ class ScreenStabilityTrackerTest {
         // 창(30초)을 여러 번 넘겨 돌린다. 한 번이라도 SEND가 나오면 재무장한 것이다.
         // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
         // IDLE로 못 박으면 정체 알림이 정상 발화한 것을 실패로 읽는다.
-        // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
-        // IDLE로 못 박으면 정체 알림이 정상 발화한 것을 실패로 읽는다.
         var at = 20_000L
         repeat(24) { turn ->
             assertNotEquals(
@@ -556,13 +554,57 @@ class ScreenStabilityTrackerTest {
     @Test
     fun `같은 화면 재질의가 섞여도 회전은 접는다`() {
         // 위 중복 제거가 회전 감지 자체를 죽이지 않는지 반대편에서 못 박는다.
-        send("a", 0)
-        send("a", 500)
-        send("b", 1_000)
-        send("a", 2_000)
-        send("b", 3_000)
+        // **재질의를 실제로 재현한다** — markFailed가 sentSignature를 비워야 같은 구조가
+        // 다시 novel이 되고 markSent가 두 번 불린다. 그냥 같은 화면을 또 넣으면 novel=false라
+        // 재질의가 일어나지 않아 첫 접기 테스트와 같은 것이 된다(#456 2차 리뷰 P3).
+        assertEquals(Decision.SEND, send("a", 0))
+        tracker.markFailed(200)
+        assertEquals(Decision.SEND, send("a", 3_000))
+        assertEquals(Decision.SEND, send("b", 4_000))
+        assertEquals(Decision.SEND, send("a", 5_000))
+        assertEquals(Decision.SEND, send("b", 6_000))
 
-        assertEquals(Decision.IDLE, send("a", 4_000))
+        assertEquals(Decision.IDLE, send("a", 7_000))
+    }
+
+    @Test
+    fun `접힘이 길어진 뒤의 재질의를 떠남으로 읽지 않는다`() {
+        // 접히는 동안 방문 기록은 창 밖으로 늙는다. 그때 회전 구성원을 다시 묻는 것(실패
+        // 재시도·완료 확인 ×가 sentSignature를 비운 뒤의 첫 요청)을 "떠남"으로 읽으면
+        // 걸쇠가 통째로 풀려 창 만료 재무장과 같은 폭주가 돌아온다(#456 2차 리뷰 P2).
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        send("b", 15_000)
+        assertEquals(Decision.IDLE, send("a", 20_000))
+
+        // 창(30초)을 넘겨 방문 기록을 비운 뒤 회전 구성원을 다시 묻게 만든다.
+        tracker.markFailed(60_000)
+        assertEquals(Decision.SEND, send("a", 63_000))
+
+        // 걸쇠가 살아 있으면 회전 구성원은 **첫 복귀에서 바로** 접힌다. 풀렸다면 여기서
+        // 4회 묶음이 되살아난다.
+        assertEquals(Decision.IDLE, send("b", 68_000))
+        assertNotEquals(
+            "걸쇠가 풀려 4회 묶음이 되살아났다",
+            Decision.SEND,
+            send("a", 73_000),
+        )
+    }
+
+    @Test
+    fun `안내가 폐기되면 회전을 잊고 그 화면을 다시 묻는다`() {
+        // redisplay의 폐기 근거가 "그 화면의 새 요청은 어차피 나간다"인데 접힌 화면에서는
+        // 안 나간다. 겹치면 안내가 영영 사라진다(#456 2차 리뷰 P1).
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        send("b", 15_000)
+        assertEquals(Decision.IDLE, send("a", 20_000))
+
+        tracker.forgetRotation()
+
+        assertEquals(Decision.SEND, send("a", 21_000))
     }
 
     @Test
@@ -630,8 +672,10 @@ class ScreenStabilityTrackerTest {
 
     @Test
     fun `요청이 막혀도 정체 판정은 삼키지 않는다`() {
-        // 차단은 novel 갈래에서만 받는다 — 이미 보낸 화면의 정체 판정까지 막으면 호출자가
-        // 「계속 볼래요」 뒤에 알릴 근거를 잃는다.
+        // 차단은 novel 갈래에서만 받는다. **호출자가 확인 대기 중 STUCK 문구를 띄우지 않는
+        // 것과는 별개다** — 여기서 막으면 판정 자체가 없어져, 차단이 풀린 뒤 정체를 알릴
+        // 근거가 추적기에 남지 않는다. 대기 중 stuckReported가 소진되는 것은 이 변경 이전과
+        // 같고 이 PR의 범위가 아니다.
         send("a", 0)
         val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
 

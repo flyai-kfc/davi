@@ -384,7 +384,16 @@ class ScreenStabilityTracker(
         }
         // 결론을 걸쇠에 건다(#456). 창은 결론에 **닿는** 데까지만 쓰고, 유지는 걸쇠가 한다 —
         // 근거는 [rotatingStructures]의 주석에 있다.
-        if (rotating) rotatingStructures.add(signature.structure)
+        //
+        // **회전의 양쪽을 함께 넣는다.** 접기 갈래로 오는 것은 언제나 [sentSignature]가 아닌
+        // 쪽이라, 들어온 구조만 넣으면 반대쪽이 걸쇠 밖에 남는다. 그러면 그 반대쪽을 다시
+        // 물을 때 「걸쇠에 없고 방문 기록도 늙었다」가 성립해 **떠남으로 오독되고 걸쇠가 통째로
+        // 풀린다**(2026-08-26에 테스트가 잡았다). 접힘은 두 구조가 번갈아 온다는 판정이므로
+        // 둘 다 그 회전의 구성원이다.
+        if (rotating) {
+            rotatingStructures.add(signature.structure)
+            sent?.let { rotatingStructures.add(it.structure) }
+        }
         // **조건부로 적지 않는다.** `if (novel)`로 두면 STUCK 샘플(정의상 novel=false)이
         // 갱신을 건너뛰어 직전 SEND의 값이 남고, 눌림 확인 재질의가 그 옛 값을 실어
         // `performed=true` + `screen_changed=true`라는 모순된 이력을 만든다 — 재질의의
@@ -449,7 +458,16 @@ class ScreenStabilityTracker(
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         // 접고 있던 중에 **회전에 없던 구조**를 실제로 물었다 — 그 화면을 떠난 것이다(#456).
         // 이력을 들고 가면 돌아왔을 때 옛 회전 기록이 남아 영구히 접힌다.
-        if (rotatingStructures.isNotEmpty() && returnsSeen(signature.structure, nowMs) == 0) {
+        //
+        // **걸쇠 소속을 먼저 본다.** 이력만 보면 접힘이 길어져 방문 기록이 창 밖으로 늙은 뒤,
+        // 회전 구성원을 다시 묻는 것(실패 재시도·완료 확인 ×가 `sentSignature`를 비운 뒤의
+        // 첫 요청)이 "떠남"으로 읽혀 걸쇠가 통째로 풀린다 — 창 만료 재무장과 같은 폭주가
+        // 트리거만 바꿔 되살아난다(#456 2차 리뷰 P2).
+        if (
+            rotatingStructures.isNotEmpty() &&
+            signature.structure !in rotatingStructures &&
+            returnsSeen(signature.structure, nowMs) == 0
+        ) {
             clearRotationHistory()
         }
         rememberVisit(signature.structure, nowMs)
@@ -561,6 +579,17 @@ class ScreenStabilityTracker(
      */
     private fun returnsSeen(structure: String, nowMs: Long): Int =
         visitedStructures.count { (seen, at) -> seen == structure && nowMs - at <= ROTATION_WINDOW_MS }
+
+    /**
+     * 안내가 폐기돼 **보여 줄 것이 없어졌다**(#456). 회전 판정을 버리고 그 화면을 다시 묻는다.
+     *
+     * 접기의 취지는 "이미 답이 있는 화면을 또 묻지 않는다"인데, 그 답이 사라졌으면 취지가
+     * 서지 않는다. 그대로 두면 안내가 영영 오지 않고 정체 문구조차 안 뜬다
+     * ([GuideDisplayState.RedisplayResult.Discarded] 참고).
+     */
+    fun forgetRotation() {
+        clearRotationHistory()
+    }
 
     /** 회전 판정을 처음부터 다시 센다. 떠났거나 조작이 관측됐을 때. */
     private fun clearRotationHistory() {

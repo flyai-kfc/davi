@@ -30,9 +30,33 @@ class GuideDisplayStateTest {
         when (val result = state.redisplay(signature, screenStable)) {
             GuideDisplayState.RedisplayResult.Unchanged,
             GuideDisplayState.RedisplayResult.Clear,
+            GuideDisplayState.RedisplayResult.Discarded,
             -> null
             is GuideDisplayState.RedisplayResult.Show -> result.content
         }
+
+    @Test
+    fun `다른 화면에서 지워진 안내를 폐기하면 폐기로 알린다`() {
+        // 그리기로는 Unchanged와 같지만 호출자에게는 다른 뜻이다 — 회전으로 접힌 화면에서는
+        // 폐기의 근거("그 화면의 새 요청은 어차피 나간다")가 서지 않아 걸쇠를 풀어야 한다(#456).
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.onCleared()
+
+        assertEquals(GuideDisplayState.RedisplayResult.Discarded, state.redisplay(sigB, screenStable = true))
+    }
+
+    @Test
+    fun `같은 화면에서 지워진 안내는 폐기가 아니라 되살린다`() {
+        state.show(sigA, listOf(1, 2, 3, 4), "확인을 누르세요")
+        state.onCleared()
+
+        val result = state.redisplay(sigA, screenStable = true)
+
+        assertEquals(
+            "확인을 누르세요",
+            (result as GuideDisplayState.RedisplayResult.Show).content.text,
+        )
+    }
 
     // ── 안내 중 서버 오류(#29) ─────────────────────────────────────────
 

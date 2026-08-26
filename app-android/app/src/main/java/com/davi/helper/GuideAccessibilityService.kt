@@ -645,6 +645,12 @@ class GuideAccessibilityService : AccessibilityService() {
         // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
         when (val redisplay = display.redisplay(signature.structure, decision.isStableForGuideRedisplay())) {
             GuideDisplayState.RedisplayResult.Unchanged -> Unit
+            GuideDisplayState.RedisplayResult.Discarded -> {
+                // 폐기했으면 이 화면에 보여 줄 것이 없다. 회전으로 접혀 있으면 재질의도 안
+                // 나가 안내가 영영 오지 않으므로, 걸쇠를 풀어 다시 묻게 한다(#456).
+                Log.i(TAG, "guide discarded, rotation forgotten")
+                stability.forgetRotation()
+            }
             GuideDisplayState.RedisplayResult.Clear -> {
                 Log.i(TAG, "clear unreadable guide")
                 overlay?.clear()
