@@ -941,12 +941,11 @@ class ConversationActivity : AppCompatActivity() {
         // 접힘 상태를 **먼저** 정한다 — 아래 카드 크기 블록이 이 값에 걸린다.
         lastRenderModel = model
         val foldActive = resolveQuestionFold(state, model)
-        // **배지가 실제로 서는가.** 뽑아 두는 이유는 **이 판정을 두 군데가 써야 하기 때문이다** —
-        // 여기(보일까)와 카드 위 패딩(배지를 피할까). 한때 그 둘이 서로 다른 신호를 봐서
-        // **배지가 서는 청취 화면이 배지 없는 화면의 패딩을 받았고, 배지가 질문 글자를
-        // 12dp 덮었다**(실측 SM-S921N, 밀도 480·540 양쪽).
-        val badgeVisible = model.logoVisible && !model.clarificationVisible
-        binding.logo.isVisible(badgeVisible)
+        // **판정은 모델에 있다**([ConversationRenderModel.badgeVisible]). 여기와 카드 위 패딩이
+        // 같은 값을 읽어야 하는데, 액티비티 지역 변수로 두면 그 「같음」을 잡는 그물이 실기기
+        // 확인뿐이 된다 — 2026-08-26에 그 어긋남으로 배지가 질문 글자를 12dp 덮었다(#473).
+        //
+        binding.logo.isVisible(model.badgeVisible)
         // 실패 화면만 배지 대신 전신 캐릭터가 선다(메인 8, #208). 둘은 배타적이다.
         binding.stand.isVisible(model.standVisible)
         // 카드가 위 요소를 파고드는 깊이. **캐릭터는 배지보다 깊다** — 시안이 배지 36,
@@ -1002,12 +1001,21 @@ class ConversationActivity : AppCompatActivity() {
                     // (실측 320×686dp: 마지막 버튼이 72dp 규격인데 53dp만 보였다). 안내 화면
                     // (guidingVisible)에는 배지가 서므로 그쪽은 그대로 둔다.
                     //
-                    // **걷는 근거가 「배지가 없다」이므로 배지를 직접 본다**(2026-08-26 실측).
-                    // `inClarificationFlow`만 보면 **청취 화면(직접 말하기)까지 걷힌다** — 거기는
-                    // `clarificationVisible`이 꺼져 배지가 서는 화면인데도. `dimens.xml`의
-                    // `davi_card_padding_top_guiding`이 「36(배지가 파고든 깊이)보다 얕으면
-                    // 배지가 글자를 덮는다」고 이미 적어 둔 그대로 24dp에서 12dp가 덮였다.
-                    (model.inClarificationFlow && !badgeVisible) || collapsed ->
+                    // **걷는 근거가 「배지가 없다」이므로 배지를 직접 본다**(2026-08-26 · #473).
+                    // `inClarificationFlow`만 보면 배지가 서는 청취까지 걷혀 **배지가 질문
+                    // 글자를 12dp 덮는다** — `dimens.xml`이 「36(배지가 파고든 깊이)보다 얕으면
+                    // 배지가 글자를 덮는다」고 미리 적어 둔 그대로다. 그 겹침은 #465가 이 조건을
+                    // 넓히면서 들어왔다(그 전에는 청취가 48dp를 받아 안 겹쳤다).
+                    //
+                    // **대가는 흐름 안에서 글자가 29dp 뛰는 것이다**(2026-08-23 리뷰가 4.74dp로
+                    // 기록해 둔 자리). 두 화면이 **정말 다른 값을 필요로 한다** — 구체화는 보기
+                    // 셋 + 「직접 말하기」가 들어가려면 24dp여야 하고(44dp면 마지막 버튼이 19dp
+                    // 잘린다, #465 실측), 청취는 배지를 피하려면 36dp 이상이어야 한다. 배지를
+                    // 두는 한 둘은 못 만난다. **글자가 가려지는 것보다 뛰는 것이 낫다**로 정했다
+                    // (2026-08-26) — 가려지면 못 읽고, 뛰면 읽을 수는 있다.
+                    //
+                    // 배지를 빼서 맞추는 안은 접었다 — 근거는 [ConversationRenderModel.badgeVisible].
+                    (model.inClarificationFlow && !model.badgeVisible) || collapsed ->
                         R.dimen.davi_spacing_xl
                     model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi

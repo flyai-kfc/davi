@@ -129,14 +129,14 @@ data class ConversationRenderModel(
      * **구체화 흐름 안인가**(#374) — 선택 화면과 「직접 말하기」 청취를 함께 덮는다.
      *
      * [clarificationVisible]과 다르다. 그쪽은 **선택 영역이 화면에 있는가**라 「직접 말하기」로
-     * 넘어가면 꺼진다. 이 값은 **그 흐름 안에 있는가**라 청취에서도 켜져 있다.
+     * 넘어가는 순간 꺼진다. 이쪽은 **되묻기 흐름 안에 있는가**라 청취까지 이어진다.
      *
-     * **카드 위치를 잡는 값 둘(배지 위 여백·카드 위 패딩)이 이것을 본다.** 흐름 안에서 카드가
-     * 뛰지 않으려면 두 화면이 같은 신호를 써야 한다 — 한때 `clarificationVisible`을 봐서
-     * **질문이 하나일 때 「직접 말하기」를 누르면 카드가 28dp 내려앉았다**(2026-08-23 리뷰).
-     * 질문이 둘 이상이면 [stepChipVisible]이 두 화면을 묶어 줘서 그 자리만 남았던 것이다.
-     *
-     * 홈에서 바로 들어온 청취는 `clarification == null`이라 켜지지 않는다.
+     * **이 흐름의 화면 결정 셋이 전부 이것을 본다** — 배지를 보일까([badgeVisible]) · 배지 위
+     * 여백 · 카드 위 패딩. 셋이 서로 다른 신호를 보면 **흐름 중간에 화면이 뛴다.**
+     * 2026-08-26에 그 값을 치렀다: 배지는 `clarificationVisible`을, 패딩은 이것을 봐서
+     * **청취에서만 배지가 서고 그 배지가 질문 글자를 12dp 덮었다.** 고치려고 패딩만 갈랐더니
+     * 이번에는 흐름 안에서 글자가 **29dp 뛰었다**(고치기 전 4.74dp). 셋을 이 신호로 모으는
+     * 것이 답이었다.
      */
     val inClarificationFlow: Boolean = false,
     val safeEndVisible: Boolean = false,
@@ -386,14 +386,6 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
 }
 
 /**
- * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
- * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
- *
- * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
- * 화면이 계속 켜진 채 남는다. **[CONFIRM_TIMEOUT_MS]에는 아직 근거가 없다** — 무한을 막는
- * 상한일 뿐이고 실사용을 보고 조정한다. 실패 화면 쪽은 근거가 생겼다([FAILED_RETURN_DELAY_MS]).
- */
-/**
  * 메인 9 안내 중 화면(#197). **마이크·파도·글로우가 없다** — 안내가 도는 동안은 새 목표를
  * 받지 않기 때문이고, 카드 안 지시문이 그 이유를 말한다("먼저 안내를 종료해주세요").
  *
@@ -405,6 +397,32 @@ private fun guidingModel() = ConversationRenderModel(
     guidingVisible = true,
 )
 
+/**
+ * **다비 배지가 서는가.** 화면 결정 둘이 이것을 읽는다 — 배지 뷰의 표시 여부와, 배지를
+ * 피하려고 잡아 둔 카드 위 패딩을 걷을지.
+ *
+ * **모델의 확장으로 두는 이유는 그 둘이 어긋나면 화면이 깨지기 때문이다.** 액티비티 지역
+ * 변수로 두면 「두 자리가 같은 신호를 읽는다」를 잡는 그물이 실기기 확인뿐이 되는데,
+ * 2026-08-26에 그 어긋남으로 배지가 질문 글자를 12dp 덮었다(#473). 순수 판정이므로 여기 두면
+ * JVM 테스트가 고정한다([stepChipVisible]도 같은 결).
+ *
+ * **되묻기 흐름 안에서 갈린다.** 구체화는 칩·✕가 카드 상단선에 걸치는 자리라 배지를 걷고
+ * (`docs/SCREENS.md` MA-3), 청취는 배지가 선다 — 그래서 이 값이 흐름 안에서 한 번 바뀐다.
+ * **배지를 빼서 맞추는 안은 접었다**(2026-08-26): 빼면 배지가 잡고 있던 자리가 무너져
+ * **카드가 48dp 솟는다**(실측). 자리만 남기면(INVISIBLE) 이번에는 구체화가 **53dp 내려앉는다**
+ * — 거기는 칩이 이미 자리를 남기고 있어서다.
+ */
+val ConversationRenderModel.badgeVisible: Boolean
+    get() = logoVisible && !clarificationVisible
+
+/**
+ * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
+ * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
+ *
+ * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
+ * 화면이 계속 켜진 채 남는다. **[CONFIRM_TIMEOUT_MS]에는 아직 근거가 없다** — 무한을 막는
+ * 상한일 뿐이고 실사용을 보고 조정한다. 실패 화면 쪽은 근거가 생겼다([FAILED_RETURN_DELAY_MS]).
+ */
 fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     ConversationUiState.Failed -> FAILED_RETURN_DELAY_MS
     is ConversationUiState.Confirm -> CONFIRM_TIMEOUT_MS

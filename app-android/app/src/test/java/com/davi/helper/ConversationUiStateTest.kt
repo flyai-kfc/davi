@@ -224,8 +224,9 @@ class ConversationUiStateTest {
     @Test
     fun `스스로 끝나지 않는 상태만 복귀 타이머를 갖는다`() {
         assertEquals(FAILED_RETURN_DELAY_MS, autoReturnDelayMs(ConversationUiState.Failed))
-        // **값 자체를 못 박는다**(#437). 근거가 「문구를 한 번 읽는 시간」이라, 조용히 줄면
-        // 또박또박 읽는 사람이 마지막 글자에서 화면을 잃는다 — 그게 옛 값 5초의 실패였다.
+        // **값 자체를 못 박는다**(#437). 5초는 실기기에서 보고 **충분하다고 판정해 유지한**
+        // 값이다 — 실패가 관측된 적은 없다. 다만 계산상 경계에 가까워(20자를 초당 4자로 읽으면
+        // 5.0초) **조용히 줄면** 또박또박 읽는 사람이 마지막 글자에서 화면을 잃는다.
         // 근거는 `docs/SCREENS.md` MA-5 절과 상수 KDoc에 있다.
         assertEquals(5_000L, FAILED_RETURN_DELAY_MS)
         // ×/○ 탭 말고 빠져나갈 길이 없어 화면이 계속 켜진 채 남는다
@@ -649,5 +650,52 @@ class ConversationUiStateTest {
             ),
         )
         assertFalse(model.shortcutVisible)
+    }
+
+    // ── 배지가 서는가 (#473) ───────────────────────────────────────────────
+
+    private fun clarify(count: Int) = VoiceDialogueSession.Outcome.Clarify(
+        generation = 0L,
+        question = ClarificationQuestion(
+            id = "app",
+            prompt = "어느 앱으로 보낼까요?",
+            options = listOf("카카오톡"),
+            allowFreeform = true,
+        ),
+        questionIndex = 0,
+        questionCount = count,
+    )
+
+    /**
+     * **이 테스트가 #473의 재발을 막는다.** 배지 표시와 카드 위 패딩이 서로 다른 신호를 봐서
+     * 청취에서만 배지가 서고 질문 글자를 12dp 덮었다. 판정을 모델로 올렸으니 여기서 잡는다.
+     */
+    @Test
+    fun `구체화는 배지를 걷고 청취는 세운다 — 흐름 안에서 갈린다`() {
+        val clarifying = renderModelOf(
+            ConversationUiState.Clarifying(clarify(2), speaking = false),
+        )
+        val listening = renderModelOf(
+            ConversationUiState.Listening(question = "어느 앱으로 보낼까요?", clarification = clarify(2)),
+        )
+
+        // 구체화: 칩·✕가 카드 상단선에 걸치는 자리라 배지를 걷는다(시안).
+        assertFalse("구체화에 배지가 섰다", clarifying.badgeVisible)
+        // **청취가 이 테스트의 이유다.** 여기는 배지가 서므로 카드 위 패딩이 배지를 피해야
+        // 한다 — 흐름 신호(inClarificationFlow)만 보고 걷으면 배지가 글자를 덮는다.
+        assertTrue("청취에서 배지가 사라졌다", listening.badgeVisible)
+        assertTrue(
+            "흐름 신호가 꺼져 있으면 이 어긋남 자체가 안 생긴다 — 전제를 고정한다",
+            clarifying.inClarificationFlow && listening.inClarificationFlow,
+        )
+    }
+
+    @Test
+    fun `되묻기 흐름 밖의 청취에도 배지가 선다`() {
+        // 첫 목표를 말하는 청취(MA-2). 흐름 밖이라 카드 위 패딩도 배지를 피하는 쪽을 받는다.
+        val model = renderModelOf(ConversationUiState.Listening(question = null, clarification = null))
+
+        assertTrue("MA-2에서 배지가 사라졌다", model.badgeVisible)
+        assertFalse(model.inClarificationFlow)
     }
 }
