@@ -56,7 +56,7 @@
 붙어 있어 Android 15 / One UI 7.0으로 정정했다. 동작 관측의 날짜·내용·기기 모델은 바꾸지 않았다.
 
 **SM-S921N 재정정(2026-08-26):** 같은 기기가 이제 Android 16 / One UI 8.5를 보고한다.
-`adb -s R3CXC051AAY shell getprop`으로 시리얼을 지정해 읽었다 — `ro.product.model=SM-S921N`,
+`adb -s <serial> shell getprop`으로 **기기를 지정해** 읽었다 — `ro.product.model=SM-S921N`,
 `ro.build.version.release=16`, `ro.build.version.sdk=36`, `ro.build.version.oneui=80500`,
 `ro.build.version.incremental=S921NKSSGDZG1`(빌드 2026-07-03). **위 2026-08-24 판독과 왜
 다른지는 확정하지 못했다** — 그 사이 OS 업데이트가 있었을 수도, 앞선 판독이 다른 기기를
