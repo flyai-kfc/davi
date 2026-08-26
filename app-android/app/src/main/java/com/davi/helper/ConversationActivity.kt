@@ -1498,9 +1498,6 @@ class ConversationActivity : AppCompatActivity() {
         }
     }
 
-    /** 질문이 도착한 턴이 끝났는가. 그 안의 렌더는 접힘을 애니메이션하지 않는다. */
-    private var foldTransitionSuppressed = false
-
     private fun showClarificationInTurn(outcome: VoiceDialogueSession.Outcome.Clarify) {
         setState(ConversationUiState.Clarifying(outcome, speaking = true))
         GuideTelemetry.voiceState("clarification_question")
@@ -1922,6 +1919,12 @@ class ConversationActivity : AppCompatActivity() {
 
     /** 마지막으로 화면에 적용한 펼침 상태. 바뀔 때만 접힘을 애니메이션한다. */
     private var questionFoldShown: Boolean? = null
+
+    /**
+     * **지금이 「질문이 도착한 턴」 안인가.** 참인 동안의 렌더는 접힘을 애니메이션하지 않는다 —
+     * 근거는 [showClarification]. 턴이 끝나면 거짓으로 돌아온다.
+     */
+    private var foldTransitionSuppressed = false
 
     /** 마지막 render가 만든 모델. 레이아웃 리스너가 다시 만들지 않고 이것을 쓴다. */
     private var lastRenderModel: ConversationRenderModel? = null

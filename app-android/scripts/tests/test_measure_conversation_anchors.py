@@ -82,14 +82,14 @@ class ParseDumpTest(unittest.TestCase):
 
 
 class MeasureTest(unittest.TestCase):
-    def measure(self, nodes: dict, perched: bool = True, anchor: str = None) -> dict:
+    def measure(self, nodes: dict, anchor: str = "perch") -> dict:
         return MODULE.measure(
             MODULE.parse_dump(dump(nodes)),
             DENSITY,
             INSET_TOP_PX,
             SCREEN_HEIGHT_PX,
             CLOSE_CIRCLE_INSET_PX,
-            anchor=anchor or ("perch" if perched else "card"),
+            anchor=anchor,
             fixed_heights_px=FIXED_HEIGHTS_PX,
             inset_bottom_px=INSET_BOTTOM_PX,
         )
@@ -112,7 +112,7 @@ class MeasureTest(unittest.TestCase):
         """**갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고**, 대신 토큰 사슬이 재는 데
         실패한 것을 레이아웃 결함으로 신고한다 — 조용하지는 않은데 진단이 틀린다."""
         # 트리가 덜 만들어져 카드만 있고 칩·✕가 없다.
-        result = self.measure({"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}, perched=True)
+        result = self.measure({"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}, anchor="perch")
 
         self.assertIsNone(result["start_line_dp"])
         self.assertEqual(result["start_line_source"], "-")
@@ -131,7 +131,7 @@ class MeasureTest(unittest.TestCase):
     def test_other_screens_measure_the_card_top(self):
         nodes = {"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}
 
-        result = self.measure(nodes, perched=False, anchor="card")
+        result = self.measure(nodes, anchor="card")
 
         self.assertEqual(result["start_line_source"], "카드")
         self.assertEqual(result["start_line_dp"], 114)
