@@ -464,7 +464,7 @@ data class ClarificationPlan(
 @Serializable
 data class SlotFillState(
     val status: IntentDialogueStatus,
-    /** 화면에 보여줄 질문 또는 준비 완료 문장. 질문 계획에서는 첫 문항만 TTS로 읽는다. */
+    /** 화면에 보여줄 질문 또는 준비 완료 문장. 질문 계획에서는 **문항마다** TTS로 읽는다. */
     val message: String,
     /** READY일 때만 존재하며, 사용자가 확인할 기존 목표 입력칸에 넣는다. */
     val goal: String? = null,

@@ -226,6 +226,38 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
+    fun theCardIsExpandedWhileSpokenAndCollapsesToOneCopyForEveryBranch() {
+        // #452. 두 가지를 함께 본다.
+        //
+        // **읽는 동안은 펼쳐져 있다** — 질문이 도착한 직후의 실제 화면이 그것이고, 접힘은
+        // 낭독이 끝나거나 그물이 돈 뒤에만 온다(2026-08-26에 문항마다 읽기로 바꿨다).
+        //
+        // **접힌 문구는 갈래와 무관하게 하나다.** 보기가 0개일 때 「선택해 주세요」는 없는
+        // 것을 고르라는 말이고, 그 갈래만 「말씀해 주세요」로 가르면 **버튼을 안 누르고 그냥
+        // 말하려 한다**(그 화면도 먼저 눌러야 마이크가 열린다). **문구를 리터럴로 못 박는다** —
+        // 리소스끼리 비교하면 「선택해 주세요」로 되돌려도 통과해 그 결정이 안 걸린다.
+        val current = launchConversation()
+        val card = current.findViewById<TextView>(R.id.card_question)
+
+        for (optionCount in intArrayOf(0, 2)) {
+            showClarification(current, questionCount = 1, optionCount = optionCount, speaking = true)
+            assertEquals(
+                "보기 ${optionCount}개 · 읽는 중",
+                "어느 방식으로 보낼까요?",
+                card.text.toString(),
+            )
+
+            showClarification(
+                current,
+                questionCount = 1,
+                optionCount = optionCount,
+                speaking = false,
+            )
+            assertEquals("보기 ${optionCount}개 · 접힘", "눌러 주세요", card.text.toString())
+        }
+    }
+
+    @Test
     fun chipKeepsItsSlotWhenItDoesNotStandSoTheCardDoesNotJump() {
         // #452. 칩은 열의 흐름 자식이라 GONE으로 걷으면 아래가 통째로 63dp 올라가고,
         // 카드 상단선에 걸린 ✕가 따라 올라가 **상태바에 16dp 잘렸다**(실측: 질문 1개짜리
@@ -443,6 +475,7 @@ class ClarificationFlowDeviceTest {
         current: ConversationActivity,
         questionCount: Int,
         optionCount: Int = 2,
+        speaking: Boolean = true,
     ) {
         instrumentation.runOnMainSync {
             val session = voiceSession(current)
@@ -476,7 +509,7 @@ class ClarificationFlowDeviceTest {
                 ConversationUiState::class.java,
             )
             setState.isAccessible = true
-            setState.invoke(current, ConversationUiState.Clarifying(outcome, speaking = false))
+            setState.invoke(current, ConversationUiState.Clarifying(outcome, speaking = speaking))
         }
         instrumentation.waitForIdleSync()
     }

@@ -167,7 +167,11 @@ class SlotFillApiClient(
         }
     }
 
-    private companion object {
+    /**
+     * 계약이 묶는 길이·개수. **`internal`이다** — 이 값을 근거로 삼는 화면 쪽 계산이 있어서,
+     * 닫아 두면 숫자가 손으로 복제되고 계약이 늘어도 조용히 안 따라온다(#465 리뷰).
+     */
+    internal companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val DEV_TOKEN_HEADER = "X-Davi-Dev-Token"
         val REQUEST_ID = Regex("[0-9a-f]{32}")
