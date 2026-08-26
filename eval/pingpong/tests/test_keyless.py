@@ -1066,7 +1066,9 @@ def test_진입점이_env를_읽는다(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("PINGPONG_TEST_ONLY_ENTRY", "자리")
     monkeypatch.delenv("PINGPONG_TEST_ONLY_ENTRY")
 
-    cli.main(["check"])
+    # 시나리오 경로를 절대로 준다 — CI는 `eval/`을 작업 디렉터리로 돌리고
+    # `check`의 기본값은 상대 경로다(conftest 문서).
+    cli.main(["check", "--scenarios", str(ROOT / DEFAULT_SCENARIOS)])
     capsys.readouterr()
 
     assert os.environ["PINGPONG_TEST_ONLY_ENTRY"] == "진입점"
