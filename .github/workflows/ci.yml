@@ -4,9 +4,21 @@ name: CI
 # 검사와 Android만 돌린다(#363). 서버·인프라 런타임은 해당 경로에서 함께 도는 Azure
 # development deploy가 image 빌드와 /health로 확인한다. pytest/ruff, eval 검사, 앱 계약 파일의
 # 서버 드리프트 검사는 병합 후 다시 돌지 않는다는 공백을 감수한 비용 절감 결정이다.
+#
+# **draft PR에서는 비싼 잡을 돌리지 않는다.** GitHub의 `pull_request` 기본 타입은 draft에서도
+# 그대로 발화하므로(실측 — draft로 연 PR에서 CI가 돌았다) 안 돌게 하려면 잡마다 명시해야 한다.
+# `ready_for_review`를 types에 **반드시 함께** 넣는다 — 기본 타입에 없어서, 빠지면 draft를
+# Ready로 올려도 CI가 영영 안 돈다(#468).
+#
+# `converted_to_draft`는 이유가 반대다. **돌게 하려고가 아니라 돌던 것을 끊으려고** 넣는다 —
+# Ready 상태에서 Android(최대 30분)·macOS(10배 과금)가 돌기 시작한 뒤 draft로 되돌리면 아무
+# 이벤트도 안 떠서 그 런이 끝까지 청구된다. types에 넣으면 새 런이 뜨고 아래 concurrency 가
+# 이전 런을 취소한다. 새 런 자신은 draft라 비싼 잡을 건너뛰므로 비용은 `changes` 1분뿐이다.
+# **지우지 말 것** — "draft에선 안 도는데 왜 있지"로 읽히기 쉬운 자리다.
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches: [main]
 
@@ -15,9 +27,21 @@ permissions:
   pull-requests: read
 
 # 같은 브랜치에 새 푸시가 오면 이전 실행을 취소한다(러너 낭비 방지).
+#
+# **단 draft 상태의 `synchronize` 는 아무것도 죽이지 않는다.** 푸시와 Ready 전환이 몇 초 안에
+# 겹치면 런 둘이 같은 그룹에 뜨는데(둘 다 `refs/pull/N/merge`), 늦게 시작한 쪽이 이기므로
+# **draft 페이로드 런이 `ready_for_review` 런을 죽일 수 있다.** 그러면 PR 은 Ready 인데 비싼
+# 잡은 skipped 이고 더 올 이벤트가 없어 그대로 갇힌다. 결과가 초록으로 보여서 더 나쁘다 —
+# 브랜치 보호가 없어 "눈으로 확인"이 유일한 관문인 저장소다. #469 에서 실측했다(1초 차로
+# 떠서 좋은 런이 취소됐다).
+#
+# 그룹을 쪼개는 방법도 있지만, 그러면 `converted_to_draft` 가 다른 그룹의 비싼 런을 못 끊어
+# 위 types 결정이 죽는다. **취소 조건으로 거는 쪽이 둘 다 지킨다.**
+# 대가는 draft 에서 연속 푸시할 때 이전 런이 안 죽는 것 — draft 런은 2분짜리라 작다.
+# (push 이벤트에는 `action` 이 없어 첫 항이 참이 되므로 main 푸시 동작은 그대로다.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'synchronize' || github.event.pull_request.draft == false }}
 
 jobs:
   # 어느 스택이 바뀌었는지 판정하고, 스택에 매이지 않는 저장소 전역 검사를 함께 돌린다.
@@ -35,6 +59,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       android: ${{ steps.filter.outputs.android }}
+      devscripts: ${{ steps.filter.outputs.devscripts }}
       backend: ${{ steps.filter.outputs.backend }}
       infrastructure: ${{ steps.filter.outputs.infrastructure }}
     steps:
@@ -64,6 +89,22 @@ jobs:
               - '!app-android/*.md'
               - '!app-android/.gitignore'
               - '!app-android/licenses/**'
+            # macOS Bash 3.2 잡 전용이다. `android` 필터를 그대로 쓰면 앱 소스만 바꾼 PR에서도
+            # 10배 요금 러너가 돌았다 — 8/24~26 실측으로 청구된 113회 중 아래 경로를 실제로
+            # 건드린 것은 10회(9%)뿐이었고, 나머지 103회는 검사 입력이 한 바이트도 안 바뀐
+            # 실행이었다(#468). 그 잡이 읽는 것은 이 경로가 전부다.
+            # 목록이 좁은 것은 의도다. 이 잡이 읽는 것은 `-n`을 거는 `.sh` 셋과 그것이 source 하는
+            # lib/, 그리고 bash 를 실제로 실행하는 테스트 파일 하나가 전부다. `scripts/**`로 두면
+            # 렌더러 `.py`·`.ps1`만 고친 PR도 10배 러너를 부른다.
+            # **여기 대상을 늘리면 bash32 잡의 스텝도 같이 봐야 한다.**
+            # `ci.yml`이 들어 있어 **이 워크플로 주석만 고쳐도 10배 러너가 돈다.** 잡의 스텝이
+            # ci.yml 안에 있는 한 빼면 검사 정의가 바뀌어도 안 도는 구멍이 생기고, GitHub은
+            # 잡별 paths 필터를 주지 않아 더 좁힐 방법이 없다. 알고 남긴 비용이다.
+            devscripts:
+              - 'app-android/scripts/*.sh'
+              - 'app-android/scripts/lib/**'
+              - 'app-android/scripts/tests/test_dev_install_sh.py'
+              - '.github/workflows/ci.yml'
             backend:
               - 'server/**'
               - 'eval/**'
@@ -93,6 +134,18 @@ jobs:
           done
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
           ./scripts/run-device-e2e.sh --list-scenarios
+
+          # **macOS Bash 3.2 잡은 test_dev_install_sh.py 하나만 돌린다**(아래 devscripts 필터와
+          # bash32 잡의 `-p` 패턴). bash 를 실제로 실행하는 테스트가 그것뿐이라는 가정 위에
+          # 서 있는데, 새 테스트가 생기면 필터에도 `-p`에도 안 걸려 3.2 커버리지가 조용히
+          # 사라진다. 항상 도는 이 잡이 몇 초짜리라 관문을 여기 두는 추가 비용은 0이다.
+          # `subprocess.run(` 과 `"/bin/bash"` 가 다른 줄이라 호출 패턴이 아니라 **인자 리터럴**을 본다.
+          bash_tests=$(grep -rlE '"(/bin/)?bash"' scripts/tests/test_*.py | sort | tr '\n' ' ')
+          if [ "$bash_tests" != "scripts/tests/test_dev_install_sh.py " ]; then
+            echo "bash를 실행하는 테스트 목록이 바뀌었다: [$bash_tests]" >&2
+            echo "ci.yml의 devscripts 필터와 bash32 잡의 -p 패턴을 같이 고쳐라." >&2
+            exit 1
+          fi
 
       - name: Windows PowerShell 실행기 구문·registry 테스트
         working-directory: app-android
@@ -150,10 +203,17 @@ jobs:
   # dev-install.sh의 유일한 제품 환경이 macOS 기본 Bash 3.2다. 빈 배열 `[@]`와 커맨드 치환
   # 안의 errexit 동작이 Bash 4.4+와 달라 Ubuntu 검사만으로는 회귀를 재현할 수 없다.
   # main push에서는 같은 커밋을 다시 돌리지 않는다(#363 비용 절감 결정).
+  #
+  # **이 잡의 고유값은 `/bin/bash`가 3.2라는 것 하나뿐이다.** 그래서 트리거도 `android`가 아니라
+  # 그 검사가 실제로 읽는 경로(`devscripts`)에 맨다. macOS 러너는 청구가 10배라 1분 미만짜리
+  # 실행도 매번 10분을 낸다 — 잡을 늘리는 것보다 **안 도는 조건을 좁히는 쪽이 훨씬 크다**(#468).
   bash32:
     name: macOS Bash 3.2 설치 스크립트
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.android == 'true'
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.devscripts == 'true'
+      && github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 5
     defaults:
@@ -170,12 +230,19 @@ jobs:
           for script in scripts/dev-install.sh scripts/lib/accessibility.sh scripts/run-device-e2e.sh; do
             /bin/bash -n "$script"
           done
-          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+          # **`scripts/tests` 전체가 아니라 이 파일 하나만 돌린다.** `test_dev_install_sh.py`는
+          # `subprocess.run(["/bin/bash", ...])`로 dev-install.sh를 **실제로 실행**하므로 여기서만
+          # 3.2 런타임을 탄다 — 빈 배열 전개도 커맨드 치환 안 errexit 상속도 위 `-n`으로는
+          # 안 잡힌다. 나머지 렌더러·앵커 테스트는 bash를 부르지 않아 `changes` 잡이 경로 필터
+          # 없이 항상 돌리는 것으로 족하다(#468).
+          python3 -m unittest discover -s scripts/tests -p 'test_dev_install_sh.py'
 
   android:
     name: Android (debug/release APK + test)
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    if: >-
+      needs.changes.outputs.android == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
