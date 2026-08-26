@@ -103,6 +103,10 @@ class Case:
     chip: str = "-"
     #: 시작선을 카드 상단이 아니라 「칩·✕의 윗변」으로 읽는 화면(MA-3).
     perched: bool = False
+    #: **이 칸의 시작선을 무엇으로 재는가.** 「없으면 다른 것으로」가 아니라 **못 찾으면 못 잰
+    #: 것**이다 — 갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고, 대신 엉뚱한 값이 판정에
+    #: 들어간다(실측: 청취 칸이 홈 제목으로 갈아타 「폭 0.0dp · OK」가 떴다).
+    anchor: str = "card"
     #: **이 뷰가 덤프에 뜰 때까지 기다린다.** 고정 대기로는 느린 기기에서 전이 중간이
     #: 찍힌다(실측 S23 Ultra: MA-1·MA-4 칸이 통째로 비었다). 화면마다 맨 위에 서는
     #: 것이 다르므로 칸이 스스로 무엇을 기다릴지 안다.
@@ -134,6 +138,7 @@ def clarification_case(option_count: int, question_count: int) -> Case:
         options=str(option_count),
         chip="있음" if question_count > 1 else "없음",
         perched=True,
+        anchor="perch",
         expect="btn_close",
         start_line_chain=MA3_START_LINE_CHAIN,
     )
@@ -176,7 +181,7 @@ def default_cases() -> list:
         for options in (3, 2, 1, 0)
     ]
     cases.extend(listening_case(questions) for questions in (2, 1))
-    cases.append(Case(screen="MA-1 홈", label="기본", expect="home_title"))
+    cases.append(Case(screen="MA-1 홈", label="기본", anchor="title", expect="home_title"))
     cases.append(
         Case(
             screen="MA-4 최종 확인",
@@ -334,6 +339,7 @@ def measure(
     screen_height_px: int,
     perched: bool,
     close_circle_inset_px: int = 0,
+    anchor: str = "card",
     fixed_heights_px: dict = None,
     inset_bottom_px: int = 0,
 ) -> dict:
@@ -356,21 +362,22 @@ def measure(
         nodes.get("question_progress"), fixed_heights_px.get("question_progress")
     )
 
+    # **칸이 정한 기준으로만 잰다 — 갈아타지 않는다**(#458 리뷰 · 2026-08-26 확장).
+    # 갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고, 대신 엉뚱한 값이 판정에 들어간다.
+    # 걸치는 화면에서는 토큰 사슬이 **재는 데 실패한 것을 레이아웃 결함으로** 신고했고,
+    # 비-perched 화면에서는 **청취 칸이 홈 제목으로 갈아타 「폭 0.0dp · OK」가 떴다.**
+    # 못 찾으면 못 잰 것이다 — 카드 상단은 자기 열에 그대로 남으므로 잃는 정보도 없다.
     candidates = []
-    if perched:
+    if anchor == "perch":
         if chip_top is not None:
             candidates.append(("칩", chip_top))
         if close_top is not None:
             candidates.append(("✕", close_top + close_circle_inset_px))
-    # **걸치는 화면이 칩·✕를 못 찾으면 카드로 갈아타지 않는다**(#458 리뷰). 갈아타면 행이
-    # 비지 않아 「못 잼」 그물을 통과하고, 대신 토큰 사슬이 **재는 데 실패한 것을 레이아웃
-    # 결함으로** 신고한다 — 조용하지는 않은데 진단이 틀린다. 카드 상단은 자기 열에 그대로
-    # 남으므로 잃는 정보도 없다.
-    if not candidates and not perched:
-        if card is not None:
-            candidates.append(("카드", card.top))
-        elif "home_title" in nodes:
+    elif anchor == "title":
+        if "home_title" in nodes:
             candidates.append(("제목", nodes["home_title"].top))
+    elif card is not None:
+        candidates.append(("카드", card.top))
 
     start_source, start_px = min(candidates, key=lambda c: c[1]) if candidates else ("-", None)
 
@@ -802,8 +809,9 @@ def run(args) -> int:
                     screen_height,
                     case.perched,
                     close_circle_inset_px,
-                    fixed_heights_px,
-                    inset_bottom,
+                    anchor=case.anchor,
+                    fixed_heights_px=fixed_heights_px,
+                    inset_bottom_px=inset_bottom,
                 )
                 rows.append(
                     Row(

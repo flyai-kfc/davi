@@ -82,7 +82,7 @@ class ParseDumpTest(unittest.TestCase):
 
 
 class MeasureTest(unittest.TestCase):
-    def measure(self, nodes: dict, perched: bool = True) -> dict:
+    def measure(self, nodes: dict, perched: bool = True, anchor: str = None) -> dict:
         return MODULE.measure(
             MODULE.parse_dump(dump(nodes)),
             DENSITY,
@@ -90,8 +90,9 @@ class MeasureTest(unittest.TestCase):
             SCREEN_HEIGHT_PX,
             perched,
             CLOSE_CIRCLE_INSET_PX,
-            FIXED_HEIGHTS_PX,
-            INSET_BOTTOM_PX,
+            anchor=anchor or ("perch" if perched else "card"),
+            fixed_heights_px=FIXED_HEIGHTS_PX,
+            inset_bottom_px=INSET_BOTTOM_PX,
         )
 
     def test_ma3_start_line_is_the_chip_top_when_the_chip_stands(self):
@@ -119,10 +120,19 @@ class MeasureTest(unittest.TestCase):
         # 카드 상단은 자기 열에 그대로 남는다 — 잃는 정보가 없다.
         self.assertEqual(result["card_top_dp"], 114)
 
+    def test_a_card_anchored_screen_does_not_fall_back_to_the_title(self):
+        """**청취 칸이 홈 제목으로 갈아타 「폭 0.0dp · OK」가 떴다**(2026-08-26 실측).
+        걸치는 화면만 막았더니 비-perched 쪽에 같은 갈아타기가 남아 있었다."""
+        # 화면에 못 닿아 홈이 찍혔다 — 카드가 없고 제목만 있다.
+        result = self.measure({"home_title": (300, 3 * 149, 779, 3 * 190)}, anchor="card")
+
+        self.assertIsNone(result["start_line_dp"])
+        self.assertEqual(result["start_line_source"], "-")
+
     def test_other_screens_measure_the_card_top(self):
         nodes = {"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}
 
-        result = self.measure(nodes, perched=False)
+        result = self.measure(nodes, perched=False, anchor="card")
 
         self.assertEqual(result["start_line_source"], "카드")
         self.assertEqual(result["start_line_dp"], 114)
@@ -346,6 +356,13 @@ class StartLineChainTest(unittest.TestCase):
 
 
 class GridTest(unittest.TestCase):
+    def test_every_case_declares_what_its_start_line_is_measured_from(self):
+        # 「없으면 다른 것으로」가 아니라 **칸이 정한 기준 하나**다.
+        for case in MODULE.default_cases():
+            self.assertIn(case.anchor, {"perch", "card", "title"}, case.screen)
+            if case.perched:
+                self.assertEqual(case.anchor, "perch", case.screen)
+
     def test_the_grid_also_covers_the_screen_that_still_uses_the_badge_margin(self):
         """구체화에서 배지를 뺀 뒤에도 **청취에는 배지가 선다** — 배지 위 여백이 카드를
         잡는 화면이 거기다. 칩 유무로 카드가 뛰는지를 여기서도 봐야 「자리를 남긴다」가
