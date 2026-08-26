@@ -279,6 +279,7 @@
 │  └─ 오버레이 렌더링 (좌표 매핑, FLAG_LAYOUT_IN_SCREEN, IME 위 배치)             │
 │       표시 오버레이(하이라이트, 터치 통과) + 조작 오버레이(안내창·칩, 터치 받음)  │
 │  SpeechRecognizer + TTS  ── 음성 목표 청취 + 구체화 질문 읽기(문항마다)           │
+│  GuideSpeaker  ── 안내창 문구 낭독(바뀔 때 한 번, 범례 줄 제외)                   │
 │  LaunchableAppIndex  ── 현재 profile의 launcher 앱을 메모리에서만 대조             │
 │                         │  화면JSON(마스킹됨) + 목표 + 최근 안내 이력            │
 │                         │  또는 최초 음성 발화 + 로컬 구체화 답(최대 2문항)      │

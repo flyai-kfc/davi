@@ -64,6 +64,16 @@ class TextToSpeechHelper(context: Context) {
         if (ready) waiting?.let(::speakNow) else waiting?.onError?.invoke()
     }
 
+    /**
+     * 이 인스턴스로는 **앞으로도** 못 읽는가(엔진 초기화 실패·한국어 미지원·이미 종료).
+     *
+     * 개별 발화 실패와 다르다 — 그쪽은 다음 발화가 성공할 수 있다. 부르는 쪽이 헛수고를
+     * 미리 접는 데 쓴다(#450: 오디오 포커스를 잡았다 놓는 왕복이 매 안내마다 도는 것).
+     * **초기화 전에는 false다** — 아직 갈리지 않았고, [speak]가 그때는 발화를 쥐고 기다린다.
+     */
+    @Synchronized
+    fun isUnavailable(): Boolean = failed || destroyed
+
     @Synchronized
     fun speak(
         text: String,

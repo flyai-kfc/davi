@@ -105,7 +105,12 @@ class StubLlmClient(LlmClient):
                 evidence=f"화면에 '{target.label}' 버튼이 보임",
                 action_type=ActionType.TAP,
                 target_node_id=target.node_id,
-                instruction=f"'{target.label}'을(를) 눌러 주세요.",
+                # **`을(를)`처럼 눈으로 읽는 표기를 쓰지 않는다.** 안내문은 앱이 소리로도 읽는데
+                # (#450), 그 표기는 TTS가 괄호째 읽어 「티월드 을 를 눌러 주세요」가 된다
+                # (2026-08-26 SM-S921N 실측). 조사를 label에 붙이려면 받침을 봐야 하고 영문·숫자
+                # label에서는 그마저 갈리므로, **조사가 붙는 자리를 고정 낱말로** 옮긴다 —
+                # 바로 아래 `evidence`가 이미 이 요소를 '버튼'이라 부르고 있어 말도 어긋나지 않는다.
+                instruction=f"'{target.label}' 버튼을 눌러 주세요.",
             )
 
         scrollable = next(
