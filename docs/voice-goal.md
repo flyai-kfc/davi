@@ -55,6 +55,8 @@ status는 `needs_clarification` / `ready` / `unable_to_finalize`다.
 
 완화책은 이미 구현돼 있다 — `post_slot_fill`은 `_store_raw_if_dogfood`를 부르지 않고, 요청 로그에는 `conversation_message_count`만 남으며, 교정 진단에는 고정 reason code만 남는다. `app-android/CLAUDE.md`에도 같은 내용이 있다. 여는 논의는 §4 Q7이다.
 
+**앱 쪽에 debug 예외가 하나 생겼다**(2026-08-26, #470). 제품 빌드는 위 문장 그대로지만, debug 빌드에서는 `log.tag.GuideSvcRaw`를 켰을 때만 발화·질문·보기·goal이 logcat에 나간다 — 실사용 관측에서 원인을 좁히려면 문장이 필요해서다. release 구현이 no-op이고 CI 관문이 dex 문자열로 강제하므로 **제품에는 한 글자도 안 들어간다**. 비식별 수치(`voice_response_shape`·`clarification_answer`·`clarification_fold`)는 main에 있어 제품 빌드에도 남는다.
+
 ### 지금 도는 플로우
 
 ①~⑪이 목표 확정이고 **⑫부터가 기존 닫힌 루프**다.
