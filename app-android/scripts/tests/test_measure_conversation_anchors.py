@@ -82,16 +82,16 @@ class ParseDumpTest(unittest.TestCase):
 
 
 class MeasureTest(unittest.TestCase):
-    def measure(self, nodes: dict, perched: bool = True) -> dict:
+    def measure(self, nodes: dict, anchor: str = "perch") -> dict:
         return MODULE.measure(
             MODULE.parse_dump(dump(nodes)),
             DENSITY,
             INSET_TOP_PX,
             SCREEN_HEIGHT_PX,
-            perched,
             CLOSE_CIRCLE_INSET_PX,
-            FIXED_HEIGHTS_PX,
-            INSET_BOTTOM_PX,
+            anchor=anchor,
+            fixed_heights_px=FIXED_HEIGHTS_PX,
+            inset_bottom_px=INSET_BOTTOM_PX,
         )
 
     def test_ma3_start_line_is_the_chip_top_when_the_chip_stands(self):
@@ -112,17 +112,26 @@ class MeasureTest(unittest.TestCase):
         """**갈아타면 행이 비지 않아 「못 잼」 그물을 통과하고**, 대신 토큰 사슬이 재는 데
         실패한 것을 레이아웃 결함으로 신고한다 — 조용하지는 않은데 진단이 틀린다."""
         # 트리가 덜 만들어져 카드만 있고 칩·✕가 없다.
-        result = self.measure({"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}, perched=True)
+        result = self.measure({"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}, anchor="perch")
 
         self.assertIsNone(result["start_line_dp"])
         self.assertEqual(result["start_line_source"], "-")
         # 카드 상단은 자기 열에 그대로 남는다 — 잃는 정보가 없다.
         self.assertEqual(result["card_top_dp"], 114)
 
+    def test_a_card_anchored_screen_does_not_fall_back_to_the_title(self):
+        """**청취 칸이 홈 제목으로 갈아타 「폭 0.0dp · OK」가 떴다**(2026-08-26 실측).
+        걸치는 화면만 막았더니 비-perched 쪽에 같은 갈아타기가 남아 있었다."""
+        # 화면에 못 닿아 홈이 찍혔다 — 카드가 없고 제목만 있다.
+        result = self.measure({"home_title": (300, 3 * 149, 779, 3 * 190)}, anchor="card")
+
+        self.assertIsNone(result["start_line_dp"])
+        self.assertEqual(result["start_line_source"], "-")
+
     def test_other_screens_measure_the_card_top(self):
         nodes = {"card_question_wrap": (72, 3 * 114, 1008, 3 * 300)}
 
-        result = self.measure(nodes, perched=False)
+        result = self.measure(nodes, anchor="card")
 
         self.assertEqual(result["start_line_source"], "카드")
         self.assertEqual(result["start_line_dp"], 114)
@@ -346,6 +355,12 @@ class StartLineChainTest(unittest.TestCase):
 
 
 class GridTest(unittest.TestCase):
+    def test_every_case_declares_what_its_start_line_is_measured_from(self):
+        # 「없으면 다른 것으로」가 아니라 **칸이 정한 기준 하나**다. 축이 하나뿐이라
+        # 「둘이 어긋나지 않는가」를 따로 단언할 것도 없다(#465 리뷰).
+        for case in MODULE.default_cases():
+            self.assertIn(case.anchor, {"perch", "card", "title"}, case.screen)
+
     def test_the_grid_also_covers_the_screen_that_still_uses_the_badge_margin(self):
         """구체화에서 배지를 뺀 뒤에도 **청취에는 배지가 선다** — 배지 위 여백이 카드를
         잡는 화면이 거기다. 칩 유무로 카드가 뛰는지를 여기서도 봐야 「자리를 남긴다」가
@@ -361,8 +376,28 @@ class GridTest(unittest.TestCase):
                 case.extras,
             )
 
+    def test_the_grid_covers_the_expanded_card_too(self):
+        """**기본값이 덮은 축은 격자가 못 본다**(2026-08-26). 주입 기본값이 접힘이라
+        격자가 접힌 카드만 쟀고, 그 사이 「칩 자리 + 펼친 카드」에서 「직접 말하기」가
+        19dp 잘린 채로 main에 들어갔다. 도착 직후가 곧 펼침이다."""
+        expanded = [
+            c
+            for c in MODULE.default_cases()
+            if any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
+        ]
+
+        self.assertTrue(expanded, "펼침 축이 격자에 없다")
+        self.assertEqual({c.chip for c in expanded}, {"있음", "없음"})
+        for case in expanded:
+            self.assertEqual(case.options, "3", "잘림은 보기가 많을수록 먼저 난다")
+
     def test_grid_covers_every_option_and_question_count_the_contract_allows(self):
-        clarification = [c for c in MODULE.default_cases() if c.perched]
+        clarification = [
+            c
+            for c in MODULE.default_cases()
+            if c.anchor == "perch"
+            and not any(x[1].endswith("STUCK_SPEAKING") for x in c.extras)
+        ]
         combinations = {(case.options, case.chip) for case in clarification}
 
         self.assertEqual(
@@ -388,7 +423,7 @@ class GridTest(unittest.TestCase):
         client_questions = self.constant(SLOT_FILL_CLIENT, "MAX_CLARIFICATION_QUESTIONS")
         self.assertEqual(session_questions, client_questions, "두 겹의 질문 상한이 서로 다르다")
 
-        clarification = [c for c in MODULE.default_cases() if c.perched]
+        clarification = [c for c in MODULE.default_cases() if c.anchor == "perch"]
 
         self.assertEqual(max(int(case.options) for case in clarification), session_max)
         self.assertEqual(session_questions, 2)  # 칩 유무가 곧 질문 1개/2개다

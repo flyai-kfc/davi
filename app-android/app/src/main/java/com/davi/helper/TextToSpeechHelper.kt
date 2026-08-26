@@ -12,6 +12,8 @@ class TextToSpeechHelper(context: Context) {
         val text: String,
         val onDone: () -> Unit,
         val onError: () -> Unit,
+        /** 엔진이 **실제로 첫 소리를 낸** 순간. 초기화 대기가 여기서 끝난다. */
+        val onStarted: () -> Unit = {},
     )
 
     private var ready = false
@@ -21,6 +23,7 @@ class TextToSpeechHelper(context: Context) {
     private var activeId: String? = null
     private var activeDone: (() -> Unit)? = null
     private var activeError: (() -> Unit)? = null
+    private var activeStarted: (() -> Unit)? = null
 
     private lateinit var textToSpeech: TextToSpeech
 
@@ -28,7 +31,10 @@ class TextToSpeechHelper(context: Context) {
         textToSpeech = TextToSpeech(context.applicationContext, ::onInitialized).apply {
             setOnUtteranceProgressListener(
                 object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) = Unit
+                    // **초기화가 끝나야 여기가 온다.** 엔진을 처음 바인딩하는 호출에서는
+                    // speak()가 즉시 돌아온 뒤 init + setLanguage가 끝날 때까지 한 글자도
+                    // 안 읽는다 — 낭독 길이를 재는 쪽은 그 시각을 알아야 한다(#465 리뷰).
+                    override fun onStart(utteranceId: String?) = notifyStarted(utteranceId)
 
                     override fun onDone(utteranceId: String?) = finishWithSuccess(utteranceId)
 
@@ -69,13 +75,18 @@ class TextToSpeechHelper(context: Context) {
     fun isUnavailable(): Boolean = failed || destroyed
 
     @Synchronized
-    fun speak(text: String, onDone: () -> Unit, onError: () -> Unit) {
+    fun speak(
+        text: String,
+        onDone: () -> Unit,
+        onError: () -> Unit,
+        onStarted: () -> Unit = {},
+    ) {
         val normalized = text.trim()
         if (normalized.isEmpty() || destroyed || failed) {
             onError()
             return
         }
-        val request = Pending(normalized, onDone, onError)
+        val request = Pending(normalized, onDone, onError, onStarted)
         if (!ready) {
             pending = request
             return
@@ -105,12 +116,20 @@ class TextToSpeechHelper(context: Context) {
         activeId = id
         activeDone = request.onDone
         activeError = request.onError
+        activeStarted = request.onStarted
         if (textToSpeech.speak(request.text, TextToSpeech.QUEUE_FLUSH, null, id) == TextToSpeech.ERROR) {
             finishWithError(id)
         }
     }
 
     @Synchronized
+    private fun notifyStarted(utteranceId: String?) {
+        if (utteranceId == null || utteranceId != activeId) return
+        val started = activeStarted ?: return
+        activeStarted = null
+        started()
+    }
+
     private fun finishWithSuccess(utteranceId: String?) {
         if (utteranceId != activeId) return
         val callback = activeDone
@@ -130,5 +149,6 @@ class TextToSpeechHelper(context: Context) {
         activeId = null
         activeDone = null
         activeError = null
+        activeStarted = null
     }
 }
