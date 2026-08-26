@@ -262,7 +262,7 @@ def _payload(
     }
 
 
-def test_next_step_fingerprint_matches_android_structure_axis():
+def test_next_step_fingerprint_ignores_content_and_transient_values():
     first = NextStepRequest.model_validate(
         _payload(label="3:45", node_id="n1", bounds=[0, 0, 100, 100], window_title="받은편지함 3")
     )

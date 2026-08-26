@@ -150,7 +150,8 @@ def provider_call_timeout_seconds(operation: str, declared_attempt: int) -> floa
 def request_fingerprint(request: BaseModel) -> str:
     """원문을 보관하지 않고 논리 요청의 의미상 identity를 digest로 만든다.
 
-    next-step의 재전송 identity는 Android ``ScreenSignature.structure``와 같은 축을 쓴다.
+    next-step의 재전송 identity는 Android ``ScreenSignature.structure``를 기준으로 삼되
+    **``role``에서 갈린다**(#456 — 앱은 구조 축에서 뺐고 여기에는 남아 있다).
     label·window title·node id·bounds·스크롤 위치 메타와 마지막 step의 앱 관측값은 앱이 같은
     logical ID에서 허용하는 내용/과도기 값이라 제외한다. 그 밖의 endpoint는 검증·기본값 적용 뒤
     본문 전체가 identity다.
