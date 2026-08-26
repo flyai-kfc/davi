@@ -31,6 +31,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import com.davi.helper.databinding.ActivityConversationBinding
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import kotlin.system.measureTimeMillis
 
 /** 계측이 앱 화면만 검증할 때 쓰는 debug 전용 진입점. release에서는 항상 무시된다. */
@@ -945,6 +946,11 @@ class ConversationActivity : AppCompatActivity() {
             resources.getDimensionPixelSize(R.dimen.davi_card_min_height_davi)
         }
         // 위 패딩은 배지를 피하려고 잡아 둔 값이다. **구체화에는 배지가 없으니 접힘에서 걷는다.**
+        //
+        // **inClarificationFlow를 본다 — clarificationVisible이 아니다.** 그쪽은 「직접
+        // 말하기」로 넘어가는 순간 꺼져서 위 패딩이 갈리고, **카드 위치는 그대로인 채 질문
+        // 글자만 4dp 밀린다**(눈에 잘 안 띈다, 2026-08-23 리뷰). 카드 안팎이 함께 움직이려면
+        // 배지 위 여백·칩 자리와 같은 신호를 봐야 한다.
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
@@ -1053,7 +1059,13 @@ class ConversationActivity : AppCompatActivity() {
             is ConversationUiState.Listening -> state.clarification
             else -> null
         }
-        binding.questionProgress.isVisible(model.stepChipVisible)
+        // **칩이 없어도 칩의 자리는 남는다**(#452) — 판정과 그 근거는 [stepChipSlotOf]에 있다.
+        // INVISIBLE은 자리를 먹으면서 **접근성 트리에서는 빠진다** — 「질문 1/1」이 읽히지 않는다.
+        binding.questionProgress.visibility = when (stepChipSlotOf(model)) {
+            StepChipSlot.SHOWN -> View.VISIBLE
+            StepChipSlot.RESERVED -> View.INVISIBLE
+            StepChipSlot.GONE -> View.GONE
+        }
         if (stepOutcome != null) {
             binding.questionProgress.text = getString(
                 R.string.clarification_progress,
@@ -1100,19 +1112,16 @@ class ConversationActivity : AppCompatActivity() {
                     // 구체화는 위에 칩 줄이 하나 더 있어 **음수**다 — 배지가 그 줄과 겹친다
                     // (#374 시안: 칩 46~78, 배지 70~130). 안 겹치면 칩 줄이 통째로 카드를
                     // 밀어 카드가 102dp 내려간다.
-                    // **칩이 실제로 설 때만 이 값이다** — 청취 화면에서도 칩이 남으므로
-                    // clarificationVisible이 아니라 이 신호를 본다(안 그러면 카드가 뛴다).
-                    model.stepChipVisible -> R.dimen.davi_badge_margin_top_clarification
-                    // **칩이 없는 구체화는 전용 값이다**(2026-08-23). 일반 72dp면 선택 영역이
-                    // 화면 아래로 밀리고(#316 리뷰), 안내용 24dp면 카드가 94dp로 올라가
-                    // **전역 ✕를 파고든다.** 44dp가 카드를 칩 있을 때와 같은 114dp에 둔다 —
-                    // 질문 1개에서 2개로 넘어가도 카드가 안 뛴다.
+                    //
+                    // **칩이 서든 안 서든 한 값이다**(#452). 칩 줄은 질문이 하나여도 자리가
+                    // 남으므로([StepChipSlot.RESERVED]) 갈릴 이유가 없어졌다. 예전의
+                    // 「칩 없음 = 44dp」는 63dp를 손으로 상쇄한 값이었고 −19 + 63 = 44로
+                    // 지금 구조가 만드는 값과 정확히 같다 — 청취 화면의 카드 위치는 안 바뀐다.
                     //
                     // **clarificationVisible이 아니라 inClarificationFlow를 본다** — 그쪽은
                     // 「직접 말하기」로 넘어가면 꺼져서 **질문이 하나일 때 카드가 28dp
                     // 내려앉았다**(2026-08-23 리뷰). 흐름 안에서는 같은 신호를 써야 한다.
-                    model.inClarificationFlow ->
-                        R.dimen.davi_badge_margin_top_clarification_nochip
+                    model.inClarificationFlow -> R.dimen.davi_badge_margin_top_clarification
                     model.guidingVisible -> R.dimen.davi_badge_margin_top_guiding
                     // 최종 확인도 얕다(#396) — 배율 2.0에서 긴 goal이 오면 카드가 상한까지
                     // 차고 (1)(2)가 두 줄로 자라 **(3)이 화면 밖으로 눌린다**(실측 61dp).
@@ -1122,14 +1131,6 @@ class ConversationActivity : AppCompatActivity() {
                 },
             )
         }
-        // 같은 두 화면은 카드 위 패딩도 겹침 안전 하한까지 줄여 아래 조작 영역을 보장한다.
-        // **stepChipVisible을 함께 본다** — clarificationVisible만 보면 「직접 말하기」로
-        // 넘어가는 순간 44 -> 48dp로 갈려 **질문 글자가 4dp 밀린다**(카드 위치는 그대로라
-        // 눈에 잘 안 띈다). 배지 여백과 같은 신호를 봐야 카드 안팎이 함께 움직인다.
-        //
-        // **inClarificationFlow를 본다** — 칩이 없는 1문항도, 「직접 말하기」로 넘어간 청취도
-        // 같은 값이어야 한다. clarificationVisible은 청취에서 꺼지고 stepChipVisible은
-        // 1문항에서 꺼져, 어느 하나만 보면 그 조합에서 글자가 4dp 밀린다(2026-08-23 리뷰).
         binding.cardGuidingHint.isVisible(model.guidingVisible)
         binding.cardGuidingHint.setText(R.string.conversation_guiding_hint)
         binding.stackedPair.root.isVisible(model.guidingVisible || model.safeEndVisible)
@@ -1689,9 +1690,15 @@ class ConversationActivity : AppCompatActivity() {
         // ✕는 카드 상단선에 **중심**을 맞춘다 — 카드에 걸린 것으로 읽힌다.
         val closeTop = if (close.isShown && close.height > 0) {
             val topNow = IntArray(2).also { close.getLocationInWindow(it) }[1].toFloat()
-            val wanted = (cardTop - close.height / 2f) - (topNow - close.translationY)
+            val resting = topNow - close.translationY
+            // **✕는 제자리보다 위로는 안 간다**(#452). 제자리는 인셋 아래 davi_spacing_lg라
+            // 이 바닥이 곧 「상태바를 파고들지 않는다」다. 걸치기는 원래 ✕를 **내리는**
+            // 동작이고, 올리려 드는 순간이 곧 카드가 있으면 안 될 곳까지 올라간 순간이다 —
+            // 그때는 걸치기를 포기하고 나가는 길을 남긴다. 위 questionProgress의 자리
+            // 비우기가 그 순간 자체를 없애지만, **하나가 무너져도 ✕는 남아야 한다.**
+            val wanted = perchOffset(cardTop - close.height / 2f, resting)
             if (close.translationY != wanted) close.translationY = wanted
-            cardTop - close.height / 2f
+            resting + wanted
         } else {
             null
         }
@@ -1699,10 +1706,14 @@ class ConversationActivity : AppCompatActivity() {
         // 칩을 맞출 기준은 뷰의 위가 아니라 **원의 위**다.
         val circleInset = resources.getDimensionPixelSize(R.dimen.davi_close_circle_inset)
         // **칩은 ✕의 맨 위에 수평을 맞춘다 — 중심이 아니다.** 둘은 높이가 달라(✕ 56dp,
-        // 칩은 글꼴 배율을 따라 자란다) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
+        // 칩 38dp) 중심을 맞추면 칩이 ✕보다 아래로 처져 보인다.
+        //
+        // **칩 높이는 글꼴 배율을 안 탄다** — layout_height가 고정 토큰(davi_step_chip_height)
+        // 이다. 폭만 wrap_content라 글자를 따라 자란다(그 근거는 레이아웃 주석에 있다).
+        // 그래서 **칩 줄이 먹는 63dp가 배율과 무관하고**, 시작선이 배율 1.0·2.0에서 같은 값이다.
         if (chip.isShown && chip.height > 0 && closeTop != null) {
             val topNow = IntArray(2).also { chip.getLocationInWindow(it) }[1].toFloat()
-            val wanted = (closeTop + circleInset) - (topNow - chip.translationY)
+            val wanted = perchOffset(closeTop + circleInset, topNow - chip.translationY)
             if (chip.translationY != wanted) chip.translationY = wanted
             // 카드 왼쪽 둥근 모서리에 물리지 않게 조금 민다. **걸칠 때만이다** — 마진으로
             // 주면 배지가 서는 화면까지 따라 밀려 배지를 더 파고든다.
@@ -1712,6 +1723,25 @@ class ConversationActivity : AppCompatActivity() {
             if (chip.translationX != offsetX) chip.translationX = offsetX
         }
     }
+
+    /**
+     * 걸치기 이동량. **정수 픽셀로 떨어뜨리고, 제자리보다 위로는 안 간다.**
+     *
+     * `getLocationInWindow`은 **반올림된 int**를 준다. 그런데 제자리(`resting`)는 「지금 자리
+     * − 지금 이동량」으로 되짚으므로, 이동량이 0.5px이면 되짚은 제자리가 0.5px 어긋나고
+     * 다음 배치가 그만큼 또 옮긴다 — **걸치기가 몇 번 도느냐에 따라 자리가 1px 흔들렸다**
+     * (실측 540dpi: 칩이 설 때 ✕가 262px, 안 설 때 261px. 카드는 두 경우 모두 356px로
+     * 같았으니 카드가 아니라 이 계산이 흔든 것이다). 이동량이 정수면 되짚기가 정확해져
+     * 두 번째 호출부터 값이 안 변한다.
+     *
+     * **바닥이 0인 이유는 둘에게 조금 다르다.** ✕는 제자리가 인셋 아래 `davi_spacing_lg`라
+     * 그 바닥이 곧 「상태바를 파고들지 않는다」다([perchTopControlsOnCard]). 칩은 제자리가
+     * 인셋 아래 `davi_step_row_margin_top`이고 건강한 경로에서는 이동량이 +28dp라 바닥에
+     * 안 닿는다 — **걸치기가 무너져 카드가 칩 줄 위로 올라간 경우에만** 걸리고, 그때는
+     * 칩도 제자리에 남는 것이 맞다. 그래서 둘이 같은 함수를 쓴다.
+     */
+    private fun perchOffset(wantedTop: Float, restingTop: Float): Float =
+        (wantedTop - restingTop).coerceAtLeast(0f).roundToInt().toFloat()
 
     /**
      * 접힘/펼침 **상태만** 정한다 — **카드 크기에 걸리는 속성은 안 건드린다.**

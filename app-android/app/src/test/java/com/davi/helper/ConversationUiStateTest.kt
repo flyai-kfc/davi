@@ -567,6 +567,54 @@ class ConversationUiStateTest {
     }
 
     @Test
+    fun `칩이 안 서도 구체화 흐름 안에서는 칩의 자리가 남는다`() {
+        // #452. 칩은 열의 흐름 자식이라 GONE으로 걷으면 아래가 통째로 63dp 올라간다 —
+        // 카드가 뛰고 카드 상단선에 걸린 ✕가 **상태바에 16dp 잘렸다**(실측: 질문 1개짜리
+        // 화면 전부, 배율 1.0에서도). 「질문 1/1」을 안 세우는 결정(2026-08-23)은 그대로 두고,
+        // **그 결정이 배치를 흔들지 않게** 자리만 남긴다.
+        val two = clarificationOutcome(questionCount = 2)
+        val one = clarificationOutcome(questionCount = 1)
+
+        assertEquals(
+            StepChipSlot.SHOWN,
+            stepChipSlotOf(renderModelOf(ConversationUiState.Clarifying(two))),
+        )
+        assertEquals(
+            StepChipSlot.RESERVED,
+            stepChipSlotOf(renderModelOf(ConversationUiState.Clarifying(one))),
+        )
+        // **「직접 말하기」 청취도 같은 자리를 쓴다** — 여기서 갈리면 누르는 순간 카드가 뛴다.
+        assertEquals(
+            StepChipSlot.SHOWN,
+            stepChipSlotOf(
+                renderModelOf(
+                    ConversationUiState.Listening(question = "누구에게?", clarification = two),
+                ),
+            ),
+        )
+        assertEquals(
+            StepChipSlot.RESERVED,
+            stepChipSlotOf(
+                renderModelOf(
+                    ConversationUiState.Listening(question = "누구에게?", clarification = one),
+                ),
+            ),
+        )
+        // 흐름 밖에서는 자리도 없다 — 홈·최종 확인의 위쪽을 63dp 비워 둘 이유가 없다.
+        for (state in listOf(
+            ConversationUiState.Listening(),
+            ConversationUiState.Home(),
+            ConversationUiState.Confirm("목표"),
+        )) {
+            assertEquals(
+                state::class.simpleName,
+                StepChipSlot.GONE,
+                stepChipSlotOf(renderModelOf(state)),
+            )
+        }
+    }
+
+    @Test
     fun `구체화 흐름 신호는 질문 수와 무관하게 선택과 청취를 함께 덮는다`() {
         // **카드 위치를 잡는 값 둘이 이것을 본다**(#374). 흐름 안에서 카드가 뛰지 않으려면
         // 두 화면이 같은 신호를 써야 한다 — clarificationVisible은 청취에서 꺼지고
