@@ -479,7 +479,34 @@ class ScreenStabilityTrackerTest {
 
         // a로 두 번째 복귀 — 여기서 회전으로 판정한다. 화면당 4회에서 멈춘다.
         assertEquals(Decision.IDLE, send("a", 4_000))
-        assertEquals(Decision.IDLE, send("b", 5_000))
+        // 다음 바퀴의 a도 계속 접힌다. b는 `sentSignature`와 같아 회전 판정을 타지 않으므로
+        // 여기서 단언하지 않는다 — 그 줄은 접기가 깨져도 통과한다.
+        assertEquals(Decision.IDLE, send("a", 6_000))
+    }
+
+    @Test
+    fun `같은 화면을 다시 물은 것은 복귀로 세지 않는다`() {
+        // 실패 재시도·눌림 확인 재질의·앵커 재질의는 화면을 옮기지 않은 채 markSent를 다시
+        // 부른다(#456 리뷰 P1). 그대로 세면 이력에 두 줄이 남아 **첫 복귀가 두 번째로
+        // 보이고**, 뒤로 가기를 접지 않겠다는 계약이 깨진다.
+        assertEquals(Decision.SEND, send("목록", 0))
+        tracker.markFailed(200)
+        assertEquals(Decision.SEND, send("목록", 3_000))
+        assertEquals(Decision.SEND, send("상세", 4_000))
+
+        assertEquals(Decision.SEND, send("목록", 5_000))
+    }
+
+    @Test
+    fun `같은 화면 재질의가 섞여도 회전은 접는다`() {
+        // 위 중복 제거가 회전 감지 자체를 죽이지 않는지 반대편에서 못 박는다.
+        send("a", 0)
+        send("a", 500)
+        send("b", 1_000)
+        send("a", 2_000)
+        send("b", 3_000)
+
+        assertEquals(Decision.IDLE, send("a", 4_000))
     }
 
     @Test
@@ -542,6 +569,19 @@ class ScreenStabilityTrackerTest {
         assertEquals(
             Decision.IDLE,
             tracker.onSample(sig("a"), 800, hasLabeledElement = true, sendingBlocked = true),
+        )
+    }
+
+    @Test
+    fun `요청이 막혀도 정체 판정은 삼키지 않는다`() {
+        // 차단은 novel 갈래에서만 받는다 — 이미 보낸 화면의 정체 판정까지 막으면 호출자가
+        // 「계속 볼래요」 뒤에 알릴 근거를 잃는다.
+        send("a", 0)
+        val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
+
+        assertEquals(
+            Decision.STUCK,
+            tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true, sendingBlocked = true),
         )
     }
 

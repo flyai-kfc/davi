@@ -614,8 +614,9 @@ class GuideAccessibilityService : AccessibilityService() {
             guidedTargetChanged = targetSlotChanged,
             // 확인 대기 중에는 묻지 않는다(#139). **판정 단계에서 막는다**(#456) — 아래에서
             // `SEND`를 받아 되돌아서면 [ScreenStabilityTracker.markSent]가 안 불려 판정이
-            // 영영 가라앉지 않는다. 폴링 자체는 그대로 돌아야 아래 redisplay가 사라진
-            // 확인 화면을 되살린다.
+            // 영영 가라앉지 않는다. 폴링은 그대로 돈다(`IDLE`도 `scheduleSample`로 이어진다) —
+            // 위 redisplay는 `when(decision)`보다 앞이라 옛 조기 return에서도 지나갔고,
+            // 이 변경이 지키는 것은 그 뒤의 재예약뿐이다.
             sendingBlocked = GuideSession.awaitingConfirm,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
