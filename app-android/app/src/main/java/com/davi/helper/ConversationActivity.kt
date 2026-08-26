@@ -1734,7 +1734,11 @@ class ConversationActivity : AppCompatActivity() {
      * 같았으니 카드가 아니라 이 계산이 흔든 것이다). 이동량이 정수면 되짚기가 정확해져
      * 두 번째 호출부터 값이 안 변한다.
      *
-     * 바닥이 0인 이유는 [perchTopControlsOnCard] 주석에 있다.
+     * **바닥이 0인 이유는 둘에게 조금 다르다.** ✕는 제자리가 인셋 아래 `davi_spacing_lg`라
+     * 그 바닥이 곧 「상태바를 파고들지 않는다」다([perchTopControlsOnCard]). 칩은 제자리가
+     * 인셋 아래 `davi_step_row_margin_top`이고 건강한 경로에서는 이동량이 +28dp라 바닥에
+     * 안 닿는다 — **걸치기가 무너져 카드가 칩 줄 위로 올라간 경우에만** 걸리고, 그때는
+     * 칩도 제자리에 남는 것이 맞다. 그래서 둘이 같은 함수를 쓴다.
      */
     private fun perchOffset(wantedTop: Float, restingTop: Float): Float =
         (wantedTop - restingTop).coerceAtLeast(0f).roundToInt().toFloat()
