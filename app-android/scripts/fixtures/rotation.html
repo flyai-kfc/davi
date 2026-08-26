@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>회전 픽스처</title>
+<!--
+  스스로 구조가 바뀌는 화면(#456). 회전 감지를 실기기에서 확인할 때 쓴다.
+
+  광고 캐러셀로는 이 확인을 할 수 없다 — 소재를 서버가 내려주므로 도는 날과 안 도는 날이
+  있다. 2026-08-25에는 5.8초 주기로 돌았고 2026-08-26에는 199폴링 내내 얼어 있었다.
+  이 픽스처는 5초마다 요소 수를 넷 ↔ 다섯으로 바꿔 **구조 축**을 결정론적으로 흔든다.
+  조작 이벤트는 발생하지 않으므로 인과 게이트는 닫힌 채다 — 캐러셀과 같은 조건이다.
+
+  쓰는 법: 호스트에서 이 디렉터리를 `python -m http.server 8080`으로 띄우고,
+  `dev-driver.ps1 adb-fix`가 쓰는 것과 같은 방식으로 8080을 reverse한 뒤, 기기 Chrome을
+  `http://localhost:8080/rotation.html`로 연다. 그 뒤 안내 세션을 시작하고(`DebugGoalIntent`)
+  무조작으로 두면 `poll=`의 `s=`가 두 값을 오간다. 회전 감지가 살아 있으면 요청이 화면당
+  네 번에서 멈춘다.
+
+  함정 둘 (2026-08-26 실측)
+  - `<meta charset>`이 없으면 `python -m http.server`가 charset 없는 text/html을 주고
+    Chrome이 한글을 깨뜨린다. 목표 문자열과 화면이 안 맞아 회차가 샌다.
+  - `dev-driver.ps1 shot`은 캡처에 ~1.3초가 걸린다. 3초 간격 두 장이 회전 주기와 겹쳐
+    같은 상태로 나와 화면이 얼어 보인다. 회전 확인은 짧은 간격 여러 장으로 한다.
+-->
+<style>
+  body { font: 20px/1.5 sans-serif; padding: 24px; margin: 0; }
+  h1 { font-size: 24px; }
+  button { display: block; width: 100%; padding: 20px; margin: 12px 0; font-size: 20px; }
+</style>
+<h1 id="state">준비 중</h1>
+<p>사용자 조작 없이 스스로 구조가 바뀌는 화면입니다.</p>
+<div id="slots"></div>
+<script>
+  var wide = false;
+  function render() {
+    var count = wide ? 5 : 4;
+    var html = '';
+    for (var i = 1; i <= count; i++) {
+      html += '<button type="button">항목 ' + i + '</button>';
+    }
+    document.getElementById('slots').innerHTML = html;
+    document.getElementById('state').textContent = wide ? '상태 나' : '상태 가';
+    wide = !wide;
+  }
+  render();
+  setInterval(render, 5000);
+</script>
