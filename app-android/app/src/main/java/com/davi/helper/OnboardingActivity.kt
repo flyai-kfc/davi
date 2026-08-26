@@ -59,15 +59,17 @@ class OnboardingActivity : AppCompatActivity() {
             // **보냈다는 것을 남긴다**(#451). 스위치를 켜는 순간 서비스가 이 표시를 소비하고
             // 다비를 앞으로 불러낸다 — 사용자가 설정에서 스스로 길을 찾아 돌아오지 않아도 된다.
             accessibilityReturn.markSentToSettings()
-            // **설정을 우리 작업 밖으로 띄운다**(#451). 플래그가 없으면 설정 화면이 **다비의
-            // 작업 안에** 쌓여, 되돌아올 다비 화면이 그 밑에 깔린다 — 그러면 서비스가
-            // `startActivity`를 불러도 시스템이 「이미 위에 있다」(result code 3)로 보고
-            // 화면을 안 올린다. **실기기에서 그렇게 실패했다**(2026-08-26 SM-S921N):
-            // BAL은 `BAL_ALLOW_TOKEN`으로 허용됐는데 앞에 있는 것은 여전히 설정이었다.
-            startActivity(
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+            // **플래그를 주지 않는다.** 한때 `NEW_TASK`를 붙였다가 되돌렸다(2026-08-26 · #471
+            // 리뷰 ③) — 설정 앱의 **기존 작업이 있으면 그 작업만 앞으로 끌려와**, 어르신이
+            // 「접근성 서비스 켜기」를 눌렀는데 **아까 보던 와이파이 설정이 뜬다**(실기기 실측:
+            // 플랫폼은 ACCESSIBILITY_SETTINGS를 START했다고 적는데 앞에 선 것은
+            // WifiSettingsActivity였다). 첫 화면에서 앱이 멈추는 것과 같다.
+            //
+            // 플래그 없이 두면 설정이 **다비의 작업 안에** 쌓인다. 그래도 복귀는 된다 —
+            // 대화 화면이 그 작업의 바닥에 있어 `CLEAR_TOP`이 위를 걷어내고 되살린다
+            // (`GuideAccessibilityService.comeForwardIfOnboardingSentUs`). 덤으로 설정에서
+            // 뒤로가기를 누르면 다비로 돌아온다.
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 

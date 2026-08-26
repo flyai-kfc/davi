@@ -1423,8 +1423,18 @@ class ConversationActivity : AppCompatActivity() {
         // 하필 그쪽이 이 이벤트를 넣은 이유의 절반이다.
         val asked = (uiState as? ConversationUiState.Clarifying)?.outcome
             ?: (uiState as? ConversationUiState.Listening)?.clarification
-        asked?.let { GuideTelemetry.clarificationAnswer(answerShapeOf(it, source, answer)) }
-        ConversationLog.answer(source.name.lowercase(), answer)
+        // **둘을 같은 가지에 둔다**(#471 리뷰 1번). 수치는 `?.let` 안이고 전문은 밖이면,
+        // `asked`가 없는 경로가 생기는 순간 **debug 전문만 남고 release가 보는 수치는
+        // 사라진다** — 이 PR이 자유 발화에서 고친 것과 **같은 모양의 비대칭**이다.
+        // 지금 호출 경로는 둘뿐이고(보기 탭 → 구체화 · 직접 말하기 → 청취) 둘 다 질문이 있는
+        // 상태에서만 부르므로 else 가지는 안 온다. **그래도 남긴다** — 세 번째 경로가 생기면
+        // 조용히 관측을 잃는 대신 이 줄이 그것을 말한다.
+        if (asked != null) {
+            GuideTelemetry.clarificationAnswer(answerShapeOf(asked, source, answer))
+            ConversationLog.answer(source.name.lowercase(), answer)
+        } else {
+            GuideTelemetry.voiceState("clarification_answer_without_question")
+        }
         when (val outcome = voiceSession.answerCurrent(source, answer)) {
             is VoiceDialogueSession.AnswerOutcome.NextQuestion -> showClarification(outcome.outcome)
             is VoiceDialogueSession.AnswerOutcome.FinalRequest -> {
