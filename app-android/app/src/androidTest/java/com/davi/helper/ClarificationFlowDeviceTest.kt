@@ -258,6 +258,28 @@ class ClarificationFlowDeviceTest {
     }
 
     @Test
+    fun chipKeepsItsSlotWhenItDoesNotStandSoTheCardDoesNotJump() {
+        // #452. 칩은 열의 흐름 자식이라 GONE으로 걷으면 아래가 통째로 63dp 올라가고,
+        // 카드 상단선에 걸린 ✕가 따라 올라가 **상태바에 16dp 잘렸다**(실측: 질문 1개짜리
+        // 화면 전부, 배율 1.0에서도). 판정은 [stepChipSlotOf]에 있지만 **GONE/INVISIBLE로
+        // 옮기는 마지막 한 걸음은 뷰에서만 확인된다** — 여기가 그 자리다.
+        val current = launchConversation()
+
+        showClarification(current, questionCount = 2)
+        val chip = current.findViewById<View>(R.id.question_progress)
+        assertEquals(View.VISIBLE, chip.visibility)
+        val cardTopWithChip = viewTopInWindow(current, R.id.card_question_wrap)
+
+        showClarification(current, questionCount = 1)
+        // **GONE이 아니라 INVISIBLE이다** — 안 서지만 자리는 먹는다.
+        assertEquals(View.INVISIBLE, chip.visibility)
+        assertTrue("칩이 자리를 안 먹으면 카드가 뛴다", chip.height > 0)
+
+        // 자리를 먹는다는 말의 뜻이 이것이다 — 카드가 안 움직인다.
+        assertEquals(cardTopWithChip, viewTopInWindow(current, R.id.card_question_wrap))
+    }
+
+    @Test
     fun emptyOptionsRepeatedNoMatchKeepsVisibleExitThatEndsTheDialogue() {
         val current = launchConversation()
         showClarification(current, questionCount = 1, optionCount = 0)
@@ -439,6 +461,14 @@ class ClarificationFlowDeviceTest {
             setState.invoke(current, state)
         }
         instrumentation.waitForIdleSync()
+    }
+
+    /** 창 기준 뷰 윗변. **화면 좌표가 아니라 창 좌표다** — 상태바 인셋이 섞이지 않는다. */
+    private fun viewTopInWindow(current: ConversationActivity, viewId: Int): Int {
+        val view = current.findViewById<View>(viewId)
+        val location = IntArray(2)
+        instrumentation.runOnMainSync { view.getLocationInWindow(location) }
+        return location[1]
     }
 
     private fun showClarification(
