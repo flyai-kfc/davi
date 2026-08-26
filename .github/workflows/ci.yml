@@ -4,9 +4,15 @@ name: CI
 # 검사와 Android만 돌린다(#363). 서버·인프라 런타임은 해당 경로에서 함께 도는 Azure
 # development deploy가 image 빌드와 /health로 확인한다. pytest/ruff, eval 검사, 앱 계약 파일의
 # 서버 드리프트 검사는 병합 후 다시 돌지 않는다는 공백을 감수한 비용 절감 결정이다.
+#
+# **draft PR에서는 비싼 잡을 돌리지 않는다.** GitHub의 `pull_request` 기본 타입은 draft에서도
+# 그대로 발화하므로(실측 — draft로 연 PR에서 CI가 돌았다) 안 돌게 하려면 잡마다 명시해야 한다.
+# `ready_for_review`를 types에 **반드시 함께** 넣는다 — 기본 타입에 없어서, 빠지면 draft를
+# Ready로 올려도 CI가 영영 안 돈다(#468).
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -171,7 +177,10 @@ jobs:
   bash32:
     name: macOS Bash 3.2 설치 스크립트
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.devscripts == 'true'
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.devscripts == 'true'
+      && github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 5
     defaults:
@@ -198,7 +207,9 @@ jobs:
   android:
     name: Android (debug/release APK + test)
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    if: >-
+      needs.changes.outputs.android == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
