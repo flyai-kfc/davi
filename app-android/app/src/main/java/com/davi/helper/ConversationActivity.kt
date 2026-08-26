@@ -991,9 +991,13 @@ class ConversationActivity : AppCompatActivity() {
         binding.cardQuestionContainer.updatePadding(
             top = resources.getDimensionPixelSize(
                 when {
-                    collapsed -> R.dimen.davi_spacing_xl
-                    model.guidingVisible || model.inClarificationFlow ->
-                        R.dimen.davi_card_padding_top_guiding
+                    // **구체화는 접혔든 펼쳤든 배지가 없다.** 이 44dp는 배지를 피하려고 잡아
+                    // 둔 값인데, 접힘에서만 걷고 펼침에는 남겨 두었다 — 근거는 같은데 한쪽만
+                    // 적용된 상태였다. 그 20dp가 **「직접 말하기」를 19dp 잘라 먹고 있었다**
+                    // (실측 320×686dp: 마지막 버튼이 72dp 규격인데 53dp만 보였다). 안내 화면
+                    // (guidingVisible)에는 배지가 서므로 그쪽은 그대로 둔다.
+                    model.inClarificationFlow || collapsed -> R.dimen.davi_spacing_xl
+                    model.guidingVisible -> R.dimen.davi_card_padding_top_guiding
                     else -> R.dimen.davi_card_padding_top_davi
                 },
             ),

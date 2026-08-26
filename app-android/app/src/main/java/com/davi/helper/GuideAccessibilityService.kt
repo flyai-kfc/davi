@@ -213,12 +213,35 @@ class GuideAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * **#451 1단계 실측 — 구현이 아니라 측정이다.**
+     *
+     * 사용자가 설정에서 접근성 스위치를 켜면 안드로이드가 여기를 부른다. 그 지점에서 다비를
+     * 앞으로 띄울 수 있으면 시니어가 **설정에 갇히지 않는다.** 그런데 안드로이드 10부터
+     * 백그라운드 액티비티 시작이 막혀 있고, **접근성 서비스가 그 예외에 드는지는 기기·제조사·
+     * 버전마다 다를 수 있다.** 그래서 구현보다 실측이 먼저다.
+     *
+     * **debug에서만 돈다** — release에는 이 경로가 없다. 결과를 보고 나면 이 함수는 지워지고
+     * 되는 쪽(직접 띄우기) 또는 안 되는 쪽(알림)의 구현이 그 자리에 들어간다.
+     */
+    private fun probeForegroundReturn() {
+        if (!BuildConfig.DEBUG) return
+        val started = runCatching {
+            startActivity(
+                Intent(this, ConversationActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+        Log.i(TAG, "a11y_return_probe: startActivity called, threw=${started.exceptionOrNull()}")
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // **서비스가 살아났다는 것이 곧 "안내 기능이 꺼졌어요" 알림의 전제가 사라졌다는 뜻이다**
         // (#212 · PR #240 리뷰). AUTO_CANCEL은 탭에만 걸리므로, 사용자가 알림을 누르지 않고
         // 설정에서 접근성을 다시 켜면 그 알림이 계속 남아 있었다. 첫 바인드에서는 지울 것이 없다.
         GuideNotifier.clear(this)
+        probeForegroundReturn()
         // 칩 클릭은 메인 스레드다(GuideSession의 스레드 계약 충족). 세션이 끝나면 위 리스너가
         // 오버레이를 걷는데, 그 경로가 mainHandler.post라 클릭 디스패치 안에서 자기 창을 걷지 않는다.
         // 로그를 남기는 이유: 사용자가 끝낸 세션은 그 외에 아무 흔적도 안 남아, 로그만 보면
