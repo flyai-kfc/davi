@@ -300,6 +300,21 @@ object GuideTelemetry {
         )
     }
 
+    /**
+     * 접근성을 켠 사람을 다비로 되돌렸다(#451). [failure]가 있으면 그 기기에서 백그라운드
+     * 액티비티 시작이 막혔다는 뜻이고, 차선을 만들지 말지의 근거가 된다.
+     */
+    fun accessibilityReturn(failure: String? = null) {
+        Log.i(
+            GuideAccessibilityService.TAG,
+            event(
+                "accessibility_return",
+                "outcome" to if (failure == null) "started" else "blocked",
+                "exception_class" to failure,
+            ),
+        )
+    }
+
     internal fun event(name: String, vararg fields: Pair<String, Any?>): String = buildString {
         append("event=").append(name)
         fields.forEach { (key, value) ->

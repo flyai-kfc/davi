@@ -213,12 +213,45 @@ class GuideAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * **온보딩이 설정으로 보낸 사람을 여기서 되돌린다**(#451).
+     *
+     * 이 콜백은 사용자가 스위치를 켠 순간만이 아니라 부팅·재설치·안내 중 권한 회수 후
+     * 복구에도 불린다. 아무 때나 다비가 튀어나오면 그게 더 나쁘므로,
+     * [AccessibilityReturnStore]의 **일회용 표시**가 있을 때만 앞으로 나온다 — 그 표시는
+     * 온보딩이 설정으로 보낼 때만 찍히고 여기서 소비되며 사라진다.
+     *
+     * **되는 것은 실측으로 확인했다**(SM-S918N · Android 15): `BAL_ALLOW_PERMISSION`으로
+     * 백그라운드 액티비티 시작이 허용됐고 차단 로그는 없었다. 예외의 근거가 접근성 서비스로
+     * 묶여 있다는 것 자체라 따로 받아 둘 권한이 없다. **그래도 던지는 것은 감싼다** —
+     * 제조사·버전에 따라 막힐 수 있고, 그때 서비스가 죽으면 **접근성 자체가 안 붙어**
+     * 고치려던 것보다 나쁜 상태가 된다.
+     */
+    private fun comeForwardIfOnboardingSentUs() {
+        if (!AccessibilityReturnStore(this).consume()) return
+        // **CLEAR_TOP이 SINGLE_TOP보다 맞다.** 온보딩이 아직 스택에 남아 있는데 그냥 얹으면
+        // 뒤로가기가 「권한을 켜세요」 화면으로 돌아가 이미 켠 사람을 되돌린다. CLEAR_TOP은
+        // 그 위를 걷어내고 대화 화면을 그 자리에 세운다.
+        val intent = Intent(this, ConversationActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val thrown = try {
+            startActivity(intent)
+            null
+        } catch (e: Exception) {
+            e
+        }
+        // **실패해도 로그로만 남긴다.** 차선(알림으로 「다비로 돌아가기」)은 실측이 「된다」로
+        // 나와서 안 만들었다 — 막히는 기기가 실제로 나오면 이 줄이 그 근거가 된다.
+        GuideTelemetry.accessibilityReturn(thrown?.javaClass?.simpleName)
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // **서비스가 살아났다는 것이 곧 "안내 기능이 꺼졌어요" 알림의 전제가 사라졌다는 뜻이다**
         // (#212 · PR #240 리뷰). AUTO_CANCEL은 탭에만 걸리므로, 사용자가 알림을 누르지 않고
         // 설정에서 접근성을 다시 켜면 그 알림이 계속 남아 있었다. 첫 바인드에서는 지울 것이 없다.
         GuideNotifier.clear(this)
+        comeForwardIfOnboardingSentUs()
         // 칩 클릭은 메인 스레드다(GuideSession의 스레드 계약 충족). 세션이 끝나면 위 리스너가
         // 오버레이를 걷는데, 그 경로가 mainHandler.post라 클릭 디스패치 안에서 자기 창을 걷지 않는다.
         // 로그를 남기는 이유: 사용자가 끝낸 세션은 그 외에 아무 흔적도 안 남아, 로그만 보면

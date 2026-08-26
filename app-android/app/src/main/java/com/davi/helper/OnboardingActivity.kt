@@ -56,7 +56,18 @@ class OnboardingActivity : AppCompatActivity() {
         }
 
         binding.btnAccessibility.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            // **보냈다는 것을 남긴다**(#451). 스위치를 켜는 순간 서비스가 이 표시를 소비하고
+            // 다비를 앞으로 불러낸다 — 사용자가 설정에서 스스로 길을 찾아 돌아오지 않아도 된다.
+            accessibilityReturn.markSentToSettings()
+            // **설정을 우리 작업 밖으로 띄운다**(#451). 플래그가 없으면 설정 화면이 **다비의
+            // 작업 안에** 쌓여, 되돌아올 다비 화면이 그 밑에 깔린다 — 그러면 서비스가
+            // `startActivity`를 불러도 시스템이 「이미 위에 있다」(result code 3)로 보고
+            // 화면을 안 올린다. **실기기에서 그렇게 실패했다**(2026-08-26 SM-S921N):
+            // BAL은 `BAL_ALLOW_TOKEN`으로 허용됐는데 앞에 있는 것은 여전히 설정이었다.
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 
@@ -70,10 +81,16 @@ class OnboardingActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (canStartGuide()) {
+            // **여기서도 표시를 지운다**(#451). 사용자가 설정에서 손으로 돌아오면 이 화면이
+            // 먼저 대화 화면을 띄우는데, 그때 표시를 남겨 두면 **다음 부팅에서 소비되어**
+            // 아무 맥락 없이 앱이 튀어나온다.
+            accessibilityReturn.clear()
             startActivity(Intent(this, ConversationActivity::class.java))
             finish()
         }
     }
+
+    private val accessibilityReturn by lazy { AccessibilityReturnStore(this) }
 
     companion object {
         /** 안내 중 접근성이 꺼져 서비스가 되돌린 복귀인가(#190). */
