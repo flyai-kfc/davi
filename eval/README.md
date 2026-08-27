@@ -148,7 +148,7 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 행동이 있더라도 사람 검토가 `accepted`로 끝난 fixture만 후보 모델 + judge의 픽스처당 2회 호출
 대상이 된다.
 
-## 삼성 시계 picker·자유 입력 fixture
+## 삼성 시계 picker·자유 입력과 인증 코드 fixture
 
 `samsung_clock_alarm_picker_values.json`은 SM-S921N / Android 15 / One UI 7.0의 새 알람
 편집 화면에서 실제로 전송된 29개 요소를 익명화해 보존한다(#462). 오전/오후 선택값은 클릭 가능한
@@ -174,8 +174,17 @@ hint/name 폴백 어느 쪽에도 보존하지 못해 n2 label을 빈 문자열�
 두 fixture 모두 동적 날짜는 `다음 날`, 기본 알람음의 고유 이름은 `기본 소리`로 치환했다.
 새 알람은 저장하지 않았고, 실제 모델 대신 키가 필요 없는 Stub으로 로딩·계약·PII 경로만
 확인했으므로 `observed_model_action`을 추측해 넣지 않는다.
-비밀번호·인증 코드 화면의 실기기 fixture는 아직 없으며, 원본을 확보하기 전에는 추측해 만들지
-않는다.
+`google_auth_totp_input_filled.json`은 Chrome에서 시작한 실제 Google 인증 흐름의 전면
+package가 `com.google.android.gms`로 전환된 상태에서 수집했다. 빈 입력칸에 합성 6자리 값만
+넣고 제출하지 않았으며, 실기기 접근성 ID `totpPin`을 일반 의미 표지로 판정한 앱은 실제 값을
+wire 전에 제외하고 n3을 `label="인증 코드 입력"`으로 전송했다. IME가 열린 상태였고 요청은
+요소 5개 중 editable 1개를 포함했다. 계정·페이지 문구는 `일반 요소 N`으로 치환했고 원본 트리,
+합성 값, 계정 식별값, 모델 응답은 저장하지 않았다.
+
+실기기 probe는 debug E2E 경계가 상세 화면 로그를 억제하므로 `GuideSvc`에는
+`e2e control=start` / `e2e control=stop`만 남았다. 대신 로컬 Stub 수신 경계에서 package,
+요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다. 비밀번호 화면 fixture는 아직
+없으며 원본을 확보하기 전에는 추측해 만들지 않는다.
 
 ## 평가 계층
 
