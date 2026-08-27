@@ -42,6 +42,10 @@ py -3.12 judge.py
 macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 기본 실행 경로가 CI의
 `eval 하니스 스모크`와 동일하다. 없는 `main.py`, 멀티모델 CLI, `runs/` 출력을 전제하지 않는다.
 
+Ruff 린트 규칙은 `pyproject.toml`에 둔다. 모노레포 형제 `server/`를 import하기 전에 `sys.path`를
+조정해야 하는 루트 진입 파일 `harness.py`·`judge.py`·`completion_ab.py`만 E402 예외다(#489).
+같은 basename의 중첩 파일까지 예외가 번지지 않도록 패턴은 `./`로 루트에 앵커한다.
+
 ## 기대값 경계
 
 - 스텁으로 로더, PII, 요청/응답 계약, 파이프라인 실행만 검증한다.
