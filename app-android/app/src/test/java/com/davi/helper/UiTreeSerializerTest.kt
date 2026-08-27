@@ -503,19 +503,31 @@ class UiTreeSerializerTest {
 
     @Test
     fun `민감 입력 이름은 일반 의미 표지로 찾고 spinner 같은 부분 일치는 제외한다`() {
-        listOf(
-            arrayOf<CharSequence?>("인증 번호", null),
-            arrayOf<CharSequence?>("Security code", null),
-            arrayOf<CharSequence?>(null, "com.example:id/otp_field"),
-            arrayOf<CharSequence?>(null, "com.example:id/pinEditText"),
-            arrayOf<CharSequence?>(null, "com.example:id/OTPField"),
-            arrayOf<CharSequence?>(null, "com.example:id/verification_code"),
-            arrayOf<CharSequence?>(null, "com.example:id/securityCode"),
-        ).forEach { values ->
-            assertTrue(UiTreeSerializer.isSensitiveInputIdentity(*values))
-        }
-        assertFalse(UiTreeSerializer.isSensitiveInputIdentity("spinner value"))
-        assertFalse(UiTreeSerializer.isSensitiveInputIdentity("shipping address"))
+        assertSensitiveIdentity(hintText = "인증 번호")
+        assertSensitiveIdentity(hintText = "Security code")
+        assertSensitiveIdentity(resourceId = "com.example:id/otp_field")
+        assertSensitiveIdentity(resourceId = "com.example:id/pinEditText")
+        assertSensitiveIdentity(resourceId = "com.example:id/OTPField")
+        assertSensitiveIdentity(resourceId = "com.example:id/verification_code")
+        assertSensitiveIdentity(resourceId = "com.example:id/securityCode")
+        assertFalse(sensitiveIdentity(hintText = "spinner value"))
+        assertFalse(sensitiveIdentity(hintText = "shipping address"))
+    }
+
+    @Test
+    fun `민감 표지는 접근성 속성 경계를 이어 붙이지 않고 resource id의 지도 pin을 제외한다`() {
+        assertFalse(
+            sensitiveIdentity(
+                hintText = "code input",
+                resourceId = "com.example:id/map_security",
+            ),
+        )
+        assertFalse(sensitiveIdentity(resourceId = "com.example:id/map_pin_label"))
+        assertFalse(sensitiveIdentity(resourceId = "com.pin.example:id/search_input"))
+        assertFalse(sensitiveIdentity(hintText = "map pin label"))
+        assertTrue(sensitiveIdentity(hintText = "PIN"))
+        assertTrue(sensitiveIdentity(hintText = "Enter PIN"))
+        assertTrue(sensitiveIdentity(resourceId = "com.example:id/pin_input"))
     }
 
     @Test
@@ -620,4 +632,25 @@ class UiTreeSerializerTest {
         sensitiveIdentity = sensitiveIdentity,
         limitedSelection = limitedSelection,
     )
+
+    private fun sensitiveIdentity(
+        hintText: CharSequence? = null,
+        name: CharSequence? = null,
+        contentDescription: CharSequence? = null,
+        resourceId: CharSequence? = null,
+    ): Boolean = UiTreeSerializer.isSensitiveInputIdentity(
+        hintText = hintText,
+        name = name,
+        contentDescription = contentDescription,
+        resourceId = resourceId,
+    )
+
+    private fun assertSensitiveIdentity(
+        hintText: CharSequence? = null,
+        name: CharSequence? = null,
+        contentDescription: CharSequence? = null,
+        resourceId: CharSequence? = null,
+    ) {
+        assertTrue(sensitiveIdentity(hintText, name, contentDescription, resourceId))
+    }
 }

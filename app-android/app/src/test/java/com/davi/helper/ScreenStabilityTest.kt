@@ -103,6 +103,38 @@ class ScreenSignatureTest {
     }
 
     @Test
+    fun `병합 행의 타깃 앵커는 picker 값만 숫자로 보존한다`() {
+        val before = UiElement(
+            nodeId = "n1",
+            label = "안 읽음 12 분 30",
+            role = "FrameLayout",
+            clickable = true,
+            signatureLabel = "안 읽음 12 분 30",
+            signatureTracksEditableValue = true,
+            targetAnchorLabel = "안 읽음 # 분 30",
+        )
+        val unrelatedCountChanged = before.copy(
+            label = "안 읽음 13 분 30",
+            signatureLabel = "안 읽음 13 분 30",
+            targetAnchorLabel = "안 읽음 # 분 30",
+        )
+        val pickerChanged = before.copy(
+            label = "안 읽음 12 분 31",
+            signatureLabel = "안 읽음 12 분 31",
+            targetAnchorLabel = "안 읽음 # 분 31",
+        )
+
+        assertEquals(
+            ScreenSignature.stableLabelOf(before),
+            ScreenSignature.stableLabelOf(unrelatedCountChanged),
+        )
+        assertNotEquals(
+            ScreenSignature.stableLabelOf(before),
+            ScreenSignature.stableLabelOf(pickerChanged),
+        )
+    }
+
+    @Test
     fun `picker 주변 버튼의 숫자도 시그니처에 그대로 들어간다`() {
         val before = screen(
             UiElement(nodeId = "n1", label = "29", role = "Button", clickable = true),

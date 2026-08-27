@@ -20,8 +20,8 @@ import android.view.accessibility.AccessibilityWindowInfo
  *
  * 화면 요소와 스크롤/page/IME 상태를 함께 채운다. `has_scrollable_element`는 보이는 트리 전체에서
  * 스크롤 가능 노드나 scroll action을 하나라도 관측했는지를 나타낸다(C10). IME는 창의 type만
- * 관측하고 키보드의 키 노드는 순회하지 않는다. editable 값은 비밀번호·인증 코드를 제외한 뒤
- * 일반 label과 같은 1차 마스킹을 거쳐 전달한다(#462).
+ * 관측하고 키보드의 키 노드는 순회하지 않는다. editable 값은 비밀번호 상태나 일반 의미 표지로
+ * 인증·보안 코드라고 식별된 값을 제외한 뒤 일반 label과 같은 1차 마스킹을 거쳐 전달한다(#462).
  */
 object UiTreeSerializer {
 
@@ -119,6 +119,8 @@ object UiTreeSerializer {
         "일회용코드",
     )
     private val SENSITIVE_ENGLISH_IDENTITY_TOKENS = setOf("password", "passcode", "pin", "otp")
+    private val SENSITIVE_ENGLISH_NON_PIN_TOKENS = SENSITIVE_ENGLISH_IDENTITY_TOKENS - "pin"
+    private val UPPERCASE_PIN_TOKEN = Regex("(?:^|[^A-Za-z])PIN(?:$|[^A-Za-z])")
     private val SENSITIVE_ENGLISH_IDENTITIES = setOf(
         "verificationcode",
         "securitycode",
@@ -135,6 +137,7 @@ object UiTreeSerializer {
         val label: String,
         val signatureLabel: String,
         val tracksEditableValue: Boolean = false,
+        val targetAnchorLabel: String? = null,
     )
 
     /**
@@ -355,6 +358,7 @@ object UiTreeSerializer {
                         obscured = occluded,
                         signatureLabel = text.signatureLabel,
                         signatureTracksEditableValue = text.tracksEditableValue,
+                        targetAnchorLabel = text.targetAnchorLabel,
                     ),
                 )
                 emitted = true
@@ -371,6 +375,7 @@ object UiTreeSerializer {
                         obscured = occluded,
                         signatureLabel = ownTextValue.signatureLabel,
                         signatureTracksEditableValue = ownTextValue.tracksEditableValue,
+                        targetAnchorLabel = ownTextValue.targetAnchorLabel,
                     ),
                 )
                 emitted = true
@@ -570,6 +575,7 @@ object UiTreeSerializer {
         obscured: Boolean = false,
         signatureLabel: String? = null,
         signatureTracksEditableValue: Boolean = false,
+        targetAnchorLabel: String? = null,
     ): UiElement {
         ctx.counter++
         val r = boundsOf(node)
@@ -578,6 +584,8 @@ object UiTreeSerializer {
         val maskedSignatureLabel = signatureLabel
             ?.let { normalizeAndMaskLabel(it, ctx.masker) }
             ?.takeUnless { it == maskedLabel && !signatureTracksEditableValue }
+        val maskedTargetAnchorLabel = targetAnchorLabel
+            ?.let { normalizeAndMaskLabel(it, ctx.masker) }
         return UiElement(
             nodeId = "n${ctx.counter}",
             // 줄바꿈·중복 공백을 한 칸으로 눌러 로그와 프롬프트를 읽을 수 있게 만든다
@@ -611,6 +619,7 @@ object UiTreeSerializer {
             prevSwipeDirection = scroll?.axis?.prev,
             signatureLabel = maskedSignatureLabel,
             signatureTracksEditableValue = signatureTracksEditableValue,
+            targetAnchorLabel = maskedTargetAnchorLabel,
         )
     }
 
@@ -724,10 +733,10 @@ object UiTreeSerializer {
             val hint = node.hintText
             val name = supplementalDescriptionOf(node)
             val sensitive = isSensitiveInputIdentity(
-                hint,
-                name,
-                node.contentDescription,
-                node.viewIdResourceName,
+                hintText = hint,
+                name = name,
+                contentDescription = node.contentDescription,
+                resourceId = node.viewIdResourceName,
             )
             return editableTextProjection(
                 text = node.text,
@@ -930,8 +939,9 @@ object UiTreeSerializer {
      * editable 값의 허용·제외·시그니처 투영을 Android 객체 없이 고정하는 단일 경계(#462).
      *
      * [label]에는 자유 입력값도 포함하지만 호출자가 일반 label과 같은 1차 마스킹을 적용한다.
-     * 비밀번호·인증 코드는 값과 값이 섞였을 수 있는 접근성 이름을 제외하고 안전한 일반 이름으로
-     * 바꾼다. 자유 입력은 [signatureLabel]에서 값만 고정해 타이핑마다 재호출하지 않고,
+     * 비밀번호 상태나 일반 의미 표지로 식별한 인증 코드는 값과 값이 섞였을 수 있는 접근성 이름을
+     * 제외하고 안전한 일반 이름으로 바꾼다. 자유 입력은 [signatureLabel]에서 값만 고정해
+     * 타이핑마다 재호출하지 않고,
      * NumberPicker 같은 제한 선택값은 실제 값을 남긴다.
      */
     internal fun editableTextProjection(
@@ -972,17 +982,53 @@ object UiTreeSerializer {
         else -> "$context $value"
     }
 
-    internal fun isSensitiveInputIdentity(vararg values: CharSequence?): Boolean {
-        val searchable = values.asSequence()
-            .mapNotNull(::normalizedText)
-            .joinToString(" ")
-            .let(::splitIdentityWords)
-        val tokens = searchable.split(' ').filter(String::isNotEmpty)
+    internal fun isSensitiveInputIdentity(
+        hintText: CharSequence?,
+        name: CharSequence?,
+        contentDescription: CharSequence?,
+        resourceId: CharSequence?,
+    ): Boolean = sequenceOf(hintText, name, contentDescription)
+        .filterNotNull()
+        .any(::isSensitiveTextIdentity) || isSensitiveResourceIdentity(resourceId)
+
+    private fun isSensitiveTextIdentity(value: CharSequence): Boolean {
+        val tokens = identityTokens(value)
+        return matchesSensitiveIdentity(
+            tokens,
+            allowStandalonePin = UPPERCASE_PIN_TOKEN.containsMatchIn(value),
+        )
+    }
+
+    private fun isSensitiveResourceIdentity(value: CharSequence?): Boolean {
+        val identifier = value?.toString()?.substringAfterLast('/') ?: return false
+        val tokens = identityTokens(identifier)
+        if (matchesSensitiveIdentity(tokens, allowStandalonePin = false)) return true
+        val pinIndex = tokens.indexOf("pin")
+        if (pinIndex < 0) return false
+        val inputContext = setOf("code", "number", "input", "field", "edit", "edittext")
+        return tokens.getOrNull(pinIndex + 1) in inputContext
+    }
+
+    private fun matchesSensitiveIdentity(
+        tokens: List<String>,
+        allowStandalonePin: Boolean,
+    ): Boolean {
         val compact = tokens.joinToString("")
-        return tokens.any(SENSITIVE_ENGLISH_IDENTITY_TOKENS::contains) ||
+        val sensitiveTokens = if (allowStandalonePin) {
+            SENSITIVE_ENGLISH_IDENTITY_TOKENS
+        } else {
+            SENSITIVE_ENGLISH_NON_PIN_TOKENS
+        }
+        return tokens.any(sensitiveTokens::contains) ||
             SENSITIVE_ENGLISH_IDENTITIES.any(compact::contains) ||
             SENSITIVE_KOREAN_IDENTITIES.any(compact::contains)
     }
+
+    private fun identityTokens(value: CharSequence): List<String> = normalizedText(value)
+        ?.let(::splitIdentityWords)
+        ?.split(' ')
+        ?.filter(String::isNotEmpty)
+        .orEmpty()
 
     /** resource-id의 구분자와 camel/acronym 경계를 공백으로 바꿔 `pin` 부분 문자열 오탐을 막는다. */
     private fun splitIdentityWords(value: String): String = buildString {
@@ -1097,11 +1143,13 @@ object UiTreeSerializer {
         val labels = mutableListOf<String>()
         val signatures = mutableListOf<String>()
         val trackedValues = mutableListOf<Boolean>()
-        collectDescendantText(node, labels, signatures, trackedValues, 0)
+        val targetAnchors = mutableListOf<String>()
+        collectDescendantText(node, labels, signatures, trackedValues, targetAnchors, 0)
         return TextProjection(
             labels.joinToString(" "),
             signatures.joinToString(" "),
             trackedValues.any { it },
+            targetAnchors.joinToString(" "),
         )
     }
 
@@ -1112,6 +1160,7 @@ object UiTreeSerializer {
         out: MutableList<String>,
         signatureOut: MutableList<String>,
         trackedValues: MutableList<Boolean>,
+        targetAnchorOut: MutableList<String>,
         depth: Int,
     ) {
         if (depth >= MAX_MERGE_DEPTH || out.size >= MAX_LABEL_PARTS) return
@@ -1125,11 +1174,25 @@ object UiTreeSerializer {
                     out.add(it.label)
                     signatureOut.add(it.signatureLabel)
                     trackedValues.add(it.tracksEditableValue)
+                    targetAnchorOut.add(
+                        it.targetAnchorLabel ?: if (it.tracksEditableValue) {
+                            it.signatureLabel
+                        } else {
+                            ScreenSignature.normalizeTargetAnchorLabel(it.signatureLabel)
+                        },
+                    )
                 }
             }
-            // 편집 노드 아래의 구현별 자손에 입력 원문이 중복 노출될 수 있어 더 내려가지 않는다.
+            // 구현별 자손이 editable 값의 마스킹·민감 입력 판정을 우회하지 않게 더 내려가지 않는다.
             if (child.isEditable) continue
-            collectDescendantText(child, out, signatureOut, trackedValues, depth + 1)
+            collectDescendantText(
+                child,
+                out,
+                signatureOut,
+                trackedValues,
+                targetAnchorOut,
+                depth + 1,
+            )
         }
     }
 

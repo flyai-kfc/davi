@@ -96,6 +96,7 @@ class GuideApiClientTest {
         assertFalse(body.contains("기기 내부 시그니처"))
         assertFalse(body.contains("signatureLabel"))
         assertFalse(body.contains("signatureTracksEditableValue"))
+        assertFalse(body.contains("targetAnchorLabel"))
     }
 
     @Test

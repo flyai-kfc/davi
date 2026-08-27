@@ -5,10 +5,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
 /**
- * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
+ * 앱 <-> 서버 계약의 Kotlin 판. **wire 기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
  * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C15)을 먼저 읽고 양쪽을 같이 고친다.
+ * 단, `@Transient`가 붙은 시그니처·타깃 앵커 투영은 기기 전용이며 wire 필드가 아니다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -20,9 +21,9 @@ data class UiElement(
     val role: String = "",
     val clickable: Boolean = false,
     /**
-     * 텍스트 입력을 받을 수 있는 요소인가. [label]에는 현재 값도 들어올 수 있지만, 기기 1차와
-     * 서버 2차의 패턴 마스킹을 일반 label과 똑같이 거친다(#462). 비밀번호·인증 코드 값은
-     * 직렬화 전에 제외한다.
+     * 텍스트 입력을 받을 수 있는 요소인가. [label]에는 입력칸 이름과 현재 값이 합쳐져 들어올 수
+     * 있지만, 기기 1차와 서버 2차의 패턴 마스킹을 일반 label과 똑같이 거친다(#462). 비밀번호
+     * 값과 일반 의미 표지로 인증·보안 코드라고 식별된 값은 직렬화 전에 제외한다.
      */
     val editable: Boolean = false,
     /** 현재 접근성 입력 포커스를 가진 요소인가. */
@@ -83,6 +84,8 @@ data class UiElement(
     @Transient internal val signatureLabel: String? = null,
     /** 제한 선택 editable 값이면 [signatureLabel]의 숫자도 타깃 앵커 변화로 보존한다. */
     @Transient internal val signatureTracksEditableValue: Boolean = false,
+    /** 병합 label에서 제한 선택 파트의 값만 보존한 기기 내부 타깃 앵커 투영. */
+    @Transient internal val targetAnchorLabel: String? = null,
 )
 
 @Serializable

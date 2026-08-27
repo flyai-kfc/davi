@@ -127,8 +127,9 @@ class UiElement(BaseModel):
     label: str = ""
     role: str = ""
     clickable: bool = False
-    # editable 값도 label에 올 수 있다(#462). 일반 label과 같은 앱 1차·서버 2차 패턴
-    # 마스킹을 거치며, 비밀번호·인증 코드 값은 앱이 직렬화 전에 제외한다.
+    # editable label은 입력칸 이름과 현재 값이 합쳐진 문자열일 수 있다(#462). 일반 label과 같은
+    # 앱 1차·서버 2차 패턴 마스킹을 거치며, 비밀번호 상태나 일반 의미 표지로 인증·보안 코드라고
+    # 식별된 값은 앱이 직렬화 전에 제외한다.
     editable: bool = False
     focused: bool = False
 

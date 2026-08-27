@@ -103,11 +103,13 @@ object ScreenSignature {
      * 움직인다 — 그런데 그 화면에서는 앵커가 **유일하게 열리는 문**이다. 시계 앱은 진입 탭이
      * 이미 클릭을 쏴 조용함 문이 닫혀 있고, picker 스크롤은 CLICKED가 아니라(#380이 SCROLLED를
      * 뺐다) 인과 게이트도 안 열린다. 「안 읽음 12→13」과는 serializer가 자유 입력과 다른
-     * [UiElement.signatureLabel] 투영으로 가른다. wire에서
+     * [UiElement.signatureLabel] 투영으로 가른다. 병합 행은 [UiElement.targetAnchorLabel]에서
+     * 제한 선택 파트만 보존해 행의 다른 숫자까지 예외로 만들지 않는다. wire에서
      * 역직렬화했거나 테스트가 직접 만든 옛 요소에는 그 메타가 없으므로, 짧은 숫자 EditText의
      * 기존 예외도 호환 경계로 유지한다.
      */
     internal fun stableLabelOf(element: UiElement): String {
+        element.targetAnchorLabel?.let { return it }
         val projected = element.signatureLabel ?: element.label
         return if (
             element.signatureTracksEditableValue ||
@@ -120,9 +122,11 @@ object ScreenSignature {
         ) {
             projected
         } else {
-            ANCHOR_DIGITS.replace(projected, "#")
+            normalizeTargetAnchorLabel(projected)
         }
     }
+
+    internal fun normalizeTargetAnchorLabel(label: String): String = ANCHOR_DIGITS.replace(label, "#")
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
