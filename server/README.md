@@ -538,6 +538,33 @@ workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, 
 - 개인 기기는 옵트인하지도 등록하지도 않는다 — 공기계(SM-S921N)만(SPEC §3). 옵트인 없는
   빌드와 release는 값을 계산하지도 보내지도 않는다.
 
+## 스텁 프로브로 완료 재확인 루프를 재현한다 (#480)
+
+서버가 `done`을 보냈는데 앱이 그 근거를 못 믿는 구간 — **미검증 `done`이 상한까지 반복되는
+백오프 루프** — 은 실모델로는 재현할 수 없다. 모델이 근거 없는 완료를 마음대로 내주지 않기
+때문이다. 스텁 LLM에 손잡이 둘을 두어 그 구간을 만든다.
+
+```bash
+DAVI_ENV=development DAVI_USE_STUB_LLM=true \
+DAVI_STUB_FORCE_DONE=true DAVI_STUB_DELAY_MS=5500 \
+  uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config app/logging.json
+```
+
+기기는 `adb reverse tcp:8000 tcp:8000`으로 붙이고, 앱은 이 서버를 보게 빌드한다 —
+`local.properties`를 건드리지 않는 일회성 속성이 있다(`app-android/app/build.gradle.kts`):
+
+```bash
+./gradlew :app:installDebug -PdaviE2eServerUrl=http://127.0.0.1:8000
+```
+
+**`DAVI_STUB_DELAY_MS=0`으로 한 번 더 돌리는 것이 이 프로브의 요점이다.** 지연을 뺀 대조군이
+있어야 백오프 침묵이 서버가 느려서 생긴 것인지, 지연과 무관한 고정 비용인지 갈린다 — #480의
+4.77초가 그렇게 분리된 값이다.
+
+게이트는 development·스텁 LLM·loopback 바인딩·개발/테스트 토큰 없음 넷을 모두 요구한다.
+하나라도 어긋나면 **기동 때** 거부한다(`config.Settings`). 요청마다 판정하지 않는 이유는
+공용 endpoint에 실수로 켜진 채 뜨는 것을 막는 편이 강해서다.
+
 ## 검사
 
 ```bash

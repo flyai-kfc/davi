@@ -14,6 +14,12 @@ Python 3.12 / FastAPI. 앱이 보낸 [마스킹된 화면 + 목표]로 **다음 
   기동하는 dev-only 비교 실험이며, 켜지면 raw 봉투 저장이 꺼진다(#203, `../SPEC.md` §3).
   토큰은 팀용·테스트 참가자용 **둘 다** 해당한다(#257) — 어느 하나라도 있으면 거부한다.
 - **프롬프트 구성 + 가드레일** — 앱별/버전별 지식과 일반 정책을 여기 둔다. 가드는 **단일 결정 지점**으로 통합(가드끼리 덮어써 불안정했던 HANDOFF §5-4 전례 회피).
+- **스텁 프로브**(#480) — 앱의 **완료 재확인 백오프 루프**를 실기기에서 재현하는 dev-only 손잡이
+  둘(`DAVI_STUB_FORCE_DONE`·`DAVI_STUB_DELAY_MS`). 실모델은 근거 없는 완료를 마음대로 내주지
+  않아 그 구간을 관측할 다른 방법이 없다. 게이트는 마스킹 우회와 같은 네 겹이다 —
+  development + 스텁 LLM + loopback + 접근 토큰 없음, 어긋나면 **기동 때** 거부한다.
+  `force_done`이 `completion_evidence`를 **비운 채** 내보내는 것이 핵심이다(채우면 검증이
+  `verified`로 올려 재질의 루프가 사라진다). 쓰는 법은 `README.md`의 같은 이름 절에 있다.
 - **모델 호출** — `llm_provider.py` 한 경계 뒤에 Gemini·OpenAI·Anthropic이 있다. 공급자 교체는
   `DAVI_LLM_PROVIDER`, 모델 교체는 `DAVI_MODEL`(비우면 공급자 기본 모델). 기본은
   `gemini` + `gemini-3.5-flash-lite`이고, 나머지 기본값은 저지연 등급인 `gpt-5.6-luna`·
