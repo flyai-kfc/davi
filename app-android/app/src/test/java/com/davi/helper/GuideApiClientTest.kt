@@ -93,6 +93,10 @@ class GuideApiClientTest {
         // 침묵한다(C24 · #418) — 다른 테스트는 전부 초록인 채로 기능만 죽으므로 여기서 고정한다.
         assertTrue(body.contains("\"earlier_steps\":7"))
         assertFalse(body.contains("secret@example.com"))
+        assertFalse(body.contains("기기 내부 시그니처"))
+        assertFalse(body.contains("signatureLabel"))
+        assertFalse(body.contains("signatureTracksEditableValue"))
+        assertFalse(body.contains("targetAnchorLabel"))
     }
 
     @Test
@@ -221,6 +225,49 @@ class GuideApiClientTest {
         assertFalse(server.takeRequest().body.readUtf8().contains("device_id"))
     }
 
+    @Test
+    fun `password와 인증 코드 값은 HTTP 요청에도 실리지 않는다`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"action":{"expected_result":"목표 화면","evidence":"근거","action_type":"tap","target_node_id":"n1","instruction":"누르세요."},"model":"stub","verified":false,"screen_signature":"${"a".repeat(64)}"}""",
+            ),
+        )
+        val password = UiTreeSerializer.editableTextProjection(
+            text = "never-store-password",
+            contentDescription = null,
+            hintText = "비밀번호",
+            showingHintText = false,
+            password = true,
+            sensitiveIdentity = false,
+            limitedSelection = false,
+        )!!
+        val otp = UiTreeSerializer.editableTextProjection(
+            text = "654321",
+            contentDescription = "인증 코드 654321",
+            hintText = null,
+            showingHintText = false,
+            password = false,
+            sensitiveIdentity = true,
+            limitedSelection = false,
+        )!!
+        val request = sampleRequest().copy(
+            screen = sampleRequest().screen.copy(
+                elements = listOf(
+                    UiElement(nodeId = "n1", label = password.label, role = "EditText", editable = true),
+                    UiElement(nodeId = "n2", label = otp.label, role = "EditText", editable = true),
+                ),
+            ),
+        )
+
+        GuideApiClient(server.url("/").toString()).nextStep(request, trace())
+
+        val body = server.takeRequest().body.readUtf8()
+        assertFalse(body.contains("never-store-password"))
+        assertFalse(body.contains("654321"))
+        assertTrue(body.contains("\"label\":\"비밀번호 입력\""))
+        assertTrue(body.contains("\"label\":\"인증 코드 입력\""))
+    }
+
     /** kind 값은 서버 `ErrorKind`와 같아야 한다. 여기 쓰는 SERVER는 서버가 막혔을 때 주는 값이다. */
     @Test
     fun `parses server api errors by kind`() {
@@ -302,6 +349,8 @@ class GuideApiClientTest {
                     focused = true,
                     checkState = CheckState.PARTIAL,
                     bounds = listOf(1, 2, 3, 4),
+                    signatureLabel = "기기 내부 시그니처",
+                    signatureTracksEditableValue = true,
                 ),
             ),
             imeVisible = true,

@@ -2,12 +2,14 @@
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
- * 앱 <-> 서버 계약의 Kotlin 판. **기준은 `server/app/schemas.py`다.**
+ * 앱 <-> 서버 계약의 Kotlin 판. **wire 기준은 `server/app/schemas.py`다.**
  *
  * 필드명은 서버와 정확히 일치해야 하므로 전부 [SerialName]으로 못박는다.
  * 계약을 바꾸려면 서버의 "API 계약 결정"(server/CLAUDE.md C1~C15)을 먼저 읽고 양쪽을 같이 고친다.
+ * 단, `@Transient`가 붙은 시그니처·타깃 앵커 투영은 기기 전용이며 wire 필드가 아니다.
  *
  * 스크롤 메타는 모델에게 "지식" 대신 "상태"를 주기 위한 것이다(HANDOFF §3).
  * 스크롤이 안 되는 요소에는 전부 null이 들어간다.
@@ -19,8 +21,9 @@ data class UiElement(
     val role: String = "",
     val clickable: Boolean = false,
     /**
-     * 텍스트 입력을 받을 수 있는 요소인가. 입력 원문은 [label]에 넣지 않는다.
-     * 예외는 구조 검증된 NumberPicker 선택 상태뿐이다(#117).
+     * 텍스트 입력을 받을 수 있는 요소인가. [label]에는 입력칸 이름과 현재 값이 합쳐져 들어올 수
+     * 있지만, 기기 1차와 서버 2차의 패턴 마스킹을 일반 label과 똑같이 거친다(#462). 비밀번호
+     * 값과 일반 의미 표지로 인증·보안 코드라고 식별된 값은 직렬화 전에 제외한다.
      */
     val editable: Boolean = false,
     /** 현재 접근성 입력 포커스를 가진 요소인가. */
@@ -47,7 +50,8 @@ data class UiElement(
      * 입력칸에 지금 보이는 글자가 hint인가. `true` 비어 있음 / `false` 값이 들어 있음 /
      * `null` 입력칸이 아니거나 미관측.
      *
-     * **입력 원문은 여전히 보내지 않는다**(#112). 비었는지 여부만 알려 준다.
+     * editable 값이 [label]에 실려도 이 상태는 유지한다(#112·#462). hint 자체를 사용자 입력으로
+     * 오인하지 않고, 값의 존재만으로 입력 완료를 단정하지 않기 위한 별도 관측이다.
      */
     @SerialName("showing_hint_text") val showingHintText: Boolean? = null,
     /**
@@ -70,6 +74,18 @@ data class UiElement(
     @SerialName("scroll_axis") val scrollAxis: ScrollAxis? = null,
     @SerialName("next_swipe_direction") val nextSwipeDirection: SwipeDirection? = null,
     @SerialName("prev_swipe_direction") val prevSwipeDirection: SwipeDirection? = null,
+    /**
+     * 서버로 보내지 않는 기기 내부 시그니처 투영(#462).
+     *
+     * 자유 입력값은 매 글자 화면 변화로 읽지 않도록 값 대신 입력칸 이름이나 고정 토큰을 담는다.
+     * `null`이면 [label] 자체를 쓴다. 제한 선택 여부는 [signatureTracksEditableValue]가 함께
+     * 가르며 둘 다 wire에는 실리지 않는다.
+     */
+    @Transient internal val signatureLabel: String? = null,
+    /** 제한 선택 editable 값이면 [signatureLabel]의 숫자도 타깃 앵커 변화로 보존한다. */
+    @Transient internal val signatureTracksEditableValue: Boolean = false,
+    /** 병합 label에서 제한 선택 파트의 값만 보존한 기기 내부 타깃 앵커 투영. */
+    @Transient internal val targetAnchorLabel: String? = null,
 )
 
 @Serializable

@@ -9,6 +9,7 @@ from app.masking import mask_screen, mask_screen_model
 from app.prompt import (
     ALREADY_IN_TARGET_STATE_INSTRUCTION,
     DISABLED_ELEMENT_INSTRUCTION,
+    EDITABLE_LABEL_INSTRUCTION,
     HINT_TEXT_INSTRUCTION,
     PARTIAL_CHECK_STATE_INSTRUCTION,
     SELECTED_STATE_INSTRUCTION,
@@ -133,7 +134,7 @@ def test_repeat_guard_is_emitted_once_when_toggle_and_selected_are_both_present(
     assert prompt.count(ALREADY_IN_TARGET_STATE_INSTRUCTION) == 1
 
 
-def test_empty_input_is_named_without_sending_the_value():
+def test_empty_input_explains_hint_and_editable_label_semantics():
     prompt = build_prompt(
         _request(
             elements=[
@@ -143,6 +144,26 @@ def test_empty_input_is_named_without_sending_the_value():
     )
     assert "showing_hint_text=True" in prompt
     assert HINT_TEXT_INSTRUCTION in prompt
+    assert EDITABLE_LABEL_INSTRUCTION in prompt
+
+
+def test_filled_editable_label_explains_name_and_value_composition():
+    prompt = build_prompt(
+        _request(
+            elements=[
+                UiElement(
+                    node_id="n1",
+                    label="검색어 입력 치킨 배달",
+                    editable=True,
+                    showing_hint_text=False,
+                ),
+            ]
+        )
+    )
+
+    assert "label='검색어 입력 치킨 배달'" in prompt
+    assert EDITABLE_LABEL_INSTRUCTION in prompt
+    assert HINT_TEXT_INSTRUCTION not in prompt
 
 
 def test_prompt_never_claims_a_field_is_filled():
@@ -161,6 +182,7 @@ def test_prompt_never_claims_a_field_is_filled():
     )
     assert "showing_hint_text" not in prompt
     assert HINT_TEXT_INSTRUCTION not in prompt
+    assert EDITABLE_LABEL_INSTRUCTION in prompt
     assert "값이 들어 있습니다" not in prompt
 
 
@@ -173,6 +195,7 @@ def test_state_sentences_are_absent_when_no_element_carries_the_value():
     assert SELECTED_STATE_INSTRUCTION not in prompt
     assert ALREADY_IN_TARGET_STATE_INSTRUCTION not in prompt
     assert HINT_TEXT_INSTRUCTION not in prompt
+    assert EDITABLE_LABEL_INSTRUCTION not in prompt
 
 
 def test_window_title_names_the_screen_alongside_the_package():
@@ -259,7 +282,7 @@ def test_signature_changes_when_only_the_button_becomes_enabled():
 
 
 def test_signature_changes_when_the_input_gets_filled():
-    """입력 원문을 안 보내므로(#112) label은 그대로다. 이 값이 유일한 변화 신호다."""
+    """서버 구조 서명은 label을 안 보므로, 빈칸→입력됨 전환은 이 상태가 잡는다."""
 
     def screen(showing_hint: bool) -> Screen:
         return Screen(

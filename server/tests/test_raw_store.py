@@ -153,6 +153,38 @@ def test_out_of_pattern_proper_nouns_stay_in_the_envelope(monkeypatch, tmp_path)
     assert stored_screen["window_title"] == "김민준"
 
 
+def test_app_excluded_password_and_otp_values_are_absent_from_the_shared_envelope(
+    monkeypatch, tmp_path
+):
+    """raw 채널은 앱 1차 경계 뒤 요청을 저장한다 — 민감 editable에는 이름만 와야 한다."""
+    monkeypatch.setattr(settings, "davi_dogfood_device_ids", WHITELISTED)
+    monkeypatch.setattr(settings, "davi_dogfood_raw_dir", str(tmp_path))
+    body = _payload(WHITELISTED)
+    body["screen"]["elements"] = [
+        {
+            "node_id": "n1",
+            "label": "비밀번호 입력",
+            "role": "EditText",
+            "clickable": True,
+            "editable": True,
+        },
+        {
+            "node_id": "n2",
+            "label": "인증 코드 입력",
+            "role": "EditText",
+            "editable": True,
+        },
+    ]
+
+    assert client.post("/v1/next-step", json=body).status_code == 200
+
+    stored = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert [item["label"] for item in stored["request"]["screen"]["elements"]] == [
+        "비밀번호 입력",
+        "인증 코드 입력",
+    ]
+
+
 def test_relative_raw_dir_resolves_under_server_root():
     resolved = raw_store_dir(".dogfood-raw")
     assert resolved.name == ".dogfood-raw"

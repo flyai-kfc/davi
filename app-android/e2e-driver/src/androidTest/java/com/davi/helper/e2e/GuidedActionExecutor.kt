@@ -40,8 +40,8 @@ internal class GuidedActionExecutor(private val device: UiDevice) {
         val focused = device.wait(Until.findObject(By.focused(true)), FOCUS_TIMEOUT_MS)
             ?: throw GuidedScenarioFailure("type_focus_missing", step)
         focused.text = plan.value
-        // 입력 원문은 화면 시그니처에서 빠진다. 사용자가 입력을 마치고 키보드를 닫는 것까지 TYPE
-        // 한 동작의 commit으로 재현해야 IME/focus 상태 변화 뒤 다음 안내를 받을 수 있다.
+        // 자유 입력값은 화면 시그니처에서 고정된다(#462). 사용자가 입력을 마치고 키보드를 닫는
+        // 것까지 TYPE 한 동작의 commit으로 재현해야 IME/focus 상태 변화 뒤 다음 안내를 받을 수 있다.
         if (isImeVisible()) device.pressBack()
     }
 

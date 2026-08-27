@@ -47,8 +47,8 @@ def screen_signature(screen: Screen) -> str:
                 "clickable": element.clickable,
                 "editable": element.editable,
                 "focused": element.focused,
-                # 행동 상태(C18). **이게 없으면 스위치를 켜도 같은 서명이 나온다** — label에
-                # 입력 원문도 토글 상태도 들어가지 않으므로 이 자리가 유일한 변화 신호다(#271).
+                # 행동 상태(C18). **이게 없으면 스위치를 켜도 같은 서명이 나온다.** 서버 서명은
+                # label을 전부 제외하므로 토글·입력 상태 변화에는 이 자리가 유일한 신호다(#271).
                 "enabled": element.enabled,
                 "check_state": element.check_state.value,
                 "selected": element.selected,
