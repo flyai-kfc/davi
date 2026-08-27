@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -1014,3 +1015,122 @@ def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는
     assert not in_batch(scored("v1:옛계약"), batch)
     # 이 필드가 생기기 전의 채점(빈 값)도 현재 배치가 아니다.
     assert not in_batch(scored(""), batch)
+
+
+def test_env_파일은_셸에_있는_값을_덮지_않는다(tmp_path, monkeypatch):
+    """`.env`는 기본값 공급이지 강제가 아니다.
+
+    한 번만 다른 모델·게이트웨이로 돌려 보는 자리에서 셸이 이겨야 한다 — 덮어쓰면 파일을
+    고쳤다 되돌리는 절차가 생긴다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        """PINGPONG_TEST_ONLY_FILE=파일값
+PINGPONG_TEST_ONLY_SHELL=파일값
+""",
+        encoding="utf-8",
+    )
+    # `delenv`만 쓰면 원래 없던 변수를 복원 대상으로 기록하지 않아 세션에 남는다.
+    # `setenv`로 먼저 등록해 두고 지운다 — `setdefault`는 키가 있으면 값이 빈 문자열이어도
+    # 안 덮으므로, 남아 있으면 파일 값이 안 올라온다.
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_FILE", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_FILE")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_SHELL", "셸값")
+
+    load_env(env_file)
+
+    assert os.environ["PINGPONG_TEST_ONLY_FILE"] == "파일값"
+    assert os.environ["PINGPONG_TEST_ONLY_SHELL"] == "셸값"
+
+
+def test_env_파일이_없어도_진입점이_죽지_않는다(tmp_path):
+    """저장소를 갓 클론한 사람과 CI가 이 경로로 온다."""
+    from pingpong_eval.cli import load_env
+
+    load_env(tmp_path / "없는파일.env")
+
+
+def test_진입점이_env를_읽는다(tmp_path, monkeypatch, capsys):
+    """`load_env` 호출이 빠지면 `.env`는 다시 장식이 된다.
+
+    함수 자체는 위 둘이 지키지만 **아무도 안 부르면** 아무것도 안 걸린다 — 이 저장소가
+    `.env.example`만 두고 로딩이 없던 상태가 정확히 그것이었다.
+    **호출 여부가 아니라 결과를 본다** — 대역을 세면 `main` 맨 끝으로 옮겨도 통과한다.
+    """
+    from pingpong_eval import cli
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_ENTRY=진입점", encoding="utf-8")
+    monkeypatch.setattr(cli, "ENV_FILE", env_file)
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_ENTRY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_ENTRY")
+
+    # 시나리오 경로를 절대로 준다 — CI는 `eval/`을 작업 디렉터리로 돌리고
+    # `check`의 기본값은 상대 경로다(conftest 문서).
+    cli.main(["check", "--scenarios", str(ROOT / DEFAULT_SCENARIOS)])
+    capsys.readouterr()
+
+    assert os.environ["PINGPONG_TEST_ONLY_ENTRY"] == "진입점"
+
+
+def test_env_파일의_빈_값은_올리지_않는다(tmp_path, monkeypatch):
+    """`.env.example`을 복사만 하고 안 채운 키가 「빈 키」가 되면 안 된다.
+
+    소비자 중 빈 값에 의미를 두는 것이 없으므로, 복사만 한 상태가 파일 없는 상태와 같은
+    환경이 되게 한다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_EMPTY=", encoding="utf-8")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_EMPTY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_EMPTY")
+
+    load_env(env_file)
+
+    assert "PINGPONG_TEST_ONLY_EMPTY" not in os.environ
+
+
+def test_평가자는_키가_없으면_LlmError로_닫는다(monkeypatch):
+    """SDK에 맡기면 raw 트레이스백이 뜬다 — `GeminiClient`와 같은 결로 여기서 닫는다.
+
+    SDK는 빈 문자열을 부재로 접고(`api_key = os.environ.get(...) or None`) **호출 시점에**
+    `TypeError`를 던지는데, `cmd_run`·`cmd_judge`는 `LlmError`만 잡는다.
+
+    **`match`로 못 박는다** — 가드가 `import anthropic` 뒤에 있으면 SDK 없는 환경에서
+    ImportError가 같은 `LlmError`로 올라와 가드를 지워도 통과한다. CI가 그 환경이다.
+    """
+    from pingpong_eval.llm import ClaudeJudge, LlmError
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
+        ClaudeJudge()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
+        ClaudeJudge()
+
+
+def test_평가자는_인자로_받은_키를_SDK에_넘긴다(monkeypatch):
+    """가드에서만 쓰고 SDK에 안 넘기면, 인자로 키를 줘도 호출 시점에 죽는다.
+
+    가짜 모듈을 꽂아 키도 SDK도 없이 확인한다 — `import anthropic`이 함수 안이라
+    호출 시점에 해석되므로, `anthropic`을 설치하지 않는 잡에서도 이 관문이 돈다.
+    """
+    import sys
+    import types
+
+    from pingpong_eval.llm import ClaudeJudge
+
+    받은: dict = {}
+
+    가짜 = types.ModuleType("anthropic")
+    가짜.Anthropic = lambda **kwargs: 받은.update(kwargs) or object()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "anthropic", 가짜)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    ClaudeJudge(api_key="  arg-key  ")
+
+    assert 받은.get("api_key") == "arg-key"

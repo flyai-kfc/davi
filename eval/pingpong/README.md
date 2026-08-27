@@ -29,6 +29,14 @@ python3 -m pip install -r requirements.txt
 cp .env.example .env   # GEMINI_API_KEY(사용자), ANTHROPIC_API_KEY(평가자)
 ```
 
+`.env`는 `python -m pingpong_eval`이 진입점에서 한 번 읽는다(`cli.load_env`). **셸에 이미 있는
+값이 이긴다** — 한 번만 다르게 돌려 볼 때는 파일을 고치지 말고 그 창에서 환경변수를 준다.
+
+**학교 게이트웨이를 쓰면 `PINGPONG_JUDGE_BASE_URL`이 필요하다**(`.env.example`에 값이 있다).
+평가자 키가 `sk-ant-`로 시작하지 않으면 그 경우다 — 안 주면 SDK가 Anthropic 본진으로 붙어
+`401 invalid x-api-key`가 난다. 사용자 LLM은 게이트웨이를 타지 않고 Google을 직접 부르므로
+`GEMINI_API_KEY`는 게이트웨이 키가 아니라 Google 키다.
+
 핑퐁은 davi 서버를 로컬에서 띄워서 쓴다. **스텁으로 띄우면 채점이 무의미하다** — 스텁은 언제나
 `ready`에 발화를 그대로 goal로 돌려준다. 그래서 `/health`의 `stub_llm`이 참이면 실행이 멈춘다.
 
