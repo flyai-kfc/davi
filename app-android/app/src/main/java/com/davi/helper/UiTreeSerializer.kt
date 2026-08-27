@@ -119,7 +119,8 @@ object UiTreeSerializer {
         "일회용비밀번호",
         "일회용코드",
     )
-    private val SENSITIVE_ENGLISH_IDENTITY_TOKENS = setOf("password", "passcode", "pin", "otp")
+    private val SENSITIVE_ENGLISH_IDENTITY_TOKENS =
+        setOf("password", "passcode", "pin", "otp", "totp")
     private val SENSITIVE_ENGLISH_NON_PIN_TOKENS = SENSITIVE_ENGLISH_IDENTITY_TOKENS - "pin"
     private val UPPERCASE_PIN_TOKEN = Regex("(?:^|[^A-Za-z])PIN(?:$|[^A-Za-z])")
     private val SENSITIVE_ENGLISH_IDENTITIES = setOf(
