@@ -181,10 +181,14 @@ wire 전에 제외하고 n3을 `label="인증 코드 입력"`으로 전송했다
 요소 5개 중 editable 1개를 포함했다. 계정·페이지 문구는 `일반 요소 N`으로 치환했고 원본 트리,
 합성 값, 계정 식별값, 모델 응답은 저장하지 않았다.
 
+`google_auth_password_input_filled.json`은 같은 Google 인증 흐름의 `password=true` 입력칸에
+합성 문자열만 넣은 뒤 수집했다. 실제 값은 wire 전에 제외되고 n3은
+`label="비밀번호 입력"`으로 전송됐다. TOTP 표본과 마찬가지로 IME가 열린 상태였으며 계정·페이지
+문구와 합성 값은 fixture에 남기지 않았다.
+
 실기기 probe는 debug E2E 경계가 상세 화면 로그를 억제하므로 `GuideSvc`에는
 `e2e control=start` / `e2e control=stop`만 남았다. 대신 로컬 Stub 수신 경계에서 package,
-요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다. 비밀번호 화면 fixture는 아직
-없으며 원본을 확보하기 전에는 추측해 만들지 않는다.
+요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다.
 
 ## 평가 계층
 

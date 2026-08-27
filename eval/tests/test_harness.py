@@ -443,3 +443,35 @@ def test_repository_google_auth_fixture_excludes_totp_value_before_wire():
     assert "654321" not in serialized
     assert fixture.request.steps == []
     assert fixture.document.source.observed_model_action is None
+
+
+def test_repository_google_auth_fixture_excludes_password_value_before_wire():
+    fixture = load_fixture(FIXTURES / "google_auth_password_input_filled.json")
+    screen = fixture.request.screen
+    elements = {element.node_id: element for element in screen.elements}
+
+    assert fixture.document.source.issue == 462
+    assert fixture.document.source.device_model == "SM-S921N"
+    assert screen.package_name == "com.google.android.gms"
+    assert screen.window_title == "로그인"
+    assert screen.ime_visible is True
+    assert list(elements) == [f"n{index}" for index in range(1, 6)]
+
+    sensitive_input = elements["n3"]
+    assert sensitive_input.label == "비밀번호 입력"
+    assert sensitive_input.role == "EditText"
+    assert sensitive_input.clickable is True
+    assert sensitive_input.editable is True
+    assert sensitive_input.focused is True
+    assert sensitive_input.enabled is True
+    assert sensitive_input.showing_hint_text is False
+    assert {element.node_id for element in screen.elements if element.editable} == {
+        "n3"
+    }
+
+    serialized = json.dumps(
+        fixture.document.model_dump(mode="json"), ensure_ascii=False
+    )
+    assert "DaviTestPass42" not in serialized
+    assert fixture.request.steps == []
+    assert fixture.document.source.observed_model_action is None

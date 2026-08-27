@@ -75,9 +75,10 @@ Ruff 린트 규칙은 `pyproject.toml`에 둔다. 모노레포 형제 `server/`�
   앵커다. 이름 입력 fixture는 ADB로 값을 주입해 IME가 닫힌 개발 관측이며 사용자 타이핑 표본이
   아니다. `google_auth_totp_input_filled.json`은 Chrome에서 시작했지만 실제 전면 package가
   Google Play 서비스인 인증 흐름에서 합성 TOTP 값을 입력한 뒤 수집했다. 실측에서 확인한
-  `totpPin` 의미 표지는 앱이 `인증 코드 입력`으로 접고 값은 wire 전에 제외한다. 계정·페이지
-  문구는 일반 label로 치환했고 코드는 제출하지 않았다. 비밀번호 fixture는 실측 원본 없이
-  추측해 만들지 않는다.
+  `totpPin` 의미 표지는 앱이 `인증 코드 입력`으로 접고 값은 wire 전에 제외한다.
+  `google_auth_password_input_filled.json`은 같은 인증 흐름의 `password=true` 입력값이
+  `비밀번호 입력`으로 접히는 경계를 고정한다. 두 표본 모두 계정·페이지 문구는 일반 label로
+  치환했고 합성 입력값은 제출하지 않았다.
 - 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
   올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).
