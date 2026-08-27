@@ -21,7 +21,8 @@ def _tts_texts(transcript: Transcript) -> list[str]:
 
     실기기 대조(2026-08-26 SM-S921N · 실모델 6세션): 질문 9개가 **전부** 읽혔고 낭독 시작
     신호(``clarification_fold expanded=true speaking=true``)도 9회로 일치했다. 옛 규칙으로
-    세면 114자, 실제는 158자로 **39%를 적게 셌다**.
+    세면 114자, 실제는 158자다 — **옛 규칙이 실제의 72%만 셌다**(질문 부분만 비교한 값이고,
+    ready 문구는 양쪽 규칙이 똑같이 센다).
 
     ``ready``의 ``message``는 최종 확인 화면이 읽는다(``ConversationActivity.showReadyGoal``).
     **앱이 그 밖에 읽는 두 문구는 여기서 셀 수 없다** — 앱 가능성 경고와 그 뒤의 안내는
