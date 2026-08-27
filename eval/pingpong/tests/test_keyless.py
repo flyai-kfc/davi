@@ -125,6 +125,16 @@ class _ClarificationAdapter:
             return PingpongTurn(
                 status=PingpongStatus.READY, message="확인", goal="확정된 목표"
             )
+        if self._second_status == "clarify_again":
+            # **계약 위반이다.** 답을 받은 뒤에는 ready 또는 unable_to_finalize만 허용된다.
+            # 앱은 이것을 `InvalidResponse`로 버리고 MA-5로 가므로 **읽지 않는다.**
+            return PingpongTurn(
+                status=PingpongStatus.NEEDS_CLARIFICATION,
+                message="한 번 더 여쭐게요",
+                questions=[
+                    Question(id="q3", prompt="한 번 더 여쭐게요", options=[]),
+                ],
+            )
         return PingpongTurn(
             status=PingpongStatus.UNABLE_TO_FINALIZE, message="다시 말씀해 주세요"
         )
@@ -142,9 +152,12 @@ def test_326_흐름은_요청_두_번으로_끝난다(scenarios):
     assert result.metrics["질문수"] == 2
     assert result.metrics["요청수"] == 2
     assert result.metrics["2회이내_ready"] is True
-    # 새 화면은 첫 질문만 읽고, ready 확인 문구를 한 번 더 읽는다.
-    assert result.metrics["TTS_발화수"] == 2
-    assert result.metrics["TTS_문자수"] == len("누구에게 보낼까요?") + len("확인")
+    # **문항마다 읽는다**(#452 · PR #465). 안 읽어 주는 질문은 접힌 채로 떠서 어르신이
+    # 읽을 수도 들을 수도 없다는 것이 그 결정의 근거다. 여기에 ready 확인 문구가 더해진다.
+    assert result.metrics["TTS_발화수"] == 3
+    assert result.metrics["TTS_문자수"] == (
+        len("누구에게 보낼까요?") + len("어떤 방법으로 보낼까요?") + len("확인")
+    )
     assert result.metrics["보기_적중률"] == 1.0
 
 
@@ -338,7 +351,8 @@ def test_TTS_평균은_ready로_완료된_실행만_세다(scenarios):
         },
     )
     unable = run_scenario(scenarios[2], _FakeUser(), _ClarificationAdapter("unable"))
-    assert unable.metrics["TTS_발화수"] == 1  # 첫 질문은 읽었지만 완료하지 못했다.
+    # 질문 둘을 다 읽었지만 완료하지 못했다 — ready 문구가 없어 둘뿐이다.
+    assert unable.metrics["TTS_발화수"] == 2
 
     summary = summarize([spoken, unable, failed])["전체"]
     assert summary["ready_평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]
@@ -1134,3 +1148,25 @@ def test_평가자는_인자로_받은_키를_SDK에_넘긴다(monkeypatch):
     ClaudeJudge(api_key="  arg-key  ")
 
     assert 받은.get("api_key") == "arg-key"
+
+
+def test_계약을_어긴_두_번째_질문은_낭독으로_세지_않는다(scenarios):
+    """답을 받은 뒤 또 질문이 오면 앱은 그것을 버린다 — TTS도 늘면 안 된다(#488 리뷰).
+
+    `VoiceDialogueSession.applyResponse`가 `pending.turnIndex != 0`이면 `InvalidResponse`로
+    내려 MA-5로 가고, 그 화면에는 `speak` 호출이 없다. 러너는 그 turn을 transcript에 넣으므로
+    **집계 쪽에서 걸러야** 한다. 안 그러면 계약 위반 회차의 TTS만 부풀어, 실패가 오히려 더
+    많이 읽은 것처럼 보인다.
+    """
+
+    result = run_scenario(
+        scenarios[0], _FakeUser(), _ClarificationAdapter("clarify_again")
+    )
+
+    # 첫 요청의 계획 둘만 읽는다 — 두 번째 요청의 "한 번 더 여쭐게요"는 안 읽는다.
+    assert result.metrics["TTS_발화수"] == 2
+    assert result.metrics["TTS_문자수"] == (
+        len("누구에게 보낼까요?") + len("어떤 방법으로 보낼까요?")
+    )
+    # 질문 수 자체는 계약 위반을 드러내야 하므로 셋 그대로다.
+    assert result.metrics["질문수"] == 3
