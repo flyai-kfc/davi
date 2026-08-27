@@ -97,10 +97,18 @@ export ANDROID_SERIAL='<adb serial>'
 
 ## 5. 현재 시나리오의 기기 조건
 
-`samsung-clock-create-alarm-full-journey`는 SM-S921N, Android 15, 한국어 Samsung launcher와
-Samsung Clock 12.4.10.10에서 검증됐다. `samsung-clock-create-alarm-focused`는 같은 시계의 알람
-목록부터 시작하는 진단용이다. 다른 런처·시계 버전에서는 label, resource ID나 화면 구조 차이로 안전
-검사가 실패할 수 있다. 이것은 테스트가 임의로 우회할 조건이 아니라 호환성 결과로 기록할 조건이다.
+`samsung-clock-create-alarm-full-journey`는 SM-S921N, **Android 15 / One UI 7.0**, 한국어 Samsung
+launcher와 Samsung Clock 12.4.10.10에서 검증됐다. `samsung-clock-create-alarm-focused`는 같은
+시계의 알람 목록부터 시작하는 진단용이다. 다른 런처·시계 버전에서는 label, resource ID나 화면 구조
+차이로 안전 검사가 실패할 수 있다. 이것은 테스트가 임의로 우회할 조건이 아니라 호환성 결과로
+기록할 조건이다.
+
+**그 기기가 그 뒤로 올라갔다 — Android 16 / One UI 8.0이다**(2026-08-27 `getprop`, `SPEC.md`
+§검증 기기). **그 위에서 이 시나리오를 다시 돌린 기록은 없다.** 손에 든 기기에서 검증된 것으로
+읽지 말 것. 드리프트의 증거도 이미 있다: 같은 시계의 알람 편집 화면이 08-18에 18요소(label 붙은
+`NumberPicker` 2개)였는데 08-27에는 29요소(인접 값이 각각 `Button`, AM/PM 슬롯 추가)였다
+(#482, `eval/fixtures/`의 두 픽스처가 그 차이를 보존한다). `full-journey`가 지나는 화면이 바로
+거기다 — 다시 돌리면 위 문단대로 **호환성 결과로 기록한다.**
 
 ## 6. 준비 확인
 

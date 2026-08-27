@@ -60,10 +60,14 @@ macOS/Linux에서는 `py -3.12` 대신 `python3.12`를 쓴다. `harness.py`의 �
   내놓는 fake LLM으로 서버 가드레일을 키 없이 검증한다 — 런처의 앱서랍 즉시 전환, 목록 화면의
   대상 교정, 대체 행동도 대상도 없는 화면의 실패, 스크롤 미관측 앱의 통과(#202).
   #36 반복 가드 회귀(`test_repeat_guard.py`)를 대신한다 — 반복 카운트가 #202에서 걷혔다.
-- **「입력칸은 보이는데 아무것도 선택되지 않은」 화면 픽스처가 없다**(#373). 그래서
-  `prompt.INPUT_NOT_FOCUSED`가 실모델 A/B의 무회귀 근거 밖이다 — 입력 요소가 있는 픽스처는
-  알람 편집기 하나뿐이고 거기엔 focused 입력칸이 있어 그 분기가 죽은 경로다. 그 화면을
-  익명화해 넣으면 닫힌다.
+- **「입력칸은 보이는데 아무것도 선택되지 않은」 화면이 corpus에 생겼다**(#373이 남긴 픽스처
+  공백, #482가 부수로 채웠다). `samsung_clock_alarm_editor_ampm`은 editable 요소가 넷인데
+  focused가 하나도 없고 `ime_visible=false`다 — 08-18 캡처(`samsung_clock_alarm_editor`)는
+  focused 입력칸에 `ime_visible=true`라 담을 수 없던 모양이다.
+  **아직 `prompt.INPUT_NOT_FOCUSED`의 무회귀 근거는 아니다.** 키 없는 하니스는 `StubLlmClient`가
+  프롬프트를 만들지 않아 그 분기를 지나지 않고, `judge.py`는 `observed_model_action_review`가
+  `accepted`가 아니면 호출 없이 skip한다 — 이 픽스처는 `unreviewed`다. **남은 한 걸음은 사람이
+  그 관측을 검토해 `accepted`로 올리는 것이다.**
 - 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
   올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).
