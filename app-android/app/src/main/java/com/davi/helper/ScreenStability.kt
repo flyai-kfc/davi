@@ -570,8 +570,9 @@ class ScreenStabilityTracker(
         // 수 있다는 뜻이고, 그 값을 받아들이는 것이 이 결정이다. 클릭을 쏘는 앱은 문 자체를
         // 안 쓰므로 무관하다.
         //
-        // **[markResumed]가 이 상한을 되돌린다**(알려진 한계, #481). 그 함수는 화면 켜짐뿐
-        // 아니라 root 복구마다 불려서, root가 깜빡이면 예산이 새로 채워진다.
+        // **되돌리는 것은 화면 켜짐 하나뿐이다**(#481, [markResumed]의 `clearQuietBudget`).
+        // root 복구는 안 비운다 — 예산은 인과 근거가 아니라 비용 상한이라 "관측 못 한 구간"
+        // 논거가 안 걸리고, root는 우리 앱이 잠깐 앞에 서기만 해도 깜빡인다.
         if (budgetStructureProgressed) quietOpenedAtMs = nowMs
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
@@ -645,8 +646,9 @@ class ScreenStabilityTracker(
     )
 
     /**
-     * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
-     * 인정하는 유일한 근거다.
+     * 안내 대상 앱에서 **클릭 또는 선택** 이벤트가 관측됐다(#380·#482). 내용만의 변화를
+     * 사용자 유발로 인정하는 근거이고, 어느 이벤트가 여기 오는지는 호출자가 정한다
+     * ([GuideAccessibilityService.isCausalEvent]).
      *
      * **스크롤은 근거가 아니다.** 자동으로 도는 목록이 사용자가 손대지 않아도
      * `TYPE_VIEW_SCROLLED`를 내고, 이벤트만으로 사용자 스크롤과 구분할 방법이 없다.
@@ -667,9 +669,13 @@ class ScreenStabilityTracker(
         // 조작은 진행 신호다 — 앵커 상한을 다시 연다(그 뒤의 슬롯 이동은 사용자가 만든 것일
         // 수 있다). 상한이 열리는 자리는 여기와 [markSent]의 구조 전환 둘뿐이다.
         //
-        // 조용함 예산은 여기서 건드리지 않는다(PR #445 리뷰). 이 함수를 부르는 클릭이 그
-        // package를 「클릭을 쏘는 앱」으로 만들어 조용함 문 자체가 닫히므로, 되돌려 봐야 읽는
-        // 곳이 없다.
+        // 조용함 예산은 여기서 건드리지 않는다(PR #445 리뷰). **되돌릴 것이 없어서다** —
+        // 예산은 조용함이 연 재질의에서만 타는데(`sendWasQuietOpened`가 `!interactedRecently`를
+        // 요구한다), 이 함수가 연 구간의 SEND는 정의상 그쪽이 아니다.
+        //
+        // **「클릭이 조용함 문을 닫으니까」가 아니다**(#482로 갈렸다). 선택 이벤트는 여기 오지만
+        // `packagesWithClicks`에는 안 들어가므로, 조용함 문이 열린 채로 이 함수가 불리는 조합이
+        // 실재한다 — 삼성 picker 화면이 그것이다.
         anchorRequeryUsed = false
         // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
         // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
@@ -757,8 +763,15 @@ class ScreenStabilityTracker(
      * **실패가 아니므로 백오프는 건드리지 않는다**([markFailed]와 다른 점이다).
      *
      * 같은 규칙이 #380이 들여온 두 시계에도 걸린다 — 승격 타이머와 조작 관측이다(본문 주석).
+     *
+     * **[clearQuietBudget]은 그 규칙을 따르지 않는다**(#481). 위 시계들은 전부 **인과 근거**라
+     * "관측할 수 없던 구간은 근거가 아니다"가 그대로 걸리지만, [quietColdOpens]·[quietOpens]는
+     * 근거가 아니라 **비용 상한**이다 — 같은 논거가 안 걸린다. root 복구는 우리 앱이 잠깐 앞에
+     * 서거나 권한 대화상자가 뜨기만 해도 나므로, 거기서 비우면 예산이 그때마다 새로 채워져
+     * 「한 구조에 머무는 동안은 [QUIET_OPENS]가 상한」이 참이 아니게 된다. 그래서 **화면
+     * 켜짐만** 비운다 — 그쪽은 사용자가 폰을 덮었다 다시 여는 실제 세션 경계다.
      */
-    fun markResumed(nowMs: Long, requery: Boolean) {
+    fun markResumed(nowMs: Long, requery: Boolean, clearQuietBudget: Boolean) {
         sentAtMs = nowMs
         stuckReported = false
         if (unreadableSinceMs != null) unreadableSinceMs = nowMs
@@ -783,8 +796,10 @@ class ScreenStabilityTracker(
         lastContent = null
         quietChangeArmed = false
         quietOpenedAtMs = null
-        quietColdOpens = 0
-        quietOpens = 0
+        if (clearQuietBudget) {
+            quietColdOpens = 0
+            quietOpens = 0
+        }
         if (requery) sentSignature = null
     }
 

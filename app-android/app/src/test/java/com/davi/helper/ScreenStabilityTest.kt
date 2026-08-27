@@ -578,7 +578,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample(sig("blank"), 0, hasLabeledElement = false)
 
         val resumedAt = 10_000L
-        tracker.markResumed(resumedAt, requery = false)
+        tracker.markResumed(resumedAt, requery = false, clearQuietBudget = false)
 
         assertEquals(
             Decision.WAIT,
@@ -1149,8 +1149,11 @@ class ScreenStabilityTrackerTest {
         // 앵커 상한과 같은 경계다(#399 리뷰). 세션 첫 요청(sentSignature 없음)도 전환이
         // 아니므로 안 연다: 첫 화면 진입만으로 회전 배너가 창을 타면 안 된다.
         //
-        // **raw 구조 변화 쪽 절반은 아직 안 잡는다** — 전 구간이 구조 하나라 그 경계를 못
-        // 밟는다(PR #445 리뷰 3라운드에서 변이로 확인). 보강은 후속(#481)이다.
+        // **시나리오가 raw 구조 변화를 실제로 밟는다**(#481 ②). 예전에는 전 구간이 구조
+        // 하나라 「세션 첫 요청은 안 연다」 절반만 고정했고, `onSample`의 raw 구조 변화에
+        // `quietOpenedAtMs = nowMs`를 더한 변이가 전체를 통과했다(PR #445 리뷰 3라운드).
+        // 그 변이가 되살리는 것이 #399가 앵커에 그어 둔 경계다 — 회전 UI의 과도기 트리는
+        // 한 샘플만 다른 구조로 잡히고 홀드가 그것을 버리는데, 창만 열린다.
         fun s(at: Long, sig: ScreenSig) =
             tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
 
@@ -1159,9 +1162,74 @@ class ScreenStabilityTrackerTest {
         tracker.markSent(home, 700) // 세션 첫 요청 — 전환 아님
         tracker.markFinished()
 
-        // 3초 안의 내용 변화(조용함 미달·창 없음)는 막혀야 한다.
-        assertNotEquals(Decision.SEND, s(1_400, ScreenSig("home", "배너 B")))
-        assertNotEquals(Decision.SEND, s(2_100, ScreenSig("home", "배너 B")))
+        // ① 과도기 트리가 한 샘플만 다른 구조로 잡혔다 → 곧바로 원래 구조로 돌아온다.
+        //    홀드가 둘 다 버리므로 이 사이에 나간 요청은 없다.
+        assertNotEquals(Decision.SEND, s(1_400, ScreenSig("home-transient", "배너 A")))
+        assertNotEquals(Decision.SEND, s(2_100, home))
+        assertNotEquals(Decision.SEND, s(2_800, home))
+
+        // ② 조용함 미달(첫 내용 변화까지 3.5초 < QUIET_MS)인 배너 회전. 창이 없어야 막힌다.
+        //    ①이 창을 열었다면 두 번째 샘플에서 홀드가 차며 SEND가 된다.
+        assertNotEquals(Decision.SEND, s(3_500, ScreenSig("home", "배너 B")))
+        assertNotEquals(Decision.SEND, s(4_200, ScreenSig("home", "배너 B")))
+    }
+
+    @Test
+    fun `root 복구는 조용함 예산을 되돌리지 않는다`() {
+        // 예산은 **인과 근거가 아니라 비용 상한**이라 [markResumed]의 논거("관측할 수 없던
+        // 구간은 근거가 아니다")가 안 걸린다(#481 ①). root는 우리 앱이 잠깐 앞에 서거나 권한
+        // 대화상자가 뜨기만 해도 깜빡이므로(2026-08-27 SM-S921N 26분 세션에서 3회, 셋 다 그
+        // 경로였다), 여기서 비우면 「한 구조에 머무는 동안은 QUIET_OPENS가 상한」이 거짓이 된다.
+        burnQuietOpensOnRotatingBanner()
+
+        tracker.markResumed(200_000, requery = false, clearQuietBudget = false)
+
+        assertNotEquals(Decision.SEND, resumeAndRotateBanner())
+    }
+
+    @Test
+    fun `화면 켜짐은 조용함 예산을 되돌린다`() {
+        // 화면 꺼짐은 사용자가 폰을 덮었다 다시 여는 **실제 세션 경계**라, root 깜빡임과 달리
+        // 예산을 새로 준다. 두 갈래가 실제로 갈리는지를 위 테스트와 짝으로 고정한다.
+        burnQuietOpensOnRotatingBanner()
+
+        tracker.markResumed(200_000, requery = false, clearQuietBudget = true)
+
+        assertEquals(Decision.SEND, resumeAndRotateBanner())
+    }
+
+    /** 5초 주기 배너로 총량 천장([ScreenStabilityTracker.QUIET_OPENS])을 전부 태운다. */
+    private fun burnQuietOpensOnRotatingBanner() {
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("home", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(0, "배너 0")
+        sample(700, "배너 0")
+        tracker.markSent(ScreenSig("home", "배너 0"), 700)
+        tracker.markFinished()
+
+        repeat(ScreenStabilityTracker.QUIET_OPENS + 6) { i ->
+            val t = 5_000L * (i + 1)
+            val v = "배너 ${i + 1}"
+            if (sample(t, v) == Decision.SEND) {
+                tracker.markSent(ScreenSig("home", v), t)
+                tracker.markFinished()
+            }
+        }
+    }
+
+    /**
+     * 재개 뒤 조용함(연속 창이 아니라 cold 경로)만으로 한 번 더 열리는지 본다.
+     * [ScreenStabilityTracker.markResumed]가 [ScreenStabilityTracker.QUIET_ACTIVITY_MS] 창을
+     * 닫으므로, 여기서 열리는 유일한 길은 cold이고 그 문을 막는 것은 총량 천장뿐이다.
+     */
+    private fun resumeAndRotateBanner(): Decision {
+        fun sample(t: Long, v: String) =
+            tracker.onSample(ScreenSig("home", v), t, hasLabeledElement = true, clickAxisDead = true)
+
+        sample(200_100, "배너 재개")
+        sample(210_000, "배너 재개 다음") // 9.9초 조용했다 바뀐다 — cold 조건을 만족한다.
+        return sample(210_700, "배너 재개 다음")
     }
 
     @Test
@@ -1208,7 +1276,7 @@ class ScreenStabilityTrackerTest {
         tracker.markFinished()
 
         // 꺼져 있는 동안 도착한 응답을 버리고, 깨어 보니 화면이 옮겨 가 있다.
-        tracker.markResumed(300_000, requery = true)
+        tracker.markResumed(300_000, requery = true, clearQuietBudget = true)
         val child1 = ScreenSig("sheet-child1", "어린이 1")
         s(300_700, child1)
         assertEquals(Decision.SEND, s(301_400, child1))
@@ -1279,7 +1347,7 @@ class ScreenStabilityTrackerTest {
         tracker.markFinished()
         sample(4_900, "어린이 1명")
 
-        tracker.markResumed(300_000, requery = false)
+        tracker.markResumed(300_000, requery = false, clearQuietBudget = true)
 
         assertNotEquals(Decision.SEND, sample(300_700, "어린이 2명"))
     }
@@ -1505,7 +1573,7 @@ class ScreenStabilityTrackerTest {
         tracker.onSample(banner1, 5_000, hasLabeledElement = true)
 
         // 화면이 꺼진 사이 배너가 돌았고, 꺼진 동안 도착한 응답은 버렸다.
-        tracker.markResumed(20_000, requery = true)
+        tracker.markResumed(20_000, requery = true, clearQuietBudget = true)
 
         val banner2 = ScreenSig("home", "배너2")
         assertEquals(Decision.WAIT, tracker.onSample(banner2, 20_400, hasLabeledElement = true))
@@ -1696,7 +1764,7 @@ class ScreenStabilityTrackerTest {
 
         // 빈 화면 샘플 하나(스플래시 등)와 root 복구를 거친다.
         tracker.onSample(ScreenSig("rooms", ""), 2_800, hasLabeledElement = false)
-        tracker.markResumed(3_500, requery = false)
+        tracker.markResumed(3_500, requery = false, clearQuietBudget = false)
 
         // 같은 구조로 돌아왔다 — 진행이 없었으므로 상한은 그대로 닫혀 있다.
         assertEquals(Decision.IDLE, rotate("C;B;A", 4_200))
@@ -1793,7 +1861,7 @@ class ScreenStabilityTrackerTest {
         tracker.markFinished()
         tracker.markInteraction(1_000)
 
-        tracker.markResumed(2_000, requery = false)
+        tracker.markResumed(2_000, requery = false, clearQuietBudget = true)
 
         assertFalse(tracker.interactionAfter(0))
         assertFalse(tracker.interactionGateOpen(2_400))
