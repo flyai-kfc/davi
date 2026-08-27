@@ -24,6 +24,11 @@ def _tts_texts(transcript: Transcript) -> list[str]:
     세면 114자, 실제는 158자다 — **옛 규칙이 실제의 72%만 셌다**(질문 부분만 비교한 값이고,
     ready 문구는 양쪽 규칙이 똑같이 센다).
 
+    **첫 요청의 계획만 읽는다.** 새 형식에서 앱이 화면에 띄우는 질문은 첫 응답의 계획뿐이고,
+    두 번째 요청이 계약을 어겨 또 질문을 주면 앱은 그것을 ``InvalidResponse``로 버린다
+    (``VoiceDialogueSession.applyResponse``의 ``pending.turnIndex != 0``). 옛 형식은 매 요청이
+    질문 하나였고 그때마다 읽었으므로 형식별로 가른다.
+
     ``ready``의 ``message``는 최종 확인 화면이 읽는다(``ConversationActivity.showReadyGoal``).
     **앱이 그 밖에 읽는 두 문구는 여기서 셀 수 없다** — 앱 가능성 경고와 그 뒤의 안내는
     ``strings.xml``에 있고 기기에 무엇이 깔렸느냐로 갈려, 서버 응답만 보는 이 하니스가 알 수
@@ -31,16 +36,32 @@ def _tts_texts(transcript: Transcript) -> list[str]:
     """
 
     texts: list[str] = []
+    new_format_plan_seen = False
     for exchange in transcript.exchanges:
         turn = exchange.turn
         if turn.status.value == "ready":
             if turn.message.strip():
                 texts.append(turn.message.strip())
             continue
-        for question in turn.questions:
-            text = question.prompt.strip()
+        if not turn.questions:
+            continue
+        if turn.legacy:
+            # 옛 형식은 매 요청의 단일 질문을 그때마다 읽었다.
+            text = turn.questions[0].prompt.strip()
             if text:
                 texts.append(text)
+        elif not new_format_plan_seen:
+            for question in turn.questions:
+                text = question.prompt.strip()
+                if text:
+                    texts.append(text)
+            new_format_plan_seen = True
+        # **두 번째 요청의 needs_clarification은 세지 않는다**(#488 리뷰). 계약은 답을 받은
+        # 뒤 ready 또는 unable_to_finalize만 허용하는데, 모델이 그것을 어기면 러너는 그 turn을
+        # transcript에 넣고 상한으로 끝낸다. **앱은 그것을 읽지 않는다** —
+        # `VoiceDialogueSession.applyResponse`가 `pending.turnIndex != 0`이면 `InvalidResponse`로
+        # 버려 MA-5로 가고, 그 화면에는 `speak` 호출이 없다. 여기서 세면 **계약 위반 회차의
+        # TTS만 부풀어** 실패가 오히려 더 많이 읽은 것처럼 보인다.
     return texts
 
 
