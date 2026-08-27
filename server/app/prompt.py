@@ -233,7 +233,13 @@ ALREADY_IN_TARGET_STATE_INSTRUCTION = (
 # 서명에는 그대로 넣는다 — 네이티브 입력칸에서 값이 실제로 뒤집히는 변화는 여전히 화면 변화다.
 HINT_TEXT_INSTRUCTION = (
     "showing_hint_text=True인 입력칸은 아직 비어 있고, 지금 보이는 글자는 사용자가 넣은 값이 "
-    "아니라 안내문입니다. 이 표시가 없는 입력칸이 비었는지 채워졌는지는 화면 정보로 알 수 없습니다."
+    "아니라 안내문입니다. 이 표시가 없다는 사실만으로 입력칸이 비었거나 채워졌다고 단정하지 "
+    "마세요."
+)
+EDITABLE_LABEL_INSTRUCTION = (
+    "editable=True인 요소의 label은 입력칸 이름과 현재 값이 합쳐진 것일 수 있습니다. label 전체를 "
+    "요소 이름으로 읽지 마세요. 현재 값이 보이더라도 그것만으로 입력이나 목표가 완료됐다고 "
+    "단정하지 말고, 목표에 맞는 결과나 다음 단계 UI를 함께 확인하세요."
 )
 ACTIONABLE_RESULT_INSTRUCTION = (
     "입력창 외의 현재 화면 요소도 모두 확인하세요. 목표에 맞는 검색 결과나 다음 단계 UI가 지금 "
@@ -735,6 +741,8 @@ def _state_context(req: NextStepRequest) -> str:
         context += f"{SELECTED_STATE_INSTRUCTION}\n"
     if has_toggle_state or has_selected_state:
         context += f"{ALREADY_IN_TARGET_STATE_INSTRUCTION}\n"
+    if any(element.editable for element in elements):
+        context += f"{EDITABLE_LABEL_INSTRUCTION}\n"
     if any(element.showing_hint_text for element in elements):
         context += f"{HINT_TEXT_INSTRUCTION}\n"
     return context

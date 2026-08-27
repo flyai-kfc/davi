@@ -110,10 +110,24 @@ class ClaudeJudge:
     def __init__(
         self,
         *,
+        api_key: str | None = None,
         model: str | None = None,
         max_tokens: int = 8000,
         base_url: str | None = None,
     ) -> None:
+        # `GeminiClient`와 같은 결로 여기서 닫는다. 빈 문자열을 그대로 넘기면 헤더가
+        # `X-Api-Key: ''`가 되어 **요청 시점에** `TypeError`가 나는데, `cmd_run`·`cmd_judge`는
+        # `LlmError`만 잡으므로 raw 트레이스백이 뜬다.
+        #
+        # **import보다 위다**(PR #477 리뷰). `anthropic`을 설치하지 않는 잡에서도 테스트가 도는데,
+        # 가드가 import 뒤면 ImportError가 먼저 나 **가드에 도달조차 못 한다** — 가드를 지워도
+        # 테스트가 초록이었다. 키 검사에 SDK가 필요하지도 않다.
+        #
+        # 대신 SDK 미설치 + 키 미설정인 첫 설치 상태에서는 키 얘기를 먼저 듣는다. 왕복이 한 번
+        # 늘지만, 관문이 실제로 무는 쪽을 택했다.
+        self.api_key = (api_key or os.getenv("ANTHROPIC_API_KEY", "")).strip()
+        if not self.api_key:
+            raise LlmError("ANTHROPIC_API_KEY가 없다. 평가자 LLM을 돌릴 수 없다.")
         try:
             import anthropic
         except ImportError as error:  # pragma: no cover
@@ -125,8 +139,13 @@ class ClaudeJudge:
         self.base_url = (
             base_url or os.getenv("PINGPONG_JUDGE_BASE_URL", "")
         ).strip() or None
+        # **읽은 키를 실제로 넘긴다**(PR #477 리뷰). 가드에서만 쓰고 SDK에 안 넘기면
+        # `ClaudeJudge(api_key=...)`가 가드를 통과한 뒤 호출 시점에 죽는다 — 이 가드가
+        # 닫으려던 바로 그 자리다. 명시 인자를 주면 SDK는 환경변수를 보지 않으므로,
+        # 인자가 환경변수를 이긴다(`GeminiClient`와 같다).
         self._client = anthropic.Anthropic(
-            **({"base_url": self.base_url} if self.base_url else {})
+            api_key=self.api_key,
+            **({"base_url": self.base_url} if self.base_url else {}),
         )
         self.model = (
             model or os.getenv("PINGPONG_JUDGE_MODEL", "")

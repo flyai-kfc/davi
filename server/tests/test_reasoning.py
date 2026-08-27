@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from app.llm import LlmClient
+from app.prompt import build_prompt
 from app.reasoning import next_step
 from app.schemas import (
     ActionType,
@@ -85,6 +86,50 @@ def test_second_pass_masks_every_text_field_of_the_steps():
     # 문장 구조는 남는다 — 반복 안내 판정에 쓰이므로 통째로 지우면 안 된다.
     assert "으로 보내세요." in sent
     assert "의 연락처 화면" in sent
+
+
+def test_editable_values_use_the_same_second_pass_in_screen_prompt_and_history():
+    """editable은 마스킹 예외가 아니다 — 여섯 패턴이 모델 입력 어디에도 남지 않는다."""
+    raw_values = [
+        "hong@example.com",
+        "010-1234-5678",
+        "900101-1234567",
+        "1234-5678-9012-3456",
+        "123-456-789012",
+        "3C:86:9A:1B:2C:3D",
+    ]
+    spy = _CapturingLlmClient()
+    req = NextStepRequest(
+        goal="입력 화면 확인",
+        screen=Screen(
+            elements=[
+                UiElement(
+                    node_id=f"n{index}",
+                    label=f"입력값 {value}",
+                    role="EditText",
+                    clickable=index == 1,
+                    editable=True,
+                )
+                for index, value in enumerate(raw_values, start=1)
+            ]
+        ),
+        steps=[
+            _step(
+                f"{value} 값을 확인하세요.",
+                target_label=f"입력값 {value}",
+                screen_hint=f"{value} 입력 화면",
+            )
+            for value in raw_values
+        ],
+    )
+
+    next_step(req, spy)
+
+    assert spy.seen is not None
+    model_input = spy.seen.model_dump_json() + build_prompt(spy.seen)
+    for value in raw_values:
+        assert value not in model_input
+    assert "•••" in model_input
 
 
 def test_second_pass_does_not_mutate_the_request():

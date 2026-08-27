@@ -59,7 +59,7 @@ object ScreenSignature {
                 append(if (element.editable) 'e' else '-')
                 append(if (element.focused) 'f' else '-')
                 // 행동 상태 넷. **이게 없으면 스위치를 켜도 같은 화면으로 읽는다**(#271) —
-                // label에 입력 원문도 토글 상태도 안 들어가므로, 이 자리가 유일한 변화 신호다.
+                // 토글 상태는 label과 별개이므로, 이 자리가 유일한 변화 신호다.
                 append(state(element.enabled, on = 'a', off = 'x'))
                 append(checkState(element.checkState))
                 append(state(element.selected, on = 's', off = 'n'))
@@ -72,9 +72,9 @@ object ScreenSignature {
             }
         }
         val content = buildString {
-            // 제목은 label과 같은 취급이다. **숫자를 포함한 원문 그대로** 이 시그니처에
-            // 넣는다(#427) — 원문이 기기를 떠나지 않아서다. 서버 서명은 label처럼 제목도
-            // 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
+            // 제목은 label과 같은 취급이다. 일반 label과 제한 선택값은 **숫자를 포함한
+            // 원문 그대로** 넣되(#427), 자유 editable 값은 serializer가 만든 고정 투영을 쓴다
+            // (#462). 서버 서명은 label처럼 제목도 뺀다(#288 리뷰).
             // label과 같은 취급이므로 축도 내용이다(#380).
             //
             // **이 축의 salt 해시는 기기를 떠난다**(#410). 원문이 아니라 해시이고 salt가
@@ -83,7 +83,7 @@ object ScreenSignature {
             // 값이 해시로 나간다 — 넣기 전에 그것이 나가도 되는 값인지 본다.
             append(screen.windowTitle ?: "-").append('|')
             screen.elements.forEach { element ->
-                append(element.label)
+                append(element.signatureLabel ?: element.label)
                 append(';')
             }
         }
@@ -91,13 +91,8 @@ object ScreenSignature {
     }
 
     /**
-     * 앵커 대조에서만 지우는 숫자(#427). **내용 축은 이걸 쓰지 않는다** — 쓰면 수량 변화가
-     * 안 보여 이 이슈가 되살아난다.
-     */
-    private val ANCHOR_DIGITS = Regex("""\d+""")
-
-    /**
      * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. **내용 축과 달리 숫자를 지운다**(#427).
+     * 숫자 정규화 생산자 규칙은 [UiTreeSerializer.normalizeTargetAnchorLabel] 한 곳에 둔다.
      *
      * 두 자리가 서로 다른 질문을 한다. 내용 축은 "화면 상태가 바뀌었나"라서 장바구니 수량
      * `2`→`3`을 봐야 하고, 앵커는 "강조가 아직 **같은 줄**을 가리키나"라서 그 줄에 붙은
@@ -111,23 +106,33 @@ object ScreenSignature {
      * 내용 축에는 인과 게이트라는 방벽이 있지만 **앵커는 게이트를 우회한다** — 여기서는
      * 정규화가 아직 유일한 방벽이라 남긴다.
      *
-     * **picker의 짧은 선택 숫자는 예외로 남긴다**(#117, PR #445 리뷰). 그 숫자는 줄에 붙은
+     * **제한 선택값은 예외로 남긴다**(#117, #462). 그 값은 줄에 붙은
      * 장식이 아니라 **선택 상태 자체**라, 지우면 분 picker를 `00`→`30`으로 돌려도 앵커가 안
      * 움직인다 — 그런데 그 화면에서는 앵커가 **유일하게 열리는 문**이다. 시계 앱은 진입 탭이
      * 이미 클릭을 쏴 조용함 문이 닫혀 있고, picker 스크롤은 CLICKED가 아니라(#380이 SCROLLED를
-     * 뺐다) 인과 게이트도 안 열린다. 「안 읽음 12→13」과는 serializer가 검증한
-     * `editable + EditText + 짧은 숫자`로 갈린다 — 그쪽은 비편집 View의 긴 label이다.
+     * 뺐다) 인과 게이트도 안 열린다. 「안 읽음 12→13」과는 serializer가 자유 입력과 다른
+     * [UiElement.signatureLabel] 투영으로 가른다. 병합 행은 [UiElement.targetAnchorLabel]에서
+     * 제한 선택 파트만 보존해 행의 다른 숫자까지 예외로 만들지 않는다. wire에서
+     * 역직렬화했거나 테스트가 직접 만든 옛 요소에는 그 메타가 없으므로, 짧은 숫자 EditText의
+     * 기존 예외도 호환 경계로 유지한다.
      */
-    internal fun stableLabelOf(element: UiElement): String =
-        if (
-            element.editable &&
-            element.role.endsWith("EditText") &&
-            UiTreeSerializer.isShortNumericControlLabel(element.label)
+    internal fun stableLabelOf(element: UiElement): String {
+        element.targetAnchorLabel?.let { return it }
+        val projected = element.signatureLabel ?: element.label
+        return if (
+            element.signatureTracksEditableValue ||
+            (
+                element.signatureLabel == null &&
+                    element.editable &&
+                    element.role.endsWith("EditText") &&
+                    UiTreeSerializer.isShortNumericControlLabel(projected)
+                )
         ) {
-            element.label
+            projected
         } else {
-            ANCHOR_DIGITS.replace(element.label, "#")
+            UiTreeSerializer.normalizeTargetAnchorLabel(projected)
         }
+    }
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {

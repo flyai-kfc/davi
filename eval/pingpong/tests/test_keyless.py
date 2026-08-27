@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,16 @@ class _ClarificationAdapter:
             return PingpongTurn(
                 status=PingpongStatus.READY, message="확인", goal="확정된 목표"
             )
+        if self._second_status == "clarify_again":
+            # **계약 위반이다.** 답을 받은 뒤에는 ready 또는 unable_to_finalize만 허용된다.
+            # 앱은 이것을 `InvalidResponse`로 버리고 MA-5로 가므로 **읽지 않는다.**
+            return PingpongTurn(
+                status=PingpongStatus.NEEDS_CLARIFICATION,
+                message="한 번 더 여쭐게요",
+                questions=[
+                    Question(id="q3", prompt="한 번 더 여쭐게요", options=[]),
+                ],
+            )
         return PingpongTurn(
             status=PingpongStatus.UNABLE_TO_FINALIZE, message="다시 말씀해 주세요"
         )
@@ -141,9 +152,12 @@ def test_326_흐름은_요청_두_번으로_끝난다(scenarios):
     assert result.metrics["질문수"] == 2
     assert result.metrics["요청수"] == 2
     assert result.metrics["2회이내_ready"] is True
-    # 새 화면은 첫 질문만 읽고, ready 확인 문구를 한 번 더 읽는다.
-    assert result.metrics["TTS_발화수"] == 2
-    assert result.metrics["TTS_문자수"] == len("누구에게 보낼까요?") + len("확인")
+    # **문항마다 읽는다**(#452 · PR #465). 안 읽어 주는 질문은 접힌 채로 떠서 어르신이
+    # 읽을 수도 들을 수도 없다는 것이 그 결정의 근거다. 여기에 ready 확인 문구가 더해진다.
+    assert result.metrics["TTS_발화수"] == 3
+    assert result.metrics["TTS_문자수"] == (
+        len("누구에게 보낼까요?") + len("어떤 방법으로 보낼까요?") + len("확인")
+    )
     assert result.metrics["보기_적중률"] == 1.0
 
 
@@ -337,7 +351,8 @@ def test_TTS_평균은_ready로_완료된_실행만_세다(scenarios):
         },
     )
     unable = run_scenario(scenarios[2], _FakeUser(), _ClarificationAdapter("unable"))
-    assert unable.metrics["TTS_발화수"] == 1  # 첫 질문은 읽었지만 완료하지 못했다.
+    # 질문 둘을 다 읽었지만 완료하지 못했다 — ready 문구가 없어 둘뿐이다.
+    assert unable.metrics["TTS_발화수"] == 2
 
     summary = summarize([spoken, unable, failed])["전체"]
     assert summary["ready_평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]
@@ -1014,3 +1029,144 @@ def test_부분_재채점은_채점_계약이_다른_옛_점수를_섞지_않는
     assert not in_batch(scored("v1:옛계약"), batch)
     # 이 필드가 생기기 전의 채점(빈 값)도 현재 배치가 아니다.
     assert not in_batch(scored(""), batch)
+
+
+def test_env_파일은_셸에_있는_값을_덮지_않는다(tmp_path, monkeypatch):
+    """`.env`는 기본값 공급이지 강제가 아니다.
+
+    한 번만 다른 모델·게이트웨이로 돌려 보는 자리에서 셸이 이겨야 한다 — 덮어쓰면 파일을
+    고쳤다 되돌리는 절차가 생긴다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        """PINGPONG_TEST_ONLY_FILE=파일값
+PINGPONG_TEST_ONLY_SHELL=파일값
+""",
+        encoding="utf-8",
+    )
+    # `delenv`만 쓰면 원래 없던 변수를 복원 대상으로 기록하지 않아 세션에 남는다.
+    # `setenv`로 먼저 등록해 두고 지운다 — `setdefault`는 키가 있으면 값이 빈 문자열이어도
+    # 안 덮으므로, 남아 있으면 파일 값이 안 올라온다.
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_FILE", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_FILE")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_SHELL", "셸값")
+
+    load_env(env_file)
+
+    assert os.environ["PINGPONG_TEST_ONLY_FILE"] == "파일값"
+    assert os.environ["PINGPONG_TEST_ONLY_SHELL"] == "셸값"
+
+
+def test_env_파일이_없어도_진입점이_죽지_않는다(tmp_path):
+    """저장소를 갓 클론한 사람과 CI가 이 경로로 온다."""
+    from pingpong_eval.cli import load_env
+
+    load_env(tmp_path / "없는파일.env")
+
+
+def test_진입점이_env를_읽는다(tmp_path, monkeypatch, capsys):
+    """`load_env` 호출이 빠지면 `.env`는 다시 장식이 된다.
+
+    함수 자체는 위 둘이 지키지만 **아무도 안 부르면** 아무것도 안 걸린다 — 이 저장소가
+    `.env.example`만 두고 로딩이 없던 상태가 정확히 그것이었다.
+    **호출 여부가 아니라 결과를 본다** — 대역을 세면 `main` 맨 끝으로 옮겨도 통과한다.
+    """
+    from pingpong_eval import cli
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_ENTRY=진입점", encoding="utf-8")
+    monkeypatch.setattr(cli, "ENV_FILE", env_file)
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_ENTRY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_ENTRY")
+
+    # 시나리오 경로를 절대로 준다 — CI는 `eval/`을 작업 디렉터리로 돌리고
+    # `check`의 기본값은 상대 경로다(conftest 문서).
+    cli.main(["check", "--scenarios", str(ROOT / DEFAULT_SCENARIOS)])
+    capsys.readouterr()
+
+    assert os.environ["PINGPONG_TEST_ONLY_ENTRY"] == "진입점"
+
+
+def test_env_파일의_빈_값은_올리지_않는다(tmp_path, monkeypatch):
+    """`.env.example`을 복사만 하고 안 채운 키가 「빈 키」가 되면 안 된다.
+
+    소비자 중 빈 값에 의미를 두는 것이 없으므로, 복사만 한 상태가 파일 없는 상태와 같은
+    환경이 되게 한다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_EMPTY=", encoding="utf-8")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_EMPTY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_EMPTY")
+
+    load_env(env_file)
+
+    assert "PINGPONG_TEST_ONLY_EMPTY" not in os.environ
+
+
+def test_평가자는_키가_없으면_LlmError로_닫는다(monkeypatch):
+    """SDK에 맡기면 raw 트레이스백이 뜬다 — `GeminiClient`와 같은 결로 여기서 닫는다.
+
+    SDK는 빈 문자열을 부재로 접고(`api_key = os.environ.get(...) or None`) **호출 시점에**
+    `TypeError`를 던지는데, `cmd_run`·`cmd_judge`는 `LlmError`만 잡는다.
+
+    **`match`로 못 박는다** — 가드가 `import anthropic` 뒤에 있으면 SDK 없는 환경에서
+    ImportError가 같은 `LlmError`로 올라와 가드를 지워도 통과한다. CI가 그 환경이다.
+    """
+    from pingpong_eval.llm import ClaudeJudge, LlmError
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
+        ClaudeJudge()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
+        ClaudeJudge()
+
+
+def test_평가자는_인자로_받은_키를_SDK에_넘긴다(monkeypatch):
+    """가드에서만 쓰고 SDK에 안 넘기면, 인자로 키를 줘도 호출 시점에 죽는다.
+
+    가짜 모듈을 꽂아 키도 SDK도 없이 확인한다 — `import anthropic`이 함수 안이라
+    호출 시점에 해석되므로, `anthropic`을 설치하지 않는 잡에서도 이 관문이 돈다.
+    """
+    import sys
+    import types
+
+    from pingpong_eval.llm import ClaudeJudge
+
+    받은: dict = {}
+
+    가짜 = types.ModuleType("anthropic")
+    가짜.Anthropic = lambda **kwargs: 받은.update(kwargs) or object()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "anthropic", 가짜)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    ClaudeJudge(api_key="  arg-key  ")
+
+    assert 받은.get("api_key") == "arg-key"
+
+
+def test_계약을_어긴_두_번째_질문은_낭독으로_세지_않는다(scenarios):
+    """답을 받은 뒤 또 질문이 오면 앱은 그것을 버린다 — TTS도 늘면 안 된다(#488 리뷰).
+
+    `VoiceDialogueSession.applyResponse`가 `pending.turnIndex != 0`이면 `InvalidResponse`로
+    내려 MA-5로 가고, 그 화면에는 `speak` 호출이 없다. 러너는 그 turn을 transcript에 넣으므로
+    **집계 쪽에서 걸러야** 한다. 안 그러면 계약 위반 회차의 TTS만 부풀어, 실패가 오히려 더
+    많이 읽은 것처럼 보인다.
+    """
+
+    result = run_scenario(
+        scenarios[0], _FakeUser(), _ClarificationAdapter("clarify_again")
+    )
+
+    # 첫 요청의 계획 둘만 읽는다 — 두 번째 요청의 "한 번 더 여쭐게요"는 안 읽는다.
+    assert result.metrics["TTS_발화수"] == 2
+    assert result.metrics["TTS_문자수"] == (
+        len("누구에게 보낼까요?") + len("어떤 방법으로 보낼까요?")
+    )
+    # 질문 수 자체는 계약 위반을 드러내야 하므로 셋 그대로다.
+    assert result.metrics["질문수"] == 3

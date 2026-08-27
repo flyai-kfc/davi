@@ -1,0 +1,12 @@
+# 의존성은 requirements.txt로 관리한다. 이 파일은 도구 설정만 담는다.
+
+[tool.ruff.lint]
+# 기존 기본 묶음을 명시해 Ruff의 향후 기본값 변경에 흔들리지 않게 한다(#489).
+# server/의 더 넓은 규칙 묶음은 별도 정책이므로 이 변경에서 eval/에 새로 강제하지 않는다.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# 모노레포 형제인 server/를 가져오려면 sys.path를 먼저 조정해야 한다.
+"./harness.py" = ["E402"]
+"./judge.py" = ["E402"]
+"./completion_ab.py" = ["E402"]
