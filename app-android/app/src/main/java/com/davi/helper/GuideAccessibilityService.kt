@@ -2,6 +2,7 @@ package com.davi.helper
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
+import android.os.Build
 import android.os.PowerManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -66,7 +67,8 @@ class GuideAccessibilityService : AccessibilityService() {
     private var guidedTargetClickable = false
 
     /**
-     * 타깃 앵커(#380) — 지금 안내가 가리키는 슬롯의 node id와, 응답 시점의 정규화 label.
+     * 타깃 앵커(#380) — 지금 안내가 가리키는 슬롯의 node id와, 응답 시점의 앵커 label
+     * ([ScreenSignature.stableLabelOf], **숫자를 지운 값**이다 — 내용 축과 다르다, #427).
      * 구조가 같은 채 목록이 재정렬되면(새 메시지로 순서가 밀리는 대화방 목록) 강조가 엉뚱한
      * 줄을 가리키게 되는데, 그 순간 이 슬롯의 label이 달라지므로 조작 이벤트 없이도 재질의를
      * 연다. node id는 직렬화 순서 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다 — 앵커를
@@ -88,6 +90,29 @@ class GuideAccessibilityService : AccessibilityService() {
      * 응답이 아직 없는 화면에서도 게이트가 서도록 응답이 아니라 샘플에서 채운다.
      */
     private var currentScreenPackage: String? = null
+
+    /**
+     * 이 세션에서 클릭 이벤트를 **한 번이라도** 쏜 package(#427 2단계).
+     *
+     * 여기 없는 앱은 인과의 클릭 축이 사실상 없다 — 2026-08-25 SM-S921N 실측에서 코레일은
+     * 220샘플·조작 6회 세션 내내 `TYPE_VIEW_CLICKED`가 **0건**이었다.
+     * 그런 앱에서만 조용함 기반의 보조 문을 연다 — 클릭을 쏘는 앱은 동작이 그대로다.
+     * 세션 지식이라 [GuideSession] 전환에서 함께 비운다.
+     */
+    private val packagesWithClicks = mutableSetOf<String>()
+
+    /** 노드 캐시를 언제 끌지의 판정(#427 2단계). 근거는 [A11yCachePolicy]에 있다. */
+    private val cachePolicy = A11yCachePolicy()
+
+    /** 지금 캐시를 켜 둔 상태인가. 매 샘플 같은 값을 다시 넣지 않으려고 든다. */
+    private var a11yCacheEnabled = true
+
+    /**
+     * 캐시 토글 실패를 이미 로그에 남겼는가. 거부·예외 시 [a11yCacheEnabled]를 일부러 안
+     * 갱신해 재시도를 살리는데(PR #445 리뷰), 그러면 같은 경고가 폴링마다(약 0.75초) 찍혀
+     * `logcat -s GuideSvc`(실기기 검증의 주 도구)가 묻힌다. 성공하면 다시 무장한다.
+     */
+    private var a11yCacheFailureLogged = false
 
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
@@ -188,6 +213,10 @@ class GuideAccessibilityService : AccessibilityService() {
     private val sessionListener = GuideSession.Listener { goal ->
         mainHandler.post {
             stability.reset()
+            packagesWithClicks.clear()
+            cachePolicy.reset()
+            // 세션이 끝나면 캐시를 되돌린다. 안 되돌리면 다음 세션이 남의 앱 판정으로 시작한다.
+            updateA11yCache(enabled = true)
             logicalRequests.reset()
             // 새 세션의 첫 예약은 기한을 새로 받는다 — 직전 세션이 열어 둔 기한이 그사이
             // 지났으면 settle 없이 곧바로 뜬다(#380).
@@ -454,6 +483,23 @@ class GuideAccessibilityService : AccessibilityService() {
         // 계측. release 구현은 no-op이고 이벤트 텍스트는 어느 쪽도 남기지 않는다.
         // 위 필터 앞이라는 자리가 감당 가능한 이유는 이 호출이 `event.source`를 읽지 않기 때문이다(#356).
         GuideScreenLog.event(event, interesting)
+        // 캐시 무효화의 근거가 되는 이벤트를 이 앱이 쏘는가(#427 2단계). 타입과 package만
+        // 읽으므로 `event.source`를 건드리지 않는다(#356의 경계 그대로).
+        // **현재 화면의 package만 적립한다**(PR #445 자체 리뷰). 판정에서 읽는 것이
+        // `currentScreenPackage` 하나뿐이라, 셰이드·IME·백그라운드 앱의 이벤트까지 넣으면
+        // 읽히지 않는 항목만 세션 내내 쌓인다. 클릭 축이 쓰는 규칙과도 같아진다.
+        event.packageName?.toString()?.let { pkg ->
+            if (
+                pkg == currentScreenPackage &&
+                (
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                        event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                        event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                    )
+            ) {
+                cachePolicy.onContentEvent(pkg)
+            }
+        }
         if (!interesting) return
 
         // 인과 게이트의 **폴백 축**(#380). 판정에 쓰는 것은 타입과 package뿐이라, 부하 시
@@ -473,6 +519,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
+                packagesWithClicks.add(pkg)
                 stability.markInteraction(stabilityNowMs())
             }
             onTargetPressed(event)
@@ -603,6 +650,34 @@ class GuideAccessibilityService : AccessibilityService() {
         return PressMatch.judge(bounds, null, guidedTargetLabel, candidates)
     }
 
+    /**
+     * 접근성 노드 캐시를 켜고 끈다(#427 2단계). 상태가 바뀔 때만 호출해 매 샘플의 IPC를 아낀다.
+     * API 33 미만에는 이 손잡이가 없다 — 그 기기에서는 낡은 트리를 그대로 받는다(알려진 한계).
+     */
+    private fun updateA11yCache(enabled: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (enabled == a11yCacheEnabled) return
+        // **이 API는 실패를 예외가 아니라 `false`로 알린다**(PR #445 리뷰). `onSuccess`를
+        // "적용됐다"로 읽고 상태를 갱신하면, 실패한 뒤에도 위 조기 반환이 걸려 재시도가 영영 없다.
+        runCatching { setCacheEnabled(enabled) }
+            .onSuccess { applied ->
+                if (applied) {
+                    a11yCacheEnabled = enabled
+                    a11yCacheFailureLogged = false
+                    Log.i(TAG, "a11y cache=${if (enabled) "on" else "off"}")
+                } else if (!a11yCacheFailureLogged) {
+                    a11yCacheFailureLogged = true
+                    Log.w(TAG, "a11y cache toggle rejected enabled=$enabled")
+                }
+            }
+            .onFailure {
+                if (!a11yCacheFailureLogged) {
+                    a11yCacheFailureLogged = true
+                    Log.w(TAG, "a11y cache toggle failed", it)
+                }
+            }
+    }
+
     private fun scheduleSample(delayMs: Long) {
         // 꺼진 화면에는 그릴 것도 물을 것도 없다. 되살리는 것은 [resumeAfterScreenOn]뿐이다.
         if (screenOff) return
@@ -648,6 +723,9 @@ class GuideAccessibilityService : AccessibilityService() {
             // 아래에 그릴 대상이 없다. 읽는 중도 함께 내린다 — clear()는 안내만 지운다.
             lastDecision = null
             updateReading()
+            // 읽을 창이 없으면 낡은 트리도 없다. 캐시를 켠 채로 돌려 놓아, 다음 앱이 우리가
+            // 보지도 않은 앱의 판정을 물려받지 않게 한다(PR #445 리뷰).
+            updateA11yCache(enabled = cachePolicy.onSample(null))
             scheduleSample(POLL_MS)
             return
         }
@@ -687,17 +765,30 @@ class GuideAccessibilityService : AccessibilityService() {
         currentScreenPackage = result.screen.packageName.takeIf { it.isNotBlank() }
         // 한 번만 재서 재질의 판정과 강조 복원 양쪽에 쓴다 — 같은 질문이다.
         val targetSlotChanged = guidedTargetSlotChanged(result.screen, signature.structure)
+        val clickAxisDead = currentScreenPackage?.let { it !in packagesWithClicks } ?: false
+        // **내용 이벤트가 끊긴 「구간」에서 캐시를 끈다.** 판정 단위가 앱이 아니라 침묵
+        // 구간이라는 점이 중요하다(PR #445 자체 리뷰) — 이벤트를 쏘는 앱이라도 화면이 정지해
+        // 이벤트가 그치면 [A11yCachePolicy.SILENCE_SAMPLES] 뒤 함께 꺼진다. 그게 낭비로만
+        // 보이지 않는 이유는, 「정지한 화면」과 「낡은 트리」가 우리 눈에 **같아 보이기**
+        // 때문이다: 이벤트를 안 쏘는 앱에서 실제로 바뀐 화면이 정확히 그 모습이었다.
+        // 끄면 노드 접근이 전부 IPC라 직렬화가 23ms에서 800ms대로 뛴다(2026-08-25 SM-S921N
+        // 실측) — 그래서 상시가 아니라 침묵 구간에만 문다. 이벤트가 다시 오면 곧바로 켠다.
+        // 판정의 기본값이 **켬**인 것과 그 근거는 [A11yCachePolicy]에 있다.
+        updateA11yCache(enabled = cachePolicy.onSample(currentScreenPackage))
         val decision = stability.onSample(
             signature,
             now,
             hasLabeledElement,
             guidedTargetChanged = targetSlotChanged,
+            clickAxisDead = clickAxisDead,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
         // `ms`는 **`serialize()` 구간만**이다(#367) — 폴링 한 번의 전체 비용이 아니다.
         // 밖에 남는 것: `ActiveWindowResolver.resolve()`의 창·root IPC, 직렬화 앞의 `windows.map`,
         // 직렬화 뒤의 `ScreenSignature.of`. 예산(`SETTLE_MS`·`POLL_MS`)과 대조할 때 이 값은 **하한**이다.
         // 폴링마다 찍혀야 p90·최대가 나오므로 화면당 한 번인 `screen_stable`이 아니라 이 줄에 싣는다.
+        // 한 번만 읽는다 — 네 값이 같은 시점의 것이어야 로그가 서로를 설명한다.
+        val quiet = stability.quietState(now)
         GuideScreenLog.sample(
             decision.name,
             result.screen.elements.size,
@@ -706,9 +797,29 @@ class GuideAccessibilityService : AccessibilityService() {
             stability.interactionGateOpen(now),
             targetSlotChanged,
             stability.anchorRequerySpent(),
+            quiet.forMs,
+            quiet.armed,
+            quiet.coldOpens,
+            quiet.opens,
+            clickAxisDead,
             result.cost,
         )
         lastDecision = decision
+        // 확인 대기 중 **자기발생** 내용 변화를 따라잡는다(PR #445 리뷰 5-1). 완료 피드백이
+        // 나르는 내용 서명은 done 응답 시점에 얼리는데, #427로 그 축이 숫자를 담게 되어
+        // 인앱 시계가 한 번만 돌아도 서버의 「정확히 같은 화면」 대조가 깨진다 — 사용자가
+        // 「아직이에요」를 눌러도 그 신호가 통째로 버려진다. 시니어가 안내를 읽고 누르기까지의
+        // 구간이 분 단위라 실제로 걸린다.
+        //
+        // **인과가 있으면 따라잡지 않는다.** 사용자가 확인창 뒤 화면을 건드렸다면 그건 done이
+        // 가리킨 그 화면이 아니고, 서버가 피드백을 버리는 것이 맞다. 구조가 달라진 경우도
+        // 같다 — 얼린 값을 그대로 둬서 대조가 어긋나게 한다.
+        GuideSession.observeConfirmScreen(
+            session.generation,
+            signature,
+            hasLabeledElement,
+            causal = stability.interactionGateOpen(now),
+        )
         updateReading()
 
         // 지워진 안내의 회복 경로(PR #63 리뷰 P1). 상한 안내는 '안내 중지' 버튼이 우리 앱에만

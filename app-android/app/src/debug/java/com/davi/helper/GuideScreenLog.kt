@@ -111,6 +111,11 @@ object GuideScreenLog {
         gateOpen: Boolean,
         anchorMoved: Boolean,
         anchorSpent: Boolean,
+        quietMs: Long,
+        quietArmed: Boolean,
+        quietColdOpens: Int,
+        quietOpens: Int,
+        clickAxisDead: Boolean,
         cost: UiTreeSerializer.WalkCost,
     ) {
         // `capped`는 **앵커가 열려던 것을 상한이 막았다**는 뜻이다. 게이트가 열려 있으면
@@ -127,6 +132,8 @@ object GuideScreenLog {
                 "c=${Integer.toHexString(signature.content.hashCode())} " +
                 "gate=${if (gateOpen) "open" else "-"} " +
                 "anchor=$anchor " +
+                "quiet=${quietMs}ms${if (quietArmed) "!" else ""}/$quietColdOpens+$quietOpens " +
+                "cad=${if (clickAxisDead) "y" else "n"} " +
                 "v=${cost.visits} cut=${cost.cuts}",
         )
     }
