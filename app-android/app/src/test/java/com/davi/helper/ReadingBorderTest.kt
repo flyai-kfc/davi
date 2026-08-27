@@ -71,6 +71,22 @@ class ReadingBorderTest {
         assertFalse(reading(decision = ScreenStabilityTracker.Decision.STUCK))
     }
 
+    /**
+     * 완료 재확인 백오프 대기(#480)에서도 끈 채로 둔다. 그 구간을 채우는 것은 안내창의 대기
+     * 문구와 느린 점 셋이고(`GuideDisplayState.showWaitNotice`), **테두리가 꺼져 있다는 것
+     * 자체가** 「읽는 중이 아니다」를 가르는 축이다. 대기 표시를 넣으면서 여기까지 켜면
+     * 두 상태가 화면에서 합쳐진다.
+     */
+    @Test
+    fun `백오프 대기 구간에서도 끈다`() {
+        assertFalse(
+            reading(
+                decision = ScreenStabilityTracker.Decision.IDLE,
+                requestInFlight = false,
+            ),
+        )
+    }
+
     @Test
     fun `읽기 불가 안내가 뜬 화면에서는 끈다`() {
         assertFalse(reading(decision = ScreenStabilityTracker.Decision.UNREADABLE))

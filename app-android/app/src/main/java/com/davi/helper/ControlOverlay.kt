@@ -43,6 +43,24 @@ class ControlOverlay(
     private var kind: GuideDisplayState.ConfirmKind? = null
 
     /**
+     * 지금 창이 「읽는 중」 문구를 들고 있는가(#450). 다시 듣기 탭을 그 구간에 막는다 —
+     * 그때 창에 보이는 문장은 「화면을 읽고 있어요」인데(#229·#295) 낭독이 들고 있는 것은
+     * 그 앞 안내라, 탭하면 **화면에 없는 문장**이 나온다.
+     *
+     * **막는 구간이 둘이다** — [waiting]도 같은 이유로 막는다. 「창에 뜬 문구가 낭독에서
+     * 빠져 있는가」가 판정의 실체이고, 그런 상태를 새로 만들 때는 여기도 함께 봐야 한다.
+     */
+    private var reading = false
+
+    /**
+     * 지금 창이 **완료 재확인 대기** 문구를 들고 있는가(#480). 다시 듣기 탭을 [reading]과 같은
+     * 이유로 막는다 — 그 문구는 낭독에서 빠져 있어(`GuideAccessibilityService.draw`)
+     * [GuideSpeaker]가 든 것은 **그 앞 안내**다. 탭하면 화면에 없는 문장이, 그것도 사용자가
+     * 이미 끝낸 조작을 다시 하라는 말로 나온다.
+     */
+    private var waiting = false
+
+    /**
      * 직전에 창에 실제로 넣은 자리. 같은 자리면 [show]가 `updateViewLayout`을 건너뛴다.
      *
      * 아끼려는 것은 CPU가 아니라 **우리가 우리를 깨우는 일**이다 — 창을 건드릴 때마다
@@ -63,6 +81,10 @@ class ControlOverlay(
      *
      * [confirm]이 있으면 컨트롤 행이 확인쌍이 된다(GD-3·GD-4). 안내창 자체는 같은 창이라
      * 확인으로 넘어갈 때 창을 다시 만들지 않는다.
+     *
+     * [waiting]이면 완료 재확인 백오프 대기다(#480) — 점 셋을 **느린 리듬**으로 켠다.
+     * [reading]과 배타이고 읽는 중이 이긴다(둘이 동시에 참일 일은 없다 —
+     * [ReadingBorder.isReading]이 백오프에서 false다).
      */
     fun show(
         rect: Rect,
@@ -71,7 +93,10 @@ class ControlOverlay(
         reading: Boolean = false,
         reserved: Float = 0f,
         inputText: String? = null,
+        waiting: Boolean = false,
     ) {
+        this.reading = reading
+        this.waiting = waiting
         val current = root
         if (current == null) {
             if (create(rect) != null) {
@@ -79,8 +104,8 @@ class ControlOverlay(
                 box?.setReservedHeight(reserved)
                 box?.setLines(lines)
                 applyMode(confirm)
-                applyReading(reading)
-                applyInputFill(inputText, confirm, reading)
+                applyDots(reading, waiting)
+                applyInputFill(inputText, confirm, reading || waiting)
             }
             return
         }
@@ -88,8 +113,8 @@ class ControlOverlay(
         box?.setReservedHeight(reserved)
         box?.setLines(lines)
         applyMode(confirm)
-        applyReading(reading)
-        applyInputFill(inputText, confirm, reading)
+        applyDots(reading, waiting)
+        applyInputFill(inputText, confirm, reading || waiting)
         if (isApplied(rect)) return
         runCatching {
             windowManager.updateViewLayout(current, params(rect))
@@ -110,22 +135,37 @@ class ControlOverlay(
         inputFillButton = null
         readingDots = null
         kind = null
+        reading = false
+        waiting = false
     }
 
     /**
-     * 읽는 중 점 셋을 켜고 끈다. 가시성만 바꾸면 된다 — GONE→VISIBLE이 곧 구동 조건
+     * 컨트롤 행의 점 셋을 켜고 끈다. 가시성만 바꾸면 된다 — GONE→VISIBLE이 곧 구동 조건
      * 전이라, 전이 훅이 지연·주기를 알아서 처음부터 되돌린다(#148 `onMotionLifecycleChanged`).
      * 대화 화면도 같은 방식이다.
+     *
+     * **같은 뷰가 두 상태를 그린다**(#480) — 읽는 중(GD-1·GD-2r)과 완료 재확인 대기다.
+     * 리듬으로 가르고, 리듬은 **보이기 직전에** 갈아 끼운다. 순서가 뒤바뀌면 전이 훅이
+     * 옛 주기로 한 프레임을 그린다.
+     *
+     * 둘이 함께 참이면 **읽는 중이 이긴다.** 실제로 겹치지는 않는다 —
+     * [ReadingBorder.isReading]이 백오프에서 false이기 때문이고, 그 규칙이 바뀌면 여기가
+     * 조용히 틀리는 게 아니라 읽는 중 쪽으로 붙는다.
      */
-    private fun applyReading(on: Boolean) {
+    private fun applyDots(reading: Boolean, waiting: Boolean) {
         val dots = readingDots ?: return
+        val on = reading || waiting
+        if (on) dots.setRhythm(slow = waiting && !reading)
         dots.visibility = if (on) View.VISIBLE else View.GONE
     }
 
     /**
-     * 「바로 입력」 버튼(C21 · #405)을 켜고 끈다. 확인쌍·읽는 중 점 셋과 **같은 자리**(창 바닥
+     * 「바로 입력」 버튼(C21 · #405)을 켜고 끈다. 확인쌍·점 셋과 **같은 자리**(창 바닥
      * 컨트롤 행)를 쓰므로 그 둘이 있는 동안은 값이 있어도 숨긴다 — 확인은 답할 자리고, 읽는
      * 중의 안내는 이미 유효하지 않은 화면의 것이라 그 값을 채우게 두면 안 된다.
+     *
+     * [reading]에는 **대기(#480)도 접어서 온다** — 자리를 다투는 것은 점 셋이지 그 점이 무슨
+     * 뜻인지가 아니다. 대기 문구에는 `input_text`가 없어 지금은 값으로도 걸리지 않는다.
      */
     private fun applyInputFill(
         inputText: String?,
@@ -187,6 +227,14 @@ class ControlOverlay(
 
         created.findViewById<View>(R.id.btn_input_fill)
             .setOnClickListener { callbacks.onInputFillRequested() }
+
+        // **안내창 면 전체가 다시 듣기 탭이다**(#450). 칩을 하나 더 두지 않은 이유는 자리다 —
+        // 컨트롤 행에 얹으면 창이 커져 안내 대상 앱을 그만큼 더 가린다. 이 면은 **이미** 이 창이
+        // 터치를 삼키던 자리라([GuideBoxView]) 아래 앱에서 새로 뺏는 것이 없고, 강조 사각형은
+        // 표시 오버레이에 남아 계속 통과하므로 "안내 대상을 누른 것"과 헷갈릴 자리도 아니다.
+        // 중지 칩·확인쌍·「바로 입력」은 이 뷰 **위에** 얹혀 있어 그쪽 탭을 뺏지 않는다.
+        created.findViewById<View>(R.id.guide_box)
+            .setOnClickListener { if (!reading && !waiting) callbacks.onSpeechRepeatRequested() }
 
         val pair = created.findViewById<View>(R.id.confirm_pair)
         // 확인쌍은 대화 화면과 공유하는 컴포넌트라 XML 라벨이 그 화면 문구다. 오버레이에서는 뜻이

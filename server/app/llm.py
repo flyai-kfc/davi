@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from functools import cache
 
 import httpx
@@ -91,6 +92,15 @@ class StubLlmClient(LlmClient):
     """
 
     def reason(self, req: NextStepRequest) -> GuideAction:
+        # 프로브 손잡이(#480). 값이 기본이면 아래 규칙 그대로다 — 설정이 켜졌을 때만 갈린다.
+        # 게이트(development·스텁·loopback·개발 토큰 없음)는 `config.validate_runtime_profile`에
+        # 있다. 여기서 다시 세지 않는 이유는 기동 때 못 뜨게 막는 편이 요청마다 판정하는 것보다
+        # 실수에 강해서다.
+        if settings.davi_stub_delay_ms:
+            time.sleep(settings.davi_stub_delay_ms / 1000)
+        if settings.davi_stub_force_done:
+            return self._forced_done(req)
+
         expected = f"목표 '{req.goal}' 달성"
         # 스텁은 화면을 읽지 못하므로 package 이름을 그대로 쓴다. 모델이 만드는 한 줄 요약과
         # 성격은 다르지만, 계약이 요구하는 자리를 비워 두지 않는 것이 여기서 할 일이다.
@@ -105,7 +115,12 @@ class StubLlmClient(LlmClient):
                 evidence=f"화면에 '{target.label}' 버튼이 보임",
                 action_type=ActionType.TAP,
                 target_node_id=target.node_id,
-                instruction=f"'{target.label}'을(를) 눌러 주세요.",
+                # **`을(를)`처럼 눈으로 읽는 표기를 쓰지 않는다.** 안내문은 앱이 소리로도 읽는데
+                # (#450), 그 표기는 TTS가 괄호째 읽어 「티월드 을 를 눌러 주세요」가 된다
+                # (2026-08-26 SM-S921N 실측). 조사를 label에 붙이려면 받침을 봐야 하고 영문·숫자
+                # label에서는 그마저 갈리므로, **조사가 붙는 자리를 고정 낱말로** 옮긴다 —
+                # 바로 아래 `evidence`가 이미 이 요소를 '버튼'이라 부르고 있어 말도 어긋나지 않는다.
+                instruction=f"'{target.label}' 버튼을 눌러 주세요.",
             )
 
         scrollable = next(
@@ -128,6 +143,25 @@ class StubLlmClient(LlmClient):
         raise LlmError(
             ErrorKind.SERVER,
             "스텁이 다음 동작을 정할 수 없다: 누를 수 있는 요소도, 넘길 목록도 없음",
+        )
+
+    @staticmethod
+    def _forced_done(req: NextStepRequest) -> GuideAction:
+        """화면을 보지 않고 완료를 주장한다(#480 프로브).
+
+        **`completion_evidence`를 일부러 비운다.** 채우면 서버 검증(`_classify_completion`)이
+        `verified`로 올려 앱이 확인 화면으로 바로 가 버리고, 재현하려는 재질의 루프에 못
+        들어간다. 비우면 4단이 `inconclusive`로 내리고 앱이 `MAX_UNVERIFIED_DONE`까지
+        백오프 재질의를 돈다 — 그 구간이 관측 대상이다.
+
+        `evidence`에 화면 label을 인용하지 않는 것도 같은 이유다(#54의 인용 대조).
+        """
+        return GuideAction(
+            expected_result=f"목표 '{req.goal}' 달성",
+            screen_summary=f"{req.screen.package_name or '알 수 없는 앱'}의 화면",
+            evidence="프로브가 검증 없이 완료를 주장함",
+            action_type=ActionType.DONE,
+            instruction="다 되었어요.",
         )
 
 

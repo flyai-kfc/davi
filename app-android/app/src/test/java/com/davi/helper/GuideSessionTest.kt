@@ -657,6 +657,78 @@ class GuideSessionTest {
     }
 
     @Test
+    fun `확인 대기 중 자기발생 내용 변화를 피드백 서명이 따라잡는다`() {
+        // #427로 내용 축이 숫자를 담게 되면서, 확인창을 읽는 동안 인앱 시계가 한 번만 돌아도
+        // 서버의 「정확히 같은 화면」 대조가 깨져 사용자의 「아직이에요」가 통째로 버려졌다
+        // (PR #445 리뷰 5-1). 따라잡지 않으면 이 단언이 옛 값에서 실패한다.
+        GuideSession.start("카메라 열기")
+        val gen = currentGeneration()
+        val before = ScreenSig(SIGNATURE, "제목|장바구니;오후 3:45;")
+        val after = ScreenSig(SIGNATURE, "제목|장바구니;오후 3:46;")
+        onDone(gen, CompletionVerdict.VERIFIED, SIGNATURE, GuideSession.contentSignature(gen, before, true))
+
+        GuideSession.observeConfirmScreen(gen, after, hasLabeledElement = true, causal = false)
+        GuideSession.confirmRejected()
+
+        assertEquals(
+            GuideSession.contentSignature(gen, after, true),
+            GuideSession.active()?.completionFeedback?.contentSignature,
+        )
+    }
+
+    @Test
+    fun `조작이 관측된 내용 변화는 따라잡지 않는다`() {
+        // 사용자가 확인창 뒤 화면을 건드렸으면 그건 done이 가리킨 화면이 아니다. 얼린 값을
+        // 그대로 둬서 서버가 피드백을 버리게 한다 — 관용은 숫자에만 준다.
+        GuideSession.start("카메라 열기")
+        val gen = currentGeneration()
+        val before = ScreenSig(SIGNATURE, "제목|수량 2;")
+        val after = ScreenSig(SIGNATURE, "제목|수량 3;")
+        val frozen = GuideSession.contentSignature(gen, before, true)
+        onDone(gen, CompletionVerdict.VERIFIED, SIGNATURE, frozen)
+
+        GuideSession.observeConfirmScreen(gen, after, hasLabeledElement = true, causal = true)
+        GuideSession.confirmRejected()
+
+        assertEquals(frozen, GuideSession.active()?.completionFeedback?.contentSignature)
+    }
+
+    @Test
+    fun `구조가 달라지면 따라잡지 않는다`() {
+        // 구조 변화는 화면 자체가 바뀐 것이라 부정의 대상이 아니다.
+        GuideSession.start("카메라 열기")
+        val gen = currentGeneration()
+        val before = ScreenSig(SIGNATURE, "제목|장바구니;")
+        val frozen = GuideSession.contentSignature(gen, before, true)
+        onDone(gen, CompletionVerdict.VERIFIED, SIGNATURE, frozen)
+
+        GuideSession.observeConfirmScreen(
+            gen,
+            ScreenSig(OTHER_SIGNATURE, "제목|다른 화면;"),
+            hasLabeledElement = true,
+            causal = false,
+        )
+        GuideSession.confirmRejected()
+
+        assertEquals(frozen, GuideSession.active()?.completionFeedback?.contentSignature)
+    }
+
+    @Test
+    fun `label 없는 프레임은 얼린 서명을 지우지 않는다`() {
+        // 덜 그려진 트리 한 번에 얼린 값을 잃으면 확인 뒤 피드백이 통째로 어긋난다.
+        GuideSession.start("카메라 열기")
+        val gen = currentGeneration()
+        val before = ScreenSig(SIGNATURE, "제목|장바구니;")
+        val frozen = GuideSession.contentSignature(gen, before, true)
+        onDone(gen, CompletionVerdict.VERIFIED, SIGNATURE, frozen)
+
+        GuideSession.observeConfirmScreen(gen, ScreenSig(SIGNATURE, "|"), hasLabeledElement = false, causal = false)
+        GuideSession.confirmRejected()
+
+        assertEquals(frozen, GuideSession.active()?.completionFeedback?.contentSignature)
+    }
+
+    @Test
     fun `명시 반대 done은 완료 확인을 띄우지 않고 재탐색한다`() {
         GuideSession.start("기능 켜기")
 

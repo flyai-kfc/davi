@@ -322,9 +322,8 @@ def test_llm_sends_dialogue_schema_and_parses_dynamic_question():
         body = json.loads(http_request.content)
         assert body["generationConfig"]["responseSchema"] == INTENT_DIALOGUE_SCHEMA
         assert body["generationConfig"]["maxOutputTokens"] == 800 + _RESPONSE_HEADROOM_TOKENS
-        # thinking 모델이 이 예산을 thinking 토큰으로 다 써 응답이 잘리는 걸 막는다
-        # (실기기 재현, 2026-08-18 gemini-3.6-flash PARSE/max_output_tokens 실패).
-        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
+        # 알 수 없는/3.x 모델에는 2.5 전용 numeric budget을 보내지 않는다(#457).
+        assert "thinkingConfig" not in body["generationConfig"]
         assert str(private_session) not in body["contents"][0]["parts"][0]["text"]
         assert http_request.headers["x-goog-api-key"] == "test-key"
         return httpx.Response(

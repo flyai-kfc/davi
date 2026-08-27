@@ -3,6 +3,7 @@ import logging
 
 import httpx
 import pytest
+from app.config import settings
 from app.llm import (
     GUIDE_ACTION_SCHEMA,
     LlmError,
@@ -96,9 +97,8 @@ def test_llm_sends_prompt_and_response_schema():
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         assert body["generationConfig"]["maxOutputTokens"] == 1824
         assert body["generationConfig"]["responseSchema"] == GUIDE_ACTION_SCHEMA
-        # thinking 모델의 보이지 않는 thinking 토큰이 maxOutputTokens 예산을 다 써
-        # 응답이 잘리는 걸 막는다(실기기 재현, 2026-08-18). 캡을 빼먹으면 회귀한다.
-        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 800}
+        # 알 수 없는/3.x 모델에는 2.5 전용 numeric budget을 보내지 않는다(#457).
+        assert "thinkingConfig" not in body["generationConfig"]
         assert request.headers["x-goog-api-key"] == "test-key"
         return httpx.Response(200, json=_action_response())
 
@@ -344,3 +344,51 @@ def test_get_llm_client_uses_new_settings_after_cache_clear(set_runtime_profile)
     # maxOutputTokens는 이 값 위에 원래 여유분(1024)을 얹은 것이어야 잘림을 안 만든다.
     assert client.provider.thinking_budget == 321
     assert client.provider.max_output_tokens == 321 + 1024
+
+
+# ── 스텁 프로브 (#480) ────────────────────────────────────────────────────
+
+
+def test_stub_force_done_returns_unverifiable_done(monkeypatch):
+    """`completion_evidence`가 비어야 앱이 재질의 루프에 들어간다.
+
+    채우면 서버 검증이 `verified`로 올려 확인 화면으로 바로 가 버리고, 재현하려는 백오프
+    구간이 통째로 사라진다. 이 테스트가 그 실수를 막는다.
+    """
+
+    monkeypatch.setattr(settings, "davi_stub_force_done", True)
+
+    action = StubLlmClient().reason(_request())
+
+    assert action.action_type is ActionType.DONE
+    assert action.completion_evidence is None
+    # 화면 label을 인용하지 않는다 — 인용하면 #54의 근거 대조를 통과한다.
+    assert "카카오톡" not in action.evidence
+
+
+def test_stub_force_done_off_keeps_normal_rules(monkeypatch):
+    monkeypatch.setattr(settings, "davi_stub_force_done", False)
+
+    action = StubLlmClient().reason(_request())
+
+    assert action.action_type is ActionType.TAP
+
+
+def test_stub_delay_sleeps_before_answering(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(settings, "davi_stub_delay_ms", 5500)
+    monkeypatch.setattr("app.llm.time.sleep", slept.append)
+
+    StubLlmClient().reason(_request())
+
+    assert slept == [5.5]
+
+
+def test_stub_delay_zero_does_not_sleep(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(settings, "davi_stub_delay_ms", 0)
+    monkeypatch.setattr("app.llm.time.sleep", slept.append)
+
+    StubLlmClient().reason(_request())
+
+    assert slept == []

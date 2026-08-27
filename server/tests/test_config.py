@@ -348,9 +348,49 @@ def test_llm_thinking_budget_rejects_negative_values():
 
 
 def test_llm_thinking_budget_allows_zero():
-    configured = _settings(davi_gemini_thinking_budget=0)
+    configured = _settings(
+        davi_model="gemini-2.5-flash-lite",
+        davi_gemini_thinking_budget=0,
+    )
 
     assert configured.davi_gemini_thinking_budget == 0
+
+
+@pytest.mark.parametrize(
+    ("model", "thinking_budget"),
+    [
+        ("gemini-2.5-pro", 0),
+        ("gemini-2.5-pro", 100),
+        ("gemini-2.5-flash-lite", 100),
+        ("gemini-3.5-flash-lite", 0),
+        ("gemini-flash-latest", 0),
+    ],
+)
+def test_llm_thinking_budget_rejects_model_specific_invalid_values(
+    model: str,
+    thinking_budget: int,
+):
+    with pytest.raises(ValidationError, match="DAVI_GEMINI_THINKING_BUDGET"):
+        _settings(davi_model=model, davi_gemini_thinking_budget=thinking_budget)
+
+
+def test_non_gemini_provider_does_not_validate_unused_gemini_budget():
+    configured = _settings(
+        davi_llm_provider="openai",
+        davi_model="gpt-5.6-luna",
+        davi_gemini_thinking_budget=0,
+    )
+
+    assert configured.davi_gemini_thinking_budget == 0
+
+
+def test_non_gemini_provider_still_rejects_negative_gemini_budget():
+    with pytest.raises(ValidationError, match="DAVI_GEMINI_THINKING_BUDGET"):
+        _settings(
+            davi_llm_provider="openai",
+            davi_model="gpt-5.6-luna",
+            davi_gemini_thinking_budget=-1,
+        )
 
 
 def test_test_access_token_must_be_long_enough():
@@ -394,3 +434,73 @@ def test_lan_bind_accepts_either_access_token():
 def test_access_tokens_omits_unset_tokens():
     assert _settings().access_tokens == {}
     assert _settings(davi_dev_access_token="d" * 32).access_tokens == {"dev": "d" * 32}
+
+
+# ── 스텁 프로브 게이트 (#480) ──────────────────────────────────────────────
+#
+# 앱의 완료 재확인 루프를 실기기에서 재현하는 손잡이다. 응답을 거짓으로 만드는 실험이라
+# 게이트가 마스킹 우회(#203)와 같은 네 겹이고, 아래가 그 네 겹을 하나씩 고정한다.
+
+
+def test_stub_probe_defaults_are_off():
+    configured = _settings()
+
+    assert configured.davi_stub_force_done is False
+    assert configured.davi_stub_delay_ms == 0
+
+
+def test_stub_probe_runs_on_loopback_development_stub():
+    configured = _settings(davi_stub_force_done=True, davi_stub_delay_ms=5500)
+
+    assert configured.davi_stub_force_done is True
+    assert configured.davi_stub_delay_ms == 5500
+
+
+def test_stub_probe_rejects_non_development():
+    with pytest.raises(ValidationError, match="development에서만"):
+        _settings(
+            davi_env="production",
+            davi_use_stub_llm=False,
+            gemini_api_key="key",
+            davi_stub_force_done=True,
+        )
+
+
+def test_stub_probe_rejects_real_llm():
+    with pytest.raises(ValidationError, match="스텁 LLM에서만"):
+        _settings(
+            davi_use_stub_llm=False,
+            gemini_api_key="key",
+            davi_stub_force_done=True,
+        )
+
+
+def test_stub_probe_rejects_non_loopback_binding():
+    with pytest.raises(ValidationError, match="loopback"):
+        _settings(
+            davi_bind_host="0.0.0.0",
+            davi_dev_access_token="x" * 32,
+            davi_stub_force_done=True,
+        )
+
+
+def test_stub_probe_rejects_shared_dev_token():
+    with pytest.raises(ValidationError, match="스텁 프로브를 사용할 수 없습니다"):
+        _settings(davi_dev_access_token="x" * 32, davi_stub_force_done=True)
+
+
+def test_stub_probe_rejects_negative_delay():
+    with pytest.raises(ValidationError, match="0 이상"):
+        _settings(davi_stub_delay_ms=-1)
+
+
+def test_stub_delay_alone_is_gated_too():
+    """지연만 켜는 것도 응답 시간을 거짓으로 만드는 실험이라 같은 게이트를 받는다."""
+
+    with pytest.raises(ValidationError, match="development에서만"):
+        _settings(
+            davi_env="production",
+            davi_use_stub_llm=False,
+            gemini_api_key="key",
+            davi_stub_delay_ms=100,
+        )

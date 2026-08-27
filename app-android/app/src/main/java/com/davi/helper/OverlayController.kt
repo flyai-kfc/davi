@@ -62,6 +62,13 @@ class OverlayController(
          * 버튼이 눌렸다는 사실만 전한다(중지 칩과 같은 분업).
          */
         fun onInputFillRequested()
+
+        /**
+         * 안내창 면을 탭했다 — **다시 듣기**(#450). 무엇을 다시 읽을지는 이 창이 모른다(중지
+         * 칩과 같은 분업). **읽을 것이 없거나 읽으면 안 되는 상태면 조용히 아무 일도 없다** —
+         * 판정은 [GuideSpeaker]에 한 벌만 둔다.
+         */
+        fun onSpeechRepeatRequested()
     }
 
     private val windowManager =
@@ -75,6 +82,13 @@ class OverlayController(
 
     /** 「바로 입력」 버튼이 채울 글자(없으면 null). [confirmKind]와 같은 경로로 조작 오버레이에 넘긴다. */
     private var inputText: String? = null
+
+    /**
+     * 완료 재확인 백오프 대기인가(#480). [confirmKind]와 같은 경로로 조작 오버레이에 넘겨
+     * 점 셋을 **읽는 중과 다른 리듬으로** 켠다. 읽는 중 테두리는 이 값과 무관하다 —
+     * 그쪽은 표시 오버레이가 그리고 이 구간에는 애초에 꺼져 있다(#295).
+     */
+    private var waiting: Boolean = false
 
     /**
      * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
@@ -98,18 +112,30 @@ class OverlayController(
         confirm: GuideDisplayState.ConfirmKind? = null,
         targetSuppressed: Boolean = false,
         inputText: String? = null,
+        waiting: Boolean = false,
     ) {
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
         this.inputText = inputText
+        this.waiting = waiting
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed, inputText)
+        target.setGuide(
+            bounds,
+            instruction,
+            avoid,
+            actionType,
+            direction,
+            targetSuppressed,
+            inputText,
+            waiting,
+        )
     }
 
     fun clear() {
         confirmKind = null
         inputText = null
+        waiting = false
         view?.setConfirmChrome(null)
         view?.clearTarget()
     }
@@ -164,7 +190,7 @@ class OverlayController(
                 if (rect == null) {
                     control.hide()
                 } else {
-                    control.show(rect, lines, confirmKind, reading, reserved, inputText)
+                    control.show(rect, lines, confirmKind, reading, reserved, inputText, waiting)
                 }
             }
         return runCatching {

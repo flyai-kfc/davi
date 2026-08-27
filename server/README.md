@@ -259,7 +259,7 @@ step과 안내 내용은 계속 비교해 같은 ID의 다른 작업은 409로 �
 
 | 공급자 | API | 기본 모델 | 필요한 키 | 추론 깊이 조절 |
 |---|---|---|---|---|
-| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | `DAVI_GEMINI_THINKING_BUDGET` |
+| `gemini` | `generateContent` | `gemini-3.5-flash-lite` | `GEMINI_API_KEY` | 2.5 numeric budget / 3.x 모델 기본 level |
 | `openai` | Responses(`text.format`) | `gpt-5.6-luna` | `OPENAI_API_KEY` | `DAVI_OPENAI_REASONING_EFFORT` |
 | `anthropic` | Messages(`output_config.format`) | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` | 없음(모델을 올린다) |
 
@@ -280,8 +280,9 @@ Fable 5·Mythos 5는 거부한다. 모든 모델에 안전한 단일 요청 모�
 **보이지 않는 추론 토큰이 출력 예산을 같이 먹는다.** thinking·reasoning 토큰이 예산을 다
 쓰면 응답이 잘려 PARSE 실패로 이어진다(2026-08-18 `gemini-3.6-flash` 실기기 재현). 그래서
 next-step·slot-fill·app-resolution 세 호출부의 출력 상한은 `정상 응답 여유분 + 공급자가
-추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800),
-OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048, Anthropic도 2048이다.
+추론에 쓰는 몫`으로 자동 계산된다 — Gemini는 `DAVI_GEMINI_THINKING_BUDGET`(기본 800)을
+출력 reserve로 더하고, OpenAI는 `DAVI_OPENAI_REASONING_EFFORT`가 `none`이 아니면 2048,
+Anthropic도 2048이다.
 slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 최대 2문항·문항별 3보기를 담는
 `needs_clarification`의 최대 유효 compact JSON 문자 수를 현재 Pydantic `maxLength`·`maxItems`에서
 파생하고 더 큰 쪽을 쓴다. 실제 공급자 토크나이저의 정확한 토큰 수를 흉내 내는 테스트는 두지
@@ -305,12 +306,21 @@ slot-fill의 정상 응답 여유분은 고정 숫자가 아니다. `ready`와 �
 여러 목표의 2회 이내 ready율·goal 유효성·환각률·선택 편향·TTS 길이를 같은 eval에서 비교해 실제
 차이가 확인될 때 분리한다. 위 경과 시간은 네트워크를 포함한 단일 관측이며 성능 기준선이 아니다.
 
-**Gemini 경로는 이번에 동작이 바뀌었다.** 이전에는 `thinkingConfig`를 보내지 않았고 출력
-상한이 1024/512/1024였다. 지금은 모든 호출에 thinking 상한이 실린다. next-step과
-app-resolution은 기본 1824이고, slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다.
-대가로 thinking이 있는 모델의 dynamic thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로
-하드캡되고, 옛 1024 캡이 하던 장문 폭주 차단이 그만큼 느슨해진다. 아직 측정하지 않았다 —
-추론 몫을 조정하려면 이 환경변수를 쓴다.
+**Gemini thinking wire는 모델 세대별로 다르다.** 2.5 텍스트 생성 Pro는 128..32768, Flash는
+0..24576, Flash-Lite는 0 또는 512..24576 범위의 numeric `thinkingBudget`을 받는다. 0은
+thinking을 끌 수 있는 2.5 Flash 계열만 허용하며, 나머지 잘못된 조합은 첫 요청의 400이 아니라
+서버 기동 시 설정 오류로 닫는다. `thinkingLevel`이 권장 계약인 3.x와 실제 세대를 확정할 수 없는
+rolling alias·알 수 없는 모델에는 numeric wire를 생략해 모델 기본 level을 쓴다(#457).
+image·TTS·live/audio 변형도 이 서버의 JSON 텍스트 계약 대상이 아니므로 numeric wire를 보내지 않는다.
+
+2026-08-25 `gemini-3.5-flash-lite` 최소 실호출은 budget 0에서 400, 800과 wire 생략에서
+각각 200이었다. 따라서 3.x에서 모든 numeric budget이 거부된다고 일반화하지 않고, 값·세대가
+바뀌어도 안전한 생략 정책만 채택한다. 출력 상한은 세대와 무관하게 설정값만큼 reserve를 더한다.
+2.5에서는 thinking hard cap과 reserve이고, 3.x·alias·알 수 없는 모델에서는 hidden thinking
+reserve다. 이 경로들은 0 reserve를 허용하지 않는다. next-step과 app-resolution은 기본 1824이고,
+slot-fill은 `800 + 현재 계약에서 파생한 응답 최소선`이다. `DAVI_MODEL`은 bare id와
+`models/<id>`를 모두 받되 요청 URL에는 `models/`를 한 번만 붙인다. 재지정 가능한 alias는
+2.5로 해석되더라도 numeric cap을 적용하지 않으므로, 고정 cap이 필요하면 버전 모델 id를 쓴다.
 
 ### 테스트 참가자 토큰
 
@@ -527,6 +537,33 @@ workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, 
 - 다른 debug 키스토어로 빌드하면 해시가 바뀐다. 화이트리스트가 리스트이니 새 값을 추가하면 된다.
 - 개인 기기는 옵트인하지도 등록하지도 않는다 — 공기계(SM-S921N)만(SPEC §3). 옵트인 없는
   빌드와 release는 값을 계산하지도 보내지도 않는다.
+
+## 스텁 프로브로 완료 재확인 루프를 재현한다 (#480)
+
+서버가 `done`을 보냈는데 앱이 그 근거를 못 믿는 구간 — **미검증 `done`이 상한까지 반복되는
+백오프 루프** — 은 실모델로는 재현할 수 없다. 모델이 근거 없는 완료를 마음대로 내주지 않기
+때문이다. 스텁 LLM에 손잡이 둘을 두어 그 구간을 만든다.
+
+```bash
+DAVI_ENV=development DAVI_USE_STUB_LLM=true \
+DAVI_STUB_FORCE_DONE=true DAVI_STUB_DELAY_MS=5500 \
+  uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config app/logging.json
+```
+
+기기는 `adb reverse tcp:8000 tcp:8000`으로 붙이고, 앱은 이 서버를 보게 빌드한다 —
+`local.properties`를 건드리지 않는 일회성 속성이 있다(`app-android/app/build.gradle.kts`):
+
+```bash
+./gradlew :app:installDebug -PdaviE2eServerUrl=http://127.0.0.1:8000
+```
+
+**`DAVI_STUB_DELAY_MS=0`으로 한 번 더 돌리는 것이 이 프로브의 요점이다.** 지연을 뺀 대조군이
+있어야 백오프 침묵이 서버가 느려서 생긴 것인지, 지연과 무관한 고정 비용인지 갈린다 — #480의
+4.77초가 그렇게 분리된 값이다.
+
+게이트는 development·스텁 LLM·loopback 바인딩·개발/테스트 토큰 없음 넷을 모두 요구한다.
+하나라도 어긋나면 **기동 때** 거부한다(`config.Settings`). 요청마다 판정하지 않는 이유는
+공용 endpoint에 실수로 켜진 채 뜨는 것을 막는 편이 강해서다.
 
 ## 검사
 

@@ -117,8 +117,8 @@ object GuideSession {
      *   화면으로 읽는다. #350이 그 화면을 안정 화면에서 이미 빼서 지금은 요청 자체가 나가지
      *   않지만, 규칙은 값이 만들어지는 이 자리에 둔다.
      *
-     * 입력은 [ScreenSig.content] **그대로**다 — 정규화는 [ScreenSignature]가 이미 했고
-     * 여기서 다시 하지 않는다.
+     * 입력은 [ScreenSig.content] **그대로**다 — 여기서 다듬지 않는다. 그 축은 숫자를 포함한
+     * label 원문을 담는다(#427). 기기 밖으로 나가는 것은 세션 salt 해시뿐이다(#410).
      */
     @Synchronized
     fun contentSignature(
@@ -287,6 +287,37 @@ object GuideSession {
         awaitingConfirm = true
         pendingConfirmSignature = screenSignature
         pendingConfirmContentSignature = contentSignature
+    }
+
+    /**
+     * 확인 대기 중 **자기발생** 내용 변화를 [pendingConfirmContentSignature]에 따라잡는다
+     * (PR #445 리뷰 5-1).
+     *
+     * 완료 피드백의 내용 서명은 서버가 「사용자가 부정한 그 화면인가」를 가르는 값이라 **정확히**
+     * 일치해야 한다(`prompt._completion_feedback_context`·`reasoning._feedback_rejects_current_screen`).
+     * 그 값을 done 응답 시점에 얼리는데, #427로 내용 축이 숫자를 담게 되면서 인앱 시계·「N분 전」이
+     * 한 번만 돌아도 대조가 깨진다 — 사용자가 「아직이에요」를 눌러도 그 부정이 프롬프트에도
+     * `contradicted` 판정에도 안 실린다. 확인창을 읽고 누르기까지가 분 단위라 실제로 걸린다.
+     *
+     * **인과와 구조가 문지기다.** 조작이 관측됐으면(자기발생이 아니면) 그 화면은 done이 가리킨
+     * 화면이 아니므로 얼린 값을 그대로 두어 서버가 버리게 한다. 구조가 달라진 경우도 같다.
+     * 즉 이 함수가 넓히는 것은 **「같은 화면」의 정의가 아니라 숫자에 대한 관용**뿐이다.
+     *
+     * label이 하나도 없는 프레임에서는 갱신하지 않는다 — [contentSignature]가 `null`을 주는데,
+     * 그걸 그대로 넣으면 덜 그려진 트리 한 번에 얼린 값을 잃는다.
+     */
+    @Synchronized
+    fun observeConfirmScreen(
+        generation: Long,
+        signature: ScreenSig,
+        hasLabeledElement: Boolean,
+        causal: Boolean,
+    ) {
+        if (!isCurrent(generation)) return
+        if (!awaitingConfirm || causal) return
+        if (!hasLabeledElement) return
+        if (signature.structure != pendingConfirmSignature) return
+        pendingConfirmContentSignature = contentSignature(generation, signature, hasLabeledElement)
     }
 
     /**

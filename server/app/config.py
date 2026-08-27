@@ -7,6 +7,8 @@ from typing import Literal, Self
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .gemini_thinking import gemini_thinking_policy
+
 # 공급자별 기본 모델과 키 환경변수. `DAVI_MODEL`을 비워 두면 여기 값이 쓰인다.
 # 셋 다 "짧은 JSON 하나를 빠르게"에 맞춘 저지연 등급이다 — 품질이 더 필요하면 DAVI_MODEL로
 # 올린다(예: gemini-3.6-flash, gpt-5.6-terra, claude-sonnet-5).
@@ -49,11 +51,9 @@ class Settings(BaseSettings):
     # 이 값은 모델을 바꿔 자동 계산보다 더 큰 예산이 필요할 때만 올리는 안전한 상향 override다.
     davi_max_output_tokens: int = 0
 
-    # Gemini thinking 토큰 상한. 낮을수록 빠르지만 판단이 얕아지고, 높을수록 정확도 여지는
-    # 늘되 느려지고 maxOutputTokens 예산을 다 써 응답이 잘릴 위험도 커진다(2026-08-18
-    # gemini-3.6-flash PARSE 실패 실기기 재현). 세 호출부가 각자 maxOutputTokens = 이 값 +
-    # 정상 응답 여유분으로 맞춰 잘림을 막는다. thinking이 없는 모델(flash-lite 등)에 보내도
-    # 조용히 무시된다(실측).
+    # Gemini 2.5에서는 모델별 범위를 검증한 numeric thinking hard cap, 3.x·알 수 없는 모델에서는
+    # wire로 보내지 않는 출력 reserve다. 0은 thinking을 끌 수 있는 2.5 Flash 계열만 허용한다.
+    # 세 호출부가 maxOutputTokens = reserve + 정상 응답 여유분으로 맞춰 잘림을 막는다.
     davi_gemini_thinking_budget: int = 800
     # OpenAI에서 thinking에 해당하는 값. 속도를 위해 낮게 둔다. none이면 reasoning 토큰
     # 여유분도 얹지 않는다. 판단이 얕으면 여기를 올리기 전에 모델을 올리는 편이 낫다.
@@ -79,6 +79,19 @@ class Settings(BaseSettings):
 
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
+
+    # 스텁 프로브(#480). 앱의 **완료 재확인 루프**를 실기기에서 재현하는 두 손잡이다.
+    # 실모델은 미검증 done을 마음대로 안 내주므로 그 구간을 관측할 방법이 달리 없다 —
+    # 실제로 #480은 저장소 밖의 일회용 프로브로 쟀고, 그것이 사라져 재현이 두 번 막혔다.
+    #
+    # force_done은 화면을 보지 않고 done을 돌려준다. 앱의 완료 검증이 근거를 못 찾아
+    # `inconclusive`로 내리고, `MAX_UNVERIFIED_DONE`까지 백오프 재질의가 반복된다.
+    # delay_ms는 그 앞에 인위 지연을 넣는다 — **0으로도 한 번 돌려서** 백오프 침묵이
+    # 서버 지연과 무관한 고정 비용임을 분리하는 것이 이 손잡이의 요점이다(#480 런 C).
+    #
+    # 아래 검증이 development·스텁 사용·loopback·개발 토큰 없음을 모두 요구한다.
+    davi_stub_force_done: bool = False
+    davi_stub_delay_ms: int = 0
 
     # 2차 마스킹 우회(#203). masked/unmasked 가이드 품질 비교 실험 전용이며 기본은 꺼짐.
     # 켜면 앱이 보낸 label이 2차 치환 없이 그대로 LLM에 전달된다. 아래 검증이 development·
@@ -188,6 +201,8 @@ class Settings(BaseSettings):
             )
         if self.davi_gemini_thinking_budget < 0:
             raise ValueError("DAVI_GEMINI_THINKING_BUDGET은 0 이상이어야 합니다")
+        if self.davi_llm_provider == "gemini":
+            gemini_thinking_policy(self.resolved_model, self.davi_gemini_thinking_budget)
         if self.davi_max_output_tokens < 0:
             raise ValueError("DAVI_MAX_OUTPUT_TOKENS는 0 이상이어야 합니다")
         if self.davi_env != "development" and dev_access_token:
@@ -237,6 +252,30 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
                     "에서는 DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
+                )
+        if self.davi_stub_delay_ms < 0:
+            raise ValueError("DAVI_STUB_DELAY_MS는 0 이상이어야 합니다")
+        if self.davi_stub_force_done or self.davi_stub_delay_ms:
+            # 두 값을 한 게이트로 묶는다 — 지연만 켜는 것도 응답 시간을 거짓으로 만드는
+            # 실험이라 공용 endpoint에 있어서는 안 된다.
+            if self.davi_env != "development":
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 development에서만 사용할 수 있습니다"
+                )
+            if not self.davi_use_stub_llm:
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 스텁 LLM에서만 동작합니다"
+                    " (DAVI_USE_STUB_LLM=true)"
+                )
+            if bind_host not in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 loopback 바인딩에서만"
+                    " 사용할 수 있습니다"
+                )
+            if dev_access_token or test_access_token:
+                raise ValueError(
+                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
+                    "에서는 스텁 프로브를 사용할 수 없습니다"
                 )
         if self.davi_dev_rate_limit_requests <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")

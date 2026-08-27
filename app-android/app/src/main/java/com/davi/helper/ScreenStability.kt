@@ -30,9 +30,6 @@ data class ScreenSig(val structure: String, val content: String)
 
 object ScreenSignature {
 
-    /** 시계·배터리% 같은 volatile 숫자를 지운다(`HANDOFF.md` §4 — 홀드의 근간). */
-    private val DIGITS = Regex("\\d+")
-
     /**
      * 요소의 **좌표와 node id는 넣지 않는다.** 전환 애니메이션 중 좌표가 미세하게 흔들리고,
      * node id는 직렬화 순서에서 생기는 값이라 화면의 정체성이 아니다.
@@ -75,18 +72,18 @@ object ScreenSignature {
             }
         }
         val content = buildString {
-            // 제목은 label과 같은 취급이다. volatile 숫자를 지우고(안 읽은 메일 개수 같은 것),
-            // 이 시그니처에는 포함한다 — 원문이 기기를 떠나지 않아서다. 서버 서명은 label처럼
-            // 제목도 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
+            // 제목은 label과 같은 취급이다. **숫자를 포함한 원문 그대로** 이 시그니처에
+            // 넣는다(#427) — 원문이 기기를 떠나지 않아서다. 서버 서명은 label처럼 제목도
+            // 뺀다(#288 리뷰). 두 서명의 규칙이 다른 것은 그 경계 때문이다.
             // label과 같은 취급이므로 축도 내용이다(#380).
             //
             // **이 축의 salt 해시는 기기를 떠난다**(#410). 원문이 아니라 해시이고 salt가
             // 세션마다 새로 생겨 세션 밖 대조가 성립하지 않으므로 지금은 안전하다. 다만
             // "내용 축은 어차피 기기 안"으로 읽고 여기에 무언가를 더 넣으면 그때부터 그
             // 값이 해시로 나간다 — 넣기 전에 그것이 나가도 되는 값인지 본다.
-            append(screen.windowTitle?.let { DIGITS.replace(it, "#") } ?: "-").append('|')
+            append(screen.windowTitle ?: "-").append('|')
             screen.elements.forEach { element ->
-                append(stableLabel(element))
+                append(element.label)
                 append(';')
             }
         }
@@ -94,10 +91,43 @@ object ScreenSignature {
     }
 
     /**
-     * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. 시그니처와 **같은 정규화**를 쓴다 —
-     * 다른 정규화면 안 읽은 개수 숫자 같은 volatile 값이 앵커만 다르게 흔든다.
+     * 앵커 대조에서만 지우는 숫자(#427). **내용 축은 이걸 쓰지 않는다** — 쓰면 수량 변화가
+     * 안 보여 이 이슈가 되살아난다.
      */
-    internal fun stableLabelOf(element: UiElement): String = stableLabel(element)
+    private val ANCHOR_DIGITS = Regex("""\d+""")
+
+    /**
+     * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. **내용 축과 달리 숫자를 지운다**(#427).
+     *
+     * 두 자리가 서로 다른 질문을 한다. 내용 축은 "화면 상태가 바뀌었나"라서 장바구니 수량
+     * `2`→`3`을 봐야 하고, 앵커는 "강조가 아직 **같은 줄**을 가리키나"라서 그 줄에 붙은
+     * 시계·개수가 도는 것을 다른 줄로 읽으면 안 된다.
+     *
+     * #427이 내용 축의 정규화를 걷을 때 이 자리도 함께 걷었더니 `안 읽음 12`→`안 읽음 13`
+     * 한 번에 앵커가 **영구히** 어긋났다. 앵커 값은 응답 시점에 얼리므로 한 번 달라지면 계속
+     * 다르고, 호출부는 그때 강조를 내린 뒤(`target slot moved`) 되돌리는 경로가 `else`
+     * 가지에만 있어 **다음 안내까지 강조가 없다**(PR #445 리뷰).
+     *
+     * 내용 축에는 인과 게이트라는 방벽이 있지만 **앵커는 게이트를 우회한다** — 여기서는
+     * 정규화가 아직 유일한 방벽이라 남긴다.
+     *
+     * **picker의 짧은 선택 숫자는 예외로 남긴다**(#117, PR #445 리뷰). 그 숫자는 줄에 붙은
+     * 장식이 아니라 **선택 상태 자체**라, 지우면 분 picker를 `00`→`30`으로 돌려도 앵커가 안
+     * 움직인다 — 그런데 그 화면에서는 앵커가 **유일하게 열리는 문**이다. 시계 앱은 진입 탭이
+     * 이미 클릭을 쏴 조용함 문이 닫혀 있고, picker 스크롤은 CLICKED가 아니라(#380이 SCROLLED를
+     * 뺐다) 인과 게이트도 안 열린다. 「안 읽음 12→13」과는 serializer가 검증한
+     * `editable + EditText + 짧은 숫자`로 갈린다 — 그쪽은 비편집 View의 긴 label이다.
+     */
+    internal fun stableLabelOf(element: UiElement): String =
+        if (
+            element.editable &&
+            element.role.endsWith("EditText") &&
+            UiTreeSerializer.isShortNumericControlLabel(element.label)
+        ) {
+            element.label
+        } else {
+            ANCHOR_DIGITS.replace(element.label, "#")
+        }
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
@@ -113,22 +143,6 @@ object ScreenSignature {
         CheckState.PARTIAL -> 'p'
         CheckState.UNAVAILABLE -> '-'
     }
-
-    /**
-     * 일반 숫자는 계속 volatile 값으로 취급한다. 다만 serializer가 직접 조작 가능한 NumberPicker에서만
-     * 보존하는 editable 짧은 숫자 label은 현재 선택 상태 자체이므로 숫자를 남긴다. 그래야 사용자가
-     * 분 picker를 스크롤해 `00, 분`을 `30, 분`으로 바꿨을 때 새 화면으로 판단해 다시 요청한다.
-     */
-    private fun stableLabel(element: UiElement): String =
-        if (
-            element.editable &&
-            element.role.endsWith("EditText") &&
-            UiTreeSerializer.isShortNumericControlLabel(element.label)
-        ) {
-            element.label
-        } else {
-            DIGITS.replace(element.label, "#")
-        }
 }
 
 /**
@@ -187,8 +201,9 @@ internal fun Screen.hasLabeledElement(): Boolean = elements.any { it.label.isNot
  * 정확히 그 경우뿐이다 — 구조가 다르면 구조 축이 재질의를 열고 강조도 새로 그려진다
  * (회전 복귀로 접히는 경우만 예외다, #456).
  *
- * 대조는 [ScreenSignature]와 **같은 정규화**로 한다. 원문 label로 비교하면 대상에 붙은
- * 시계·개수가 앵커를 매 초 흔들어 게이트가 무의미해진다.
+ * 대조는 [ScreenSignature.stableLabelOf]로 한다 — **내용 축과 달리 숫자를 지운 값**이다
+ * (#427). 원문 label로 비교하면 대상에 붙은 시계·개수가 앵커를 매 초 흔들어, 강조가 내려간
+ * 채 다음 안내까지 돌아오지 않는다.
  *
  * 슬롯이 사라진 경우는 `false`다 — 그건 구조 변화라 구조 축이 맡는다.
  *
@@ -236,6 +251,8 @@ class ScreenStabilityTracker(
     private val unreadableAfterMs: Long = UNREADABLE_AFTER_MS,
     private val contentSettleMs: Long = CONTENT_SETTLE_MS,
     private val interactionWindowMs: Long = INTERACTION_WINDOW_MS,
+    private val quietMs: Long = QUIET_MS,
+    private val quietActivityMs: Long = QUIET_ACTIVITY_MS,
 ) {
 
     enum class Decision { WAIT, SEND, STUCK, UNREADABLE, IDLE }
@@ -244,6 +261,87 @@ class ScreenStabilityTracker(
     private var heldSamples = 0
     private var structureStableSinceMs: Long? = null
     private var sentSignature: ScreenSig? = null
+
+    /** 직전 샘플의 내용 축. 내용이 "방금" 바뀌었는지 보려고 든다(#427). */
+    private var lastContent: String? = null
+
+    /**
+     * 내용 축이 마지막으로 바뀐 시각. 화면이 얼마나 조용했는지의 척도다.
+     *
+     * **샘플 수가 아니라 시간이다**(PR #445 리뷰). 폴링 주기는 `POLL_MS`에 처리 시간을 더한
+     * 값이라 앱마다 다르고, 하필 이 문을 쓰는 앱(캐시를 끄는 앱)이 가장 느리다 — 샘플 수로
+     * 재면 같은 상수가 어떤 앱에서는 4초, 어떤 앱에서는 7.5초가 되어 [STUCK_AFTER_MS]를 넘긴다.
+     */
+    private var contentChangedAtMs: Long? = null
+
+    /**
+     * **조용하던 화면이 방금 움직였다**(#427 2단계). 클릭 이벤트를 안 쏘는 앱에서 인과를
+     * 대신하는 표시다 — 자기발생 변화는 조용할 틈이 없다는 실측에 근거한다(아래 [QUIET_MS]).
+     * 내용이 바뀔 때마다 다시 판정한다. **요청이 나가도 소진하지 않는다**(PR #445 리뷰가
+     * 주석-코드 불일치로 잡았다) — 다음 샘플은 `contentOnly = false`라 이 값이 참이어도
+     * novel이 서지 않고, 다음 내용 변화가 어차피 다시 판정한다. 지우는 자리는 관측이 끊긴
+     * 곳뿐이다(빈 화면·[markResumed]·[reset]) — 그 구간의 정지는 조용함이 아니라서다.
+     */
+    private var quietChangeArmed = false
+
+    /**
+     * 조용함으로 재질의를 연 마지막 시각. 이 뒤 [QUIET_ACTIVITY_MS] 안의 내용 변화는 조용함을
+     * 다시 요구하지 않는다(PR #445 리뷰).
+     *
+     * **연속 조작 때문이다.** 코레일 인원 선택은 `+`를 여러 번 누르는 화면인데, 매번 조용함을
+     * 요구하면 두 번째 탭부터 인정되지 않아 "화면이 그대로예요"가 뜬다 — 이 이슈가 없애려던
+     * 그 거짓 문구가 같은 자리에 다시 선다. 첫 탭이 조용함으로 인과를 세우고 나면 뒤이은
+     * 변화는 같은 조작의 연속으로 본다.
+     */
+    private var quietOpenedAtMs: Long? = null
+
+    /**
+     * 조용함만으로(연속 창 없이) 연 재질의 수. 화면(구조)마다 [QUIET_COLD_OPENS]까지다.
+     *
+     * **분 단위로 도는 숫자 때문이다**(PR #445 리뷰). 「자기발생은 조용할 틈이 없다」는 실측은
+     * 초 단위로 도는 배너·검색어 값의 이야기이고, 인앱 시계나 「N분 전」 목록은 정반대다 —
+     * 1분을 가만히 있다 한 번 바뀌므로 조용함 조건을 **매번** 만족한다. 클릭을 안 쏘는 앱에서
+     * 그런 숫자를 가르는 신호가 우리에게 없으므로, 가르는 대신 **비용에 천장을 씌운다**.
+     * 조작은 연속 창을 타고 흐르므로 이 상한에 걸리지 않는다.
+     *
+     * **접힌 상태표시줄의 시계는 해당 없다** — [ActiveWindowResolver]의 크기 필터가 그 창을
+     * 애초에 안 고르므로 트리에 없다(2026-08-26 실측: 무조작 81초가 분 경계를 넘는 동안
+     * 내용 해시 불변). **한정어가 필요하다**(PR #445 리뷰 3라운드): 펼친 셰이드는 전체 화면이라
+     * 크기 필터를 통과하고 **일부러 후보에 넣는 정책**이며(루트 `CLAUDE.md`), 후보가 전부
+     * 크기 미달이면 `fallbackRoot`가 크기 검사 없이 `rootInActiveWindow`를 돌려준다. 그 두
+     * 경로에서는 시계·「N분 전」이 내용 축에 들어오고, 그때 받는 것이 이 천장이다.
+     */
+    private var quietColdOpens = 0
+
+    /**
+     * 조용함이 연 재질의 **전부**. 연속 창을 탄 것까지 센다. 화면(구조)마다 [QUIET_OPENS]까지다.
+     *
+     * **연속 창이 [quietColdOpens]를 우회할 수 있어서 둔다**(PR #445 자체 리뷰, 실행으로 재현).
+     * 연속 창은 열릴 때마다 스스로 갱신되는데 그 경로는 cold를 안 올린다. 그래서 주기가
+     * [QUIET_MS]와 [QUIET_ACTIVITY_MS] **사이**인 자기발생 변화(5초 배너)는 첫 회전에서 cold로
+     * 문을 연 뒤 이후 모든 회전이 창을 타고 **무한히** 나갔다 — 5초 주기면 12 RPM으로 무료 티어
+     * 15 RPM에 붙는다. #380이 닫은 폭주가 그대로 되살아나는 자리다.
+     *
+     * 창을 없애면 연속 조작이 죽고(그게 창을 만든 이유다), 창을 두면 cold 천장이 무의미해진다 —
+     * 그래서 **창은 두되 총량에 따로 천장을 씌운다.**
+     */
+    private var quietOpens = 0
+
+    /**
+     * 위 두 예산이 누구 몫인가(화면의 구조 축).
+     *
+     * **[sentSignature]로 판정하면 안 된다**(PR #445 자체 리뷰, 실행으로 재현). 실패
+     * ([markFailed])와 늦은 응답 폐기([markResponseDiscarded])가 그 값을 `null`로 만들어서,
+     * 그 뒤 **다른 화면**에서 나가는 첫 요청이 초기화 조건을 건너뛴다 — 화면 A에서 태운 천장을
+     * 화면 B가 물려받아, B에서 조용함 뒤 사용자가 눌러도 「화면이 그대로예요」로 떨어졌다.
+     */
+    private var quietBudgetStructure: String? = null
+
+    /** 이번 판정이 조용함으로 열렸나. 예산은 **요청이 실제로 나갈 때** 태운다([markSent]). */
+    private var sendWasQuietOpened = false
+
+    /** 그중 연속 창 없이(cold) 열렸나. */
+    private var sendWasQuietCold = false
     private var sentAtMs = 0L
     private var stuckReported = false
     private var failures = 0
@@ -315,6 +413,7 @@ class ScreenStabilityTracker(
         hasLabeledElement: Boolean,
         guidedTargetChanged: Boolean = false,
         sendingBlocked: Boolean = false,
+        clickAxisDead: Boolean = false,
     ): Decision {
         if (!hasLabeledElement) {
             // 빈 화면도 현재 화면으로는 관측한다. 그래야 직전 화면의 요청이 늦게 도착했을 때
@@ -325,6 +424,19 @@ class ScreenStabilityTracker(
             heldSamples = 0
             // label 없는 화면은 내용 흔들림 승격의 대상도 아니다(#350) — 타이머를 세우지 않는다.
             structureStableSinceMs = null
+            // 읽을 수 없던 구간은 "화면이 조용했던" 구간이 아니다. 조용함 시계를 지금으로
+            // 다시 찍어, 빈 트리를 사이에 둔 변화가 조작으로 읽히지 않게 한다.
+            lastContent = null
+            contentChangedAtMs = nowMs
+            quietChangeArmed = false
+            // 연속 창도 함께 닫는다(PR #445 자체 리뷰). 안 닫으면 스켈레톤이 몇 샘플 끼었다
+            // 돌아온 화면이 **인과 근거 없이** 창을 타고 나간다 — 조용함 시계만 되감고 창을
+            // 살려 두면 되감은 의미가 없다.
+            //
+            // **천장([quietColdOpens]·[quietOpens])은 일부러 안 비운다.** 여기는 세션 재개
+            // ([markResumed])와 달리 같은 화면의 과도기라, 비우면 로딩이 끼는 화면이 스켈레톤
+            // 한 번마다 예산을 새로 받아 총량 천장이 무의미해진다.
+            quietOpenedAtMs = null
             val since = unreadableSinceMs ?: nowMs.also { unreadableSinceMs = it }
             return if (nowMs - since >= unreadableAfterMs) {
                 Decision.UNREADABLE
@@ -333,6 +445,21 @@ class ScreenStabilityTracker(
             }
         }
         unreadableSinceMs = null
+        // 내용 축이 방금 바뀌었는가, 그리고 그 직전까지 얼마나 조용했는가(#427 2단계).
+        //
+        // **홀드 조기 반환보다 앞이다**(PR #445 리뷰). 뒤에 두면 카운터가 "직전 N초"가 아니라
+        // "우리가 본 직전 N초"가 된다 — 토스트로 구조가 한 샘플 어긋나면 [CONTENT_SETTLE_MS]
+        // 동안 회전 샘플이 전부 WAIT로 빠지고, 그 사이 시계가 blip 이전 값에 얼어붙어
+        // **내내 회전 중이던 화면이 「조용했다」로 판정**된다.
+        val contentJustChanged = lastContent != null && signature.content != lastContent
+        if (contentJustChanged) {
+            val quietFor = contentChangedAtMs?.let { nowMs - it } ?: 0L
+            quietChangeArmed = quietFor >= quietMs
+            contentChangedAtMs = nowMs
+        } else if (contentChangedAtMs == null) {
+            contentChangedAtMs = nowMs
+        }
+        lastContent = signature.content
         if (signature.structure != lastSample?.structure || structureStableSinceMs == null) {
             structureStableSinceMs = nowMs
         }
@@ -368,10 +495,36 @@ class ScreenStabilityTracker(
         // 앵커는 인과 게이트를 우회하지만 게이트와 달리 시간 상한이 없다. **진행 신호가
         // 있기 전까지 한 번만** 연다([anchorRequeryUsed]).
         val anchorOpened = contentOnly && guidedTargetChanged && !anchorRequeryUsed
-        // 구조가 바뀌었는데 **전에 물어본 구조로 되돌아온** 것인가(#456).
+        // 클릭 축이 죽은 앱에서만 여는 세 번째 문(#427 2단계). ①②는 항상 요구하고, 인과의
+        // 근거는 ③-a와 ③-b 둘 중 하나다:
+        // ① 이 앱이 세션 내내 클릭 이벤트를 한 번도 안 쐈다(호출자가 관측해 넘긴다),
+        // ② 구조는 같고 내용만 바뀌었다,
+        // ③-a 바뀌기 직전까지 [QUIET_MS]만큼 조용했다(첫 조작을 세우는 근거), 또는
+        // ③-b 조용함으로 연 재질의가 [QUIET_ACTIVITY_MS] 안에 있다(연속 조작).
+        //
+        // ①은 **「클릭을 쏘는 앱」이 아니라 「아직 클릭을 못 본 앱」이다**(PR #445 자체 리뷰).
+        // 앱을 여는 탭은 런처 package라, 어느 앱이든 **진입~그 앱에서의 첫 클릭까지는** 이 문이
+        // 열려 있다. 그 구간의 배너 로테이션은 아래 두 천장이 받는다. 첫 클릭 뒤로는 배민 같은
+        // 앱이 이 문을 아예 안 거친다. 화면 단위로 좁히는 것은 #394 영역이다.
+        // ③-a가 자기발생과 가른다:
+        // 2026-08-25 SM-S921N 실측에서 회전하는 검색 화면은 **최대 3샘플(약 2.3초)**밖에
+        // 정지하지 못했고, 코레일 인원 선택은 조작 전까지 80샘플 넘게 고정이었다.
+        //
+        // ③-a는 **분 단위로 도는 숫자를 못 가른다**(PR #445 리뷰). 그건 [quietColdOpens]가
+        // 비용에 천장을 씌워 맡는다 — 가르는 신호가 없으므로 가르는 척하지 않는다.
+        //
+        // ③-b(연속 창)는 **총량 천장 아래에서만** 산다([quietOpens]). 창은 열릴 때마다 갱신돼
+        // 스스로를 연장하므로, 총량이 없으면 주기가 4~15초인 자기발생 변화가 cold를 한 번만
+        // 태우고 영원히 창을 타고 흐른다(PR #445 자체 리뷰에서 실행으로 재현).
+        val quietActive = quietOpenedAtMs?.let { nowMs - it <= quietActivityMs } ?: false
+        val quietOpened = clickAxisDead && contentOnly && quietOpens < QUIET_OPENS &&
+            (quietActive || (quietChangeArmed && quietColdOpens < QUIET_COLD_OPENS))
+        // 구조가 바뀌었는데 **전에 방문한 구조로 되돌아온** 것인가(#456). 위 조용함 게이트가
+        // 내용 축의 문이라면 이쪽은 구조 축의 문이고, 서로 다른 갈래라 겹치지 않는다.
+        //
         // 조작 여부를 여기서 다시 보지 않는다 — [markInteraction]이 이력과 걸쇠를 **비우므로**
         // 조작 뒤에는 아래 둘 다 성립하지 않는다. 가드를 겹쳐 두면 그 가드만 지웠을 때
-        // 아무 테스트도 안 깨져 죽은 조건이 된다(#456 3차 리뷰 P3).
+        // 아무 테스트도 안 깨져 죽은 조건이 된다.
         val structureReturned = sent != null && signature.structure != sent.structure
         val latched = structureReturned && signature.structure in rotatingStructures
         val concluded = structureReturned &&
@@ -381,16 +534,10 @@ class ScreenStabilityTracker(
             sent == null -> true
             signature.structure != sent.structure -> !rotating
             !contentOnly -> false
-            else -> anchorOpened || interactedRecently(nowMs)
+            else -> anchorOpened || interactedRecently(nowMs) || quietOpened
         }
         // 결론을 걸쇠에 건다(#456). 창은 결론에 **닿는** 데까지만 쓰고, 유지는 걸쇠가 한다 —
         // 근거는 [rotatingStructures]의 주석에 있다.
-        //
-        // **회전의 양쪽을 함께 넣는다.** 접기 갈래로 오는 것은 언제나 [sentSignature]가 아닌
-        // 쪽이라, 들어온 구조만 넣으면 반대쪽이 걸쇠 밖에 남는다. 그러면 그 반대쪽을 다시
-        // 물을 때 「걸쇠에 없고 방문 기록도 늙었다」가 성립해 **떠남으로 오독되고 걸쇠가 통째로
-        // 풀린다**(2026-08-26에 테스트가 잡았다). 접힘은 두 구조가 번갈아 온다는 판정이므로
-        // 둘 다 그 회전의 구성원이다.
         if (rotating) {
             rotatingStructures.add(signature.structure)
             // 반대쪽도 회전 구성원이다 — 접기 갈래로 오는 것은 언제나 [sentSignature]가 아닌
@@ -416,6 +563,15 @@ class ScreenStabilityTracker(
         // 게이트가 이미 열려 있으면 태우지 않는다 — 그 재질의는 조작이 만든 것이라 앵커가
         // 없어도 나갔다. 태우면 뒤이은 자기발생 변화에 쓸 앵커가 없다.
         sendWasAnchorOpened = novel && anchorOpened && !interactedRecently(nowMs)
+        // 연속 창은 **조용함이 실제로 연 재질의**에서만 이어진다. 게이트가 이미 열려 있었다면
+        // 그 재질의는 조작이 만든 것이라 조용함을 태울 이유가 없다(앵커 상한과 같은 결).
+        //
+        // **여기서 태우지 않고 [markSent]로 미룬다**(PR #445 자체 리뷰). 바로 위 앵커 상한이
+        // 세운 규칙("요청이 실제로 나갔을 때만 쓴다 — `SEND`는 그 보장이 아니다")을 이 자리가
+        // 어기고 있었다: `quietColdOpens++`가 in-flight 조기 반환보다 앞이라, 요청이 한 건도
+        // 안 나가는데 화면당 예산 3 중 1이 사라졌다.
+        sendWasQuietOpened = novel && quietOpened && !interactedRecently(nowMs)
+        sendWasQuietCold = sendWasQuietOpened && !quietActive
         if (novel) {
             // 진행 중인 요청이 있으면 보내지 않는다. 여기서 SEND를 내면 호출자가 "보냈다"고
             // 기록하는데 실제 요청은 in-flight 가드에 막혀 나가지 않는다 — 그 화면의 안내가
@@ -462,9 +618,48 @@ class ScreenStabilityTracker(
         // 한 샘플만 다른 구조로 관측되면, 그 샘플은 홀드가 WAIT로 버리는데 상한만 열려
         // 회전마다 앵커 재질의가 되살아난다 — #32 때문에 버린 과도기 트리를 진행으로
         // 인정하는 셈이다. 홀드를 통과하고 요청까지 나간 구조 전환이 여기다.
-        if (sentSignature != null && signature.structure != sentSignature?.structure) {
+        val structureProgressed =
+            sentSignature != null && signature.structure != sentSignature?.structure
+        if (structureProgressed) {
             anchorRequeryUsed = false
         }
+        // 조용함 쪽 구조 전환은 **[sentSignature]가 아니라 [quietBudgetStructure]로 판정한다.**
+        // 실패·폐기가 `sentSignature`를 비우고 나면 위 조건이 거짓이 되어, 옮겨 간 화면이 앞
+        // 화면에서 태운 천장을 물려받았다(PR #445 자체 리뷰). **연속 창도 같은 근거를 써야
+        // 한다**(PR #445 리뷰 3라운드) — [markFailed]·[markResumed]`(requery = true)`·
+        // [markResponseDiscarded] 뒤의 구조 전환 SEND가 창을 못 열어, 이 PR이 없애려던 거짓
+        // 정체 문구가 실패·화면꺼짐 경로에서 그대로 섰다(JVM 재현 3건).
+        //
+        // 경계는 그대로다: [quietBudgetStructure]는 세션 첫 요청에서 `null`이라 「첫 진입은 안
+        // 연다」가 유지되고, 여기서만 갱신되므로 raw 샘플의 구조 변화로도 안 열린다.
+        val budgetStructureProgressed =
+            quietBudgetStructure != null && signature.structure != quietBudgetStructure
+        if (signature.structure != quietBudgetStructure) {
+            quietBudgetStructure = signature.structure
+            quietColdOpens = 0
+            quietOpens = 0
+            quietOpenedAtMs = null
+        }
+        // 예산은 여기서 태운다 — 판정이 아니라 **요청이 실제로 나간 것**이 기준이다.
+        if (sendWasQuietOpened) {
+            quietOpens++
+            if (sendWasQuietCold) quietColdOpens++
+            quietOpenedAtMs = nowMs
+        }
+        // **요청이 실제로 나간 구조 전환도 연속 창을 연다**(PR #445 리뷰 확인 2). 앵커 상한을
+        // 다시 여는 것과 같은 진행 신호다. 안 열면 클릭 없는 앱에서 0↔1 경계(코레일 인원
+        // 시트의 「인원감소」 활성화가 구조를 바꾸는 자리) 직후의 연속 조작이 조용함 미달로
+        // 막혀, 이 PR이 없애려던 거짓 정체 문구가 이웃 행에서 그대로 선다 — 어린이·유아처럼
+        // 0에서 시작하는 행이 정확히 그 경로다(JVM 재현: 두 번째 탭이 IDLE→STUCK).
+        //
+        // 이 창을 탄 재질의도 [quietOpens]에 세이므로 **한 구조에 머무는 동안은**
+        // [QUIET_OPENS]회가 상한이다 — 클릭 없는 앱에서 구조 churn 뒤 내용 churn이 그만큼 탈
+        // 수 있다는 뜻이고, 그 값을 받아들이는 것이 이 결정이다. 클릭을 쏘는 앱은 문 자체를
+        // 안 쓰므로 무관하다.
+        //
+        // **[markResumed]가 이 상한을 되돌린다**(알려진 한계, #481). 그 함수는 화면 켜짐뿐
+        // 아니라 root 복구마다 불려서, root가 깜빡이면 예산이 새로 채워진다.
+        if (budgetStructureProgressed) quietOpenedAtMs = nowMs
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         // 접고 있던 중에 **회전에 없던 구조**를 실제로 물었다 — 그 화면을 떠난 것이다(#456).
         // 이력을 들고 가면 돌아왔을 때 옛 회전 기록이 남아 영구히 접힌다.
@@ -534,6 +729,28 @@ class ScreenStabilityTracker(
     fun anchorRequerySpent(): Boolean = anchorRequeryUsed
 
     /**
+     * 조용함 문의 상태(#427 2단계). **계측 전용** — 내용이 바뀌었는데도 IDLE인 것이
+     * "조용하지 않아서"인지, "클릭 축이 살아 있어서"인지, "천장에 걸려서"인지 로그에서 갈라야 한다.
+     *
+     * **총량([QuietState.opens])까지 싣는다**(PR #445 자체 리뷰). cold 천장을 우회하는 폭주를
+     * 막는 최후 방벽이 총량이라, 로그에 안 나오면 그 방벽이 도는지 실기기에서 볼 수 없다.
+     */
+    fun quietState(nowMs: Long): QuietState = QuietState(
+        forMs = contentChangedAtMs?.let { nowMs - it } ?: 0L,
+        armed = quietChangeArmed,
+        coldOpens = quietColdOpens,
+        opens = quietOpens,
+    )
+
+    /** [quietState]의 한 묶음. 네 값이 **같은 시점**의 것이어야 로그가 서로를 설명한다. */
+    data class QuietState(
+        val forMs: Long,
+        val armed: Boolean,
+        val coldOpens: Int,
+        val opens: Int,
+    )
+
+    /**
      * 안내 대상 앱에서 **클릭** 이벤트가 관측됐다(#380). 내용만의 변화를 사용자 유발로
      * 인정하는 유일한 근거다.
      *
@@ -560,6 +777,10 @@ class ScreenStabilityTracker(
         clearRotationHistory()
         // 조작은 진행 신호다 — 앵커 상한을 다시 연다(그 뒤의 슬롯 이동은 사용자가 만든 것일
         // 수 있다). 상한이 열리는 자리는 여기와 [markSent]의 구조 전환 둘뿐이다.
+        //
+        // 조용함 예산은 여기서 건드리지 않는다(PR #445 리뷰). 이 함수를 부르는 클릭이 그
+        // package를 「클릭을 쏘는 앱」으로 만들어 조용함 문 자체가 닫히므로, 되돌려 봐야 읽는
+        // 곳이 없다.
         anchorRequeryUsed = false
         // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
         // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
@@ -723,6 +944,15 @@ class ScreenStabilityTracker(
         // 열어 두면 그동안 배너가 한 번 도는 것만으로 재질의가 나간다. 관측 불가 구간을 사이에
         // 둔 조작은 "방금 한 조작"이 아니다.
         lastInteractionMs = null
+        // 조용함도 같은 성격의 인과 근거다(PR #445 리뷰). 화면이 꺼져 있던 5분은 "화면이
+        // 조용했던" 5분이 아니다 — 그대로 두면 해제 뒤 첫 내용 변화가 조작으로 판정된다.
+        // [contentChangedAtMs]를 null로 두어 다음 샘플이 지금부터 다시 재게 한다.
+        contentChangedAtMs = null
+        lastContent = null
+        quietChangeArmed = false
+        quietOpenedAtMs = null
+        quietColdOpens = 0
+        quietOpens = 0
         if (requery) sentSignature = null
     }
 
@@ -765,6 +995,15 @@ class ScreenStabilityTracker(
         heldSamples = 0
         structureStableSinceMs = null
         sentSignature = null
+        lastContent = null
+        contentChangedAtMs = null
+        quietChangeArmed = false
+        quietOpenedAtMs = null
+        quietColdOpens = 0
+        quietOpens = 0
+        quietBudgetStructure = null
+        sendWasQuietOpened = false
+        sendWasQuietCold = false
         sentAtMs = 0L
         stuckReported = false
         failures = 0
@@ -780,6 +1019,47 @@ class ScreenStabilityTracker(
     }
 
     companion object {
+        /**
+         * 내용이 이만큼 조용해야 "조용한 화면"으로 본다(#427 2단계).
+         *
+         * 스스로 도는 화면은 이만큼 멈추지 못한다 — 2026-08-25 SM-S921N 실측에서 회전하는
+         * 검색 화면(무조작 63초·65샘플)의 **최대 연속 정지가 3샘플, 약 2.3초**였다. 여유를
+         * 두고 4초로 잡되 [STUCK_AFTER_MS]보다는 짧게 둔다 — 길면 문이 무장되기 전에 정체
+         * 문구가 먼저 뜨는 것이 상시 순서가 된다(PR #445 리뷰).
+         *
+         * **샘플 수가 아니라 시간인 이유**는 [contentChangedAtMs]에 적었다.
+         */
+        const val QUIET_MS = 4_000L
+
+        /**
+         * 조용함이 연 재질의 뒤 이만큼은 조용함을 다시 요구하지 않는다(연속 조작, PR #445 리뷰).
+         *
+         * 코레일 인원 선택처럼 같은 버튼을 여러 번 누르는 화면이 근거다. 시니어가 한 번 누르고
+         * 화면을 확인한 뒤 다시 누르는 간격을 덮되, **분 단위로 도는 숫자는 못 타게** 1분보다
+         * 훨씬 짧게 잡는다 — 이 창이 초 단위 시계와 분 단위 시계를 가르는 자리이기도 하다.
+         */
+        const val QUIET_ACTIVITY_MS = 15_000L
+
+        /**
+         * 연속 창 없이 조용함만으로 열 수 있는 재질의 수(화면당, PR #445 리뷰).
+         *
+         * 분 단위로 도는 숫자를 조작과 가를 신호가 없어서 두는 천장이다. 무조작 화면의
+         * 최악이 이 횟수의 모델 호출로 끝나고, 조작은 연속 창을 타므로 여기 걸리지 않는다.
+         */
+        const val QUIET_COLD_OPENS = 3
+
+        /**
+         * 조용함이 열 수 있는 재질의 **총량**(화면당, 연속 창을 탄 것 포함).
+         *
+         * [QUIET_COLD_OPENS]만으로는 폭주가 안 막힌다 — 연속 창이 스스로를 연장해 cold를
+         * 우회하기 때문이다([quietOpens]). 여기가 그 최후 방벽이라 기준은 **호출량**이다:
+         * 무료 티어가 15 RPM인데(`HANDOFF.md` §10) 화면 하나가 그 예산을 통째로 먹으면 안 된다.
+         *
+         * 조작 쪽 근거는 실측이다 — 2026-08-25 코레일 220샘플 세션의 조작이 **6회**였고, 그중
+         * 한 화면에 몰린 것은 그보다 적다. 12면 그 두 배가 넘어 정상 조작이 여기 닿지 않는다.
+         */
+        const val QUIET_OPENS = 12
+
         /** 같은 시그니처가 이만큼 연속으로 나와야 "안정"으로 본다. */
         const val HOLD_SAMPLES = 2
 
@@ -831,9 +1111,16 @@ class ScreenStabilityTracker(
          * 길수록 회전을 잘 잡지만, 사용자가 두 화면을 오래 오가는 정상 왕복까지 접을 수 있다.
          * 조작이 관측되면 그 왕복은 접히지 않는데(`interactedRecently`), **이 안전판은 이
          * 수정이 겨냥한 앱에서 서지 않는다** — 근거가 클릭 이벤트뿐이고 배민은 세션 전체에서
-         * 클릭을 0건 낸다(#394). 그 앱에서 오탐을 실제로 막는 것은 안전판이 아니라 창의 길이다:
-         * 시니어가 두 화면을 30초 안에 네 번 오가기는 어렵다는 가정이고, 그 가정이 이 상수의
-         * 진짜 근거다.
+         * 클릭을 0건 낸다(#394). 그 앱에서 오탐의 **발생 확률**을 낮추는 것은 안전판이 아니라
+         * 창의 길이다: 시니어가 두 화면을 30초 안에 네 번 오가기는 어렵다는 가정이다.
+         *
+         * **다만 창은 확률만 낮추고 지속 시간은 묶지 않는다**(#456 팀 리뷰). 이 PR이 창을
+         * 「결론에 닿는 데까지」로 옮겼고 [rotatingStructures]에는 만료가 없다. 한 번 잘못 서면
+         * 클릭 없는 앱에서는 [markInteraction]도 안 오고, 정체 문구도 `stuckReported` 때문에
+         * 한 번뿐이다 — 접힌 동안에는 그것을 내리는 [markSent]·[markPressed]·[markResumed]·
+         * [markFailed] 어느 것도 안 불린다. 남는 탈출구는 **제3의 구조를 실제로 묻는 것**
+         * 하나이므로, 오탐의 대가는 "30초 뒤 자가 복구"가 아니라 **그 두 화면이 세션 내내
+         * 안내 없음 + 정체 문구 1회**다. 걸쇠의 수명주기는 #476에서 정한다.
          */
         const val ROTATION_WINDOW_MS = 30_000L
 

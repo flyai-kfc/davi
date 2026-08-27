@@ -88,7 +88,7 @@ sealed interface ConversationUiState {
      */
     data object StopConfirm : ConversationUiState
 
-    /** 이해 실패. 5초 뒤 홈 복귀 타이머는 Activity가 담당한다. */
+    /** 이해 실패. [FAILED_RETURN_DELAY_MS] 뒤 홈 복귀 타이머는 Activity가 담당한다. */
     data object Failed : ConversationUiState
 }
 
@@ -129,14 +129,19 @@ data class ConversationRenderModel(
      * **구체화 흐름 안인가**(#374) — 선택 화면과 「직접 말하기」 청취를 함께 덮는다.
      *
      * [clarificationVisible]과 다르다. 그쪽은 **선택 영역이 화면에 있는가**라 「직접 말하기」로
-     * 넘어가면 꺼진다. 이 값은 **그 흐름 안에 있는가**라 청취에서도 켜져 있다.
+     * 넘어가는 순간 꺼진다. 이쪽은 **되묻기 흐름 안에 있는가**라 청취까지 이어진다.
      *
-     * **카드 위치를 잡는 값 둘(배지 위 여백·카드 위 패딩)이 이것을 본다.** 흐름 안에서 카드가
-     * 뛰지 않으려면 두 화면이 같은 신호를 써야 한다 — 한때 `clarificationVisible`을 봐서
-     * **질문이 하나일 때 「직접 말하기」를 누르면 카드가 28dp 내려앉았다**(2026-08-23 리뷰).
-     * 질문이 둘 이상이면 [stepChipVisible]이 두 화면을 묶어 줘서 그 자리만 남았던 것이다.
+     * **이것을 보는 것은 「흐름 내내 이어져야 하는 자리」 둘이다**(2026-08-26 현재) —
+     * 배지 위 여백(`ConversationActivity`)과 칩 자리 예약([StepChipSlot]). 배지를 보일까
+     * ([badgeVisible])와 카드 위 패딩은 **`clarificationVisible`을 본다** — 한때 넷을 이
+     * 신호로 모으려 했다가 되돌렸다(#473).
      *
-     * 홈에서 바로 들어온 청취는 `clarification == null`이라 켜지지 않는다.
+     * **갈라 두는 것이 의도다.** 이쪽이 지키는 것은 **카드의 위치**라 흐름 내내 이어져야 하고,
+     * 저 둘이 지키는 것은 **배지를 피하는 것**이라 배지가 서고 안 서고를 따라가야 한다.
+     * 배지가 흐름 안에서 갈리므로(구체화는 칩에 자리를 내주고 청취는 선다) 두 결정도 갈린다.
+     * **한 신호로 「통일」하지 말 것** — 어느 쪽으로 맞춰도 하나가 깨진다. 2026-08-26에 그 값을
+     * 치렀다: 저쪽을 이 신호로 맞췄더니 **배지가 질문 글자를 12dp 덮었고**, 배지를 빼서
+     * 맞추려니 카드가 48dp 솟았다.
      */
     val inClarificationFlow: Boolean = false,
     val safeEndVisible: Boolean = false,
@@ -386,13 +391,6 @@ fun renderModelOf(state: ConversationUiState, guideActive: Boolean = false): Con
 }
 
 /**
- * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
- * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
- *
- * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
- * 화면이 계속 켜진 채 남는다. 값에 근거는 없다 — 무한을 막는 상한일 뿐이고 실사용을 보고 조정한다.
- */
-/**
  * 메인 9 안내 중 화면(#197). **마이크·파도·글로우가 없다** — 안내가 도는 동안은 새 목표를
  * 받지 않기 때문이고, 카드 안 지시문이 그 이유를 말한다("먼저 안내를 종료해주세요").
  *
@@ -404,6 +402,32 @@ private fun guidingModel() = ConversationRenderModel(
     guidingVisible = true,
 )
 
+/**
+ * **다비 배지가 서는가.** 화면 결정 둘이 이것을 읽는다 — 배지 뷰의 표시 여부와, 배지를
+ * 피하려고 잡아 둔 카드 위 패딩을 걷을지.
+ *
+ * **모델의 확장으로 두는 이유는 그 둘이 어긋나면 화면이 깨지기 때문이다.** 액티비티 지역
+ * 변수로 두면 「두 자리가 같은 신호를 읽는다」를 잡는 그물이 실기기 확인뿐이 되는데,
+ * 2026-08-26에 그 어긋남으로 배지가 질문 글자를 12dp 덮었다(#473). 순수 판정이므로 여기 두면
+ * JVM 테스트가 고정한다([stepChipVisible]도 같은 결).
+ *
+ * **되묻기 흐름 안에서 갈린다.** 구체화는 칩·✕가 카드 상단선에 걸치는 자리라 배지를 걷고
+ * (`docs/SCREENS.md` MA-3), 청취는 배지가 선다 — 그래서 이 값이 흐름 안에서 한 번 바뀐다.
+ * **배지를 빼서 맞추는 안은 접었다**(2026-08-26): 빼면 배지가 잡고 있던 자리가 무너져
+ * **카드가 48dp 솟는다**(실측). 자리만 남기면(INVISIBLE) 이번에는 구체화가 **53dp 내려앉는다**
+ * — 거기는 칩이 이미 자리를 남기고 있어서다.
+ */
+val ConversationRenderModel.badgeVisible: Boolean
+    get() = logoVisible && !clarificationVisible
+
+/**
+ * 스스로 끝나지 않는 상태를 홈으로 되돌리는 지연. null이면 다른 경로로 빠져나간다
+ * (Listening=인식 타임아웃, Clarifying=TTS 완료 또는 낭독 상한, Requesting=서버 응답).
+ *
+ * [ConversationUiState.Confirm]은 ×/○ 탭 말고는 빠져나갈 길이 없어, 사용자가 자리를 뜨면
+ * 화면이 계속 켜진 채 남는다. **[CONFIRM_TIMEOUT_MS]에는 아직 근거가 없다** — 무한을 막는
+ * 상한일 뿐이고 실사용을 보고 조정한다. 실패 화면 쪽은 근거가 생겼다([FAILED_RETURN_DELAY_MS]).
+ */
 fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     ConversationUiState.Failed -> FAILED_RETURN_DELAY_MS
     is ConversationUiState.Confirm -> CONFIRM_TIMEOUT_MS
@@ -414,6 +438,27 @@ fun autoReturnDelayMs(state: ConversationUiState): Long? = when (state) {
     else -> null
 }
 
+/**
+ * MA-5 실패 화면이 스스로 홈으로 돌아가기까지(#437).
+ *
+ * **5초를 유지하기로 정했다**(2026-08-26, 실기기로 보고 판정). 예전에는 이 값에 근거가 없었고
+ * 코드가 그 사실을 적고 있었다 — "무한을 막는 상한일 뿐이고 실사용을 보고 조정한다".
+ *
+ * **계산상으로는 경계에 가깝다.** `conversation_failed`는 공백을 빼고 20자이고, 이 저장소가
+ * 쓰는 한국어 낭독 속도(초당 5~6자, [speechGuardMillis]와 같은 값)로 3.3~4.0초다. 시니어가
+ * 또박또박 읽는 쪽인 **초당 4자면 5.0초** — 딱 맞닿는다. 배율 2.0에서는 같은 두 줄이 네 줄이
+ * 되어 눈이 줄을 옮기는 시간이 더 든다(실기기 확인: 문구는 잘리지 않고 카드 안에 다 들어간다).
+ *
+ * **그런데도 5초로 두는 이유는 실기기에서 보고 「충분하다」고 판정했기 때문이다.** 계산은
+ * 낭독 속도를 소리 내어 읽는 속도로 옮긴 어림이고, 실제로 화면을 본 판단이 그보다 앞선다.
+ * **실사용에서 「다 읽기 전에 사라진다」가 관측되면 그때 늘린다** — 8초(한 번 읽기 + 문구를
+ * 찾는 시간)가 그때의 후보다. 두 번 읽기(10초)까지는 안 받는다: 여기서 할 수 있는 일이
+ * 하나뿐이라 오래 세워 둘 이유가 없고, 돌아간 홈에서 다시 말하면 된다.
+ *
+ * **버튼을 두지 않는 결정은 그대로다.** 선택지가 하나인 결정을 시니어에게 시키지 않는다
+ * (`docs/SCREENS.md` MA-5). 완료 화면이 버튼을 쓰는 것과 갈리는 지점이고, 그 차이는
+ * **거기서는 고를 것이 있다**는 것이다.
+ */
 const val FAILED_RETURN_DELAY_MS = 5_000L
 const val CONFIRM_TIMEOUT_MS = 120_000L
 

@@ -24,6 +24,13 @@
     <integer name="davi_motion_dots_period_ms">600</integer>
     <integer name="davi_motion_dots_stagger_ms">150</integer>
     <!--
+      완료 재확인 백오프 대기(#480)의 느린 리듬. 같은 점 셋이 두 상태를 그리므로 **리듬 차이가
+      곧 상태 차이**다 — 시안 값의 두 배로 두어 시니어가 곁눈으로도 가를 수 있게 한다.
+      **시안에 없는 값이다**(대기 상태 자체가 시안에 없다). 실기기에서 보고 조정할 자리.
+    -->
+    <integer name="davi_motion_dots_wait_period_ms">1200</integer>
+    <integer name="davi_motion_dots_wait_stagger_ms">300</integer>
+    <!--
       점을 띄우기 전 기다리는 시간. 응답이 빠르면 점이 한 번 깜빡이고 사라져 오히려 산만하다
       (#127이 읽는 중 표시에서 같은 함정을 적어 뒀다). 이 구간에는 "잠시만요" 문구만 보인다.
       **시안에 없는 값이라 첫 추정치다** — 실사용 응답 시간을 보고 조정한다.

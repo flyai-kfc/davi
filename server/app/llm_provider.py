@@ -19,12 +19,11 @@
 
 ## 공급자별 결정
 
-- **Gemini** — **동작이 바뀐다.** 이전에는 세 호출부 어디도 `thinkingConfig`를 보내지 않았고
-  출력 상한이 1024/512/1024였다. 지금은 모든 호출에 `thinkingConfig`가 실리고 상한이
-  `thinking 상한 + 여유분`(기본 800 + 각 여유분)이 된다. thinking 토큰이 maxOutputTokens를
-  같이 먹어 응답이 잘리는 실패를 막으려는 것인데, 대가로 (a) thinking이 있는 모델의 dynamic
-  thinking이 `DAVI_GEMINI_THINKING_BUDGET`으로 하드캡되고 (b) 옛 1024 캡이 하던 "장문 폭주를
-  자른다"가 그만큼 느슨해진다. 아직 측정하지 않았다.
+- **Gemini** — 숫자 `thinkingBudget`은 모델별 범위를 검증한 2.5 계열에만 보낸다. 3.x는
+  `thinkingLevel`이 권장 계약이고 숫자 0이 400으로 거부되므로 numeric wire를 생략해 모델
+  기본 level을 쓴다(#457 실기기 E2E). 알 수 없는 모델도 요청 전체를 깨지 않는 쪽으로
+  생략한다. 출력 상한에는 계속 `DAVI_GEMINI_THINKING_BUDGET`만큼 여유를 얹지만, 3.x에서는
+  hard cap이 아니라 hidden thinking을 위한 reserve일 뿐이다.
 - **OpenAI** — Responses API. `text.format`에 strict json_schema를 싣는다. thinking에 해당하는
   것은 `reasoning.effort`이고, 속도를 위해 기본을 낮게 둔다(`DAVI_OPENAI_REASONING_EFFORT`).
   reasoning 토큰도 `max_output_tokens`를 같이 먹으므로 effort가 켜져 있으면 여유분을 더 얹는다.
@@ -64,6 +63,7 @@ from .gemini_response import (
     extract_candidate_text,
 )
 from .gemini_schema import build_response_schema
+from .gemini_thinking import GeminiThinkingPolicy, gemini_thinking_policy
 from .inference_lifecycle import provider_call_timeout_seconds
 from .json_schema import build_json_schema
 from .observability import LLM_LOGGER_NAME, log_event
@@ -340,6 +340,9 @@ class GeminiProvider(StructuredJsonProvider):
     def __init__(self, *, thinking_budget: int = 0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.thinking_budget = thinking_budget
+        self.thinking_policy: GeminiThinkingPolicy = gemini_thinking_policy(
+            self.model, thinking_budget
+        )
 
     @property
     def contract_schema(self) -> dict:
@@ -349,13 +352,14 @@ class GeminiProvider(StructuredJsonProvider):
         generation_config: dict[str, Any] = {
             "responseMimeType": "application/json",
             "maxOutputTokens": self.max_output_tokens,
-            # thinking이 없는 모델(flash-lite 등)에 보내도 조용히 무시된다(실측).
-            "thinkingConfig": {"thinkingBudget": self.thinking_budget},
         }
+        thinking_config = self.thinking_policy.request_config
+        if thinking_config is not None:
+            generation_config["thinkingConfig"] = thinking_config
         if with_schema:
             generation_config["responseSchema"] = self.contract.gemini_schema
         return {
-            "url": f"{self._BASE_URL}/models/{self.model}:generateContent",
+            "url": (f"{self._BASE_URL}/models/{self.thinking_policy.model_id}:generateContent"),
             "headers": {"x-goog-api-key": self.api_key},
             "json": {
                 "contents": [{"parts": [{"text": prompt}]}],
@@ -515,9 +519,10 @@ def build_provider(
 
     if provider is ProviderName.GEMINI:
         thinking_budget = settings.davi_gemini_thinking_budget
+        thinking_policy = gemini_thinking_policy(model, thinking_budget)
         max_output_tokens = _max_output_tokens(
             override=override,
-            required=thinking_budget + response_headroom,
+            required=thinking_policy.output_reserve + response_headroom,
             operation=operation,
         )
         return GeminiProvider(
