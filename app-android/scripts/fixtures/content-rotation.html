@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내용 회전 픽스처</title>
+<!--
+  **내용 축만** 흔드는 화면(#456). 구조 축은 고정이다. `rotation.html`의 짝이다.
+
+  `rotation.html`은 요소 수를 넷↔다섯으로 바꿔 구조 축을 흔든다. 이 파일은 반대다 —
+  DOM 노드를 만들지도 지우지도 않고 `textContent`만 바꾼다. 요소 수·순서·역할·플래그가
+  전부 고정이라 구조 축 서명이 안 움직이고 내용 축만 움직인다.
+
+  겨냥하는 것은 `role` 제거(#456) 뒤의 캐러셀 입력이다 — 2026-08-25 실측에서 배민의 두
+  슬라이드가 같은 구조·다른 내용으로 잡혔다(`s=` 고정, `c=`만 왕복). 그 입력에 조용함
+  게이트(#427)가 어떻게 반응하는지를 광고 소재 운에 걸지 않고 재현한다.
+
+  **주기 5.8초는 값이 아니라 조건이다.** 실측 회전 주기와 같고 `QUIET_MS`(4초)보다 길어,
+  조용함 무장이 서는 조건을 만든다. 짧게 두면 무장이 아예 안 서서 쟁점을 비껴간다.
+  `contentChangedAtMs`는 **내용 축 변화에만** 되감기므로, 배너 앱이 초당 수십 건 쏘는
+  `WINDOW_CONTENT_CHANGED`로는 이 시계가 안 풀린다.
+
+  2026-08-27 이 픽스처로 잰 값(SM-S921N · 무조작 180초): 구조 축 1개 고정 · 내용 축 2개가
+  40회 교대 · 요청 24회(논리 13개) · `SEND` 24회 중 21회가 조용함 무장 상태 · `opens`가
+  상한 12를 소진한 뒤 정지.
+
+  쓰는 법은 `rotation.html`과 같다 — 이 디렉터리를 호스트에서 서빙하고 포트를 reverse한 뒤
+  기기 브라우저로 연다. 무조작으로 두면 클릭을 한 번도 못 봐 `cad=y`가 된다.
+  회전 여부는 **눈이 아니라 `poll=`의 `c=`로 판정한다** — 화면은 바뀌는데 접근성 내용 해시는
+  안 움직이는 타일을 실측으로 봤다(2026-08-27 배민 홈).
+-->
+<style>
+  body { font: 20px/1.5 sans-serif; padding: 24px; margin: 0; }
+  h1 { font-size: 24px; }
+  button { display: block; width: 100%; padding: 20px; margin: 12px 0; font-size: 20px; }
+</style>
+<h1 id="state">준비 중</h1>
+<p id="lead">구조는 그대로이고 글자만 바뀌는 화면입니다.</p>
+<div id="slots">
+  <button type="button" id="b1">준비 중</button>
+  <button type="button" id="b2">준비 중</button>
+  <button type="button" id="b3">준비 중</button>
+  <button type="button" id="b4">준비 중</button>
+</div>
+<script>
+  var SETS = [
+    { title: '상태 가', items: ['김치찌개', '된장찌개', '비빔밥', '불고기'] },
+    { title: '상태 나', items: ['치킨', '피자', '족발', '보쌈'] }
+  ];
+  var flip = 0;
+  function render() {
+    var set = SETS[flip % 2];
+    document.getElementById('state').textContent = set.title;
+    for (var i = 0; i < 4; i++) {
+      // **노드를 갈지 않는다.** innerHTML로 갈면 노드가 재생성돼 과도기에 요소 수가
+      // 흔들릴 수 있고, 그러면 구조 축이 움직여 이 픽스처의 목적이 사라진다.
+      document.getElementById('b' + (i + 1)).textContent = set.items[i];
+    }
+    flip++;
+  }
+  render();
+  setInterval(render, 5800);
+</script>
