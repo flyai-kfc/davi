@@ -142,9 +142,12 @@ def test_326_흐름은_요청_두_번으로_끝난다(scenarios):
     assert result.metrics["질문수"] == 2
     assert result.metrics["요청수"] == 2
     assert result.metrics["2회이내_ready"] is True
-    # 새 화면은 첫 질문만 읽고, ready 확인 문구를 한 번 더 읽는다.
-    assert result.metrics["TTS_발화수"] == 2
-    assert result.metrics["TTS_문자수"] == len("누구에게 보낼까요?") + len("확인")
+    # **문항마다 읽는다**(#452 · PR #465). 안 읽어 주는 질문은 접힌 채로 떠서 어르신이
+    # 읽을 수도 들을 수도 없다는 것이 그 결정의 근거다. 여기에 ready 확인 문구가 더해진다.
+    assert result.metrics["TTS_발화수"] == 3
+    assert result.metrics["TTS_문자수"] == (
+        len("누구에게 보낼까요?") + len("어떤 방법으로 보낼까요?") + len("확인")
+    )
     assert result.metrics["보기_적중률"] == 1.0
 
 
@@ -338,7 +341,8 @@ def test_TTS_평균은_ready로_완료된_실행만_세다(scenarios):
         },
     )
     unable = run_scenario(scenarios[2], _FakeUser(), _ClarificationAdapter("unable"))
-    assert unable.metrics["TTS_발화수"] == 1  # 첫 질문은 읽었지만 완료하지 못했다.
+    # 질문 둘을 다 읽었지만 완료하지 못했다 — ready 문구가 없어 둘뿐이다.
+    assert unable.metrics["TTS_발화수"] == 2
 
     summary = summarize([spoken, unable, failed])["전체"]
     assert summary["ready_평균_TTS_문자수"] == spoken.metrics["TTS_문자수"]

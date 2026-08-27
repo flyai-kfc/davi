@@ -10,30 +10,36 @@ from .models import Achievement, AnswerSource, ScenarioResult, SlotVerdict, Tran
 def _tts_texts(transcript: Transcript) -> list[str]:
     """앱이 실제로 읽는 문구만 고른다.
 
-    #326 형식은 첫 질문과 최종 확인만 읽고, 둘째 질문은 화면으로만 보여 준다. 옛 형식은
-    매 요청의 단일 질문을 모두 읽었다. 화면용 ``message``와 질문을 함께 세면 새 형식만
-    이중 집계되므로 형식별로 가른다.
+    **문항마다 읽는다**(#452 · PR #465에서 「첫 문항만 읽는다」를 뒤집었다). 근거는 접기다 —
+    안 읽어 주는 질문은 ``speaking=false``라 처음부터 접힌 채로 떠서, 어르신이 그것을 **읽을
+    수도 들을 수도 없다**. 예전에는 안 읽어 줘도 글자가 화면에 그냥 있었다.
+
+    옛 형식은 매 요청의 단일 질문을 읽었으므로 세는 규칙이 같아졌다. 다만 옛 형식은 화면용
+    ``message``가 그 질문과 같은 문장이라 둘을 함께 세면 이중 집계가 되고, 새 형식은
+    ``message``가 **첫 질문의 복사본**(구버전 앱 호환용, ``intent_prompt.py``)이라 마찬가지다.
+    그래서 어느 쪽이든 **질문 문장만** 센다.
+
+    실기기 대조(2026-08-26 SM-S921N · 실모델 6세션): 질문 9개가 **전부** 읽혔고 낭독 시작
+    신호(``clarification_fold expanded=true speaking=true``)도 9회로 일치했다. 옛 규칙으로
+    세면 114자, 실제는 158자로 **39%를 적게 셌다**.
+
+    ``ready``의 ``message``는 최종 확인 화면이 읽는다(``ConversationActivity.showReadyGoal``).
+    **앱이 그 밖에 읽는 두 문구는 여기서 셀 수 없다** — 앱 가능성 경고와 그 뒤의 안내는
+    ``strings.xml``에 있고 기기에 무엇이 깔렸느냐로 갈려, 서버 응답만 보는 이 하니스가 알 수
+    없다. 그만큼 이 수치는 **하한**이다.
     """
 
     texts: list[str] = []
-    first_new_question_added = False
     for exchange in transcript.exchanges:
         turn = exchange.turn
         if turn.status.value == "ready":
             if turn.message.strip():
                 texts.append(turn.message.strip())
             continue
-        if not turn.questions:
-            continue
-        if turn.legacy:
-            text = turn.message.strip() or turn.questions[0].prompt.strip()
+        for question in turn.questions:
+            text = question.prompt.strip()
             if text:
                 texts.append(text)
-        elif not first_new_question_added:
-            text = turn.questions[0].prompt.strip()
-            if text:
-                texts.append(text)
-            first_new_question_added = True
     return texts
 
 
