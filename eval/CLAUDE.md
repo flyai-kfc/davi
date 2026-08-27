@@ -67,7 +67,13 @@ Ruff 린트 규칙은 `pyproject.toml`에 둔다. 모노레포 형제 `server/`�
 - `samsung_clock_alarm_picker_values.json`은 **입력칸은 보이지만 어느 것도 선택되지 않은**
   실기기 화면을 보존한다(#462). 따라서 로더·스키마·키 없는 파이프라인에는 이 입력이 들어오지만,
   실모델 관측 행동은 없고 Stub은 프롬프트 의미를 채점하지 않는다. `prompt.INPUT_NOT_FOCUSED`의
-  실제 모델 A/B 무회귀 근거는 여전히 #373의 범위다.
+  실제 모델 A/B 무회귀 근거는 여전히 #373의 범위다. 같은 화면에 합성 알람 이름을 채운
+  `samsung_clock_alarm_name_filled.json`은 자유 입력값과 `focused`·`showing_hint_text` 상태가
+  함께 전송된 실기기 계약을 보존한다. 정적 fixture는 Android serializer 자체를 실행하지 않으므로
+  투영 구현의 rollback은 앱 단위 테스트가 함께 지킨다. picker의 n2 `오전`은 #462 이전에는 빈
+  label로 전송됐으므로, 현재 fixture의 `label="오전"`은 server/eval이 받는 계약 형태의 회귀
+  앵커다. 이름 입력 fixture는 ADB로 값을 주입해 IME가 닫힌 개발 관측이며 사용자 타이핑 표본이
+  아니다. 비밀번호·인증 코드 fixture는 실측 원본 없이 추측해 만들지 않는다.
 - 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
   올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).

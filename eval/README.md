@@ -148,22 +148,34 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 행동이 있더라도 사람 검토가 `accepted`로 끝난 fixture만 후보 모델 + judge의 픽스처당 2회 호출
 대상이 된다.
 
-## 삼성 시계 picker 값 fixture
+## 삼성 시계 picker·자유 입력 fixture
 
 `samsung_clock_alarm_picker_values.json`은 SM-S921N / Android 15 / One UI 7.0의 새 알람
 편집 화면에서 실제로 전송된 29개 요소를 익명화해 보존한다(#462). 오전/오후 선택값은 클릭 가능한
 `TextView`/`Button`으로, 시·분의 현재 값은 편집 가능한 `EditText` label인 `6, 시간`과
-`00, 분`으로 관측됐다. 세 입력칸 모두 `focused=false`이고, 비어 있는 알람 이름만
-`showing_hint_text=true`인 `EditText`다.
+`00, 분`으로 관측됐다. Davi가 실제 전송한 계약에서는 선택된 `오전` `TextView`도
+`editable=true`였고 `오후` `Button`은 editable이 아니었다. 비어 있는 알람 이름만
+`showing_hint_text=true`인 `EditText`다. 요일 7개는 `unchecked`, 공휴일 행과 스위치는
+`enabled=false`, 알람음 스위치는 `checked`로 관측된 상태도 함께 보존한다.
 
-실기기에서 시 picker를 6에서 5로 한 칸 움직였을 때 구조 시그니처는 유지되고 내용 시그니처는
-바뀌어 다음 요청이 전송됐다. 알람 이름에 비식별 테스트 문자열을 입력했을 때는 첫 값이 label에
-반영된 뒤 추가 타이핑 동안 시그니처가 유지되어 요청이 반복되지 않았다. 이 동작 관측에 사용한
-시그니처 해시, 요청·모델 응답 원문과 기기 식별자는 fixture에 넣지 않았다.
+#462 이전 직렬화기는 숫자로 시작하지 않는 editable 값 `오전`을 NumberPicker 숫자 예외나
+hint/name 폴백 어느 쪽에도 보존하지 못해 n2 label을 빈 문자열로 전송했다. #462 이후의
+`label="오전"` 계약 형태를 이 picker fixture가 server/eval 경계에서 고정하고, Android 투영
+구현 자체의 rollback은 앱 단위 테스트가 지킨다.
 
-동적 날짜는 `다음 날`, 기본 알람음의 고유 이름은 `기본 소리`로 치환했다. 새 알람은 저장하지
-않고 테스트 뒤 삼성 시계를 종료했다. 실제 모델을 호출해 기준 행동을 수집한 검증은 아니므로
-`observed_model_action`을 추측해 넣지 않는다.
+`samsung_clock_alarm_name_filled.json`은 같은 편집 화면의 알람 이름에 합성 문자열
+`DAVI_E2E_TEST`만 입력한 뒤 Davi가 다시 전송한 29개 요소를 보존한다. 이때 n24는
+`label="알람 이름 DAVI_E2E_TEST"`, `editable=true`, `focused=true`,
+`showing_hint_text=false`였고 IME는 닫힌 상태였다. 따라서 자유 입력값이 label과 별도 입력 상태로
+함께 전달되는 실기기 계약 증거가 생겼다. 입력은 `adb shell input text`로 주입했으므로 이 fixture의
+`focused=true`·`ime_visible=false` 조합은 개발 관측 상태이며, IME가 열린 사용자 타이핑 경로의
+표본은 아니다.
+
+두 fixture 모두 동적 날짜는 `다음 날`, 기본 알람음의 고유 이름은 `기본 소리`로 치환했다.
+새 알람은 저장하지 않았고, 실제 모델 대신 키가 필요 없는 Stub으로 로딩·계약·PII 경로만
+확인했으므로 `observed_model_action`을 추측해 넣지 않는다.
+비밀번호·인증 코드 화면의 실기기 fixture는 아직 없으며, 원본을 확보하기 전에는 추측해 만들지
+않는다.
 
 ## 평가 계층
 

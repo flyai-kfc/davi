@@ -325,10 +325,20 @@ def test_repository_alarm_picker_fixture_preserves_observed_value_projection():
     assert list(elements) == [f"n{index}" for index in range(1, 30)]
     assert screen.has_scrollable_element is True
     assert screen.ime_visible is False
+    assert all(element.enabled is not None for element in screen.elements)
+    assert all(element.selected is not None for element in screen.elements)
+    assert {
+        element.node_id for element in screen.elements if element.enabled is False
+    } == {"n22", "n23"}
+    assert {
+        element.node_id for element in screen.elements if element.selected is True
+    } == {"n2"}
 
     assert elements["n2"].label == "오전"
     assert elements["n2"].role == "TextView"
+    assert elements["n2"].editable is True
     assert elements["n2"].selected is True
+    assert elements["n2"].showing_hint_text is False
 
     assert elements["n6"].label == "6, 시간"
     assert elements["n10"].label == "00, 분"
@@ -345,11 +355,59 @@ def test_repository_alarm_picker_fixture_preserves_observed_value_projection():
     assert alarm_name.editable is True
     assert alarm_name.showing_hint_text is True
 
+    for node_id in ("n15", "n16", "n17", "n18", "n19", "n20", "n21"):
+        assert elements[node_id].check_state.value == "unchecked"
+    assert elements["n22"].enabled is False
+    assert elements["n23"].enabled is False
+    assert elements["n23"].check_state.value == "unchecked"
+    assert elements["n26"].check_state.value == "checked"
+
     assert {element.node_id for element in screen.elements if element.scroll_axis} == {
         "n1",
         "n4",
         "n8",
         "n12",
     }
+    assert fixture.request.steps == []
+    assert fixture.document.source.observed_model_action is None
+
+
+def test_repository_alarm_name_fixture_preserves_filled_free_editable_value():
+    fixture = load_fixture(FIXTURES / "samsung_clock_alarm_name_filled.json")
+    screen = fixture.request.screen
+    elements = {element.node_id: element for element in screen.elements}
+
+    assert fixture.document.source.issue == 462
+    assert fixture.document.source.device_model == "SM-S921N"
+    assert list(elements) == [f"n{index}" for index in range(1, 30)]
+    assert screen.has_scrollable_element is True
+    assert screen.ime_visible is False
+
+    alarm_name = elements["n24"]
+    assert alarm_name.label == "알람 이름 DAVI_E2E_TEST"
+    assert alarm_name.role == "EditText"
+    assert alarm_name.clickable is True
+    assert alarm_name.editable is True
+    assert alarm_name.focused is True
+    assert alarm_name.enabled is True
+    assert alarm_name.selected is False
+    assert alarm_name.showing_hint_text is False
+
+    assert {element.node_id for element in screen.elements if element.editable} == {
+        "n2",
+        "n6",
+        "n10",
+        "n24",
+    }
+    assert {
+        element.node_id for element in screen.elements if element.enabled is False
+    } == {"n22", "n23"}
+    assert all(element.enabled is not None for element in screen.elements)
+    assert all(element.selected is not None for element in screen.elements)
+    assert {
+        element.node_id for element in screen.elements if element.selected is True
+    } == {"n2"}
+    assert elements["n23"].check_state.value == "unchecked"
+    assert elements["n26"].check_state.value == "checked"
     assert fixture.request.steps == []
     assert fixture.document.source.observed_model_action is None
