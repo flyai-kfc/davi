@@ -1,0 +1,266 @@
+{
+  "id": "samsung-clock-alarm-picker-values",
+  "description": "삼성 시계 새 알람 편집 화면에서 오전/오후와 시·분 picker 값이 접근성 label로 보존되는 실기기 입력",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-08-27",
+    "issue": 462,
+    "device_model": "SM-S921N",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
+    "anonymization": [
+      "개인 알람 이름을 입력하지 않은 새 알람 화면만 사용",
+      "관측 당시 동적 날짜 label을 '다음 날'로 치환",
+      "기본 알람음의 고유 이름을 '기본 소리'로 치환",
+      "device_id, 모델 응답 원문, 서버 식별자와 화면 시그니처 해시는 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "set alarm time",
+    "screen": {
+      "package_name": "com.sec.android.app.clockpackage",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "",
+          "role": "NumberPicker",
+          "clickable": false,
+          "bounds": [66, 170, 374, 845],
+          "can_scroll_forward": true,
+          "can_scroll_backward": false,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n2",
+          "label": "오전",
+          "role": "TextView",
+          "clickable": true,
+          "selected": true,
+          "bounds": [66, 401, 374, 614]
+        },
+        {
+          "node_id": "n3",
+          "label": "오후",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [66, 614, 374, 845]
+        },
+        {
+          "node_id": "n4",
+          "label": "",
+          "role": "NumberPicker",
+          "clickable": false,
+          "bounds": [374, 170, 682, 845],
+          "can_scroll_forward": true,
+          "can_scroll_backward": true,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n5",
+          "label": "5",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [374, 170, 682, 401]
+        },
+        {
+          "node_id": "n6",
+          "label": "6, 시간",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "focused": false,
+          "showing_hint_text": false,
+          "bounds": [374, 401, 682, 614]
+        },
+        {
+          "node_id": "n7",
+          "label": "7",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [374, 614, 682, 845]
+        },
+        {
+          "node_id": "n8",
+          "label": "",
+          "role": "NumberPicker",
+          "clickable": false,
+          "bounds": [726, 170, 1035, 845],
+          "can_scroll_forward": true,
+          "can_scroll_backward": true,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n9",
+          "label": "59",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [726, 170, 1035, 401]
+        },
+        {
+          "node_id": "n10",
+          "label": "00, 분",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "focused": false,
+          "showing_hint_text": false,
+          "bounds": [726, 401, 1035, 614]
+        },
+        {
+          "node_id": "n11",
+          "label": "01",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [726, 614, 1035, 845]
+        },
+        {
+          "node_id": "n12",
+          "label": "",
+          "role": "ScrollView",
+          "clickable": false,
+          "bounds": [30, 944, 1050, 2028],
+          "can_scroll_forward": true,
+          "can_scroll_backward": false,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n13",
+          "label": "다음 날",
+          "role": "TextView",
+          "clickable": false,
+          "bounds": [84, 1032, 924, 1091]
+        },
+        {
+          "node_id": "n14",
+          "label": "날짜 설정,",
+          "role": "ImageView",
+          "clickable": true,
+          "bounds": [924, 1025, 996, 1097]
+        },
+        {
+          "node_id": "n15",
+          "label": "일요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [63, 1127, 153, 1271]
+        },
+        {
+          "node_id": "n16",
+          "label": "월요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [207, 1127, 297, 1271]
+        },
+        {
+          "node_id": "n17",
+          "label": "화요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [351, 1127, 441, 1271]
+        },
+        {
+          "node_id": "n18",
+          "label": "수요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [495, 1127, 585, 1271]
+        },
+        {
+          "node_id": "n19",
+          "label": "목요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [639, 1127, 729, 1271]
+        },
+        {
+          "node_id": "n20",
+          "label": "금요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [783, 1127, 873, 1271]
+        },
+        {
+          "node_id": "n21",
+          "label": "토요일",
+          "role": "CheckBox",
+          "clickable": true,
+          "bounds": [927, 1127, 1017, 1271]
+        },
+        {
+          "node_id": "n22",
+          "label": "공휴일에는 끄기 대체 및 임시 공휴일에는 켜기",
+          "role": "LinearLayout",
+          "clickable": true,
+          "bounds": [30, 1280, 1050, 1489]
+        },
+        {
+          "node_id": "n23",
+          "label": "공휴일에는 끄기",
+          "role": "Switch",
+          "clickable": true,
+          "bounds": [862, 1280, 1050, 1489]
+        },
+        {
+          "node_id": "n24",
+          "label": "알람 이름",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "focused": false,
+          "showing_hint_text": true,
+          "bounds": [66, 1576, 996, 1676]
+        },
+        {
+          "node_id": "n25",
+          "label": "알람음 기본 소리",
+          "role": "ViewGroup",
+          "clickable": true,
+          "bounds": [30, 1754, 1050, 1963]
+        },
+        {
+          "node_id": "n26",
+          "label": "알람음",
+          "role": "Switch",
+          "clickable": true,
+          "bounds": [862, 1826, 1050, 1892]
+        },
+        {
+          "node_id": "n27",
+          "label": "진동",
+          "role": "ViewGroup",
+          "clickable": true,
+          "bounds": [30, 1966, 1050, 2028]
+        },
+        {
+          "node_id": "n28",
+          "label": "취소",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [72, 2028, 540, 2196]
+        },
+        {
+          "node_id": "n29",
+          "label": "저장",
+          "role": "Button",
+          "clickable": true,
+          "bounds": [540, 2028, 1008, 2196]
+        }
+      ],
+      "has_scrollable_element": true,
+      "ime_visible": false
+    },
+    "steps": []
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

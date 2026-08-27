@@ -312,3 +312,44 @@ def test_repository_launcher_fixtures_preserve_observed_layout_variants():
     assert scrollable[0].scroll_axis.value == "vertical"
     assert scrollable[0].can_scroll_forward is True
     assert scrollable[0].can_scroll_backward is False
+
+
+def test_repository_alarm_picker_fixture_preserves_observed_value_projection():
+    fixture = load_fixture(FIXTURES / "samsung_clock_alarm_picker_values.json")
+    screen = fixture.request.screen
+    elements = {element.node_id: element for element in screen.elements}
+
+    assert fixture.document.source.issue == 462
+    assert fixture.document.source.device_model == "SM-S921N"
+    assert len(elements) == 29
+    assert list(elements) == [f"n{index}" for index in range(1, 30)]
+    assert screen.has_scrollable_element is True
+    assert screen.ime_visible is False
+
+    assert elements["n2"].label == "오전"
+    assert elements["n2"].role == "TextView"
+    assert elements["n2"].selected is True
+
+    assert elements["n6"].label == "6, 시간"
+    assert elements["n10"].label == "00, 분"
+    for node_id in ("n6", "n10"):
+        element = elements[node_id]
+        assert element.role == "EditText"
+        assert element.clickable is True
+        assert element.editable is True
+        assert element.focused is False
+        assert element.showing_hint_text is False
+
+    alarm_name = elements["n24"]
+    assert alarm_name.label == "알람 이름"
+    assert alarm_name.editable is True
+    assert alarm_name.showing_hint_text is True
+
+    assert {element.node_id for element in screen.elements if element.scroll_axis} == {
+        "n1",
+        "n4",
+        "n8",
+        "n12",
+    }
+    assert fixture.request.steps == []
+    assert fixture.document.source.observed_model_action is None
