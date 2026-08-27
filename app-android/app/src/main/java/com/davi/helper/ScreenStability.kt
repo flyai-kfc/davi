@@ -265,9 +265,12 @@ class ScreenStabilityTracker(
      * 그런 숫자를 가르는 신호가 우리에게 없으므로, 가르는 대신 **비용에 천장을 씌운다**.
      * 조작은 연속 창을 타고 흐르므로 이 상한에 걸리지 않는다.
      *
-     * **상태바 시계는 해당 없다** — [ActiveWindowResolver]의 크기 필터가 상태표시줄 창을
+     * **접힌 상태표시줄의 시계는 해당 없다** — [ActiveWindowResolver]의 크기 필터가 그 창을
      * 애초에 안 고르므로 트리에 없다(2026-08-26 실측: 무조작 81초가 분 경계를 넘는 동안
-     * 내용 해시 불변). 이 천장이 감당하는 것은 **앱 안** 숫자뿐이다.
+     * 내용 해시 불변). **한정어가 필요하다**(PR #445 리뷰 3라운드): 펼친 셰이드는 전체 화면이라
+     * 크기 필터를 통과하고 **일부러 후보에 넣는 정책**이며(루트 `CLAUDE.md`), 후보가 전부
+     * 크기 미달이면 `fallbackRoot`가 크기 검사 없이 `rootInActiveWindow`를 돌려준다. 그 두
+     * 경로에서는 시계·「N분 전」이 내용 축에 들어오고, 그때 받는 것이 이 천장이다.
      */
     private var quietColdOpens = 0
 
@@ -514,9 +517,17 @@ class ScreenStabilityTracker(
         if (structureProgressed) {
             anchorRequeryUsed = false
         }
-        // 조용함 예산은 **[sentSignature]가 아니라 예산이 속한 구조**로 판정한다
-        // ([quietBudgetStructure]). 실패·폐기가 `sentSignature`를 비우고 나면 위 조건이
-        // 거짓이 되어, 옮겨 간 화면이 앞 화면에서 태운 천장을 물려받았다(PR #445 자체 리뷰).
+        // 조용함 쪽 구조 전환은 **[sentSignature]가 아니라 [quietBudgetStructure]로 판정한다.**
+        // 실패·폐기가 `sentSignature`를 비우고 나면 위 조건이 거짓이 되어, 옮겨 간 화면이 앞
+        // 화면에서 태운 천장을 물려받았다(PR #445 자체 리뷰). **연속 창도 같은 근거를 써야
+        // 한다**(PR #445 리뷰 3라운드) — [markFailed]·[markResumed]`(requery = true)`·
+        // [markResponseDiscarded] 뒤의 구조 전환 SEND가 창을 못 열어, 이 PR이 없애려던 거짓
+        // 정체 문구가 실패·화면꺼짐 경로에서 그대로 섰다(JVM 재현 3건).
+        //
+        // 경계는 그대로다: [quietBudgetStructure]는 세션 첫 요청에서 `null`이라 「첫 진입은 안
+        // 연다」가 유지되고, 여기서만 갱신되므로 raw 샘플의 구조 변화로도 안 열린다.
+        val budgetStructureProgressed =
+            quietBudgetStructure != null && signature.structure != quietBudgetStructure
         if (signature.structure != quietBudgetStructure) {
             quietBudgetStructure = signature.structure
             quietColdOpens = 0
@@ -535,10 +546,14 @@ class ScreenStabilityTracker(
         // 막혀, 이 PR이 없애려던 거짓 정체 문구가 이웃 행에서 그대로 선다 — 어린이·유아처럼
         // 0에서 시작하는 행이 정확히 그 경로다(JVM 재현: 두 번째 탭이 IDLE→STUCK).
         //
-        // 이 창을 탄 재질의도 [quietOpens]에 세이므로 최악은 구조당 [QUIET_OPENS]회다 —
-        // 클릭 없는 앱에서 구조 churn 뒤 내용 churn이 그만큼 탈 수 있다는 뜻이고, 그 값을
-        // 받아들이는 것이 이 결정이다. 클릭을 쏘는 앱은 문 자체를 안 쓰므로 무관하다.
-        if (structureProgressed) quietOpenedAtMs = nowMs
+        // 이 창을 탄 재질의도 [quietOpens]에 세이므로 **한 구조에 머무는 동안은**
+        // [QUIET_OPENS]회가 상한이다 — 클릭 없는 앱에서 구조 churn 뒤 내용 churn이 그만큼 탈
+        // 수 있다는 뜻이고, 그 값을 받아들이는 것이 이 결정이다. 클릭을 쏘는 앱은 문 자체를
+        // 안 쓰므로 무관하다.
+        //
+        // **[markResumed]가 이 상한을 되돌린다**(알려진 한계, #481). 그 함수는 화면 켜짐뿐
+        // 아니라 root 복구마다 불려서, root가 깜빡이면 예산이 새로 채워진다.
+        if (budgetStructureProgressed) quietOpenedAtMs = nowMs
         if (sendWasAnchorOpened) anchorRequeryUsed = true
         sentSignature = signature
         sentAtMs = nowMs

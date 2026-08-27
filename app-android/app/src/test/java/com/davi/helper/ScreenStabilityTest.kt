@@ -1127,6 +1127,9 @@ class ScreenStabilityTrackerTest {
         // 창을 여는 것은 markSent(요청이 실제로 나감)이지 raw 샘플의 구조 변화가 아니다 —
         // 앵커 상한과 같은 경계다(#399 리뷰). 세션 첫 요청(sentSignature 없음)도 전환이
         // 아니므로 안 연다: 첫 화면 진입만으로 회전 배너가 창을 타면 안 된다.
+        //
+        // **raw 구조 변화 쪽 절반은 아직 안 잡는다** — 전 구간이 구조 하나라 그 경계를 못
+        // 밟는다(PR #445 리뷰 3라운드에서 변이로 확인). 보강은 후속(#481)이다.
         fun s(at: Long, sig: ScreenSig) =
             tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
 
@@ -1138,6 +1141,62 @@ class ScreenStabilityTrackerTest {
         // 3초 안의 내용 변화(조용함 미달·창 없음)는 막혀야 한다.
         assertNotEquals(Decision.SEND, s(1_400, ScreenSig("home", "배너 B")))
         assertNotEquals(Decision.SEND, s(2_100, ScreenSig("home", "배너 B")))
+    }
+
+    @Test
+    fun `실패 뒤의 구조 전환도 연속 창을 연다`() {
+        // 창을 여는 근거는 `sentSignature`가 아니라 예산이 속한 구조여야 한다(PR #445 리뷰
+        // 3라운드). [ScreenStabilityTracker.markFailed]가 `sentSignature`를 비우므로, 그 근거로는
+        // 실패 직후의 구조 전환이 전환으로 안 보이고 4초 안의 다음 탭이 막혀 이 PR이 없애려던
+        // 거짓 정체 문구가 그대로 선다. 429·네트워크·timeout이라 클릭 유무와 무관한 경로다.
+        fun s(at: Long, sig: ScreenSig) =
+            tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
+
+        val child0 = ScreenSig("sheet-child0", "어린이 0")
+        s(0, child0)
+        s(700, child0)
+        tracker.markSent(child0, 700)
+        tracker.markFailed(1_500) // 백오프 2초
+        tracker.markFinished()
+        assertNotEquals(Decision.SEND, s(2_200, child0)) // 아직 백오프 안
+
+        // 탭① 0→1: 구조 전환. 백오프가 풀린 뒤 요청이 실제로 나간다.
+        val child1 = ScreenSig("sheet-child1", "어린이 1")
+        s(4_000, child1)
+        assertEquals(Decision.SEND, s(4_700, child1))
+        tracker.markSent(child1, 4_700)
+        tracker.markFinished()
+
+        // 탭② 2초 뒤 1→2: 내용만·조용함 미달 — 구조 전환이 연 창으로만 열릴 수 있다.
+        val child2 = ScreenSig("sheet-child1", "어린이 2")
+        s(6_700, child2)
+        assertEquals(Decision.SEND, s(7_400, child2))
+    }
+
+    @Test
+    fun `화면 꺼짐 폐기 뒤의 구조 전환도 연속 창을 연다`() {
+        // [ScreenStabilityTracker.markResumed]의 `requery`도 `sentSignature`를 비운다 — 안내를
+        // 읽다 화면이 꺼지는, 시니어에게 흔한 자리다(PR #445 리뷰 3라운드).
+        fun s(at: Long, sig: ScreenSig) =
+            tracker.onSample(sig, at, hasLabeledElement = true, clickAxisDead = true)
+
+        val child0 = ScreenSig("sheet-child0", "어린이 0")
+        s(0, child0)
+        s(700, child0)
+        tracker.markSent(child0, 700)
+        tracker.markFinished()
+
+        // 꺼져 있는 동안 도착한 응답을 버리고, 깨어 보니 화면이 옮겨 가 있다.
+        tracker.markResumed(300_000, requery = true)
+        val child1 = ScreenSig("sheet-child1", "어린이 1")
+        s(300_700, child1)
+        assertEquals(Decision.SEND, s(301_400, child1))
+        tracker.markSent(child1, 301_400)
+        tracker.markFinished()
+
+        val child2 = ScreenSig("sheet-child1", "어린이 2")
+        s(303_400, child2)
+        assertEquals(Decision.SEND, s(304_100, child2))
     }
 
     @Test
