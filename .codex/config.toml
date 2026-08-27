@@ -1,0 +1,7 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.6.7-hotspot'
+JAVA_TOOL_OPTIONS = '-Djdk.net.unixdomain.tmpdir=D:\KimDongkun\Projects\Workspaces\davi\.gradle-afunix-tmp'
+PYTHONUTF8 = "1"
