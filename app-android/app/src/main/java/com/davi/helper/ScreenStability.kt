@@ -78,13 +78,8 @@ object ScreenSignature {
     }
 
     /**
-     * 앵커 대조에서만 지우는 숫자(#427). **내용 축은 이걸 쓰지 않는다** — 쓰면 수량 변화가
-     * 안 보여 이 이슈가 되살아난다.
-     */
-    private val ANCHOR_DIGITS = Regex("""\d+""")
-
-    /**
      * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. **내용 축과 달리 숫자를 지운다**(#427).
+     * 숫자 정규화 생산자 규칙은 [UiTreeSerializer.normalizeTargetAnchorLabel] 한 곳에 둔다.
      *
      * 두 자리가 서로 다른 질문을 한다. 내용 축은 "화면 상태가 바뀌었나"라서 장바구니 수량
      * `2`→`3`을 봐야 하고, 앵커는 "강조가 아직 **같은 줄**을 가리키나"라서 그 줄에 붙은
@@ -122,11 +117,9 @@ object ScreenSignature {
         ) {
             projected
         } else {
-            normalizeTargetAnchorLabel(projected)
+            UiTreeSerializer.normalizeTargetAnchorLabel(projected)
         }
     }
-
-    internal fun normalizeTargetAnchorLabel(label: String): String = ANCHOR_DIGITS.replace(label, "#")
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {

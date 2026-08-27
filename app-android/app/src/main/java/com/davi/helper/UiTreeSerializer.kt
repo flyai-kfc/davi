@@ -101,6 +101,7 @@ object UiTreeSerializer {
     /** 시·분·날짜 picker에서 관측되는 "6, 시간", "00, 분" 같은 짧은 선택값을 식별한다. */
     private val ADJUSTABLE_NUMERIC_LABEL =
         Regex("""^\d{1,4}(?:\s*(?:[,،]\s*)?[\p{L}]{1,12})?$""")
+    private val TARGET_ANCHOR_DIGITS = Regex("\\d+")
 
     /**
      * 비밀번호 플래그를 누락한 입력 위젯과 OTP 입력칸을 보수적으로 가르는 접근성 이름 표지.
@@ -1140,27 +1141,42 @@ object UiTreeSerializer {
 
     private fun mergedText(node: AccessibilityNodeInfo): TextProjection {
         ownText(node)?.let { return it }
-        val labels = mutableListOf<String>()
-        val signatures = mutableListOf<String>()
-        val trackedValues = mutableListOf<Boolean>()
-        val targetAnchors = mutableListOf<String>()
-        collectDescendantText(node, labels, signatures, trackedValues, targetAnchors, 0)
+        val parts = mutableListOf<TextProjection>()
+        collectDescendantText(node, parts, 0)
         return TextProjection(
-            labels.joinToString(" "),
-            signatures.joinToString(" "),
-            trackedValues.any { it },
-            targetAnchors.joinToString(" "),
+            parts.joinToString(" ") { it.label },
+            parts.joinToString(" ") { it.signatureLabel },
+            parts.any { it.tracksEditableValue },
+            mergedTargetAnchorLabel(parts),
         )
     }
 
     private fun mergedLabel(node: AccessibilityNodeInfo): String = mergedText(node).label
 
+    /**
+     * 병합 파트에서 제한 선택값만 숫자로 보존한 타깃 앵커를 만든다.
+     *
+     * 앵커는 기기 밖으로 나가지 않고 일반 파트의 숫자는 여기서 이미 `#`이 되므로, 이후
+     * [element]에서 패턴 마스킹을 적용해도 전송 label의 「마스킹 후 길이 제한」 경계와 충돌하지
+     * 않는다. [TextProjection.targetAnchorLabel]은 중첩 투영을 허용하는 방어적 입력이다.
+     */
+    internal fun mergedTargetAnchorLabel(parts: List<TextProjection>): String? = parts
+        .joinToString(" ") {
+            it.targetAnchorLabel ?: if (it.tracksEditableValue) {
+                it.signatureLabel
+            } else {
+                normalizeTargetAnchorLabel(it.signatureLabel)
+            }
+        }
+        .takeIf(String::isNotEmpty)
+
+    /** 타깃 앵커에서 상태가 아닌 숫자 변동을 접는 공통 생산자 규칙(#427). */
+    internal fun normalizeTargetAnchorLabel(label: String): String =
+        TARGET_ANCHOR_DIGITS.replace(label, "#")
+
     private fun collectDescendantText(
         node: AccessibilityNodeInfo,
-        out: MutableList<String>,
-        signatureOut: MutableList<String>,
-        trackedValues: MutableList<Boolean>,
-        targetAnchorOut: MutableList<String>,
+        out: MutableList<TextProjection>,
         depth: Int,
     ) {
         if (depth >= MAX_MERGE_DEPTH || out.size >= MAX_LABEL_PARTS) return
@@ -1171,28 +1187,12 @@ object UiTreeSerializer {
             if (child.isClickable) continue
             ownText(child)?.let {
                 if (out.size < MAX_LABEL_PARTS) {
-                    out.add(it.label)
-                    signatureOut.add(it.signatureLabel)
-                    trackedValues.add(it.tracksEditableValue)
-                    targetAnchorOut.add(
-                        it.targetAnchorLabel ?: if (it.tracksEditableValue) {
-                            it.signatureLabel
-                        } else {
-                            ScreenSignature.normalizeTargetAnchorLabel(it.signatureLabel)
-                        },
-                    )
+                    out.add(it)
                 }
             }
             // 구현별 자손이 editable 값의 마스킹·민감 입력 판정을 우회하지 않게 더 내려가지 않는다.
             if (child.isEditable) continue
-            collectDescendantText(
-                child,
-                out,
-                signatureOut,
-                trackedValues,
-                targetAnchorOut,
-                depth + 1,
-            )
+            collectDescendantText(child, out, depth + 1)
         }
     }
 

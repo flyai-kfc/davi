@@ -552,6 +552,21 @@ class UiTreeSerializerTest {
     }
 
     @Test
+    fun `병합 타깃 앵커는 파트별로 숫자를 접고 제한 선택값만 보존한다`() {
+        val parts = listOf(
+            UiTreeSerializer.TextProjection("안 읽음 12", "안 읽음 12"),
+            UiTreeSerializer.TextProjection(
+                label = "분 30",
+                signatureLabel = "분 30",
+                tracksEditableValue = true,
+            ),
+        )
+
+        assertEquals("안 읽음 # 분 30", UiTreeSerializer.mergedTargetAnchorLabel(parts))
+        assertNull(UiTreeSerializer.mergedTargetAnchorLabel(emptyList()))
+    }
+
+    @Test
     fun `editable 개인정보 패턴도 일반 label과 같은 1차 마스킹을 거친다`() {
         val values = listOf(
             "hong@example.com",
