@@ -1098,13 +1098,39 @@ def test_평가자는_키가_없으면_LlmError로_닫는다(monkeypatch):
 
     SDK는 빈 문자열을 부재로 접고(`api_key = os.environ.get(...) or None`) **호출 시점에**
     `TypeError`를 던지는데, `cmd_run`·`cmd_judge`는 `LlmError`만 잡는다.
+
+    **`match`로 못 박는다** — 가드가 `import anthropic` 뒤에 있으면 SDK 없는 환경에서
+    ImportError가 같은 `LlmError`로 올라와 가드를 지워도 통과한다. CI가 그 환경이다.
     """
     from pingpong_eval.llm import ClaudeJudge, LlmError
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
-    with pytest.raises(LlmError):
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
         ClaudeJudge()
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
-    with pytest.raises(LlmError):
+    with pytest.raises(LlmError, match="ANTHROPIC_API_KEY"):
         ClaudeJudge()
+
+
+def test_평가자는_인자로_받은_키를_SDK에_넘긴다(monkeypatch):
+    """가드에서만 쓰고 SDK에 안 넘기면, 인자로 키를 줘도 호출 시점에 죽는다.
+
+    가짜 모듈을 꽂아 키도 SDK도 없이 확인한다 — `import anthropic`이 함수 안이라
+    호출 시점에 해석되므로, `anthropic`을 설치하지 않는 잡에서도 이 관문이 돈다.
+    """
+    import sys
+    import types
+
+    from pingpong_eval.llm import ClaudeJudge
+
+    받은: dict = {}
+
+    가짜 = types.ModuleType("anthropic")
+    가짜.Anthropic = lambda **kwargs: 받은.update(kwargs) or object()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "anthropic", 가짜)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    ClaudeJudge(api_key="  arg-key  ")
+
+    assert 받은.get("api_key") == "arg-key"
