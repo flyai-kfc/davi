@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     # 키 없이도 뜨는 스텁 LLM. 테스트/오프라인용.
     davi_use_stub_llm: bool = True
 
+    # 스텁 프로브(#480). 앱의 **완료 재확인 루프**를 실기기에서 재현하는 두 손잡이다.
+    # 실모델은 미검증 done을 마음대로 안 내주므로 그 구간을 관측할 방법이 달리 없다 —
+    # 실제로 #480은 저장소 밖의 일회용 프로브로 쟀고, 그것이 사라져 재현이 두 번 막혔다.
+    #
+    # force_done은 화면을 보지 않고 done을 돌려준다. 앱의 완료 검증이 근거를 못 찾아
+    # `inconclusive`로 내리고, `MAX_UNVERIFIED_DONE`까지 백오프 재질의가 반복된다.
+    # delay_ms는 그 앞에 인위 지연을 넣는다 — **0으로도 한 번 돌려서** 백오프 침묵이
+    # 서버 지연과 무관한 고정 비용임을 분리하는 것이 이 손잡이의 요점이다(#480 런 C).
+    #
+    # 아래 검증이 development·스텁 사용·loopback·개발 토큰 없음을 모두 요구한다.
+    davi_stub_force_done: bool = False
+    davi_stub_delay_ms: int = 0
+
     # 2차 마스킹 우회(#203). masked/unmasked 가이드 품질 비교 실험 전용이며 기본은 꺼짐.
     # 켜면 앱이 보낸 label이 2차 치환 없이 그대로 LLM에 전달된다. 아래 검증이 development·
     # loopback·개발 토큰 없음을 모두 요구하므로 production과 공용 개발 endpoint에서는 뜨지 않는다.
@@ -239,6 +252,30 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
                     "에서는 DAVI_DISABLE_PRIVACY_MASKING을 사용할 수 없습니다"
+                )
+        if self.davi_stub_delay_ms < 0:
+            raise ValueError("DAVI_STUB_DELAY_MS는 0 이상이어야 합니다")
+        if self.davi_stub_force_done or self.davi_stub_delay_ms:
+            # 두 값을 한 게이트로 묶는다 — 지연만 켜는 것도 응답 시간을 거짓으로 만드는
+            # 실험이라 공용 endpoint에 있어서는 안 된다.
+            if self.davi_env != "development":
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 development에서만 사용할 수 있습니다"
+                )
+            if not self.davi_use_stub_llm:
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 스텁 LLM에서만 동작합니다"
+                    " (DAVI_USE_STUB_LLM=true)"
+                )
+            if bind_host not in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError(
+                    "DAVI_STUB_FORCE_DONE·DAVI_STUB_DELAY_MS는 loopback 바인딩에서만"
+                    " 사용할 수 있습니다"
+                )
+            if dev_access_token or test_access_token:
+                raise ValueError(
+                    "공용 개발 endpoint(DAVI_DEV_ACCESS_TOKEN·DAVI_TEST_ACCESS_TOKEN 설정)"
+                    "에서는 스텁 프로브를 사용할 수 없습니다"
                 )
         if self.davi_dev_rate_limit_requests <= 0:
             raise ValueError("DAVI_DEV_RATE_LIMIT_REQUESTS는 양수여야 합니다")
