@@ -43,11 +43,22 @@ class ControlOverlay(
     private var kind: GuideDisplayState.ConfirmKind? = null
 
     /**
-     * 지금 창이 「읽는 중」 문구를 들고 있는가(#450). 다시 듣기 탭을 그 구간에만 막는다 —
+     * 지금 창이 「읽는 중」 문구를 들고 있는가(#450). 다시 듣기 탭을 그 구간에 막는다 —
      * 그때 창에 보이는 문장은 「화면을 읽고 있어요」인데(#229·#295) 낭독이 들고 있는 것은
      * 그 앞 안내라, 탭하면 **화면에 없는 문장**이 나온다.
+     *
+     * **막는 구간이 둘이다** — [waiting]도 같은 이유로 막는다. 「창에 뜬 문구가 낭독에서
+     * 빠져 있는가」가 판정의 실체이고, 그런 상태를 새로 만들 때는 여기도 함께 봐야 한다.
      */
     private var reading = false
+
+    /**
+     * 지금 창이 **완료 재확인 대기** 문구를 들고 있는가(#480). 다시 듣기 탭을 [reading]과 같은
+     * 이유로 막는다 — 그 문구는 낭독에서 빠져 있어(`GuideAccessibilityService.draw`)
+     * [GuideSpeaker]가 든 것은 **그 앞 안내**다. 탭하면 화면에 없는 문장이, 그것도 사용자가
+     * 이미 끝낸 조작을 다시 하라는 말로 나온다.
+     */
+    private var waiting = false
 
     /**
      * 직전에 창에 실제로 넣은 자리. 같은 자리면 [show]가 `updateViewLayout`을 건너뛴다.
@@ -85,6 +96,7 @@ class ControlOverlay(
         waiting: Boolean = false,
     ) {
         this.reading = reading
+        this.waiting = waiting
         val current = root
         if (current == null) {
             if (create(rect) != null) {
@@ -124,6 +136,7 @@ class ControlOverlay(
         readingDots = null
         kind = null
         reading = false
+        waiting = false
     }
 
     /**
@@ -221,7 +234,7 @@ class ControlOverlay(
         // 표시 오버레이에 남아 계속 통과하므로 "안내 대상을 누른 것"과 헷갈릴 자리도 아니다.
         // 중지 칩·확인쌍·「바로 입력」은 이 뷰 **위에** 얹혀 있어 그쪽 탭을 뺏지 않는다.
         created.findViewById<View>(R.id.guide_box)
-            .setOnClickListener { if (!reading) callbacks.onSpeechRepeatRequested() }
+            .setOnClickListener { if (!reading && !waiting) callbacks.onSpeechRepeatRequested() }
 
         val pair = created.findViewById<View>(R.id.confirm_pair)
         // 확인쌍은 대화 화면과 공유하는 컴포넌트라 XML 라벨이 그 화면 문구다. 오버레이에서는 뜻이
