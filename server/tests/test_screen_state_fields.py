@@ -259,7 +259,7 @@ def test_signature_changes_when_only_the_button_becomes_enabled():
 
 
 def test_signature_changes_when_the_input_gets_filled():
-    """입력 원문을 안 보내므로(#112) label은 그대로다. 이 값이 유일한 변화 신호다."""
+    """서버 구조 서명은 label을 안 보므로, 빈칸→입력됨 전환은 이 상태가 잡는다."""
 
     def screen(showing_hint: bool) -> Screen:
         return Screen(

@@ -127,7 +127,8 @@ class UiElement(BaseModel):
     label: str = ""
     role: str = ""
     clickable: bool = False
-    # 입력 원문은 label에 넣지 않는다. 이 둘은 접근성 상태만 전달한다(#112).
+    # editable 값도 label에 올 수 있다(#462). 일반 label과 같은 앱 1차·서버 2차 패턴
+    # 마스킹을 거치며, 비밀번호·인증 코드 값은 앱이 직렬화 전에 제외한다.
     editable: bool = False
     focused: bool = False
 
@@ -138,7 +139,8 @@ class UiElement(BaseModel):
     # Android 16의 부분 선택을 보존한다(C25). unavailable은 비-checkable·미관측이다.
     check_state: CheckState = CheckState.UNAVAILABLE
     selected: bool | None = None
-    # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. 입력 원문은 오지 않는다(#112).
+    # True = 비어 있음(보이는 글자가 hint) / False = 값이 들어 있음. label에 값이 있더라도
+    # hint를 사용자 입력으로 오인하지 않기 위한 별도 관측 상태다(#112 · #462).
     showing_hint_text: bool | None = None
 
     # 위에 그려진 다른 요소에게 완전히 덮여 사용자가 보지도 누르지도 못하는가.

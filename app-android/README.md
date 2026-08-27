@@ -490,13 +490,12 @@ GitHub Pages로 띄웠다. **코드는 넣지 않는다.**
 - `UiTreeSerializer` + `PrivacyMasker` — 서버 전송용 `label`을 만들 때 이메일·주민등록번호·
   카드번호·휴대폰·계좌번호·MAC 주소를 `•••`로 1차 마스킹한다(MAC은 #357). **패턴 밖 고유명
   (사람 이름·기기명·대화방 제목)은 대상이 아니다**(`../SPEC.md` §2, #360). 도그푸딩 raw 저장에는 그대로 남는다 — 그대로 두기로 정했다(#375). 스크롤 메타·페이지 dot과
-  `editable`·`focused`·`ime_visible`도 채운다. 일반 편집 요소의 입력된 `text`와 IME 키 트리는 보내지
-  않고 hint와 `supplementalDescription`을 label 후보로 쓴다(#112 경계 그대로, 후자는 #381).
-  `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
-  보임·활성·조작 action·가까운 조정 가능 조상을 확인한 짧은 숫자 label만 예외로 보존한다.
-  내용 축 쪽 예외는 이제 없다 — 내용 축이 모든 숫자를 그대로 담으므로(#427) picker 스크롤도
-  일반 규칙으로 새 상태가 된다. picker 스크롤 뒤 후속 안내를 다시 요청하는 것은 타깃 앵커다 —
-  앵커는 숫자를 지우되 이 선택값만 예외로 남긴다(#117, `app-android/CLAUDE.md` 「두 축」).
+  `editable`·`focused`·`ime_visible`도 채운다. editable 현재 값도 hint·관계 이름과 함께 label에
+  싣고 같은 1차 마스킹을 적용한다(#462). 비밀번호와 일반 의미 표지로 식별한 OTP·보안 코드 값은
+  제외하며 IME 키 트리는 보내지 않는다. 자유 입력값은 기기 시그니처·타깃 앵커에서 입력칸 이름으로
+  고정해 글자별 재호출을 막는다. `NumberPicker`의 시·분·날짜·오전/오후처럼 보임·활성·직접 조작·
+  가까운 조정 가능 조상을 확인한 제한 선택값은 label과 시그니처 양쪽에 남겨 변화를 재탐색한다.
+  이 투영은 기기 내부 전용이며 wire 필드를 늘리지 않는다(#427, `app-android/CLAUDE.md` 「두 축」).
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **관통에서 드러난 것 (다음 작업의 근거)**

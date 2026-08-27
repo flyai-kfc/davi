@@ -370,7 +370,7 @@ class UiTreeSerializerTest {
     }
 
     @Test
-    fun `편집 요소 라벨은 입력 원문 대신 hint만 쓴다`() {
+    fun `편집 요소의 고정 문맥은 hint와 관계 이름으로 만든다`() {
         assertEquals("검색어 입력", UiTreeSerializer.editableLabel(" 검색어 입력 "))
         assertNull(UiTreeSerializer.editableLabel(null))
         assertEquals(false, UiTreeSerializer.shouldInspectDescendants(editable = true))
@@ -436,28 +436,125 @@ class UiTreeSerializerTest {
     }
 
     @Test
-    fun `직접 조작 가능한 NumberPicker의 짧은 숫자 값은 보존한다`() {
-        assertEquals("6, 시간", adjustableNumericLabel("6, 시간"))
-        assertEquals("00, 분", adjustableNumericLabel(" 00,   분 "))
-        assertEquals("2026년", adjustableNumericLabel("2026년"))
+    fun `자유 입력값은 label에 싣고 시그니처에서는 고정한다`() {
+        val projection = editableProjection(
+            text = "치킨 배달",
+            hintText = "검색어 입력",
+        )
+
+        assertEquals("검색어 입력 치킨 배달", projection?.label)
+        assertEquals("검색어 입력", projection?.signatureLabel)
     }
 
     @Test
-    fun `NumberPicker여도 PII 형태와 긴 숫자는 보존하지 않는다`() {
-        assertNull(adjustableNumericLabel("010-1234-5678"))
-        assertNull(adjustableNumericLabel("1234-5678-9012-3456"))
-        assertNull(adjustableNumericLabel("123-456-789012"))
-        assertNull(adjustableNumericLabel("12345"))
+    fun `이름 없는 자유 입력도 값은 보내되 고정 토큰으로 서명한다`() {
+        val projection = editableProjection(text = "메모 내용", hintText = null)
+
+        assertEquals("메모 내용", projection?.label)
+        assertEquals("<editable>", projection?.signatureLabel)
     }
 
     @Test
-    fun `NumberPicker 숫자 공개에는 모든 구조적 안전 조건이 필요하다`() {
-        assertNull(adjustableNumericLabel("6", visibleToUser = false))
-        assertNull(adjustableNumericLabel("6", enabled = false))
-        assertNull(adjustableNumericLabel("6", password = true))
-        assertNull(adjustableNumericLabel("6", editable = false))
-        assertNull(adjustableNumericLabel("6", hasDirectAction = false))
-        assertNull(adjustableNumericLabel("6", hasNearbyAdjustableAncestor = false))
+    fun `hint 표시 상태는 hint를 입력값으로 중복하지 않는다`() {
+        val projection = editableProjection(
+            text = "검색어 입력",
+            hintText = "검색어 입력",
+            showingHintText = true,
+        )
+
+        assertEquals("검색어 입력", projection?.label)
+        assertEquals("검색어 입력", projection?.signatureLabel)
+    }
+
+    @Test
+    fun `비밀번호와 인증 코드의 값은 직렬화 후보에서 완전히 제외한다`() {
+        val password = editableProjection(
+            text = "never-store-password",
+            hintText = "비밀번호",
+            password = true,
+        )
+        val otp = editableProjection(
+            text = "654321",
+            hintText = "인증 코드 654321",
+            sensitiveIdentity = true,
+        )
+        val serializedCandidate = listOfNotNull(password, otp)
+            .flatMap { listOf(it.label, it.signatureLabel) }
+            .joinToString(" ")
+
+        assertEquals("비밀번호 입력", password?.label)
+        assertEquals("인증 코드 입력", otp?.label)
+        assertFalse(serializedCandidate.contains("never-store-password"))
+        assertFalse(serializedCandidate.contains("654321"))
+    }
+
+    @Test
+    fun `content description에 코드와 이름이 섞여도 일반 이름만 남긴다`() {
+        val projection = editableProjection(
+            text = null,
+            contentDescription = "인증 코드 654321",
+            hintText = null,
+            sensitiveIdentity = true,
+        )
+
+        assertEquals("인증 코드 입력", projection?.label)
+        assertFalse(projection?.label.orEmpty().contains("654321"))
+    }
+
+    @Test
+    fun `민감 입력 이름은 일반 의미 표지로 찾고 spinner 같은 부분 일치는 제외한다`() {
+        listOf(
+            arrayOf<CharSequence?>("인증 번호", null),
+            arrayOf<CharSequence?>("Security code", null),
+            arrayOf<CharSequence?>(null, "com.example:id/otp_field"),
+            arrayOf<CharSequence?>(null, "com.example:id/pinEditText"),
+            arrayOf<CharSequence?>(null, "com.example:id/OTPField"),
+            arrayOf<CharSequence?>(null, "com.example:id/verification_code"),
+            arrayOf<CharSequence?>(null, "com.example:id/securityCode"),
+        ).forEach { values ->
+            assertTrue(UiTreeSerializer.isSensitiveInputIdentity(*values))
+        }
+        assertFalse(UiTreeSerializer.isSensitiveInputIdentity("spinner value"))
+        assertFalse(UiTreeSerializer.isSensitiveInputIdentity("shipping address"))
+    }
+
+    @Test
+    fun `제한 선택값은 label과 시그니처 양쪽에 보존한다`() {
+        val minute = editableProjection(
+            text = "30",
+            hintText = "분",
+            limitedSelection = true,
+        )
+        val period = editableProjection(
+            text = "오후",
+            hintText = "시간대",
+            limitedSelection = true,
+        )
+
+        assertEquals("분 30", minute?.label)
+        assertEquals(minute?.label, minute?.signatureLabel)
+        assertTrue(minute?.tracksEditableValue == true)
+        assertEquals("시간대 오후", period?.label)
+        assertEquals(period?.label, period?.signatureLabel)
+        assertTrue(period?.tracksEditableValue == true)
+    }
+
+    @Test
+    fun `editable 개인정보 패턴도 일반 label과 같은 1차 마스킹을 거친다`() {
+        val values = listOf(
+            "hong@example.com",
+            "010-1234-5678",
+            "900101-1234567",
+            "1234-5678-9012-3456",
+            "123-456-789012",
+            "3C:86:9A:1B:2C:3D",
+        )
+
+        values.forEach { value ->
+            val projection = editableProjection(text = value, hintText = "입력값")!!
+            assertEquals("입력값 •••", PrivacyMasker.maskText(projection.label))
+            assertEquals("입력값", PrivacyMasker.maskText(projection.signatureLabel))
+        }
     }
 
     @Test
@@ -504,21 +601,23 @@ class UiTreeSerializerTest {
         )
     }
 
-    private fun adjustableNumericLabel(
-        rawLabel: CharSequence?,
-        editable: Boolean = true,
-        visibleToUser: Boolean = true,
-        enabled: Boolean = true,
+    private fun editableProjection(
+        text: CharSequence?,
+        hintText: CharSequence?,
+        contentDescription: CharSequence? = null,
+        name: CharSequence? = null,
+        showingHintText: Boolean = false,
         password: Boolean = false,
-        hasDirectAction: Boolean = true,
-        hasNearbyAdjustableAncestor: Boolean = true,
-    ): String? = UiTreeSerializer.adjustableNumericLabel(
-        rawLabel = rawLabel,
-        editable = editable,
-        visibleToUser = visibleToUser,
-        enabled = enabled,
+        sensitiveIdentity: Boolean = false,
+        limitedSelection: Boolean = false,
+    ): UiTreeSerializer.TextProjection? = UiTreeSerializer.editableTextProjection(
+        text = text,
+        contentDescription = contentDescription,
+        hintText = hintText,
+        name = name,
+        showingHintText = showingHintText,
         password = password,
-        hasDirectAction = hasDirectAction,
-        hasNearbyAdjustableAncestor = hasNearbyAdjustableAncestor,
+        sensitiveIdentity = sensitiveIdentity,
+        limitedSelection = limitedSelection,
     )
 }

@@ -20,7 +20,8 @@ import android.view.accessibility.AccessibilityWindowInfo
  *
  * 화면 요소와 스크롤/page/IME 상태를 함께 채운다. `has_scrollable_element`는 보이는 트리 전체에서
  * 스크롤 가능 노드나 scroll action을 하나라도 관측했는지를 나타낸다(C10). IME는 창의 type만
- * 관측하고 키보드의 키 노드나 입력 원문은 순회하지 않는다(#112).
+ * 관측하고 키보드의 키 노드는 순회하지 않는다. editable 값은 비밀번호·인증 코드를 제외한 뒤
+ * 일반 label과 같은 1차 마스킹을 거쳐 전달한다(#462).
  */
 object UiTreeSerializer {
 
@@ -97,9 +98,44 @@ object UiTreeSerializer {
 
     private val WHITESPACE = Regex("\\s+")
 
-    /** 시·분·날짜 picker에서 관측되는 "6, 시간", "00, 분" 같은 짧은 선택값만 허용한다. */
+    /** 시·분·날짜 picker에서 관측되는 "6, 시간", "00, 분" 같은 짧은 선택값을 식별한다. */
     private val ADJUSTABLE_NUMERIC_LABEL =
         Regex("""^\d{1,4}(?:\s*(?:[,،]\s*)?[\p{L}]{1,12})?$""")
+
+    /**
+     * 비밀번호 플래그를 누락한 입력 위젯과 OTP 입력칸을 보수적으로 가르는 접근성 이름 표지.
+     * package나 resource-id의 고정값이 아니라 hint·관계 이름·resource-id에 드러난 일반 의미만 본다.
+     */
+    private val SENSITIVE_KOREAN_IDENTITIES = setOf(
+        "비밀번호",
+        "비번",
+        "암호",
+        "패스워드",
+        "핀번호",
+        "인증번호",
+        "인증코드",
+        "보안코드",
+        "일회용비밀번호",
+        "일회용코드",
+    )
+    private val SENSITIVE_ENGLISH_IDENTITY_TOKENS = setOf("password", "passcode", "pin", "otp")
+    private val SENSITIVE_ENGLISH_IDENTITIES = setOf(
+        "verificationcode",
+        "securitycode",
+        "onetimepassword",
+        "onetimecode",
+    )
+
+    /** 자유 입력값을 화면 동일성에서 제외할 때 쓰는 기기 내부 고정 투영. wire에는 실리지 않는다. */
+    private const val EDITABLE_SIGNATURE_TOKEN = "<editable>"
+    private const val PASSWORD_EDITABLE_LABEL = "비밀번호 입력"
+    private const val SENSITIVE_CODE_EDITABLE_LABEL = "인증 코드 입력"
+
+    internal data class TextProjection(
+        val label: String,
+        val signatureLabel: String,
+        val tracksEditableValue: Boolean = false,
+    )
 
     /**
      * 런처 페이지 인디케이터(dot)의 content-desc. 예: "6 페이지 중 2 페이지입니다."
@@ -276,24 +312,32 @@ object UiTreeSerializer {
 
         var childrenAbsorbed = absorbed
 
-        // 일반 편집값은 계속 숨긴다. 다만 이 노드 자체가 NumberPicker의 직접 조작 파츠라는
-        // 구조적 근거가 있을 때만 현재 숫자 선택값을 별도 요소로 보존한다.
-        val ownTextValue = ownText(node, allowAdjustableNumericValue = true)
-        val isPageDot = ownTextValue != null && parsePageDot(ownTextValue) != null
+        // editable 값도 label에는 싣는다(#462). 다만 자유 입력값은 TextProjection의 별도 투영으로
+        // 시그니처·타깃 앵커에서 고정하고, NumberPicker 제한 선택값만 실제 값을 변화 신호로 쓴다.
+        val ownTextValue = ownText(node)
+        val isPageDot = ownTextValue != null && parsePageDot(ownTextValue.label) != null
         var emitted = false
 
         if (isPageDot) {
-            readPageDot(ownTextValue!!, node, ctx)
+            readPageDot(ownTextValue!!.label, node, ctx)
             ctx.elements.add(
-                element(node, ownTextValue, ctx, role = ROLE_PAGE_DOT, clickable = false, obscured = occluded),
+                element(
+                    node,
+                    ownTextValue.label,
+                    ctx,
+                    role = ROLE_PAGE_DOT,
+                    clickable = false,
+                    obscured = occluded,
+                ),
             )
             emitted = true
         } else if (node.isClickable || node.isEditable) {
-            // 커스텀 입력 위젯은 사용자가 입력한 값을 비편집 자손에 복제하기도 한다.
-            // 편집 노드는 hint만 쓰고 자손을 라벨에 합치지도, 아래에서 순회하지도 않는다.
+            // 커스텀 입력 위젯은 사용자가 입력한 값을 비편집 자손에 복제하기도 한다. 편집 노드는
+            // 자기 값만 쓰고 자손을 라벨에 합치지도, 아래에서 순회하지도 않는다.
             val inspectDescendants = shouldInspectDescendants(node.isEditable)
             val merge = inspectDescendants && shouldMergeDescendants(node, ctx.screenArea)
-            val label = if (merge) mergedLabel(node) else ownTextValue.orEmpty()
+            val text = if (merge) mergedText(node) else ownTextValue ?: TextProjection("", "")
+            val label = text.label
             // 라벨을 흡수했으면 상태도 함께 올린다. 그러지 않으면 스위치가 든 행에서 켬/끔이
             // 통째로 사라진다 — 자식 스위치는 흡수돼 안 나가고, 행 자신은 checkable이 아니라
             // unavailable이 된다(#288 리뷰). 라벨과 상태가 같은 요소에 실려야 모델이 둘을 잇는다.
@@ -302,14 +346,33 @@ object UiTreeSerializer {
             // (실측: 전화 앱에서 통화 버튼을 감싼 빈 FrameLayout 두 개가 이렇게 잡혔다).
             // 이름이 없어도 편집 가능한 노드는 type 대상과 포커스 상태를 전달해야 한다.
             if (label.isNotBlank() || node.isEditable) {
-                ctx.elements.add(element(node, label, ctx, checkState = checkState, obscured = occluded))
+                ctx.elements.add(
+                    element(
+                        node,
+                        label,
+                        ctx,
+                        checkState = checkState,
+                        obscured = occluded,
+                        signatureLabel = text.signatureLabel,
+                        signatureTracksEditableValue = text.tracksEditableValue,
+                    ),
+                )
                 emitted = true
                 // 라벨로 흡수한 경우에만 자손의 글자를 중복으로 내보내지 않는다.
                 childrenAbsorbed = merge
             }
         } else if (!absorbed) {
             if (ownTextValue != null) {
-                ctx.elements.add(element(node, ownTextValue, ctx, obscured = occluded))
+                ctx.elements.add(
+                    element(
+                        node,
+                        ownTextValue.label,
+                        ctx,
+                        obscured = occluded,
+                        signatureLabel = ownTextValue.signatureLabel,
+                        signatureTracksEditableValue = ownTextValue.tracksEditableValue,
+                    ),
+                )
                 emitted = true
                 // 시계처럼 자기 글자가 이미 자손의 요약인 **작은** 노드는 자손을 또 내보내지 않는다
                 // (실측: 잠금화면 시계가 '오후12:23' + 낱개 숫자 '1','2','2','3'으로 5개가 됐다).
@@ -505,10 +568,16 @@ object UiTreeSerializer {
         clickable: Boolean? = null,
         checkState: CheckState? = null,
         obscured: Boolean = false,
+        signatureLabel: String? = null,
+        signatureTracksEditableValue: Boolean = false,
     ): UiElement {
         ctx.counter++
         val r = boundsOf(node)
         val scroll = scrollStateOf(node, r)
+        val maskedLabel = normalizeAndMaskLabel(label, ctx.masker)
+        val maskedSignatureLabel = signatureLabel
+            ?.let { normalizeAndMaskLabel(it, ctx.masker) }
+            ?.takeUnless { it == maskedLabel && !signatureTracksEditableValue }
         return UiElement(
             nodeId = "n${ctx.counter}",
             // 줄바꿈·중복 공백을 한 칸으로 눌러 로그와 프롬프트를 읽을 수 있게 만든다
@@ -517,8 +586,7 @@ object UiTreeSerializer {
             // 길이 제한보다 먼저 마스킹해야 잘린 개인정보 조각이 정규식 매칭을 피하지 않는다.
             // 정책은 [Ctx.masker]가 들고 있다 — debug 비교 실험(#203)에서만 우회할 수 있고,
             // 그때도 아래 정규화와 길이 제한은 그대로 적용된다.
-            label = ctx.masker.mask(label.replace(WHITESPACE, " ").trim())
-                .take(MAX_LABEL_CHARS),
+            label = maskedLabel,
             role = role ?: roleOf(node),
             // 페이지 dot은 clickable=true지만 약 50x50px이라 시니어가 조준할 수 없다.
             // 탭 대상이 아니라 **정보원**으로만 쓴다(HANDOFF §3-3)는 결정을 여기서 못박는다.
@@ -541,8 +609,13 @@ object UiTreeSerializer {
             scrollAxis = scroll?.axis?.wire,
             nextSwipeDirection = scroll?.axis?.next,
             prevSwipeDirection = scroll?.axis?.prev,
+            signatureLabel = maskedSignatureLabel,
+            signatureTracksEditableValue = signatureTracksEditableValue,
         )
     }
+
+    private fun normalizeAndMaskLabel(label: String, masker: LabelMasker): String =
+        masker.mask(label.replace(WHITESPACE, " ").trim()).take(MAX_LABEL_CHARS)
 
     /**
      * 스와이프 방향은 **화면이 이동하는 방향**, 즉 사용자가 **보러 가는 쪽**이다(C17, SPEC §4).
@@ -645,40 +718,37 @@ object UiTreeSerializer {
         else -> Axis.VERTICAL
     }
 
-    /**
-     * 자기가 들고 있는 안전한 라벨.
-     *
-     * 편집 가능한 노드의 `text`와 contentDescription은 사용자가 입력한 원문을 되풀이할 수 있으므로
-     * 기본적으로 읽지 않는다. 예외는 보이고 활성화된 비밀번호 아닌 노드가 직접 조작 action을
-     * 제공하고, 가까운 조상이 조정 가능한 NumberPicker인 짧은 숫자 label뿐이다. 이 예외도
-     * [allowAdjustableNumericValue]가 참인 자기 노드 직렬화에서만 적용해 조상 label로 합쳐지지 않는다.
-     */
-    private fun ownText(
-        node: AccessibilityNodeInfo,
-        allowAdjustableNumericValue: Boolean = false,
-    ): String? {
+    /** 자기가 들고 있는 전송 label과 기기 내부 시그니처 투영. */
+    private fun ownText(node: AccessibilityNodeInfo): TextProjection? {
         if (node.isEditable) {
-            if (allowAdjustableNumericValue) {
-                val rawLabel = node.text?.toString()?.trim()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: node.contentDescription?.toString()?.trim()
-                adjustableNumericLabel(
-                    rawLabel = rawLabel,
-                    editable = node.isEditable,
-                    visibleToUser = node.isVisibleToUser,
-                    enabled = node.isEnabled,
-                    password = node.isPassword,
-                    hasDirectAction = hasDirectManipulationAction(node),
-                    hasNearbyAdjustableAncestor = hasNearbyAdjustableAncestor(node),
-                )?.let { return it }
-            }
-            return editableLabel(node.hintText, supplementalDescriptionOf(node))
+            val hint = node.hintText
+            val name = supplementalDescriptionOf(node)
+            val sensitive = isSensitiveInputIdentity(
+                hint,
+                name,
+                node.contentDescription,
+                node.viewIdResourceName,
+            )
+            return editableTextProjection(
+                text = node.text,
+                contentDescription = node.contentDescription,
+                hintText = hint,
+                name = name,
+                showingHintText = node.isShowingHintText,
+                password = node.isPassword,
+                sensitiveIdentity = sensitive,
+                limitedSelection = !sensitive &&
+                    node.isVisibleToUser &&
+                    node.isEnabled &&
+                    hasDirectManipulationAction(node) &&
+                    hasNearbyAdjustableAncestor(node),
+            )
         }
         return staticLabel(
             text = node.text,
             contentDescription = node.contentDescription,
             supplementalDescription = supplementalDescriptionOf(node),
-        )
+        )?.let { TextProjection(it, it) }
     }
 
     /**
@@ -831,8 +901,8 @@ object UiTreeSerializer {
     /**
      * Android 타입 없이 입력 라벨의 개인정보 경계를 테스트하기 위한 순수 함수.
      *
-     * **입력 원문은 여전히 읽지 않는다** — `hintText`는 placeholder, [name]은 `<label>`이 준
-     * 이름이고 둘 다 사용자가 넣은 값이 아니다(#112 경계 그대로).
+     * 이 함수는 현재 값이 아니라 고정 문맥만 만든다 — `hintText`는 placeholder, [name]은
+     * `<label>`이 준 이름이다. 현재 값의 허용·제외는 [editableTextProjection]이 맡는다.
      *
      * 둘을 합치는 이유는 **구버전이 이미 합쳐서 주기 때문**이다 — API 35 이하에서는
      * `hint='방문자명 방문자명을 입력하세요'` 한 덩어리로 오고, API 36에서 이름만
@@ -857,6 +927,85 @@ object UiTreeSerializer {
     }
 
     /**
+     * editable 값의 허용·제외·시그니처 투영을 Android 객체 없이 고정하는 단일 경계(#462).
+     *
+     * [label]에는 자유 입력값도 포함하지만 호출자가 일반 label과 같은 1차 마스킹을 적용한다.
+     * 비밀번호·인증 코드는 값과 값이 섞였을 수 있는 접근성 이름을 제외하고 안전한 일반 이름으로
+     * 바꾼다. 자유 입력은 [signatureLabel]에서 값만 고정해 타이핑마다 재호출하지 않고,
+     * NumberPicker 같은 제한 선택값은 실제 값을 남긴다.
+     */
+    internal fun editableTextProjection(
+        text: CharSequence?,
+        contentDescription: CharSequence?,
+        hintText: CharSequence?,
+        name: CharSequence? = null,
+        showingHintText: Boolean,
+        password: Boolean,
+        sensitiveIdentity: Boolean,
+        limitedSelection: Boolean,
+    ): TextProjection? {
+        val context = when {
+            password -> PASSWORD_EDITABLE_LABEL
+            sensitiveIdentity -> SENSITIVE_CODE_EDITABLE_LABEL
+            else -> editableLabel(hintText, name)
+        }
+        val value = if (showingHintText || password || sensitiveIdentity) {
+            null
+        } else {
+            sequenceOf(text, contentDescription)
+                .firstNotNullOfOrNull { normalizedText(it) }
+        }
+        val label = combineEditableContextAndValue(context, value) ?: return null
+        val tracksValue = limitedSelection && value != null
+        val signature = if (tracksValue) label else context ?: EDITABLE_SIGNATURE_TOKEN
+        return TextProjection(
+            label = label,
+            signatureLabel = signature,
+            tracksEditableValue = tracksValue,
+        )
+    }
+
+    private fun combineEditableContextAndValue(context: String?, value: String?): String? = when {
+        context == null -> value
+        value == null || value == context -> context
+        value.startsWith(context) -> value
+        else -> "$context $value"
+    }
+
+    internal fun isSensitiveInputIdentity(vararg values: CharSequence?): Boolean {
+        val searchable = values.asSequence()
+            .mapNotNull(::normalizedText)
+            .joinToString(" ")
+            .let(::splitIdentityWords)
+        val tokens = searchable.split(' ').filter(String::isNotEmpty)
+        val compact = tokens.joinToString("")
+        return tokens.any(SENSITIVE_ENGLISH_IDENTITY_TOKENS::contains) ||
+            SENSITIVE_ENGLISH_IDENTITIES.any(compact::contains) ||
+            SENSITIVE_KOREAN_IDENTITIES.any(compact::contains)
+    }
+
+    /** resource-id의 구분자와 camel/acronym 경계를 공백으로 바꿔 `pin` 부분 문자열 오탐을 막는다. */
+    private fun splitIdentityWords(value: String): String = buildString {
+        value.forEachIndexed { index, char ->
+            if (!char.isLetterOrDigit()) {
+                if (isNotEmpty() && last() != ' ') append(' ')
+                return@forEachIndexed
+            }
+            val previous = value.getOrNull(index - 1)
+            val next = value.getOrNull(index + 1)
+            val startsWord = char.isUpperCase() && (
+                previous?.isLowerCase() == true ||
+                    (previous?.isUpperCase() == true && next?.isLowerCase() == true)
+                )
+            if (startsWord && isNotEmpty() && last() != ' ') append(' ')
+            append(char.lowercaseChar())
+        }
+    }.trim()
+
+    private fun normalizedText(value: CharSequence?): String? =
+        value?.toString()?.replace(WHITESPACE, " ")?.trim()?.takeIf(String::isNotEmpty)
+
+    /**
      * 편집 불가 노드의 이름을 **우선순위대로** 고른다(#381).
      *
      * `text` → `contentDescription` → `supplementalDescription` 순이고 앞의 값이 있으면 뒤는 안 본다.
@@ -873,29 +1022,7 @@ object UiTreeSerializer {
     ): String? = sequenceOf(text, contentDescription, supplementalDescription)
         .firstNotNullOfOrNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
 
-    /** Android 객체 없이 NumberPicker 값 공개 조건과 개인정보 경계를 테스트하기 위한 순수 함수. */
-    internal fun adjustableNumericLabel(
-        rawLabel: CharSequence?,
-        editable: Boolean,
-        visibleToUser: Boolean,
-        enabled: Boolean,
-        password: Boolean,
-        hasDirectAction: Boolean,
-        hasNearbyAdjustableAncestor: Boolean,
-    ): String? {
-        if (
-            !editable || !visibleToUser || !enabled || password ||
-            !hasDirectAction || !hasNearbyAdjustableAncestor
-        ) {
-            return null
-        }
-        val label = rawLabel?.toString()?.replace(WHITESPACE, " ")?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
-        return label.takeIf { isShortNumericControlLabel(it) }
-    }
-
-    /** 구조 검증 뒤 보존된 선택값을 화면 시그니처에서도 식별하기 위한 공통 형식 판정. */
+    /** transient 투영이 없던 요소의 타깃 앵커 호환을 위한 기존 NumberPicker 형식 판정. */
     internal fun isShortNumericControlLabel(label: CharSequence?): Boolean {
         val normalized = label?.toString()?.replace(WHITESPACE, " ")?.trim() ?: return false
         return ADJUSTABLE_NUMERIC_LABEL.matches(normalized)
@@ -950,7 +1077,7 @@ object UiTreeSerializer {
         role.endsWith("NumberPicker") &&
         (scrollable || hasAdjustmentAction)
 
-    /** 입력 원문이 구현별 자손 노드로 새는 것을 막는 순회 경계. */
+    /** editable 값이 구현별 자손 노드에서 마스킹·민감 입력 판정을 우회하지 않게 하는 순회 경계. */
     internal fun shouldInspectDescendants(editable: Boolean): Boolean = !editable
 
     /**
@@ -965,16 +1092,26 @@ object UiTreeSerializer {
         return ratio < CONTAINER_AREA_RATIO
     }
 
-    private fun mergedLabel(node: AccessibilityNodeInfo): String {
+    private fun mergedText(node: AccessibilityNodeInfo): TextProjection {
         ownText(node)?.let { return it }
-        val parts = mutableListOf<String>()
-        collectDescendantText(node, parts, 0)
-        return parts.joinToString(" ")
+        val labels = mutableListOf<String>()
+        val signatures = mutableListOf<String>()
+        val trackedValues = mutableListOf<Boolean>()
+        collectDescendantText(node, labels, signatures, trackedValues, 0)
+        return TextProjection(
+            labels.joinToString(" "),
+            signatures.joinToString(" "),
+            trackedValues.any { it },
+        )
     }
+
+    private fun mergedLabel(node: AccessibilityNodeInfo): String = mergedText(node).label
 
     private fun collectDescendantText(
         node: AccessibilityNodeInfo,
         out: MutableList<String>,
+        signatureOut: MutableList<String>,
+        trackedValues: MutableList<Boolean>,
         depth: Int,
     ) {
         if (depth >= MAX_MERGE_DEPTH || out.size >= MAX_LABEL_PARTS) return
@@ -983,10 +1120,16 @@ object UiTreeSerializer {
             if (!child.isVisibleToUser) continue
             // 중첩된 클릭 노드의 글자는 그 노드가 자기 라벨로 가져간다.
             if (child.isClickable) continue
-            ownText(child)?.let { if (out.size < MAX_LABEL_PARTS) out.add(it) }
+            ownText(child)?.let {
+                if (out.size < MAX_LABEL_PARTS) {
+                    out.add(it.label)
+                    signatureOut.add(it.signatureLabel)
+                    trackedValues.add(it.tracksEditableValue)
+                }
+            }
             // 편집 노드 아래의 구현별 자손에 입력 원문이 중복 노출될 수 있어 더 내려가지 않는다.
             if (child.isEditable) continue
-            collectDescendantText(child, out, depth + 1)
+            collectDescendantText(child, out, signatureOut, trackedValues, depth + 1)
         }
     }
 

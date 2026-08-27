@@ -357,7 +357,7 @@ beta / production:
 
 ## 다음 안내의 입력 준비 상태
 
-`/v1/next-step` 화면 계약은 입력 원문 없이 다음 세 상태를 받을 수 있다(#112).
+`/v1/next-step` 화면 계약은 editable 현재 값과 다음 세 상태를 함께 받을 수 있다(#112·#462).
 
 ```json
 {
@@ -368,7 +368,7 @@ beta / production:
     "elements": [
       {
         "node_id": "n1",
-        "label": "검색어 입력",
+        "label": "검색어 입력 날씨",
         "role": "EditText",
         "clickable": true,
         "editable": true,
@@ -387,8 +387,10 @@ beta / production:
 키보드가 닫힌 관측이므로 필요한 경우 입력칸을 탭해 키보드를 여는 한 단계를 먼저 안내한다.
 `null`은 키보드 상태 미관측이며 같은 우선순위를 적용한다. 포커스·IME 어느 쪽도 입력 완료·목표
 완료로 해석하지 않는다. 낡은 앱이 `editable`·`focused`를 생략하면 `false`, `ime_visible`을
-생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. 앱은 편집 요소의 입력된
-`text`와 IME 키 트리를 요청에 넣지 않는다.
+생략하거나 interactive window를 관측하지 못하면 `null`로 받는다. editable 값은 일반 label과
+같은 앱 1차·서버 2차 패턴 마스킹을 거친다. 비밀번호·인증 코드 값과 IME 키 트리는 요청에 넣지
+않는다. 자유 입력값은 기기 내부 화면 서명에서 고정되고, NumberPicker 같은 제한 선택값만 실제
+값의 변화를 재호출 신호로 보존한다. 이 구분은 wire 필드를 추가하지 않는다.
 
 ## 같은 Wi-Fi 공용 development 서버
 

@@ -52,6 +52,57 @@ class ScreenSignatureTest {
     }
 
     @Test
+    fun `자유 입력값 변화는 내용 축과 타깃 앵커를 흔들지 않는다`() {
+        val chicken = UiElement(
+            nodeId = "n1",
+            label = "검색어 입력 치킨",
+            role = "EditText",
+            editable = true,
+            signatureLabel = "검색어 입력",
+        )
+        val pizza = chicken.copy(label = "검색어 입력 피자")
+
+        val chickenSignature = ScreenSignature.of(screen(chicken))
+        val pizzaSignature = ScreenSignature.of(screen(pizza))
+        assertEquals(chickenSignature, pizzaSignature)
+        val salt = ByteArray(32) { it.toByte() }
+        assertEquals(
+            ContentSignature.of(salt, chickenSignature.content),
+            ContentSignature.of(salt, pizzaSignature.content),
+        )
+        assertEquals(
+            ScreenSignature.stableLabelOf(chicken),
+            ScreenSignature.stableLabelOf(pizza),
+        )
+    }
+
+    @Test
+    fun `제한 선택값은 내용 축과 타깃 앵커 양쪽의 변화로 남는다`() {
+        val at00 = UiElement(
+            nodeId = "n1",
+            label = "분 00",
+            role = "EditText",
+            editable = true,
+            signatureLabel = "분 00",
+            signatureTracksEditableValue = true,
+        )
+        val at30 = at00.copy(label = "분 30", signatureLabel = "분 30")
+
+        val at00Signature = ScreenSignature.of(screen(at00))
+        val at30Signature = ScreenSignature.of(screen(at30))
+        assertNotEquals(at00Signature, at30Signature)
+        val salt = ByteArray(32) { it.toByte() }
+        assertNotEquals(
+            ContentSignature.of(salt, at00Signature.content),
+            ContentSignature.of(salt, at30Signature.content),
+        )
+        assertNotEquals(
+            ScreenSignature.stableLabelOf(at00),
+            ScreenSignature.stableLabelOf(at30),
+        )
+    }
+
+    @Test
     fun `picker 주변 버튼의 숫자도 시그니처에 그대로 들어간다`() {
         val before = screen(
             UiElement(nodeId = "n1", label = "29", role = "Button", clickable = true),
@@ -94,7 +145,7 @@ class ScreenSignatureTest {
 
     @Test
     fun `입력칸이 채워지면 다른 화면이다`() {
-        // 입력 원문을 label에 넣지 않으므로(#112) label은 hint 그대로다. 이 값이 유일한 신호다.
+        // 자유 입력값은 시그니처에서 고정되므로(#462), 빈칸→입력됨 전환은 이 상태가 잡는다.
         val empty = screen(
             UiElement(
                 nodeId = "n1",
