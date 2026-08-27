@@ -84,6 +84,13 @@ class OverlayController(
     private var inputText: String? = null
 
     /**
+     * 완료 재확인 백오프 대기인가(#480). [confirmKind]와 같은 경로로 조작 오버레이에 넘겨
+     * 점 셋을 **읽는 중과 다른 리듬으로** 켠다. 읽는 중 테두리는 이 값과 무관하다 —
+     * 그쪽은 표시 오버레이가 그리고 이 구간에는 애초에 꺼져 있다(#295).
+     */
+    private var waiting: Boolean = false
+
+    /**
      * 강조할 영역(없으면 null)과 안내문 한 줄을 함께 그린다.
      *
      * [avoid]는 안내창이 가리지 말아야 할 영역이다(키보드·다이얼로그). 강조 대상은 여기 넣지
@@ -105,18 +112,30 @@ class OverlayController(
         confirm: GuideDisplayState.ConfirmKind? = null,
         targetSuppressed: Boolean = false,
         inputText: String? = null,
+        waiting: Boolean = false,
     ) {
         // 자리 계산 콜백이 setGuide 안에서 곧바로 도므로 종류를 먼저 세운다.
         confirmKind = confirm
         this.inputText = inputText
+        this.waiting = waiting
         val target = view ?: createView() ?: return
         target.setConfirmChrome(confirm)
-        target.setGuide(bounds, instruction, avoid, actionType, direction, targetSuppressed, inputText)
+        target.setGuide(
+            bounds,
+            instruction,
+            avoid,
+            actionType,
+            direction,
+            targetSuppressed,
+            inputText,
+            waiting,
+        )
     }
 
     fun clear() {
         confirmKind = null
         inputText = null
+        waiting = false
         view?.setConfirmChrome(null)
         view?.clearTarget()
     }
@@ -171,7 +190,7 @@ class OverlayController(
                 if (rect == null) {
                     control.hide()
                 } else {
-                    control.show(rect, lines, confirmKind, reading, reserved, inputText)
+                    control.show(rect, lines, confirmKind, reading, reserved, inputText, waiting)
                 }
             }
         return runCatching {

@@ -377,8 +377,21 @@ class GuideAccessibilityService : AccessibilityService() {
                         // 아니라고 답한 질문이 다시 뜨는 셈이다.
                         GuideDisplayState.ConfirmKind.DONE -> {
                             GuideSession.confirmRejected()
-                            overlay?.clear()
                             display.reset()
+                            // 버린 자리를 **대기 표시가 잇는다**(#480). 예전에는 여기서
+                            // `overlay.clear()`로 창을 걷었는데, 아래 markFailed의 백오프가
+                            // 풀릴 때까지 중지 칩까지 사라져 사용자가 멈출 수단을 잃었다
+                            // (2026-08-27 SM-S921N 실측 — 무표시 2.0초). 되살릴 이전 안내가
+                            // 없는 자리라(방금 버렸다) 대기 문구가 그 자리를 채운다.
+                            // 화면 서명이 없으면(첫 샘플 전) 그릴 자리를 모르므로 걷는다.
+                            val waitSignature = stability.currentSignature()?.structure
+                            val waiting = waitSignature?.let {
+                                display.showWaitNotice(
+                                    it,
+                                    getString(R.string.overlay_recheck_wait),
+                                )
+                            }
+                            if (waiting != null) draw(waiting) else overlay?.clear()
                             guidedTargetLabel = null
                             guidedScreenPackage = null
                             guidedTargetClickable = false
@@ -1046,10 +1059,14 @@ class GuideAccessibilityService : AccessibilityService() {
      * "안내가 바뀌면 한 번 읽는다"가 여기서 성립한다 — 서버 안내·확인 질문·오류·상한 문구가
      * 전부 안내창의 한 문장이고, 사용자에게는 그 차이가 없다. 재표시·강조 내림/되돌림처럼
      * 내용이 그대로인 호출은 [GuideSpeaker]가 문구 대조로 걸러 다시 읽지 않는다.
+     *
+     * **대기 문구만 낭독에서 뺀다**(#480). 행동 지시가 아니라 "우리가 아직 보고 있다"는
+     * 상태 표시이고, 재질의마다 뜨는 자리라 사이에 다른 문구가 한 번만 끼어도
+     * [GuideSpeaker]의 문구 대조가 풀려 같은 말이 반복 낭독된다. 화면에는 남기고 소리로만 뺀다.
      */
     private fun draw(content: GuideDisplayState.Content) {
         val rect = content.bounds?.takeIf { it.size == 4 }?.let { Rect(it[0], it[1], it[2], it[3]) }
-        speaker?.speak(content.text)
+        if (!content.waiting) speaker?.speak(content.text)
         overlay?.showGuide(
             rect,
             content.text,
@@ -1059,6 +1076,7 @@ class GuideAccessibilityService : AccessibilityService() {
             content.confirm,
             content.targetSuppressed,
             content.inputText,
+            content.waiting,
         )
     }
 
@@ -1577,6 +1595,13 @@ class GuideAccessibilityService : AccessibilityService() {
                     // 리셋한다. 상한 3회로 총량이 묶여 있어 수용한다(PR #63 리뷰 관찰).
                     // "unverified"라고 쓰지 않는다 — 사용자가 부정한 화면에서는 검증된 done도
                     // 이 분기로 온다(실기기 로그에서 실제로 헷갈렸다).
+                    //
+                    // **이 구간에 대기 표시를 남긴다**(#480). 안 그리면 창이 통째로 걷혀
+                    // 중지 칩까지 사라지고, 세션이 도는 중이라는 표시도 멈출 수단도 없어진다.
+                    display.showWaitNotice(
+                        requestSignature.structure,
+                        getString(R.string.overlay_recheck_wait),
+                    )?.let(::draw)
                     stability.markFailed(stabilityNowMs())
                     Log.i(TAG, "done not trusted, retry backoff=${stability.backoffMs()}ms")
                 }

@@ -51,6 +51,11 @@ class GuideDisplayState {
      * 코드만 봐서는 새는 걸 알 수 없는 모양이라, 억제를 값 하나로 명시하고 그리는 쪽
      * (`HighlightOverlayView.setGuide`)이 이 값을 직접 본다. 새 억제 경로는 bounds·direction을
      * 지울 것이 아니라 **이 값을 세우면 된다.**
+     *
+     * [waiting]은 완료 재확인 백오프 대기다(#480, [showWaitNotice]). 컨트롤 행의 점 셋을
+     * **읽는 중과 다른 리듬으로** 켜라는 신호이고, 읽는 중 테두리와는 무관하다 —
+     * 그쪽은 [ReadingBorder.isReading]이 계속 false다(백오프를 읽는 중으로 보이면 안 된다,
+     * #295). 문구·테두리 유무·점 리듬 셋이 두 상태를 가른다.
      */
     data class Content(
         val bounds: List<Int>?,
@@ -60,6 +65,7 @@ class GuideDisplayState {
         val inputText: String? = null,
         val confirm: ConfirmKind? = null,
         val targetSuppressed: Boolean = false,
+        val waiting: Boolean = false,
     )
 
     /**
@@ -162,6 +168,39 @@ class GuideDisplayState {
         ) return null
         clearUnreadableState()
         val content = Content(null, text)
+        guide = content
+        guideSignature = signature
+        stuckSuffixAllowed = false
+        markVisible()
+        return content
+    }
+
+    /**
+     * [signature] 화면에 완료 재확인 대기를 표시한다(#480). 미검증 done을 다시 묻기까지의
+     * 백오프 구간에 **창을 살려 두는 것이 목적**이다.
+     *
+     * **살리려는 것은 문구가 아니라 중지 칩이다.** 칩은 안내창과 한 창에 살고 그 창은
+     * "보여줄 것이 없으면 걷는다"가 설계라([ControlOverlay]), 이 구간에 아무것도 안 그리면
+     * 창이 통째로 걷혀 **멈출 수단이 사라진다**(2026-08-27 SM-S921N 실측 — 무표시 2.0초,
+     * 프로브 실측으로는 4.77초). 목표를 이미 끝낸 사용자가 가장 오래, 아무 표시 없이 기다린다.
+     *
+     * **[showCapNotice]와 같은 dedupe 규약을 쓴다.** 백오프는 폴링마다 도는데 그때마다 같은
+     * 내용을 다시 그리면 조작 오버레이가 자기 창을 만져 스스로를 깨운다(#153·#380). 오버레이가
+     * 지워졌다면([onCleared]) `visible`이 false라 다시 그린다.
+     *
+     * STUCK 접미사를 붙이지 않는 이유는 상한 안내와 같다 — 화면이 그대로인 것은 우리가 다시
+     * 묻는 동안 당연하고, "한 번 더 해 주세요"는 지금 시킬 행동이 아니다.
+     */
+    fun showWaitNotice(signature: String, text: String): Content? {
+        if (
+            visible &&
+            !stuckSuffixAllowed &&
+            !unreadableNoticeActive &&
+            guideSignature == signature &&
+            guide?.text == text
+        ) return null
+        clearUnreadableState()
+        val content = Content(bounds = null, text = text, waiting = true)
         guide = content
         guideSignature = signature
         stuckSuffixAllowed = false

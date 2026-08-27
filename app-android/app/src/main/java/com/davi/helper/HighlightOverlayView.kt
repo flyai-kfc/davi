@@ -267,6 +267,16 @@ class HighlightOverlayView(context: Context) : View(context) {
     private var inputFill = false
 
     /**
+     * 완료 재확인 백오프 대기인가(#480). 이 뷰는 **점 셋의 자리만 비운다** — 점 자체와 리듬은
+     * 조작 오버레이([ControlOverlay])에 있다. 읽는 중과 같은 분업이다.
+     *
+     * [readingWindow]와 따로 두는 이유는 **들어오는 문이 다르기 때문**이다. 읽는 중은
+     * [setReading]이 세우고 지연 표시(onset)·밀어 두기가 딸려 있지만, 대기는 [setGuide]로
+     * 오는 평범한 안내 하나다 — 밀어 둘 것도, 되돌릴 것도 없다.
+     */
+    private var waitingWindow = false
+
+    /**
      * 읽는 중이 덮기 전의 안내. 읽는 중이 끝났는데 **새 안내가 아직 안 왔을 때** 되돌린다.
      *
      * 읽는 중을 "창이 비어 있을 때만"으로 막았던 #229의 제약을 #295가 뒤집었다. 그때 근거는
@@ -469,8 +479,10 @@ class HighlightOverlayView(context: Context) : View(context) {
         direction: SwipeDirection? = null,
         targetSuppressed: Boolean = false,
         inputText: String? = null,
+        waiting: Boolean = false,
     ) {
         hasTarget = bounds != null && !targetSuppressed
+        waitingWindow = waiting
         // 버튼 자리는 [targetSuppressed]와 무관하다 — 저 신호는 강조·손 시연만 억제하고(#343),
         // 정체로 문구만 남은 화면에서도 입력을 채워 주는 것이 막힘을 푸는 쪽이다.
         inputFill = inputText != null
@@ -520,6 +532,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     fun clearTarget() {
         hasTarget = false
         readingWindow = false
+        waitingWindow = false
         inputFill = false
         // 창을 통째로 걷을 때는 되돌릴 것도 없다. 남기면 다음 읽는 중이 끝날 때 이전
         // 세션의 안내가 되살아난다(#295).
@@ -968,10 +981,14 @@ class HighlightOverlayView(context: Context) : View(context) {
      *
      * 확인쌍은 컨트롤 행, 읽는 중(GD-1·GD-2r)은 문구 아래 점 셋의 자리다. 조작 안내는 종료 X가
      * 모서리로 가서 아무것도 비우지 않는다(v2, #178).
+     *
+     * **완료 재확인 대기(#480)도 점 셋의 자리를 쓴다.** 이 줄을 빠뜨리면 점이 자리를 못 받아
+     * 문구 위에 겹쳐 그려진다(2026-08-27 실기기에서 실제로 그랬다) — 같은 뷰를 쓰는 상태를
+     * 하나 늘릴 때 이 함수가 첫 번째로 볼 자리다.
      */
     private fun reservedHeight(): Float = when {
         confirmKind != null -> controlRow
-        readingWindow -> dotsRow
+        readingWindow || waitingWindow -> dotsRow
         // 「바로 입력」 버튼(C21 · #405). 확인쌍과 같은 행 높이를 쓴다 — 새 치수를 만들면
         // 계산과 그리기의 값이 셋으로 는다(위 KDoc의 이유 그대로).
         inputFill -> controlRow

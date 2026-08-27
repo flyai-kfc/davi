@@ -70,6 +70,10 @@ class ControlOverlay(
      *
      * [confirm]이 있으면 컨트롤 행이 확인쌍이 된다(GD-3·GD-4). 안내창 자체는 같은 창이라
      * 확인으로 넘어갈 때 창을 다시 만들지 않는다.
+     *
+     * [waiting]이면 완료 재확인 백오프 대기다(#480) — 점 셋을 **느린 리듬**으로 켠다.
+     * [reading]과 배타이고 읽는 중이 이긴다(둘이 동시에 참일 일은 없다 —
+     * [ReadingBorder.isReading]이 백오프에서 false다).
      */
     fun show(
         rect: Rect,
@@ -78,6 +82,7 @@ class ControlOverlay(
         reading: Boolean = false,
         reserved: Float = 0f,
         inputText: String? = null,
+        waiting: Boolean = false,
     ) {
         this.reading = reading
         val current = root
@@ -87,8 +92,8 @@ class ControlOverlay(
                 box?.setReservedHeight(reserved)
                 box?.setLines(lines)
                 applyMode(confirm)
-                applyReading(reading)
-                applyInputFill(inputText, confirm, reading)
+                applyDots(reading, waiting)
+                applyInputFill(inputText, confirm, reading || waiting)
             }
             return
         }
@@ -96,8 +101,8 @@ class ControlOverlay(
         box?.setReservedHeight(reserved)
         box?.setLines(lines)
         applyMode(confirm)
-        applyReading(reading)
-        applyInputFill(inputText, confirm, reading)
+        applyDots(reading, waiting)
+        applyInputFill(inputText, confirm, reading || waiting)
         if (isApplied(rect)) return
         runCatching {
             windowManager.updateViewLayout(current, params(rect))
@@ -122,19 +127,32 @@ class ControlOverlay(
     }
 
     /**
-     * 읽는 중 점 셋을 켜고 끈다. 가시성만 바꾸면 된다 — GONE→VISIBLE이 곧 구동 조건
+     * 컨트롤 행의 점 셋을 켜고 끈다. 가시성만 바꾸면 된다 — GONE→VISIBLE이 곧 구동 조건
      * 전이라, 전이 훅이 지연·주기를 알아서 처음부터 되돌린다(#148 `onMotionLifecycleChanged`).
      * 대화 화면도 같은 방식이다.
+     *
+     * **같은 뷰가 두 상태를 그린다**(#480) — 읽는 중(GD-1·GD-2r)과 완료 재확인 대기다.
+     * 리듬으로 가르고, 리듬은 **보이기 직전에** 갈아 끼운다. 순서가 뒤바뀌면 전이 훅이
+     * 옛 주기로 한 프레임을 그린다.
+     *
+     * 둘이 함께 참이면 **읽는 중이 이긴다.** 실제로 겹치지는 않는다 —
+     * [ReadingBorder.isReading]이 백오프에서 false이기 때문이고, 그 규칙이 바뀌면 여기가
+     * 조용히 틀리는 게 아니라 읽는 중 쪽으로 붙는다.
      */
-    private fun applyReading(on: Boolean) {
+    private fun applyDots(reading: Boolean, waiting: Boolean) {
         val dots = readingDots ?: return
+        val on = reading || waiting
+        if (on) dots.setRhythm(slow = waiting && !reading)
         dots.visibility = if (on) View.VISIBLE else View.GONE
     }
 
     /**
-     * 「바로 입력」 버튼(C21 · #405)을 켜고 끈다. 확인쌍·읽는 중 점 셋과 **같은 자리**(창 바닥
+     * 「바로 입력」 버튼(C21 · #405)을 켜고 끈다. 확인쌍·점 셋과 **같은 자리**(창 바닥
      * 컨트롤 행)를 쓰므로 그 둘이 있는 동안은 값이 있어도 숨긴다 — 확인은 답할 자리고, 읽는
      * 중의 안내는 이미 유효하지 않은 화면의 것이라 그 값을 채우게 두면 안 된다.
+     *
+     * [reading]에는 **대기(#480)도 접어서 온다** — 자리를 다투는 것은 점 셋이지 그 점이 무슨
+     * 뜻인지가 아니다. 대기 문구에는 `input_text`가 없어 지금은 값으로도 걸리지 않는다.
      */
     private fun applyInputFill(
         inputText: String?,

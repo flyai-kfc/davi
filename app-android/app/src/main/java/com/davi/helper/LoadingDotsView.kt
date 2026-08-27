@@ -67,11 +67,35 @@ class LoadingDotsView @JvmOverloads constructor(
     private val dotSizeMin = sizes.second
     private val dotSpacing = sizes.third
 
-    private val periodSeconds =
+    private var periodSeconds =
         resources.getInteger(R.integer.davi_motion_dots_period_ms) / MILLIS_PER_SECOND
-    private val staggerSeconds =
+    private var staggerSeconds =
         resources.getInteger(R.integer.davi_motion_dots_stagger_ms) / MILLIS_PER_SECOND
     private val delayMs = resources.getInteger(R.integer.davi_motion_dots_delay_ms).toLong()
+
+    /**
+     * 리듬을 느린 쪽으로 갈아 끼운다(#480). 오버레이의 점 셋은 **읽는 중과 완료 재확인 대기**
+     * 두 상태를 같은 뷰로 그리고, 문구·테두리와 함께 이 리듬이 둘을 가른다.
+     *
+     * 크기를 `attrs`로 연 것과 달리 이건 **런타임 전환**이라 setter다 — 한 창이 두 상태를
+     * 오가므로 뷰를 두 개 두면 자리·수명이 두 벌이 된다.
+     *
+     * 값을 바꾸는 것만으로는 화면이 안 바뀐다(다음 프레임을 기다린다). 모션이 꺼진 기기에서는
+     * 프레임이 더 안 오므로 [invalidate]로 한 장을 강제한다 — 그 기기에서 리듬은 어차피
+     * 보이지 않지만, 정지 프레임의 위상이 옛 주기로 남는 것을 막는다.
+     */
+    fun setRhythm(slow: Boolean) {
+        val periodRes =
+            if (slow) R.integer.davi_motion_dots_wait_period_ms else R.integer.davi_motion_dots_period_ms
+        val staggerRes =
+            if (slow) R.integer.davi_motion_dots_wait_stagger_ms else R.integer.davi_motion_dots_stagger_ms
+        val nextPeriod = resources.getInteger(periodRes) / MILLIS_PER_SECOND
+        val nextStagger = resources.getInteger(staggerRes) / MILLIS_PER_SECOND
+        if (nextPeriod == periodSeconds && nextStagger == staggerSeconds) return
+        periodSeconds = nextPeriod
+        staggerSeconds = nextStagger
+        invalidate()
+    }
 
     // 드러났는가·언제 드러났는가의 판정은 전부 여기 있다(#249) — 뷰는 트리거만 건다.
     private val gate = LoadingDotsGate()

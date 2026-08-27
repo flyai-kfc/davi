@@ -18,6 +18,7 @@ class GuideDisplayStateTest {
     private val sigA = "화면A"
     private val sigB = "화면B"
     private val capNotice = "다 된 것 같은데 확인하지 못했어요."
+    private val waitNotice = "다시 한번 확인할게요"
     private val stuck = "화면이 그대로예요."
     private val pressBounds = listOf(10, 20, 110, 220)
     private val scrollText = "아래쪽으로 스크롤해 주세요"
@@ -548,6 +549,73 @@ class GuideDisplayStateTest {
         assertEquals( // A 안정(IDLE) — 재표시
             GuideDisplayState.Content(null, capNotice),
             sync(sigA, 400),
+        )
+    }
+
+    // ── 완료 재확인 백오프 대기(#480) ────────────────────────────────
+
+    /**
+     * 대기 표시가 존재하는 이유는 문구가 아니라 **창**이다 — 창이 걷히면 중지 칩이 함께
+     * 사라져 사용자가 멈출 수단을 잃는다. 그래서 그릴 내용을 반드시 돌려줘야 한다.
+     */
+    @Test
+    fun `대기 표시는 그릴 내용을 돌려준다`() {
+        assertEquals(
+            GuideDisplayState.Content(null, waitNotice, waiting = true),
+            state.showWaitNotice(sigA, waitNotice),
+        )
+    }
+
+    /** 백오프는 폴링마다 돈다. 매번 다시 그리면 오버레이가 자기 창을 만져 스스로를 깨운다. */
+    @Test
+    fun `같은 화면의 같은 대기 표시는 다시 그리지 않는다`() {
+        state.showWaitNotice(sigA, waitNotice)
+
+        assertNull(state.showWaitNotice(sigA, waitNotice))
+    }
+
+    /** 오버레이가 지워졌으면 `visible`이 false라 다시 그린다 — 안 그리면 그 화면은 영영 빈다. */
+    @Test
+    fun `지워진 뒤에는 대기 표시를 다시 그린다`() {
+        state.showWaitNotice(sigA, waitNotice)
+        state.onCleared()
+
+        assertEquals(
+            GuideDisplayState.Content(null, waitNotice, waiting = true),
+            state.showWaitNotice(sigA, waitNotice),
+        )
+    }
+
+    /** 재질의가 답을 가져오면 그 안내가 대기를 덮는다. 대기가 남아 안내를 가리면 안 된다. */
+    @Test
+    fun `새 안내가 대기 표시를 덮는다`() {
+        state.showWaitNotice(sigA, waitNotice)
+
+        val guide = state.show(sigA, pressBounds, scrollText)
+
+        assertEquals(false, guide.waiting)
+        assertEquals(scrollText, guide.text)
+    }
+
+    /** 상한에 닿으면 대기가 아니라 상한 안내다 — 점 셋이 계속 돌면 아직 도는 것처럼 보인다. */
+    @Test
+    fun `상한 안내는 대기 표시를 끈다`() {
+        state.showWaitNotice(sigA, waitNotice)
+
+        assertEquals(
+            GuideDisplayState.Content(null, capNotice),
+            state.showCapNotice(sigA, capNotice),
+        )
+    }
+
+    /** 대기도 상한 안내와 같이 정체 접미사를 받지 않는다 — 지금 시킬 행동이 아니다. */
+    @Test
+    fun `대기 표시에는 정체 접미사를 붙이지 않는다`() {
+        state.showWaitNotice(sigA, waitNotice)
+
+        assertEquals(
+            GuideDisplayState.Content(null, waitNotice, waiting = true),
+            state.stuckContent(stuck, sigA),
         )
     }
 
