@@ -617,13 +617,12 @@ class ScreenStabilityTrackerTest {
         assertEquals(Decision.SEND, send("a", 0))
         assertEquals(Decision.SEND, send("b", 1_000))
         assertEquals(Decision.SEND, send("a", 2_000))
-        assertEquals(Decision.SEND, send("b", 3_000))
 
-        // a로 두 번째 복귀 — 여기서 회전으로 판정한다. 화면당 4회에서 멈춘다.
-        assertEquals(Decision.IDLE, send("a", 4_000))
-        // 다음 바퀴의 a도 계속 접힌다. b는 `sentSignature`와 같아 회전 판정을 타지 않으므로
-        // 여기서 단언하지 않는다 — 그 줄은 접기가 깨져도 통과한다.
-        assertEquals(Decision.IDLE, send("a", 6_000))
+        // 같은 전이(a→b)의 두 번째다 — 여기서 회전으로 판정한다. 화면당 3회에서 멈춘다.
+        assertEquals(Decision.IDLE, send("b", 3_000))
+        // 다음 바퀴도 계속 접힌다.
+        assertNotEquals(Decision.SEND, send("a", 4_000))
+        assertNotEquals(Decision.SEND, send("b", 5_000))
     }
 
     @Test
@@ -634,7 +633,6 @@ class ScreenStabilityTrackerTest {
         send("a", 0)
         send("b", 5_000)
         send("a", 10_000)
-        send("b", 15_000)
 
         // 창(30초)을 여러 번 넘겨 돌린다. 한 번이라도 SEND가 나오면 재무장한 것이다.
         // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
@@ -657,8 +655,8 @@ class ScreenStabilityTrackerTest {
         send("a", 0)
         send("b", 5_000)
         send("a", 10_000)
-        send("b", 15_000)
-        assertEquals(Decision.IDLE, send("a", 20_000))
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
 
         assertEquals(Decision.SEND, send("다른화면", 25_000))
 
@@ -671,13 +669,13 @@ class ScreenStabilityTrackerTest {
         send("a", 0)
         send("b", 5_000)
         send("a", 10_000)
-        send("b", 15_000)
-        assertEquals(Decision.IDLE, send("a", 20_000))
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
         tracker.markInteraction(21_000)
 
         // 인과 창이 닫힌 뒤에도 보낸다 — 이력이 비었기 때문이지 조작 창 때문이 아니다.
-        // 마지막으로 물어본 것이 b라, 복귀를 보려면 a로 돌아와야 novel 갈래를 탄다.
-        assertEquals(Decision.SEND, send("a", 27_000))
+        // 접힌 동안 `sentSignature`가 a에 머물렀으므로 전이가 되려면 b로 가야 한다.
+        assertEquals(Decision.SEND, send("b", 27_000))
     }
 
     @Test
@@ -704,9 +702,10 @@ class ScreenStabilityTrackerTest {
         assertEquals(Decision.SEND, send("a", 3_000))
         assertEquals(Decision.SEND, send("b", 4_000))
         assertEquals(Decision.SEND, send("a", 5_000))
-        assertEquals(Decision.SEND, send("b", 6_000))
 
-        assertEquals(Decision.IDLE, send("a", 7_000))
+        // 같은 전이(a→b)의 두 번째. 중간의 재질의가 이력에 두 줄로 남았다면 여기가 아니라
+        // 더 앞에서 접혔을 것이다.
+        assertEquals(Decision.IDLE, send("b", 6_000))
     }
 
     @Test
@@ -717,8 +716,8 @@ class ScreenStabilityTrackerTest {
         send("a", 0)
         send("b", 5_000)
         send("a", 10_000)
-        send("b", 15_000)
-        assertEquals(Decision.IDLE, send("a", 20_000))
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
 
         // 창(30초)을 넘겨 방문 기록을 비운 뒤 회전 구성원을 다시 묻게 만든다.
         tracker.markFailed(60_000)
@@ -738,12 +737,39 @@ class ScreenStabilityTrackerTest {
         send("a", 0)
         send("b", 5_000)
         send("a", 10_000)
-        send("b", 15_000)
-        assertEquals(Decision.IDLE, send("a", 20_000))
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
 
         tracker.forgetRotation()
 
-        assertEquals(Decision.SEND, send("a", 21_000))
+        // 접힌 동안 `sentSignature`가 a에 머물렀으므로 전이가 되려면 b로 가야 한다.
+        assertEquals(Decision.SEND, send("b", 21_000))
+    }
+
+    @Test
+    fun `상세를 번갈아 열어 본 목록 복귀는 접지 않는다`() {
+        // `목록→상세1→목록→상세2→목록`(#456 팀 재리뷰 P1). 구조만 세면 마지막 복귀에서
+        // 목록 방문이 2가 되어 회전으로 접히고, 클릭을 못 받는 앱에서는 그 뒤 목록 안내가
+        // 세션 내내 사라진다. 전이쌍으로 세면 `상세2→목록`은 처음이라 갈린다.
+        assertEquals(Decision.SEND, send("목록", 0))
+        assertEquals(Decision.SEND, send("상세1", 1_000))
+        assertEquals(Decision.SEND, send("목록", 2_000))
+        assertEquals(Decision.SEND, send("상세2", 3_000))
+
+        assertEquals(Decision.SEND, send("목록", 4_000))
+    }
+
+    @Test
+    fun `회전 밖 화면은 걸쇠에 딸려 들어가지 않는다`() {
+        // 걸쇠가 구조가 아니라 쌍이라, 회전으로 접힌 뒤 밖으로 나갔다 돌아와도 그 화면이
+        // 회전 구성원으로 오인되지 않는다.
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        assertEquals(Decision.IDLE, send("b", 3_000))
+
+        assertEquals(Decision.SEND, send("바깥", 4_000))
+        assertEquals(Decision.SEND, send("a", 5_000))
     }
 
     @Test
@@ -758,13 +784,15 @@ class ScreenStabilityTrackerTest {
 
     @Test
     fun `창을 벗어난 이력은 회전으로 세지 않는다`() {
+        // **세기가 창을 벗어나는지만 본다.** 접힌 뒤를 보면 걸쇠가 잡고 있어(설계대로 만료가
+        // 없다) 창의 효과가 안 드러난다 — 그래서 접기 직전까지만 만들고 창을 넘긴다.
         val window = ScreenStabilityTracker.ROTATION_WINDOW_MS
         send("a", 0)
         send("b", 1_000)
         send("a", 2_000)
-        send("b", 3_000)
 
-        assertEquals(Decision.SEND, send("a", window + 4_000))
+        // 창 안이라면 같은 전이(a→b)의 두 번째라 접혔을 자리다.
+        assertEquals(Decision.SEND, send("b", window + 4_000))
     }
 
     @Test

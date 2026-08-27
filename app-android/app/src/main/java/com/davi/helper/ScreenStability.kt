@@ -394,11 +394,14 @@ class ScreenStabilityTracker(
     private val visitedStructures = ArrayDeque<Pair<String, Long>>()
 
     /**
-     * 회전으로 판정이 끝난 구조들(#456). **결론을 붙잡아 두는 걸쇠다.**
+     * 회전으로 판정이 끝난 **전이쌍들**(#456). **결론을 붙잡아 두는 걸쇠다.**
+     *
+     * 담는 단위가 쌍이라 「반대쪽도 넣어야 하나」가 없다 — 구조를 담던 때는 안 넣으면 그
+     * 반대쪽을 다시 묻는 것이 떠남으로 오독되고, 넣으면 회전 밖 화면이 딸려 들어갔다.
      *
      * [visitedStructures]는 결론에 **닿는** 자리이고 여기는 그 결론을 **유지하는** 자리다.
      * 둘을 가르지 않으면 접기가 [ROTATION_WINDOW_MS]마다 풀린다 — 접히는 동안에는 [markSent]가
-     * 불리지 않아 이력이 갱신되지 않고, 항목이 창 밖으로 늙어 나가면서 [returnsSeen]이
+     * 불리지 않아 이력이 갱신되지 않고, 항목이 창 밖으로 늙어 나가면서 [transitionsSeen]이
      * [ROTATION_RETURNS] 아래로 떨어지기 때문이다. 2026-08-26 실기기 실측에서 결정론적 회전
      * 화면에 152초 동안 요청 21회가 나갔고, 4회 묶음의 간격이 30.2~30.7초로 그 창과 일치했다.
      *
@@ -410,7 +413,7 @@ class ScreenStabilityTracker(
      * 조작이 관측됐거나. 앵커 상한이 열리는 방식과 같은 결(#380)이다. 풀지 않으면 회전
      * 화면을 떠났다 돌아왔을 때 영구히 접힌다.
      */
-    private val rotatingStructures = mutableSetOf<String>()
+    private val rotatingTransitions = mutableSetOf<Pair<String, String>>()
 
     fun onSample(
         signature: ScreenSig,
@@ -530,10 +533,18 @@ class ScreenStabilityTracker(
         // 조작 여부를 여기서 다시 보지 않는다 — [markInteraction]이 이력과 걸쇠를 **비우므로**
         // 조작 뒤에는 아래 둘 다 성립하지 않는다. 가드를 겹쳐 두면 그 가드만 지웠을 때
         // 아무 테스트도 안 깨져 죽은 조건이 된다.
-        val structureReturned = sent != null && signature.structure != sent.structure
-        val latched = structureReturned && signature.structure in rotatingStructures
-        val concluded = structureReturned &&
-            returnsSeen(signature.structure, nowMs) >= ROTATION_RETURNS
+        // **세는 단위는 구조가 아니라 전이쌍이다.** 회전은 `A↔B`가 반복되는 것인데 구조만
+        // 세면 「A를 몇 번 봤나」가 되어, 목록에서 상세 둘을 열어 본 정상 흐름
+        // (`목록→상세1→목록→상세2→목록`)이 마지막 복귀에서 회전으로 접힌다. 클릭을 못 받는
+        // 앱에서는 그 뒤 목록 안내가 세션 내내 사라진다 — 오탐 근거로 적었던 「두 화면을
+        // 30초 안에 네 번 오가기」보다 훨씬 흔한 흐름이다(#456 팀 재리뷰 P1).
+        //
+        // 전이쌍으로 세면 갈린다: 회전의 `B→A`는 이전에도 있었고, 왕복의 `상세2→목록`은 처음이다.
+        val transition = sent?.takeIf { signature.structure != it.structure }
+            ?.let { it.structure to signature.structure }
+        val latched = transition != null && transition in rotatingTransitions
+        val concluded = transition != null &&
+            transitionsSeen(transition.first, transition.second, nowMs) >= ROTATION_RETURNS
         val rotating = latched || concluded
         val novel = when {
             sent == null -> true
@@ -542,19 +553,11 @@ class ScreenStabilityTracker(
             else -> anchorOpened || interactedRecently(nowMs) || quietOpened
         }
         // 결론을 걸쇠에 건다(#456). 창은 결론에 **닿는** 데까지만 쓰고, 유지는 걸쇠가 한다 —
-        // 근거는 [rotatingStructures]의 주석에 있다.
-        if (rotating) {
-            rotatingStructures.add(signature.structure)
-            // 반대쪽도 회전 구성원이다 — 접기 갈래로 오는 것은 언제나 [sentSignature]가 아닌
-            // 쪽이라, 들어온 구조만 넣으면 반대쪽이 걸쇠 밖에 남아 떠남으로 오독된다.
-            //
-            // **[concluded]로 좁히지만 닫지는 못한다**(#456 3차 리뷰 P2, #476으로 이관).
-            // 회전 밖 화면 X로 잠깐 나갔다 돌아오면 그때의 [sentSignature]가 X이고, X가 아직
-            // 이력에 있으면 이 갈래가 그대로 참이라 X가 걸쇠에 딸려 들어간다. 그 뒤 X는 그
-            // 세션에서 접힌다. 좁히는 값어치는 있어 남기되(순수 걸쇠 갈래에서는 안 넣는다),
-            // **고쳤다고 적지 않는다** — 걸쇠의 수명주기를 #476에서 함께 정한다.
-            if (concluded) sent?.let { rotatingStructures.add(it.structure) }
-        }
+        // 근거는 [rotatingTransitions]의 주석에 있다.
+        // 걸쇠에 담는 것도 **쌍 하나**다. 종전에는 구조를 담느라 「반대쪽도 넣어야 하나」가
+        // 문제였고(안 넣으면 떠남으로 오독, 넣으면 회전 밖 화면이 딸려 들어감), 쌍이 단위가
+        // 되면서 그 딜레마가 사라진다.
+        if (rotating && transition != null) rotatingTransitions.add(transition)
         // **조건부로 적지 않는다.** `if (novel)`로 두면 STUCK 샘플(정의상 novel=false)이
         // 갱신을 건너뛰어 직전 SEND의 값이 남고, 눌림 확인 재질의가 그 옛 값을 실어
         // `performed=true` + `screen_changed=true`라는 모순된 이력을 만든다 — 재질의의
@@ -666,17 +669,15 @@ class ScreenStabilityTracker(
         // 아니라 root 복구마다 불려서, root가 깜빡이면 예산이 새로 채워진다.
         if (budgetStructureProgressed) quietOpenedAtMs = nowMs
         if (sendWasAnchorOpened) anchorRequeryUsed = true
-        // 접고 있던 중에 **회전에 없던 구조**를 실제로 물었다 — 그 화면을 떠난 것이다(#456).
-        // 이력을 들고 가면 돌아왔을 때 옛 회전 기록이 남아 영구히 접힌다.
+        // 접고 있던 중에 **어느 회전 쌍에도 없는 구조**를 실제로 물었다 — 그 화면을 떠난
+        // 것이다(#456). 이력을 들고 가면 돌아왔을 때 옛 회전 기록이 남아 영구히 접힌다.
         //
-        // **걸쇠 소속을 먼저 본다.** 이력만 보면 접힘이 길어져 방문 기록이 창 밖으로 늙은 뒤,
-        // 회전 구성원을 다시 묻는 것(실패 재시도·완료 확인 ×가 `sentSignature`를 비운 뒤의
-        // 첫 요청)이 "떠남"으로 읽혀 걸쇠가 통째로 풀린다 — 창 만료 재무장과 같은 폭주가
-        // 트리거만 바꿔 되살아난다(#456 2차 리뷰 P2).
+        // 방문 이력이 아니라 **쌍 소속**으로 본다. 이력만 보면 접힘이 길어져 기록이 창 밖으로
+        // 늙은 뒤, 회전 구성원을 다시 묻는 것(실패 재시도·완료 확인 ×가 `sentSignature`를
+        // 비운 뒤의 첫 요청)이 "떠남"으로 읽혀 걸쇠가 통째로 풀린다.
         if (
-            rotatingStructures.isNotEmpty() &&
-            signature.structure !in rotatingStructures &&
-            returnsSeen(signature.structure, nowMs) == 0
+            rotatingTransitions.isNotEmpty() &&
+            rotatingTransitions.none { signature.structure == it.first || signature.structure == it.second }
         ) {
             clearRotationHistory()
         }
@@ -801,24 +802,47 @@ class ScreenStabilityTracker(
     fun interactionGateOpen(nowMs: Long): Boolean = interactedRecently(nowMs)
 
     /**
-     * [structure]를 최근 [ROTATION_WINDOW_MS] 안에 **방문한 횟수**. 회전 감지의 세는 자리다.
+     * 전이 `from → to`가 최근 [ROTATION_WINDOW_MS] 안에 **몇 번째로 일어나는가**.
+     * 회전 감지의 세는 자리다.
      *
-     * **왜 1회가 아니라 [ROTATION_RETURNS]회인가.** A→B→A까지는 회전과 뒤로 가기가
-     * 원리적으로 구분되지 않는다 — 보낸 구조 열이 `[A, B]`이고 A가 다시 오는 것까지 똑같다.
-     * 구분은 **네 번째에** 생긴다: 회전은 계속 돌고 복귀는 거기서 멈춘다. 첫 복귀에 접으면
-     * 뒤로 가서 돌아온 화면의 안내가 안 나오고, 클릭 이벤트를 안 쏘는 앱에서는 인과 게이트도
-     * 그것을 못 살린다(#394). 그래서 접는 자리를 두 번째 복귀로 둔다 — **구조 축이 흔들리는**
-     * 회전의 요청이 화면당 4회에서 멈춘다. 종전에는 무한이었다.
+     * **세는 단위가 구조가 아니라 쌍인 이유**(#456 팀 재리뷰). 회전은 `A↔B`가 반복되는
+     * 것인데 구조만 세면 「A를 몇 번 봤나」가 되어, `목록→상세1→목록→상세2→목록`이라는
+     * 정상 흐름이 마지막 복귀에서 접힌다. 클릭을 못 받는 앱에서는 그 뒤 목록 안내가 세션
+     * 내내 사라진다. 쌍으로 세면 회전의 `B→A`는 두 번째이고 왕복의 `상세2→목록`은 처음이라
+     * 갈린다.
+     *
+     * **왜 1회가 아니라 [ROTATION_RETURNS]회인가.** `A→B→A`까지는 회전과 뒤로 가기가
+     * 원리적으로 구분되지 않는다 — 같은 전이가 한 번씩만 일어난 상태까지 똑같다.
+     * 구분은 그 전이가 **되풀이될 때** 생긴다: 회전은 계속 돌고 복귀는 거기서 멈춘다.
+     * 첫 복귀에 접으면 뒤로 가서 돌아온 화면의 안내가 안 나오고, 클릭 이벤트를 안 쏘는
+     * 앱에서는 인과 게이트도 그것을 못 살린다(#394). 그래서 접는 자리를 같은 전이의 두 번째로
+     * 둔다 — **구조 축이 흔들리는** 회전의 요청이 화면당 4회에서 멈춘다.
      *
      * **이 상한은 구조 축 위에서만 성립한다.** 회전이 구조를 안 흔들고 내용만 흔들면 이 갈래로
      * 오지 않고, 클릭을 아직 못 본 앱에서는 조용함 게이트(#427)가 그 내용 변화에 대해 화면당
      * `QUIET_OPENS`까지 재질의를 연다. 두 문이 겹치는 화면의 실제 상한은 그쪽이 정한다.
      *
-     * **이 세기는 결론에 닿는 데까지만 쓴다.** 접힌 뒤의 유지는 [rotatingStructures] 걸쇠가
+     * **이 세기는 결론에 닿는 데까지만 쓴다.** 접힌 뒤의 유지는 [rotatingTransitions] 걸쇠가
      * 맡는다 — 접히는 동안에는 이력이 갱신되지 않아 이 세기만으로는 창 주기마다 풀린다.
      */
-    private fun returnsSeen(structure: String, nowMs: Long): Int =
-        visitedStructures.count { (seen, at) -> seen == structure && nowMs - at <= ROTATION_WINDOW_MS }
+    private fun transitionsSeen(from: String, to: String, nowMs: Long): Int {
+        // 지금 일어나려는 전이를 1로 세고, 이력에서 같은 쌍을 더한다.
+        var seen = 1
+        var previous: Pair<String, Long>? = null
+        for (entry in visitedStructures) {
+            val prior = previous
+            if (
+                prior != null &&
+                prior.first == from &&
+                entry.first == to &&
+                nowMs - entry.second <= ROTATION_WINDOW_MS
+            ) {
+                seen++
+            }
+            previous = entry
+        }
+        return seen
+    }
 
     /**
      * 안내가 폐기돼 **보여 줄 것이 없어졌다**(#456). 회전 판정을 버리고 그 화면을 다시 묻는다.
@@ -834,7 +858,7 @@ class ScreenStabilityTracker(
     /** 회전 판정을 처음부터 다시 센다. 떠났거나 조작이 관측됐을 때. */
     private fun clearRotationHistory() {
         visitedStructures.clear()
-        rotatingStructures.clear()
+        rotatingTransitions.clear()
     }
 
     /**
@@ -844,8 +868,8 @@ class ScreenStabilityTracker(
      * 이 화면에 와 있는가"다. 같은 화면을 다시 묻는 경로가 여럿이라(실패 재시도는 [markFailed]가
      * [sentSignature]를 비워 곧바로 `novel`이 되고, 눌림 확인 재질의(#319)와 앵커 재질의(#380)도
      * 화면을 옮기지 않은 채 [markSent]를 다시 부른다) 그대로 쌓으면 **한 번도 떠난 적 없는
-     * 화면이 이력에 두 줄**로 남는다. 그러면 [returnsSeen]이 첫 복귀에서 이미
-     * [ROTATION_RETURNS]에 닿아, 뒤로 가기를 접지 않겠다는 [returnsSeen]의 계약이 깨진다 —
+     * 화면이 이력에 두 줄**로 남는다. 그러면 [transitionsSeen]이 첫 복귀에서 이미
+     * [ROTATION_RETURNS]에 닿아, 뒤로 가기를 접지 않겠다는 [transitionsSeen]의 계약이 깨진다 —
      * 요청 하나가 실패한 화면으로 되돌아오기만 해도 안내가 안 나가고 7초 뒤 거짓 정체 문구가 뜬다.
      */
     private fun rememberVisit(structure: String, nowMs: Long) {
@@ -1114,7 +1138,7 @@ class ScreenStabilityTracker(
          *
          * **이 창은 접힌 뒤의 만료 창이 아니다**(2026-08-26 실측). 한때 그랬고, 그래서 창
          * 주기마다 접기가 재무장해 152초에 요청 21회가 나갔다(4회 묶음의 간격이 30.2~30.7초로
-         * 이 값과 일치했다). 유지는 [rotatingStructures] 걸쇠로 옮겼고, 지금 이 값이 정하는
+         * 이 값과 일치했다). 유지는 [rotatingTransitions] 걸쇠로 옮겼고, 지금 이 값이 정하는
          * 것은 **회전이라고 결론 내리기까지 복귀를 얼마나 오래 기억하는가** 하나다.
          *
          * 길수록 회전을 잘 잡지만, 사용자가 두 화면을 오래 오가는 정상 왕복까지 접을 수 있다.
@@ -1126,7 +1150,7 @@ class ScreenStabilityTracker(
          * 가정이다. 조작이 아직 한 번도 없는 구간은 어느 앱에서든 같은 상태다.
          *
          * **다만 창은 확률만 낮추고 지속 시간은 묶지 않는다**(#456 팀 리뷰). 이 PR이 창을
-         * 「결론에 닿는 데까지」로 옮겼고 [rotatingStructures]에는 만료가 없다. 한 번 잘못 서면
+         * 「결론에 닿는 데까지」로 옮겼고 [rotatingTransitions]에는 만료가 없다. 한 번 잘못 서면
          * 클릭 없는 앱에서는 [markInteraction]도 안 오고, 정체 문구도 `stuckReported` 때문에
          * 한 번뿐이다 — 접힌 동안에는 그것을 내리는 [markSent]·[markPressed]·[markFailed]가
          * 안 불린다([markResumed]는 root 복구마다 오므로 화면이 깜빡이면 정체 문구가 다시
@@ -1138,7 +1162,7 @@ class ScreenStabilityTracker(
 
         /**
          * 같은 구조로 이만큼 되돌아오면 회전으로 본다. **1이면 뒤로 가기와 구분되지 않는다** —
-         * 근거는 `returnsSeen`의 주석에 있다.
+         * 근거는 `transitionsSeen`의 주석에 있다.
          */
         const val ROTATION_RETURNS = 2
 
