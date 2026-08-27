@@ -43,7 +43,9 @@ class A11yCachePolicy(private val silenceSamples: Int = SILENCE_SAMPLES) {
      */
     fun onSample(pkg: String?): Boolean {
         if (pkg == null) return true
-        val next = (samplesSinceEvent[pkg] ?: 0) + 1
+        // 판정에 필요한 것은 "임계를 넘었는가"뿐이라 임계+1에서 자른다 — 몇 시간짜리 세션에서
+        // 카운터가 무한히 크는 것을 막는다(PR #445 리뷰).
+        val next = ((samplesSinceEvent[pkg] ?: 0) + 1).coerceAtMost(silenceSamples + 1)
         samplesSinceEvent[pkg] = next
         return next <= silenceSamples
     }

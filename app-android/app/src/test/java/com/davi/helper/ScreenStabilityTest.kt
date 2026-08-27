@@ -399,6 +399,27 @@ class GuidedSlotAnchorTest {
     }
 
     @Test
+    fun `picker의 짧은 선택 숫자는 앵커에서도 남는다`() {
+        // #117의 분 picker `00, 분`→`30, 분`은 줄에 붙은 장식이 아니라 **선택 상태 자체**다.
+        // 지우면 앵커가 안 움직이는데, 그 화면에서는 앵커가 유일하게 열리는 문이다(시계 앱은
+        // 클릭을 쏴 조용함 문이 닫히고, picker 스크롤은 CLICKED가 아니다). 「안 읽음 12」와는
+        // serializer가 검증한 editable + EditText + 짧은 숫자로 갈린다(PR #445 리뷰).
+        val picker = UiElement(
+            nodeId = "n2",
+            label = "00, 분",
+            role = "android.widget.EditText",
+            editable = true,
+        )
+
+        assertEquals("00, 분", ScreenSignature.stableLabelOf(picker))
+
+        val after = screen(picker.copy(label = "30, 분"))
+        assertTrue(
+            after.guidedSlotLabelChanged("n2", ScreenSignature.stableLabelOf(picker), SAME, SAME),
+        )
+    }
+
+    @Test
     fun `내용 축은 앵커와 달리 숫자를 남긴다`() {
         // 두 자리가 서로 다른 질문을 한다는 것이 #427의 결론이다. 한쪽으로 통일하면 둘 중
         // 하나가 깨진다 — 앵커로 통일하면 수량 변화가 안 보이고, 내용 축으로 통일하면 강조가 죽는다.
@@ -1387,6 +1408,48 @@ class ScreenStabilityTrackerTest {
         assertEquals(
             Decision.SEND,
             tracker.onSample(reordered, 2_100, hasLabeledElement = true, guidedTargetChanged = true),
+        )
+    }
+
+    @Test
+    fun `picker 스크롤이 앵커로 재질의를 연다`() {
+        // #117 관통 확인(PR #445 리뷰). 시계 앱은 진입 탭이 클릭을 쏴 조용함 문이 닫혀 있고
+        // (clickAxisDead = false), picker 스크롤은 CLICKED가 아니라 인과 게이트도 안 열린다 —
+        // 남는 문이 앵커뿐이므로, 앵커가 picker 숫자를 지우면 세 문이 다 닫혀 거짓 정체
+        // 문구가 뜬다. guidedTargetChanged를 가짜로 넣지 않고 **실제 판정 함수로 계산해**
+        // stableLabelOf의 picker 예외까지 한 사슬로 고정한다.
+        fun pickerScreen(minute: String) = Screen(
+            packageName = "com.sec.android.app.clockpackage",
+            elements = listOf(
+                UiElement(
+                    nodeId = "n2",
+                    label = "$minute, 분",
+                    role = "android.widget.EditText",
+                    editable = true,
+                ),
+            ),
+        )
+
+        val before = pickerScreen("00")
+        val sigBefore = ScreenSignature.of(before)
+        val frozen = ScreenSignature.stableLabelOf(before.elements.first())
+        tracker.onSample(sigBefore, 0, hasLabeledElement = true)
+        tracker.onSample(sigBefore, 700, hasLabeledElement = true)
+        tracker.markSent(sigBefore, 700)
+        tracker.markFinished()
+
+        val after = pickerScreen("30")
+        val sigAfter = ScreenSignature.of(after)
+        // label만 달라 구조는 같다 — 내용만의 변화라 게이트가 필요한 자리가 맞다.
+        assertEquals(sigBefore.structure, sigAfter.structure)
+        val moved = after.guidedSlotLabelChanged(
+            "n2", frozen, sigBefore.structure, sigAfter.structure,
+        )
+
+        tracker.onSample(sigAfter, 1_400, hasLabeledElement = true, guidedTargetChanged = moved)
+        assertEquals(
+            Decision.SEND,
+            tracker.onSample(sigAfter, 2_100, hasLabeledElement = true, guidedTargetChanged = moved),
         )
     }
 

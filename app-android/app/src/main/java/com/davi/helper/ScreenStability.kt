@@ -78,6 +78,12 @@ object ScreenSignature {
     }
 
     /**
+     * 앵커 대조에서만 지우는 숫자(#427). **내용 축은 이걸 쓰지 않는다** — 쓰면 수량 변화가
+     * 안 보여 이 이슈가 되살아난다.
+     */
+    private val ANCHOR_DIGITS = Regex("""\d+""")
+
+    /**
      * 안내 대상 슬롯의 label 대조(타깃 앵커, #380)용. **내용 축과 달리 숫자를 지운다**(#427).
      *
      * 두 자리가 서로 다른 질문을 한다. 내용 축은 "화면 상태가 바뀌었나"라서 장바구니 수량
@@ -91,14 +97,24 @@ object ScreenSignature {
      *
      * 내용 축에는 인과 게이트라는 방벽이 있지만 **앵커는 게이트를 우회한다** — 여기서는
      * 정규화가 아직 유일한 방벽이라 남긴다.
+     *
+     * **picker의 짧은 선택 숫자는 예외로 남긴다**(#117, PR #445 리뷰). 그 숫자는 줄에 붙은
+     * 장식이 아니라 **선택 상태 자체**라, 지우면 분 picker를 `00`→`30`으로 돌려도 앵커가 안
+     * 움직인다 — 그런데 그 화면에서는 앵커가 **유일하게 열리는 문**이다. 시계 앱은 진입 탭이
+     * 이미 클릭을 쏴 조용함 문이 닫혀 있고, picker 스크롤은 CLICKED가 아니라(#380이 SCROLLED를
+     * 뺐다) 인과 게이트도 안 열린다. 「안 읽음 12→13」과는 serializer가 검증한
+     * `editable + EditText + 짧은 숫자`로 갈린다 — 그쪽은 비편집 View의 긴 label이다.
      */
-    internal fun stableLabelOf(element: UiElement): String = ANCHOR_DIGITS.replace(element.label, "#")
-
-    /**
-     * 앵커 대조에서만 지우는 숫자(#427). **내용 축은 이걸 쓰지 않는다** — 쓰면 수량 변화가
-     * 안 보여 이 이슈가 되살아난다.
-     */
-    private val ANCHOR_DIGITS = Regex("""\d+""")
+    internal fun stableLabelOf(element: UiElement): String =
+        if (
+            element.editable &&
+            element.role.endsWith("EditText") &&
+            UiTreeSerializer.isShortNumericControlLabel(element.label)
+        ) {
+            element.label
+        } else {
+            ANCHOR_DIGITS.replace(element.label, "#")
+        }
 
     /** 미관측(`null`)과 `false`를 다른 글자로 남긴다. 둘을 같은 글자로 접으면 세 상태가 죽는다. */
     private fun state(value: Boolean?, on: Char, off: Char): Char = when (value) {
@@ -241,7 +257,10 @@ class ScreenStabilityTracker(
     /**
      * **조용하던 화면이 방금 움직였다**(#427 2단계). 클릭 이벤트를 안 쏘는 앱에서 인과를
      * 대신하는 표시다 — 자기발생 변화는 조용할 틈이 없다는 실측에 근거한다(아래 [QUIET_MS]).
-     * 내용이 바뀔 때마다 다시 판정하고, 요청이 나가면 소진한다.
+     * 내용이 바뀔 때마다 다시 판정한다. **요청이 나가도 소진하지 않는다**(PR #445 리뷰가
+     * 주석-코드 불일치로 잡았다) — 다음 샘플은 `contentOnly = false`라 이 값이 참이어도
+     * novel이 서지 않고, 다음 내용 변화가 어차피 다시 판정한다. 지우는 자리는 관측이 끊긴
+     * 곳뿐이다(빈 화면·[markResumed]·[reset]) — 그 구간의 정지는 조용함이 아니라서다.
      */
     private var quietChangeArmed = false
 
@@ -647,8 +666,11 @@ class ScreenStabilityTracker(
         lastInteractionMs = nowMs
         // 조작은 진행 신호다 — 앵커 상한을 다시 연다(그 뒤의 슬롯 이동은 사용자가 만든 것일
         // 수 있다). 상한이 열리는 자리는 여기와 [markSent]의 구조 전환 둘뿐이다.
+        //
+        // 조용함 예산은 여기서 건드리지 않는다(PR #445 리뷰). 이 함수를 부르는 클릭이 그
+        // package를 「클릭을 쏘는 앱」으로 만들어 조용함 문 자체가 닫히므로, 되돌려 봐야 읽는
+        // 곳이 없다.
         anchorRequeryUsed = false
-        quietColdOpens = 0
         // 사용자가 방금 움직였으면 화면은 "안정된 지 오래"가 아니다. 되감아서 [CONTENT_SETTLE_MS]
         // 동안 승격을 막는다 — 그 사이의 내용 변화는 사용자가 만드는 중일 수 있어(스크롤)
         // 홀드로 가라앉혀야 한다(#32). 억제를 이 자리에 두는 이유는 [onSample]의 주석에 있다.

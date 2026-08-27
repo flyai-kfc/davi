@@ -494,8 +494,9 @@ GitHub Pages로 띄웠다. **코드는 넣지 않는다.**
   않고 hint와 `supplementalDescription`을 label 후보로 쓴다(#112 경계 그대로, 후자는 #381).
   `NumberPicker`가 현재 시·분을 `EditText`로 노출하면
   보임·활성·조작 action·가까운 조정 가능 조상을 확인한 짧은 숫자 label만 예외로 보존한다.
-  시그니처 쪽 예외는 이제 없다 — 내용 축이 모든 숫자를 그대로 담으므로(#427) picker 스크롤도
-  일반 규칙으로 새 상태가 된다.
+  내용 축 쪽 예외는 이제 없다 — 내용 축이 모든 숫자를 그대로 담으므로(#427) picker 스크롤도
+  일반 규칙으로 새 상태가 된다. picker 스크롤 뒤 후속 안내를 다시 요청하는 것은 타깃 앵커다 —
+  앵커는 숫자를 지우되 이 선택값만 예외로 남긴다(#117, `app-android/CLAUDE.md` 「두 축」).
   규칙은 `server/app/masking.py`와 같고 `app/src/test/`의 Kotlin 단위 테스트로 고정한다.
 
 **관통에서 드러난 것 (다음 작업의 근거)**

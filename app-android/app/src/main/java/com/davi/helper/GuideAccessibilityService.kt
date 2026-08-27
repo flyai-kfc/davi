@@ -102,6 +102,13 @@ class GuideAccessibilityService : AccessibilityService() {
     /** 지금 캐시를 켜 둔 상태인가. 매 샘플 같은 값을 다시 넣지 않으려고 든다. */
     private var a11yCacheEnabled = true
 
+    /**
+     * 캐시 토글 실패를 이미 로그에 남겼는가. 거부·예외 시 [a11yCacheEnabled]를 일부러 안
+     * 갱신해 재시도를 살리는데(PR #445 리뷰), 그러면 같은 경고가 폴링마다(약 0.75초) 찍혀
+     * `logcat -s GuideSvc`(실기기 검증의 주 도구)가 묻힌다. 성공하면 다시 무장한다.
+     */
+    private var a11yCacheFailureLogged = false
+
     /** 직전 샘플에서 고른 활성 창의 영역. 화면 전체가 아니면 다이얼로그로 보고 안내창이 피한다(#38 4번). */
     private var activeWindowBounds: Rect? = null
 
@@ -576,12 +583,19 @@ class GuideAccessibilityService : AccessibilityService() {
             .onSuccess { applied ->
                 if (applied) {
                     a11yCacheEnabled = enabled
+                    a11yCacheFailureLogged = false
                     Log.i(TAG, "a11y cache=${if (enabled) "on" else "off"}")
-                } else {
+                } else if (!a11yCacheFailureLogged) {
+                    a11yCacheFailureLogged = true
                     Log.w(TAG, "a11y cache toggle rejected enabled=$enabled")
                 }
             }
-            .onFailure { Log.w(TAG, "a11y cache toggle failed", it) }
+            .onFailure {
+                if (!a11yCacheFailureLogged) {
+                    a11yCacheFailureLogged = true
+                    Log.w(TAG, "a11y cache toggle failed", it)
+                }
+            }
     }
 
     private fun scheduleSample(delayMs: Long) {
