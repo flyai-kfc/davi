@@ -12,12 +12,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import subprocess
 import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 from .judge import judge as run_judge
 from .judge import judge_contract
@@ -482,19 +485,24 @@ def load_env(path: Path | None = None) -> None:
     ``os.getenv``만 본다. **이 호출이 없으면 `.env.example`을 복사해도 아무 효과가 없고**,
     README가 안내하는 준비 절차가 성립하지 않는다.
 
-    **이미 있는 값은 덮지 않는다**(``override=False``) — 한 번만 다른 모델·게이트웨이로 돌려 볼
-    때 파일을 고쳤다 되돌리는 절차가 생기지 않게 한다. 파일이 없으면 조용히 넘어간다.
+    **이미 있는 값은 덮지 않는다** — 한 번만 다른 모델·게이트웨이로 돌려 볼 때 파일을 고쳤다
+    되돌리는 절차가 생기지 않게 한다. 파일이 없으면 조용히 넘어간다.
 
-    **import를 함수 안에 둔다** — `llm.py`가 `anthropic`에 쓰는 것과 같은 관례다. 이 폴더의
-    `requirements.txt`를 설치하는 CI 잡이 없어(실제 모델을 부르는 층은 CI 게이트가 아니다,
-    `../CLAUDE.md`) 최상단 import는 남의 스택 설치에 기대게 된다.
+    **빈 값은 올리지 않는다.** `.env.example`은 키 자리가 비어 있어, 복사만 하고 한쪽을 안 채우면
+    「키 없음」이 아니라 「빈 키」가 된다. **지금 소비자 중 빈 값에 의미를 두는 것은 없고**
+    (키는 명시적으로 막고, 모델·base_url·토큰은 `.strip() or <기본값>`이다), 그래서 올릴 이유가
+    없다 — 복사만 한 상태와 파일이 없는 상태가 같은 환경이 되는 쪽이 단순하다.
+
+    **`${VAR}` 보간에서는 파일 값이 이긴다** — `dotenv_values()`가 내부적으로 ``override=True``로
+    보간해서다(PR #477 리뷰 실측). 위 「이미 있는 값은 덮지 않는다」는 보간 결과에는 적용되지
+    않는다. 지금 `.env.example`에 보간이 없어 걸릴 자리가 없다.
 
     기본 경로를 인자 기본값으로 굳히지 않는 것은 테스트가 [ENV_FILE]을 갈아끼울 수 있게
     하려는 것이다.
     """
-    from dotenv import load_dotenv
-
-    load_dotenv(path or ENV_FILE, override=False)
+    for key, value in dotenv_values(path or ENV_FILE).items():
+        if value:
+            os.environ.setdefault(key, value)
 
 
 def main(argv: list[str] | None = None) -> int:

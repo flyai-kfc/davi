@@ -110,6 +110,7 @@ class ClaudeJudge:
     def __init__(
         self,
         *,
+        api_key: str | None = None,
         model: str | None = None,
         max_tokens: int = 8000,
         base_url: str | None = None,
@@ -125,6 +126,11 @@ class ClaudeJudge:
         self.base_url = (
             base_url or os.getenv("PINGPONG_JUDGE_BASE_URL", "")
         ).strip() or None
+        # `GeminiClient`와 같은 결로 여기서 닫는다. SDK는 빈 문자열을 부재로 접고
+        # (`api_key = os.environ.get(...) or None`) **호출 시점에** `TypeError`를 던지는데,
+        # `cmd_run`·`cmd_judge`는 `LlmError`만 잡으므로 raw 트레이스백이 뜬다.
+        if not (api_key or os.getenv("ANTHROPIC_API_KEY", "")).strip():
+            raise LlmError("ANTHROPIC_API_KEY가 없다. 평가자 LLM을 돌릴 수 없다.")
         self._client = anthropic.Anthropic(
             **({"base_url": self.base_url} if self.base_url else {})
         )

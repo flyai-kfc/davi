@@ -1033,7 +1033,8 @@ PINGPONG_TEST_ONLY_SHELL=파일값
         encoding="utf-8",
     )
     # `delenv`만 쓰면 원래 없던 변수를 복원 대상으로 기록하지 않아 세션에 남는다.
-    # `setenv`로 먼저 등록해 두고 지운다 — `override=False`는 빈 문자열도 "있는 값"으로 친다.
+    # `setenv`로 먼저 등록해 두고 지운다 — `setdefault`는 키가 있으면 값이 빈 문자열이어도
+    # 안 덮으므로, 남아 있으면 파일 값이 안 올라온다.
     monkeypatch.setenv("PINGPONG_TEST_ONLY_FILE", "자리")
     monkeypatch.delenv("PINGPONG_TEST_ONLY_FILE")
     monkeypatch.setenv("PINGPONG_TEST_ONLY_SHELL", "셸값")
@@ -1072,3 +1073,38 @@ def test_진입점이_env를_읽는다(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
 
     assert os.environ["PINGPONG_TEST_ONLY_ENTRY"] == "진입점"
+
+
+def test_env_파일의_빈_값은_올리지_않는다(tmp_path, monkeypatch):
+    """`.env.example`을 복사만 하고 안 채운 키가 「빈 키」가 되면 안 된다.
+
+    소비자 중 빈 값에 의미를 두는 것이 없으므로, 복사만 한 상태가 파일 없는 상태와 같은
+    환경이 되게 한다.
+    """
+    from pingpong_eval.cli import load_env
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PINGPONG_TEST_ONLY_EMPTY=", encoding="utf-8")
+    monkeypatch.setenv("PINGPONG_TEST_ONLY_EMPTY", "자리")
+    monkeypatch.delenv("PINGPONG_TEST_ONLY_EMPTY")
+
+    load_env(env_file)
+
+    assert "PINGPONG_TEST_ONLY_EMPTY" not in os.environ
+
+
+def test_평가자는_키가_없으면_LlmError로_닫는다(monkeypatch):
+    """SDK에 맡기면 raw 트레이스백이 뜬다 — `GeminiClient`와 같은 결로 여기서 닫는다.
+
+    SDK는 빈 문자열을 부재로 접고(`api_key = os.environ.get(...) or None`) **호출 시점에**
+    `TypeError`를 던지는데, `cmd_run`·`cmd_judge`는 `LlmError`만 잡는다.
+    """
+    from pingpong_eval.llm import ClaudeJudge, LlmError
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    with pytest.raises(LlmError):
+        ClaudeJudge()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
+    with pytest.raises(LlmError):
+        ClaudeJudge()
