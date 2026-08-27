@@ -7,6 +7,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 # 모노레포 형제인 server/를 가져오려면 sys.path를 먼저 조정해야 한다.
-"harness.py" = ["E402"]
-"judge.py" = ["E402"]
-"completion_ab.py" = ["E402"]
+"./harness.py" = ["E402"]
+"./judge.py" = ["E402"]
+"./completion_ab.py" = ["E402"]
