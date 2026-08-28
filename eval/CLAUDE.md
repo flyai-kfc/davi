@@ -78,7 +78,9 @@ Ruff 린트 규칙은 `pyproject.toml`에 둔다. 모노레포 형제 `server/`�
   `totpPin` 의미 표지는 앱이 `인증 코드 입력`으로 접고 값은 wire 전에 제외한다.
   `google_auth_password_input_filled.json`은 같은 인증 흐름의 `password=true` 입력값이
   `비밀번호 입력`으로 접히는 경계를 고정한다. 두 표본 모두 계정·페이지 문구는 일반 label로
-  치환했고 합성 입력값은 제출하지 않았다.
+  치환했고 합성 입력값은 제출하지 않았다. 이 정적 인증 fixture도 Android serializer 자체를
+  실행하지 않는다. fixture에 합성 값이 없다는 eval 단언은 저장 입력의 안전성만 지키며, 실제
+  값 제외 투영의 rollback은 앱 단위 테스트가 지킨다.
 - 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
   올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).

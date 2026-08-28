@@ -158,6 +158,14 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 `showing_hint_text=true`인 `EditText`다. 요일 7개는 `unchecked`, 공휴일 행과 스위치는
 `enabled=false`, 알람음 스위치는 `checked`로 관측된 상태도 함께 보존한다.
 
+이 fixture 4개를 수집한 SM-S921N은 #478·#490에서 Android 16 / One UI 8.x로 확인한
+SM-S921N과 **다른 물리 기기**다. 캡처 기기를 다시 지정해 확인한 공개 빌드 정보는 Android 15
+(SDK 35) / One UI 7.0 / `S921NKSS9BYG8`, 보안 패치 2025-08-01이다. serial·`device_id`는
+보존하지 않는다. 따라서 이 fixture의 29개 요소·`오전 editable=true`와 #490의 30개 요소·
+비-editable 관측은 같은 기기의 모순된 덤프가 아니라, 서로 다른 OS·물리 기기에서 얻은 별도
+접근성 관측으로 읽어야 한다. 어느 차이가 OS·앱 버전·수집 시점 중 무엇에서 비롯됐는지는
+추측하지 않는다.
+
 #462 이전 직렬화기는 숫자로 시작하지 않는 editable 값 `오전`을 NumberPicker 숫자 예외나
 hint/name 폴백 어느 쪽에도 보존하지 못해 n2 label을 빈 문자열로 전송했다. #462 이후의
 `label="오전"` 계약 형태를 이 picker fixture가 server/eval 경계에서 고정하고, Android 투영
@@ -186,9 +194,10 @@ wire 전에 제외하고 n3을 `label="인증 코드 입력"`으로 전송했다
 `label="비밀번호 입력"`으로 전송됐다. TOTP 표본과 마찬가지로 IME가 열린 상태였으며 계정·페이지
 문구와 합성 값은 fixture에 남기지 않았다.
 
-실기기 probe는 debug E2E 경계가 상세 화면 로그를 억제하므로 `GuideSvc`에는
-`e2e control=start` / `e2e control=stop`만 남았다. 대신 로컬 Stub 수신 경계에서 package,
-요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다.
+실기기 probe의 debug E2E 경계는 요소별 label·bounds 상세 로그만 억제한다. 비식별 집계인
+`event=screen_stable`은 이 게이트 밖에서 기록되지만, 이번 검증에서 보존한 원문 발췌는
+`e2e control=start` / `e2e control=stop` 두 종류다. 화면 계약은 로컬 Stub 수신 경계에서
+package, 요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다.
 
 ## 평가 계층
 
