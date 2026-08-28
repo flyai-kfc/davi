@@ -728,6 +728,61 @@ def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(tmp
     assert cli.main([*base, "--dry-run", "--allow-scenario-drift"]) == 0
 
 
+def test_judge는_옛_crlf_해시를_같은_시나리오로_받는다(tmp_path):
+    """Windows raw hash로 찍힌 옛 run도 실제 내용이 같으면 drift 우회 없이 채점한다."""
+
+    from pingpong_eval import cli
+
+    path = ROOT / DEFAULT_SCENARIOS
+    scenario = load_scenarios(path).scenarios[0]
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    run_dir = _make_run_dir(tmp_path, scenario, digest=legacy_crlf)
+
+    assert cli.main(["judge", str(run_dir), "--scenarios", str(path), "--dry-run"]) == 0
+
+
+def test_compare는_lf와_crlf_해시를_같은_입력으로_본다(scenarios, tmp_path):
+    from pingpong_eval import cli
+
+    path = ROOT / DEFAULT_SCENARIOS
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest=legacy_crlf,
+        name="baseline",
+        meta_overrides={**common, "채점시_시나리오해시": legacy_crlf},
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest=canonical,
+        name="candidate",
+        meta_overrides={**common, "채점시_시나리오해시": canonical},
+    )
+
+    assert (
+        cli.main(
+            [
+                "compare",
+                str(baseline),
+                str(candidate),
+                "--scenarios",
+                str(path),
+            ]
+        )
+        == 0
+    )
+
+
 def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch, tmp_path):
     """옛 judge가 남은 채로 meta만 현재 평가자로 갱신되면,
     이전 점수가 이번 채점 결과처럼 집계된다(리뷰 실측)."""
@@ -979,6 +1034,18 @@ def test_시나리오_해시는_내용이_바뀌면_달라진다(tmp_path):
     before = scenario_digest(path)
     path.write_text('{"version": 1, "시나리오": [] }', encoding="utf-8")
     assert scenario_digest(path) != before
+
+
+def test_시나리오_해시는_lf와_crlf가_같다(tmp_path):
+    from pingpong_eval.cli import scenario_digest
+
+    lf = tmp_path / "lf.json"
+    crlf = tmp_path / "crlf.json"
+    text = '{\n  "version": 1,\n  "시나리오": []\n}\n'
+    lf.write_bytes(text.encode("utf-8"))
+    crlf.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+
+    assert scenario_digest(lf) == scenario_digest(crlf)
 
 
 def test_채점_지시문은_모든_위반_축을_열거한다(scenarios):

@@ -62,6 +62,9 @@ python3 -m pingpong_eval compare runs/<기존> runs/<후보> --out runs/ab.md
 산출물은 `runs/<타임스탬프>/`(gitignore)에 `report.md` · `summary.json` · `transcripts.jsonl` · `meta.json`.
 `meta.json`에는 **시나리오 파일 해시**도 박힌다 — 나중에 `judge`를 돌릴 때 파일이 바뀌었으면
 멈춘다. 옛 대화를 새 정답으로 채점하면 수치는 멀쩡해 보이지만 비교할 수 없기 때문이다.
+해시는 UTF-8 텍스트의 줄바꿈을 LF로 정규화해 계산하므로 같은 JSON을 Windows CRLF로
+체크아웃해도 값이 같다. 이 계약 이전 run의 raw LF·CRLF 해시는 현재 `--scenarios` 내용의 두
+줄바꿈 판과 정확히 맞을 때만 같은 입력으로 인정한다. 실제 내용이 다르면 기존처럼 멈춘다.
 `meta.json`에 davi git sha와 두 모델 id가 박히므로, 프롬프트를 고친 뒤 같은 시나리오 파일로
 다시 돌리면 A/B가 된다. `compare`는 시나리오 해시·실행 id 목록·순서·seed·요청 상한 또는
 평가자 배치가 다르면 멈추고, #316 완료 조건인 **2호출 이내 ready율·goal 유효율·누락 정보
@@ -72,6 +75,8 @@ python3 -m pingpong_eval compare runs/<기존> runs/<후보> --out runs/ab.md
 두 값을 따로 보여 이 구조를 숨기지 않으며, 예전·새 형식의 요청 단위가 같다고 주장하지 않는다.
 시드를 생략해도 실행 시 실제 정수 seed를 한 번 생성해 meta에 남긴다. `compare`에서
 `--allow-scenario-drift`로 불일치를 알고 우회하면 stderr와 출력 Markdown 양쪽에 항목을 남긴다.
+기본 파일이 아닌 시나리오의 옛 CRLF/LF run을 비교할 때는 `compare --scenarios <파일>`로 그
+내용을 함께 지정한다.
 예전 run을 읽을 때도 코드 지표는 저장된 transcript에서 다시 계산한다. 다만 필드가
 생기기 전 run은 최초 누락 슬롯 키를 복원할 수 없으므로 누락 정보 환각률은 `-`로 남고,
 그 결과만 환각률 분모에서 개별로 빼고 보고서 셀에 `n`을 표시한다. 비교 가능한 결과가

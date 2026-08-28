@@ -36,7 +36,8 @@
 
 - 핑퐁: davi `e087529`(초기 후보) → `d907ab4`(C13의 짧은 `decision_basis` 출력
   계약 복원), 로컬 실제 모델 서버(OpenAI `gpt-5.6-luna`·reasoning `low`)
-- 조건: `handwritten-30.json`(해시 `f42eff4525ef912b`), seed 1, `max_requests=5`, 사용자
+- 조건: `handwritten-30.json`(줄바꿈 정규화 해시 `f42eff4525ef912b`), seed 1,
+  `max_requests=5`, 사용자
   `gemini-3.5-flash-lite`
 - `e087529`는 미채점, 최종 서버 커밋 `d907ab4`는 학교 게이트웨이의
   `claude-opus-5`(채점 계약 `v1:47d2414b7811`)로 30건 모두 채점했다. 1건 smoke 후
@@ -83,11 +84,18 @@ judge 판정이 흔들리는 1회 표본이므로 성능 개선을 주장하지 
 재확인했다. `h08`은 두 회 모두 약 이름을 되묻지 않고 사진으로 주의사항을 확인하는
 goal로 ready였다. `e04`는 두 회 모두 빠진 값을 질문 없이 음식점 선택 표현에 말아 넣었다.
 
+이 후보를 둘 근거는 잡음 아래 수치 개선이 아니라 #479의 실사용 관측이다. 한 질문이 한 화면인
+사용자 흐름에서 불필요한 질문·사용자가 모르는 값 재질문·필수 정보 누락은 각각 직접적인 실패라,
+첫 호출 규칙 블록이 약 3.3배 길어지는 입력 비용을 감수하고 경계를 명시했다. 비용·지연 효과는
+단계별 정책과 지연을 재는 #496에서 별도로 비교하며, 이번 1회 표본으로 성능 향상을 주장하지 않는다.
+
 ## 2026-08-25 · 현재 main 재측정 (seed 1, 30개 전부 채점)
 
 - 핑퐁: davi `c2ea606`, 로컬 실제 모델 서버(OpenAI `gpt-5.6-luna`·reasoning `low`)
-- 공통 조건: `handwritten-30.json`(해시 `f42eff4525ef912b`), seed 1, `max_requests=5`,
-  사용자 `gemini-3.5-flash-lite`, 평가자 `claude-opus-5` — #316 A/B와 같은 조건이다
+- 공통 조건: `handwritten-30.json`, seed 1, `max_requests=5`, 사용자
+  `gemini-3.5-flash-lite`, 평가자 `claude-opus-5` — #316 A/B와 같은 조건이다. 당시 Windows
+  `meta.json`에는 CRLF raw 해시 `e2bd7782a8d8206b`가 찍혔고, 저장소 LF 정본과 현재 정규화
+  해시는 `f42eff4525ef912b`다. 내용은 같으며 #497부터 두 줄바꿈 판을 같은 입력으로 판정한다.
 
 | 축 | #316 후보 `25c35c1` | 현재 main `c2ea606` |
 |---|---:|---:|
