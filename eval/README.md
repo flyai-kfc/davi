@@ -158,8 +158,9 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 `showing_hint_text=true`인 `EditText`다. 요일 7개는 `unchecked`, 공휴일 행과 스위치는
 `enabled=false`, 알람음 스위치는 `checked`로 관측된 상태도 함께 보존한다.
 
-이 fixture 4개를 수집한 SM-S921N은 #478·#490에서 Android 16 / One UI 8.x로 확인한
-SM-S921N과 **다른 물리 기기**다. 캡처 기기를 다시 지정해 확인한 공개 빌드 정보는 Android 15
+이 fixture 4개를 수집한 SM-S921N은 SPEC §3의 **개발용 공기계**이며,
+#478·#490에서 Android 16 / One UI 8.x로 확인한 SM-S921N과 **다른 물리 기기**다.
+캡처 기기를 다시 지정해 확인한 공개 빌드 정보는 Android 15
 (SDK 35) / One UI 7.0 / `S921NKSS9BYG8`, 보안 패치 2025-08-01이다. serial·`device_id`는
 보존하지 않는다. 따라서 이 fixture의 29개 요소·`오전 editable=true`와 #490의 30개 요소·
 비-editable 관측은 같은 기기의 모순된 덤프가 아니라, 서로 다른 OS·물리 기기에서 얻은 별도
