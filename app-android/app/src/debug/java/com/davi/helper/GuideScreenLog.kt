@@ -116,6 +116,7 @@ object GuideScreenLog {
         quietColdOpens: Int,
         quietOpens: Int,
         clickAxisDead: Boolean,
+        sendingBlocked: Boolean,
         cost: UiTreeSerializer.WalkCost,
     ) {
         // `capped`는 **앵커가 열려던 것을 상한이 막았다**는 뜻이다. 게이트가 열려 있으면
@@ -134,7 +135,12 @@ object GuideScreenLog {
                 "anchor=$anchor " +
                 "quiet=${quietMs}ms${if (quietArmed) "!" else ""}/$quietColdOpens+$quietOpens " +
                 "cad=${if (clickAxisDead) "y" else "n"} " +
-                "v=${cost.visits} cut=${cost.cuts}",
+                "v=${cost.visits} cut=${cost.cuts}" +
+                // 차단 구간을 눈에 남긴다(#456 팀 리뷰). `sendingBlocked`가 `SEND`를 `IDLE`로
+                // 바꾸므로, 이 플래그가 없으면 "확인 대기로 막힌 폴링"과 "정말 같은 화면이라
+                // IDLE"이 구분되지 않는다 — 이 줄을 만든 근거("IDLE이 침묵해서 화면이 안 바뀐
+                // 것과 우리가 못 본 것이 구분되지 않는다")가 그대로 되살아난다.
+                if (sendingBlocked) " blocked=confirm" else "",
         )
     }
 

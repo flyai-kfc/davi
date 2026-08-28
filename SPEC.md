@@ -48,12 +48,21 @@
 | 기기 | 성격 | 용도 |
 |---|---|---|
 | **SM-S918N** (Galaxy S23 Ultra, One UI 8.5) | 개인 기기 | HANDOFF의 모든 실측이 이 기기 기준이다. **개인 데이터가 있으므로 로그·픽스처 취급에 주의.** |
-| **SM-S921N** (Galaxy S24, Android 15 / One UI 7.0) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
+| **SM-S921N** (Galaxy S24, Android 16 / One UI 8.5) | 개발용 공기계 | 개인 데이터가 없다. **도그푸딩 전체 트리 로그 보존과 실패 픽스처 수집은 이쪽을 쓴다.** |
 
 **SM-S921N 버전 정정(2026-08-24):** 같은 실기기에서 `getprop ro.build.version.release=15`,
 `ro.build.version.oneui=70000`을 다시 읽었다. 2026-08-13의 Android 15 실기기 결과와도 일치한다.
 기존 문서·fixture의 Android 16 / One UI 8.x 표기는 이를 뒷받침하는 속성 기록 없이 같은 기기에
 붙어 있어 Android 15 / One UI 7.0으로 정정했다. 동작 관측의 날짜·내용·기기 모델은 바꾸지 않았다.
+
+**SM-S921N 재정정(2026-08-26):** 같은 기기가 이제 Android 16 / One UI 8.5를 보고한다.
+`adb -s <serial> shell getprop`으로 **기기를 지정해** 읽었다 — `ro.product.model=SM-S921N`,
+`ro.build.version.release=16`, `ro.build.version.sdk=36`, `ro.build.version.oneui=80500`,
+`ro.build.version.incremental=S921NKSSGDZG1`(빌드 2026-07-03). **위 2026-08-24 판독과 왜
+다른지는 확정하지 못했다** — 그 사이 OS 업데이트가 있었을 수도, 앞선 판독이 다른 기기를
+읽었을 수도 있다. 추측을 사실로 적지 않는다. 앞으로 이 표기를 고칠 때는 **시리얼을 지정해**
+읽고 그 명령을 함께 남긴다. 날짜 붙은 과거 실측 기록(`DEVICE-E2E-RESULTS.md`,
+`app-android/README.md`, `eval/README.md`의 fixture 값)은 그때의 관측이므로 바꾸지 않았다.
 
 둘 다 삼성·One UI라 **제조사 차이는 여전히 검증되지 않는다.** 다기기 매트릭스는 비목표 그대로다(§5-6).
 
@@ -400,9 +409,14 @@ SM-S921N, 같은 카카오톡 설정 화면에서 `up` → `down`). **계약을 
 화면·목표·세션 변경 또는 정상 응답 뒤의 새 추론은 새 UUID를 쓴다. UUID는 goal·label·화면 서명·
 `device_id`에서 파생하지 않고 프로세스 밖에 저장하지 않는다. 서버는 인증 범위+endpoint+UUID를
 key로 같은 검증 본문의 진행 중 작업을 하나로 합치고 성공 결과만 2분·최대 256개 재전송한다.
-next-step 본문의 동일성은 앱 화면 구조 축과 맞추고 label·window title·node id·bounds·스크롤 위치
-메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
+next-step 본문의 동일성은 앱 화면 구조 축을 기준으로 삼고 label·window title·node id·bounds·스크롤
+위치 메타와 마지막 step의 앱 관측값(`screen_changed`·`performed`·`content_signature`)은 제외한다.
 내용·과도기 값만 달라진 정상 network retry를 본문 충돌로 오판하지 않기 위해서다.
+**두 축은 `role`에서 갈린다**(#456) — 앱은 구조 축에서 `role`을 뺐고 서버 identity에는 남아 있다.
+그래서 캐러셀처럼 소재마다 위젯 종류가 바뀌는 화면에서는 재전송 사이에 회전이 끼면 앱이 같은
+논리 ID를 유지한 채 다른 본문을 보내 **409로 닫힐 수 있다** — 그 ID의 진행 중 작업이나 성공
+캐시가 서버에 남아 있을 때다. 실패는 저장하지 않으므로 429·502 뒤 재전송은 해당 없다.
+다음 요청이 새 ID로 자가 복구하지만 왕복 하나를 잃는다. 서버 identity에서도 뺄지는 계약 결정이라 별도로 정한다.
 같은 key의 다른 본문은 409로 닫고 실패 결과는 저장하지 않는다. 공급자 HTTP는 호출당 최대 20초,
 논리 작업은 복구 호출을 모두 합쳐 최대 40초이고 Android 추론 호출 전체 상한은 45초다. 연결이
 끊겨도 공유 작업은 즉시 취소하지 않고 hard deadline까지만 계속해 재전송이 합류하게 하며, deadline

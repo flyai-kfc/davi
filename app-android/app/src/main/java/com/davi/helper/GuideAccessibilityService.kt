@@ -72,7 +72,9 @@ class GuideAccessibilityService : AccessibilityService() {
      * 구조가 같은 채 목록이 재정렬되면(새 메시지로 순서가 밀리는 대화방 목록) 강조가 엉뚱한
      * 줄을 가리키게 되는데, 그 순간 이 슬롯의 label이 달라지므로 조작 이벤트 없이도 재질의를
      * 연다. node id는 직렬화 순서 값이라 **구조가 같은 동안만** 같은 슬롯을 뜻한다 — 앵커를
-     * 쓰는 자리도 정확히 그 경우뿐이다(구조가 다르면 어차피 구조 축이 재질의를 연다).
+     * 쓰는 자리도 정확히 그 경우뿐이다 — 구조가 다르면 구조 축이 재질의를 연다.
+     * **회전 복귀로 접히는 경우만 예외다**(#456): 그때는 재질의가 안 나가므로, 안내가
+     * 폐기되면 걸쇠를 풀어 다시 나가게 한다.
      */
     private var guidedTargetNodeId: String? = null
     private var guidedTargetStableLabel: String? = null
@@ -793,6 +795,12 @@ class GuideAccessibilityService : AccessibilityService() {
             now,
             hasLabeledElement,
             guidedTargetChanged = targetSlotChanged,
+            // 확인 대기 중에는 묻지 않는다(#139). **판정 단계에서 막는다**(#456) — 아래에서
+            // `SEND`를 받아 되돌아서면 [ScreenStabilityTracker.markSent]가 안 불려 판정이
+            // 영영 가라앉지 않는다. 폴링은 그대로 돈다(`IDLE`도 `scheduleSample`로 이어진다) —
+            // 위 redisplay는 `when(decision)`보다 앞이라 옛 조기 return에서도 지나갔고,
+            // 이 변경이 지키는 것은 그 뒤의 재예약뿐이다.
+            sendingBlocked = GuideSession.awaitingConfirm,
             clickAxisDead = clickAxisDead,
         )
         // 계측. IDLE이 침묵해서 "화면이 안 바뀐 것"과 "우리가 못 본 것"이 구분되지 않는다.
@@ -815,6 +823,7 @@ class GuideAccessibilityService : AccessibilityService() {
             quiet.coldOpens,
             quiet.opens,
             clickAxisDead,
+            GuideSession.awaitingConfirm,
             result.cost,
         )
         lastDecision = decision
@@ -843,9 +852,22 @@ class GuideAccessibilityService : AccessibilityService() {
         // #32의 덜 그려진 트리 한 번에 보존 안내를 잃는다(4차 리뷰 P1, PR #352 재리뷰).
         when (val redisplay = display.redisplay(signature.structure, decision.isStableForGuideRedisplay())) {
             GuideDisplayState.RedisplayResult.Unchanged -> Unit
+            GuideDisplayState.RedisplayResult.Discarded -> {
+                // 폐기했으면 이 화면에 보여 줄 것이 없다. 회전으로 접혀 있으면 재질의도 안
+                // 나가 안내가 영영 오지 않으므로, 걸쇠를 풀어 다시 묻게 한다(#456).
+                Log.i(TAG, "guide discarded, rotation forgotten")
+                stability.forgetRotation()
+            }
             GuideDisplayState.RedisplayResult.Clear -> {
                 Log.i(TAG, "clear unreadable guide")
                 overlay?.clear()
+                // 이 갈래도 보존 안내를 **폐기**한다(다른 화면이면 `reset()`). 접힌 화면에서
+                // 타면 안내는 사라졌는데 재질의가 안 나가 `Discarded`와 같은 침묵이 된다
+                // (#456 3차 리뷰 P2). 보존분이 없어 폐기가 아닌 경우에 걸쇠를 푸는 것도
+                // 손해가 크지 않다 — 다만 **한 번이 아니라 여러 번**이다(#456 팀 리뷰):
+                // `forgetRotation()`이 방문 이력까지 비워 전이 카운터가 0부터 다시 세므로,
+                // A/B 회전이 다시 접히려면 `send` 셋을 지나야 한다.
+                stability.forgetRotation()
             }
             is GuideDisplayState.RedisplayResult.Show -> {
                 Log.i(TAG, "redisplay guide")
@@ -892,12 +914,9 @@ class GuideAccessibilityService : AccessibilityService() {
             }
 
             ScreenStabilityTracker.Decision.SEND -> {
-                // 확인 대기 중에는 묻지 않는다(#139). 폴링은 그대로 돌아야 위 redisplay가
-                // 사라진 확인 화면을 되살릴 수 있어서, 멈추는 것은 요청뿐이다.
-                if (GuideSession.awaitingConfirm) {
-                    scheduleSample(POLL_MS)
-                    return
-                }
+                // 확인 대기(#139)는 여기서 걸러지지 않는다 — `sendingBlocked`로 판정 단계에서
+                // 막아 `IDLE`로 온다(#456). 여기에 갈래를 되살리지 말 것: 요청만 막고 판정을
+                // 그대로 두면 `sentSignature`가 안 갱신돼 `SEND`가 무한 반복된다.
                 if (lastLoggedScreenSignature != signature) {
                     lastLoggedScreenSignature = signature
                     GuideTelemetry.screenStable(result)

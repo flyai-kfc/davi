@@ -80,6 +80,17 @@ class GuideDisplayState {
 
         data object Clear : RedisplayResult
 
+        /**
+         * 다른 화면이라 안내를 **폐기했다**(#456). 그리기로는 [Unchanged]와 같지만 —
+         * 지워진 안내를 지웠으니 화면에 할 일이 없다 — 호출자에게는 다른 뜻이다.
+         *
+         * 폐기의 근거가 "그 화면의 새 요청은 어차피 나간다"인데, 회전으로 접힌 화면에서는
+         * 그 요청이 나가지 않는다. 둘이 겹치면 **안내가 영영 사라진다** — 문구도 강조도 없이,
+         * 정체 문구조차 `guide == null`이라 안 뜬다. 그래서 폐기를 신호로 올려 호출자가
+         * 회전 걸쇠를 푼다.
+         */
+        data object Discarded : RedisplayResult
+
         data class Show(val content: Content) : RedisplayResult
     }
 
@@ -468,6 +479,11 @@ class GuideDisplayState {
      * 회복 경로다(PR #63 리뷰 P1). **다른 화면이면 폐기한다** — 되살리면 이전 화면의 안내가
      * 새 화면 위에 그려지고, 그 화면의 새 요청은 어차피 나간다(2차 리뷰 P1).
      *
+     * **그 "어차피 나간다"가 항상 참은 아니다**(#456) — 회전으로 접힌 화면에서는 재질의가
+     * 나가지 않는다. 그래서 폐기를 [RedisplayResult.Discarded]로 알리고, 호출자가 걸쇠를
+     * 풀어 다시 참으로 만든다. 이 파일에서 판정을 바꾸지 않는 이유는 폐기 규칙 자체는
+     * 옳아서다 — 고쳐야 할 것은 그 뒤에 요청이 나가는가다.
+     *
      * **확인 화면은 그 폐기에서 빠진다**(GD-3·GD-4 둘 다). 폐기 규칙이 막으려는 것은 *조작*
      * 안내가 엉뚱한 화면을 가리키는 것인데, 확인 질문에는 가리킬 대상이 없고([Content.bounds]가
      * null) 문구도 화면과 무관하다. 화면에 묶으면 사용자가 알림창을 잠깐 내리거나
@@ -507,7 +523,7 @@ class GuideDisplayState {
         if (visible) return RedisplayResult.Unchanged
         if (current.confirm == null && guideSignature != currentSignature) {
             reset()
-            return RedisplayResult.Unchanged
+            return RedisplayResult.Discarded
         }
         markVisible()
         return RedisplayResult.Show(current)

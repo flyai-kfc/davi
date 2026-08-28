@@ -324,6 +324,32 @@ class ScreenSignatureTest {
     }
 
     @Test
+    fun `요소 종류만 다른 화면은 구조가 같다`() {
+        // 광고 캐러샐이 같은 슬롯의 위젯 종류를 소재마다 바꾼다(#456) — 이미지 소재는
+        // ImageView, 텍스트 조합 소재는 View다. 2026-08-25 배민 홈 실측에서 무조작 90초
+        // 요청 16회의 구조 차이가 전부 이것이었다.
+        val imageCreative = screen(
+            UiElement(nodeId = "n1", label = "치킨 반값 쿠폰", role = "ImageView", clickable = true),
+            UiElement(nodeId = "n2", label = "주문하기", role = "Button", clickable = true),
+        )
+        val textCreative = screen(
+            UiElement(nodeId = "n1", label = "치킨 반값 쿠폰", role = "View", clickable = true),
+            UiElement(nodeId = "n2", label = "주문하기", role = "Button", clickable = true),
+        )
+
+        assertEquals(ScreenSignature.of(imageCreative).structure, ScreenSignature.of(textCreative).structure)
+    }
+
+    @Test
+    fun `행동 상태는 role을 빼도 구조 축에 남는다`() {
+        // role을 뺀 근거가 "행동 상태와 중복"이라 그 중복분이 실제로 남는지 못 박는다(#456).
+        val plain = screen(UiElement(nodeId = "n1", label = "다음", role = "View"))
+        val tappable = screen(UiElement(nodeId = "n1", label = "다음", role = "View", clickable = true))
+
+        assertNotEquals(ScreenSignature.of(plain).structure, ScreenSignature.of(tappable).structure)
+    }
+
+    @Test
     fun `행동 상태 변화는 구조 축에 나타난다`() {
         // 토글·활성화·입력 채움은 안내를 무효화하는 변화라 게이트 없이 재질의를 열어야 한다(#271·#380).
         val off = screen(
@@ -571,6 +597,283 @@ class ScreenStabilityTrackerTest {
         tracker.onSample(sig("a"), 0, hasLabeledElement = true)
 
         assertEquals(Decision.SEND, tracker.onSample(sig("a"), 100, hasLabeledElement = true))
+    }
+
+    /** 홀드를 통과시켜 [structure] 화면 하나를 실제로 보낸다. 회전 시나리오의 반복 부분이다. */
+    private fun send(structure: String, atMs: Long): Decision {
+        tracker.onSample(sig(structure), atMs, hasLabeledElement = true)
+        val decision = tracker.onSample(sig(structure), atMs + 100, hasLabeledElement = true)
+        if (decision == Decision.SEND) {
+            tracker.markSent(sig(structure), atMs + 100)
+            tracker.markFinished()
+        }
+        return decision
+    }
+
+    @Test
+    fun `회전이 반복되면 되돌아온 구조를 접는다`() {
+        // 광고 캐러샐이 구조 축을 흔드는 경우(#456). role 제거가 오늘의 소재 조합을 끊지만
+        // 요소 수·obscured로도 같은 폭주가 나므로 축과 무관한 받침이 필요하다.
+        assertEquals(Decision.SEND, send("a", 0))
+        assertEquals(Decision.SEND, send("b", 1_000))
+        assertEquals(Decision.SEND, send("a", 2_000))
+
+        // 같은 전이(a→b)의 두 번째다 — 여기서 회전으로 판정한다. 화면당 3회에서 멈춘다.
+        assertEquals(Decision.IDLE, send("b", 3_000))
+        // 다음 바퀴도 계속 접힌다. `a`는 그 시점 `sentSignature`와 같아 회전 갈래를 안 타므로
+        // 여기서 단언하지 않는다 — 접기가 깨져도 통과하는 줄이 된다.
+        assertNotEquals(Decision.SEND, send("b", 5_000))
+    }
+
+    @Test
+    fun `회전이 이어지는 동안에는 접기가 풀리지 않는다`() {
+        // 접히면 markSent가 안 불려 이력을 갱신하는 것이 아무것도 없다. 접은 방문을 적지
+        // 않으면 창이 만료되며 ROTATION_WINDOW_MS마다 접기가 재무장한다 — 2026-08-26 실기기
+        // 실측에서 152초에 요청 21회, 4회 묶음의 간격이 30.2~30.7초였다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+
+        // 창(30초)을 여러 번 넘겨 돌린다. 한 번이라도 SEND가 나오면 재무장한 것이다.
+        // 성질은 "요청이 나가지 않는다"다. 접힌 화면은 7초에 STUCK으로 한 번 떨어지므로
+        // IDLE로 못 박으면 정체 알림이 정상 발화한 것을 실패로 읽는다.
+        var at = 20_000L
+        repeat(24) { turn ->
+            assertNotEquals(
+                "회전 ${turn + 1}바퀴째에 접기가 풀렸다",
+                Decision.SEND,
+                send(if (turn % 2 == 0) "a" else "b", at),
+            )
+            at += 5_000
+        }
+    }
+
+    @Test
+    fun `회전을 떠나면 이력을 비우고 돌아왔을 때 다시 묻는다`() {
+        // 접은 방문을 적는 것만으로는 회전 화면을 떠났다 돌아왔을 때 영구히 접힌다 —
+        // 재무장보다 나쁜 실패다. 회전에 없던 구조를 실제로 물었으면 떠난 것으로 본다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
+
+        assertEquals(Decision.SEND, send("다른화면", 25_000))
+
+        assertEquals(Decision.SEND, send("a", 30_000))
+    }
+
+    @Test
+    fun `조작이 관측되면 회전 이력을 비운다`() {
+        // 인과 창(5초)만으로는 이력에 남은 옛 왕복이 그 뒤의 정상 복귀를 접는다.
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
+        tracker.markInteraction(21_000)
+
+        // 인과 창이 닫힌 뒤에도 보낸다 — 이력이 비었기 때문이지 조작 창 때문이 아니다.
+        // 접힌 동안 `sentSignature`가 a에 머물렀으므로 전이가 되려면 b로 가야 한다.
+        assertEquals(Decision.SEND, send("b", 27_000))
+    }
+
+    @Test
+    fun `같은 화면을 다시 물은 것은 복귀로 세지 않는다`() {
+        // 실패 재시도·눌림 확인 재질의·앵커 재질의는 화면을 옮기지 않은 채 markSent를 다시
+        // 부른다(#456 리뷰 P1). 그대로 세면 이력에 두 줄이 남아 **첫 복귀가 두 번째로
+        // 보이고**, 뒤로 가기를 접지 않겠다는 계약이 깨진다.
+        assertEquals(Decision.SEND, send("목록", 0))
+        tracker.markFailed(200)
+        assertEquals(Decision.SEND, send("목록", 3_000))
+        assertEquals(Decision.SEND, send("상세", 4_000))
+
+        assertEquals(Decision.SEND, send("목록", 5_000))
+    }
+
+    @Test
+    fun `같은 화면 재질의가 섞여도 회전은 접는다`() {
+        // 위 중복 제거가 회전 감지 자체를 죽이지 않는지 반대편에서 못 박는다.
+        // **재질의를 실제로 재현한다** — markFailed가 sentSignature를 비워야 같은 구조가
+        // 다시 novel이 되고 markSent가 두 번 불린다. 그냥 같은 화면을 또 넣으면 novel=false라
+        // 재질의가 일어나지 않아 첫 접기 테스트와 같은 것이 된다(#456 2차 리뷰 P3).
+        assertEquals(Decision.SEND, send("a", 0))
+        tracker.markFailed(200)
+        assertEquals(Decision.SEND, send("a", 3_000))
+        assertEquals(Decision.SEND, send("b", 4_000))
+        assertEquals(Decision.SEND, send("a", 5_000))
+
+        // 같은 전이(a→b)의 두 번째. 중간의 재질의가 이력에 두 줄로 남았다면 여기가 아니라
+        // 더 앞에서 접혔을 것이다.
+        assertEquals(Decision.IDLE, send("b", 6_000))
+    }
+
+    @Test
+    fun `접힘이 길어진 뒤의 재질의를 떠남으로 읽지 않는다`() {
+        // 접히는 동안 방문 기록은 창 밖으로 늙는다. 그때 회전 구성원을 다시 묻는 것(실패
+        // 재시도·완료 확인 ×가 sentSignature를 비운 뒤의 첫 요청)을 "떠남"으로 읽으면
+        // 걸쇠가 통째로 풀려 창 만료 재무장과 같은 폭주가 돌아온다(#456 2차 리뷰 P2).
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
+
+        // 창(30초)을 넘겨 방문 기록을 비운 뒤 회전 구성원을 다시 묻게 만든다.
+        tracker.markFailed(60_000)
+        assertEquals(Decision.SEND, send("a", 63_000))
+
+        // 걸쇠가 살아 있으면 회전 구성원은 **첫 복귀에서 바로** 접힌다. 풀렸다면 여기서
+        // 묶음이 되살아난다. 뒤에 `a`를 한 줄 더 두지 않는 이유는 그 시점의
+        // `sentSignature`가 `a`라 걸쇠와 무관하게 SEND가 안 나오기 때문이다 — 통과만 하는
+        // 단언이 된다.
+        assertEquals(Decision.IDLE, send("b", 68_000))
+    }
+
+    @Test
+    fun `안내가 폐기되면 회전을 잊고 그 화면을 다시 묻는다`() {
+        // redisplay의 폐기 근거가 "그 화면의 새 요청은 어차피 나간다"인데 접힌 화면에서는
+        // 안 나간다. 겹치면 안내가 영영 사라진다(#456 2차 리뷰 P1).
+        send("a", 0)
+        send("b", 5_000)
+        send("a", 10_000)
+        // 같은 전이(a→b)의 두 번째다 — 여기서 접힌다.
+        assertEquals(Decision.IDLE, send("b", 15_000))
+
+        tracker.forgetRotation()
+
+        // 접힌 동안 `sentSignature`가 a에 머물렀으므로 전이가 되려면 b로 가야 한다.
+        assertEquals(Decision.SEND, send("b", 21_000))
+    }
+
+    @Test
+    fun `상세를 번갈아 열어 본 목록 복귀는 접지 않는다`() {
+        // `목록→상세1→목록→상세2→목록`(#456 팀 재리뷰 P1). 구조만 세면 마지막 복귀에서
+        // 목록 방문이 2가 되어 회전으로 접히고, 클릭을 못 받는 앱에서는 그 뒤 목록 안내가
+        // 세션 내내 사라진다. 전이쌍으로 세면 `상세2→목록`은 처음이라 갈린다.
+        //
+        // **두 상세의 구조가 다를 때의 이야기다.** 구조 축은 label과 role을 빼므로 두 상세가
+        // 같은 구조로 접힐 수 있고, 그러면 실제 열은 `목록↔상세` 왕복이라 회전과 구분되지
+        // 않는다 — 그건 이 기능이 처음부터 수용한 모호함이다.
+        assertEquals(Decision.SEND, send("목록", 0))
+        assertEquals(Decision.SEND, send("상세1", 1_000))
+        assertEquals(Decision.SEND, send("목록", 2_000))
+        assertEquals(Decision.SEND, send("상세2", 3_000))
+
+        assertEquals(Decision.SEND, send("목록", 4_000))
+    }
+
+    @Test
+    fun `구조가 셋 도는 회전도 접힌다`() {
+        // 떠남 판정을 쌍 소속만으로 하면 걸쇠가 매 바퀴 지워져 영영 수렴하지 않는다 —
+        // 접히는 동안 sentSignature가 멈춰 있어 아직 안 걸린 구성원으로 가는 전이가 새 쌍이
+        // 되고, 그 요청이 「어느 쌍에도 없는 구조」로 읽히기 때문이다. 최근 방문이 그것을 막는다.
+        // 전이쌍이 셋(a→b·b→c·c→a)이라 각각 두 번째가 서야 다 접힌다 — 구조 둘일 때보다
+        // 늦게 수렴한다. 성질은 「멎는다」이지 「몇 회에 멎는다」가 아니다.
+        var at = 0L
+        val order = listOf("a", "b", "c")
+        val decisions = mutableListOf<Decision>()
+        repeat(15) { turn ->
+            decisions += send(order[turn % 3], at)
+            at += 1_000
+        }
+
+        assertEquals(
+            "구조 셋 회전이 수렴하지 않았다: $decisions",
+            0,
+            decisions.takeLast(4).count { it == Decision.SEND },
+        )
+    }
+
+    @Test
+    fun `회전 밖 화면은 걸쇠에 딸려 들어가지 않는다`() {
+        // 걸쇠가 구조가 아니라 쌍이라, 회전으로 접힌 뒤 밖으로 나갔다 돌아와도 그 화면이
+        // 회전 구성원으로 오인되지 않는다.
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        assertEquals(Decision.IDLE, send("b", 3_000))
+
+        assertEquals(Decision.SEND, send("바깥", 4_000))
+        assertEquals(Decision.SEND, send("a", 5_000))
+    }
+
+    @Test
+    fun `한 번 되돌아온 것은 뒤로 가기와 구분되지 않아 보낸다`() {
+        // A→B→A까지는 회전과 복귀가 같은 열이다(#456). 여기서 접으면 뒤로 가서 돌아온 화면의
+        // 안내가 안 나오고, 클릭을 안 쏘는 앱에서는 인과 게이트도 그것을 못 살린다(#394).
+        assertEquals(Decision.SEND, send("목록", 0))
+        assertEquals(Decision.SEND, send("상세", 1_000))
+
+        assertEquals(Decision.SEND, send("목록", 2_000))
+    }
+
+    @Test
+    fun `창을 벗어난 이력은 회전으로 세지 않는다`() {
+        // **세기가 창을 벗어나는지만 본다.** 접힌 뒤를 보면 걸쇠가 잡고 있어(설계대로 만료가
+        // 없다) 창의 효과가 안 드러난다 — 그래서 접기 직전까지만 만들고 창을 넘긴다.
+        val window = ScreenStabilityTracker.ROTATION_WINDOW_MS
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+
+        // 창 안이라면 같은 전이(a→b)의 두 번째라 접혔을 자리다.
+        assertEquals(Decision.SEND, send("b", window + 4_000))
+    }
+
+    @Test
+    fun `회전으로 접힌 뒤에도 정체 알림은 뜬다`() {
+        // 접기가 침묵으로 끝나면 안 된다. 접힌 화면은 STUCK 분기로 내려가 사용자에게 알린다(#39).
+        send("a", 0)
+        send("b", 1_000)
+        send("a", 2_000)
+        send("b", 3_000)
+        assertEquals(Decision.IDLE, send("a", 4_000))
+
+        // 홀드는 이미 차 있다 — 접힌 화면을 계속 보고 있었으므로 다음 샘플이 곧바로 판정된다.
+        // 기준 시각은 마지막으로 **실제로 물어본** 때(3_100)다.
+        val stuckAt = 3_100 + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.STUCK, tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `요청이 막힌 동안에는 SEND 대신 IDLE로 가라앉는다`() {
+        // 중지 확인 대기(#139)처럼 호출자가 요청을 막는 구간. 여기서 SEND를 내면 markSent가
+        // 안 불려 판정이 영영 novel로 남고 폴링 주기마다 SEND가 반복된다(#456 실측 7분 30초).
+        tracker.onSample(sig("a"), 0, hasLabeledElement = true, sendingBlocked = true)
+
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(sig("a"), 100, hasLabeledElement = true, sendingBlocked = true),
+        )
+        assertEquals(
+            Decision.IDLE,
+            tracker.onSample(sig("a"), 800, hasLabeledElement = true, sendingBlocked = true),
+        )
+    }
+
+    @Test
+    fun `요청이 막혀도 정체 판정은 삼키지 않는다`() {
+        // 차단은 novel 갈래에서만 받는다. **호출자가 확인 대기 중 STUCK 문구를 띄우지 않는
+        // 것과는 별개다** — 여기서 막으면 판정 자체가 없어져, 차단이 풀린 뒤 정체를 알릴
+        // 근거가 추적기에 남지 않는다. 대기 중 stuckReported가 소진되는 것은 이 변경 이전과
+        // 같고 이 PR의 범위가 아니다.
+        send("a", 0)
+        val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
+
+        assertEquals(
+            Decision.STUCK,
+            tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true, sendingBlocked = true),
+        )
+    }
+
+    @Test
+    fun `요청 차단이 풀리면 그 화면을 다시 묻는다`() {
+        // 막는 동안 보낸 셈 치면 안 된다 — 「계속 볼래요」로 돌아온 사용자가 안내를 못 받는다.
+        tracker.onSample(sig("a"), 0, hasLabeledElement = true, sendingBlocked = true)
+        tracker.onSample(sig("a"), 100, hasLabeledElement = true, sendingBlocked = true)
+
+        assertEquals(Decision.SEND, tracker.onSample(sig("a"), 200, hasLabeledElement = true))
     }
 
     @Test
