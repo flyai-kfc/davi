@@ -916,7 +916,7 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
-    fun `요청 대기 중에는 정체를 막고 행동 안내 표시가 없으면 전송 시각을 유지한다`() {
+    fun `요청 대기 중에는 정체를 막고 표시 기준 갱신이 없으면 전송 시각을 유지한다`() {
         // 느린 응답과 멈춘 화면은 다르다. 기다리는 동안 "화면이 그대로예요"라고 말하면 헷갈린다.
         tracker.onSample(sig("a"), 0, hasLabeledElement = true)
         tracker.onSample(sig("a"), 100, hasLabeledElement = true)
@@ -927,7 +927,7 @@ class ScreenStabilityTrackerTest {
 
         tracker.markFinished()
 
-        // 완료·오류·확인·백오프처럼 새 행동 안내를 표시하지 않은 응답은
+        // 완료 문구·확인 대기처럼 실패 처리 없이 새 행동 안내도 표시하지 않은 응답은
         // markActionGuideDisplayed를 부르지 않으므로 전송 시각 기준을 그대로 쓴다(#494).
         assertEquals(Decision.STUCK, tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
     }
