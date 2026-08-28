@@ -85,7 +85,8 @@ class GuideAccessibilityService : AccessibilityService() {
 
     /**
      * 직전 샘플의 화면 package(#380). 인과 게이트의 귀속 기준이다 — 이 package에서 난
-     * 클릭만 [ScreenStabilityTracker.markInteraction]으로 넘긴다. 우리 오버레이의
+     * 인과 이벤트([isCausalEvent])만 [ScreenStabilityTracker.markInteraction]으로 넘긴다.
+     * 우리 오버레이의
      * 중지 칩과 IME 키 클릭이 게이트를 여는 것을 막는다([guidedScreenPackage]와 같은 이유).
      * 응답이 아직 없는 화면에서도 게이트가 서도록 응답이 아니라 샘플에서 채운다.
      */
@@ -529,12 +530,24 @@ class GuideAccessibilityService : AccessibilityService() {
         // 기기 조작이 통째로 막혔다(2026-08-24 SM-S921N 실측: `dumpsys input`의
         // `InputFilterEnabled: true`, 서비스는 down/move/up을 받는데 앱은 아무 반응 없음).
         // 되살리려면 필터가 이벤트를 통과시키는 방법부터 확인해야 한다 — #394.
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+        if (isCausalEvent(event.eventType)) {
             val pkg = event.packageName?.toString()
             if (pkg != null && pkg == currentScreenPackage) {
-                packagesWithClicks.add(pkg)
                 stability.markInteraction(stabilityNowMs())
+                // **[packagesWithClicks] 적립은 CLICKED만 한다.** 그 집합이 답하는 질문은
+                // "이 앱에 클릭 축이 있는가"이고, 그 답으로 여닫는 것이 **클릭 축이 죽은 앱을
+                // 위한** 조용함 문이다. `VIEW_SELECTED`는 picker·탭 전환에서만 와서 일반 탭의
+                // 대용이 못 되므로, 그것으로 적립하면 선택만 관측된 앱에서 근거 없이 문이
+                // 닫힌다 — 이 변경이 여는 것을 도로 막는 셈이다.
+                if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                    packagesWithClicks.add(pkg)
+                }
             }
+        }
+        // **눌림 귀속은 CLICKED만이다**(#238·#319). `VIEW_SELECTED`의 `source`는 눌린 값
+        // 버튼이 아니라 picker 쪽이라, 넣으면 시킨 대로 누른 사용자가 `OFF_TARGET`으로
+        // 적힌다 — 게이트를 여는 것과 "무엇을 눌렀나"를 적는 것은 다른 질문이다.
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             onTargetPressed(event)
         }
         scheduleSample(SETTLE_MS)
@@ -568,7 +581,12 @@ class GuideAccessibilityService : AccessibilityService() {
     private fun resumeAfterScreenOn() {
         if (!screenOff) return
         screenOff = false
-        stability.markResumed(stabilityNowMs(), requery = droppedWhileScreenOff)
+        // 화면 꺼짐은 사용자가 폰을 덮었다 다시 여는 세션 경계라 조용함 예산도 비운다(#481).
+        stability.markResumed(
+            stabilityNowMs(),
+            requery = droppedWhileScreenOff,
+            clearQuietBudget = true,
+        )
         val requeried = droppedWhileScreenOff
         droppedWhileScreenOff = false
         // 읽는 중 판정은 첫 샘플이 lastDecision을 채운 뒤에 한다. 여기서 먼저 부르면 null을
@@ -746,7 +764,10 @@ class GuideAccessibilityService : AccessibilityService() {
             rootUnavailable = false
             // root가 없던 시간은 화면을 관측한 시간이 아니다. 정체·읽기 불가 타이머 양쪽에서
             // 빼야 복구 직후 덜 채워진 트리에 곧바로 경고하지 않는다(PR #352 재리뷰).
-            stability.markResumed(stabilityNowMs(), requery = false)
+            // **조용함 예산은 안 비운다**(#481) — root는 우리 앱이 잠깐 앞에 서거나 권한
+            // 대화상자가 뜨기만 해도 깜빡인다(2026-08-27 SM-S921N 26분 세션에서 3회, 셋 다
+            // 그 두 경로였다). 비우면 그때마다 예산이 새로 채워져 상한이 무의미해진다.
+            stability.markResumed(stabilityNowMs(), requery = false, clearQuietBudget = false)
             GuideTelemetry.rootState("recovered")
             e2ePublisher?.rootState(available = true)
         }
@@ -1818,7 +1839,35 @@ class GuideAccessibilityService : AccessibilityService() {
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-                // 안내한 대상을 실제로 눌렀는지 보려고 받는다(#238). 진행 판정에는 쓰지 않는다.
-                eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
+                isCausalEvent(eventType)
+
+        /**
+         * 이 이벤트를 「사용자가 방금 조작했다」의 근거로 쓰는가(인과 게이트,
+         * [ScreenStabilityTracker.markInteraction]).
+         *
+         * **`TYPE_VIEW_SELECTED`가 여기 있는 이유는 실측이다**(#482, 2026-08-27 SM-S921N).
+         * 무조작 455초·387샘플에서 **0건**이었고, 그중에는 `WINDOW_CONTENT_CHANGED`를 70초에
+         * 2157건(초당 31건) 쏜 스톱워치 실행 화면이 있다 — 스스로 도는 화면이 이 이벤트를
+         * 쏘지 않는다는 뜻이다. 반대로 조작에는 따라왔다(시계 탭 전환 8탭에 7건, picker 탭
+         * 1탭에 1건, 런처 페이징 6스와이프에 1건). `TYPE_VIEW_SCROLLED`가 무조작 50초에
+         * 92건이던 것(#380, 위 본문 주석)과 정확히 반대편이다.
+         *
+         * 삼성 NumberPicker가 값을 바꿔도 `TYPE_VIEW_CLICKED`를 안 쏴서, 이것이 없으면
+         * 시계 알람 화면에서 문 셋이 전부 닫힌다 — 게이트도 조용함도 앵커도 못 열려
+         * 사용자가 시킨 대로 눌렀는데 「화면이 그대로예요」가 뜬다(#482 재현).
+         *
+         * **적립·눌림 귀속은 여기 걸리지 않는다** — 근거는 호출부 주석에 있다.
+         *
+         * **되돌리는 조건을 적어 둔다.** 이 기기에서 스스로 도는 배너·캐러셀 화면을 찾지
+         * 못해 **ViewPager 캐러셀은 미측정이다**(#456이 그 화면을 다룬다). 게이트가 연
+         * 재질의에는 `QUIET_OPENS` 같은 비용 천장이 없으므로(예산은 `!interactedRecently`
+         * 일 때만 탄다), 그런 화면이 페이지마다 이 이벤트를 쏘면 #380이 스크롤에서 겪은
+         * 폭주가 그대로 돌아온다. **무조작 구간의 `poll=` 줄에 `gate=open`이 서는 화면을
+         * 만나면 여기서 `TYPE_VIEW_SELECTED`를 뺀다** — 그 한 줄이 판정 근거다.
+         */
+        internal fun isCausalEvent(eventType: Int): Boolean =
+            // 안내한 대상을 실제로 눌렀는지도 이 이벤트로 본다(#238).
+            eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                eventType == AccessibilityEvent.TYPE_VIEW_SELECTED
     }
 }
