@@ -742,6 +742,93 @@ def test_judge는_옛_crlf_해시를_같은_시나리오로_받는다(tmp_path):
     assert cli.main(["judge", str(run_dir), "--scenarios", str(path), "--dry-run"]) == 0
 
 
+def test_부분_재채점은_옛_crlf_배치를_현재_배치로_이관한다(
+    monkeypatch, tmp_path, capsys
+):
+    """옛 CRLF digest의 미선택 채점도 같은 입력이면 stale로 버리지 않는다."""
+
+    from pingpong_eval import cli
+    from pingpong_eval.judge import judge_contract
+    from pingpong_eval.models import (
+        Achievement,
+        JudgeBatch,
+        JudgeResult,
+        ScenarioResult,
+        StopReason,
+        Transcript,
+    )
+
+    class _OkJudge:
+        model = "같은모델"
+        base_url = None
+        input_tokens = 0
+        output_tokens = 0
+
+        def parse(self, prompt, response_model, system=None):
+            return response_model(
+                achievement=Achievement.PARTIAL,
+                reason="새 채점",
+                slot_scores=[],
+                violations=[],
+            )
+
+    monkeypatch.setattr(cli, "ClaudeJudge", _OkJudge)
+
+    path = ROOT / DEFAULT_SCENARIOS
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    first, second = load_scenarios(path).scenarios[:2]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "meta.json").write_text(
+        json.dumps({"시나리오해시": legacy_crlf}), encoding="utf-8"
+    )
+    legacy_batch = JudgeBatch(
+        model="같은모델",
+        scenario_digest=legacy_crlf,
+        judge_contract=judge_contract(),
+    )
+    with (run_dir / "transcripts.jsonl").open("w", encoding="utf-8") as handle:
+        for scenario in (first, second):
+            handle.write(
+                ScenarioResult(
+                    scenario_id=scenario.id,
+                    difficulty=scenario.difficulty,
+                    factors=scenario.factors,
+                    transcript=Transcript(
+                        scenario_id=scenario.id,
+                        opening="사진 보내줘",
+                        stop_reason=StopReason.READY,
+                    ),
+                    judge=JudgeResult(
+                        achievement=Achievement.FULL,
+                        reason="옛 채점",
+                        slot_scores=[],
+                        violations=[],
+                    ),
+                    judge_batch=legacy_batch,
+                ).model_dump_json()
+                + "\n"
+            )
+
+    code = cli.main(
+        ["judge", str(run_dir), "--scenarios", str(path), "--only", first.id]
+    )
+    assert code == 0
+
+    lines = (run_dir / "transcripts.jsonl").read_text(encoding="utf-8").splitlines()
+    saved = {r.scenario_id: r for r in map(ScenarioResult.model_validate_json, lines)}
+    assert saved[first.id].judge.reason == "새 채점"
+    assert saved[second.id].judge.reason == "옛 채점"
+    assert saved[first.id].judge_batch.scenario_digest == canonical
+    assert saved[second.id].judge_batch.scenario_digest == canonical
+    assert "다른 배치에서 채점된" not in capsys.readouterr().err
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["전체"]["부분"] == 1
+    assert summary["전체"]["충족"] == 1
+
+
 def test_compare는_lf와_crlf_해시를_같은_입력으로_본다(scenarios, tmp_path):
     from pingpong_eval import cli
 
