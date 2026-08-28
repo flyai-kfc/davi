@@ -1685,6 +1685,10 @@ class GuideAccessibilityService : AccessibilityService() {
                 action.inputText,
             ),
         )
+        // 서버 왕복은 사용자가 안내를 따라 할 수 있던 시간이 아니다(#494). 실제 행동 안내가
+        // 오버레이에 그려진 지금부터 정체 시간을 센다. DONE·오류·확인·백오프·재표시 경로는
+        // 이 자리를 지나지 않으므로 새 행동이 아닌 문구가 시간을 부당하게 연장하지 않는다.
+        stability.markActionGuideDisplayed(stabilityNowMs())
         e2ePublisher?.displayed(
             generation = session.generation,
             requestSignature = requestSignature.structure,

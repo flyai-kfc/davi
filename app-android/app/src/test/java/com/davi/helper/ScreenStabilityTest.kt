@@ -695,12 +695,41 @@ class ScreenStabilityTrackerTest {
         tracker.onSample(sig("a"), 0, hasLabeledElement = true)
         tracker.onSample(sig("a"), 100, hasLabeledElement = true)
         tracker.markSent(sig("a"), 100)
+        tracker.markActionGuideDisplayed(100)
         tracker.markFinished()
 
         val stuckAt = 100 + ScreenStabilityTracker.STUCK_AFTER_MS
         assertEquals(Decision.IDLE, tracker.onSample(sig("a"), stuckAt - 1, hasLabeledElement = true))
         assertEquals(Decision.STUCK, tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
         assertEquals(Decision.IDLE, tracker.onSample(sig("a"), stuckAt + 1_000, hasLabeledElement = true))
+    }
+
+    @Test
+    fun `서버 왕복은 빼고 새 행동 안내 표시 시점부터 정체 시간을 센다`() {
+        val slowTracker = ScreenStabilityTracker(holdSamples = 1)
+        assertEquals(Decision.WAIT, slowTracker.onSample(sig("a"), -1, hasLabeledElement = true))
+        assertEquals(Decision.SEND, slowTracker.onSample(sig("a"), 0, hasLabeledElement = true))
+        slowTracker.markSent(sig("a"), 0)
+
+        val displayedAt = 6_500L
+        // 응답이 오기 직전까지는 기존 요청 대기 억제 계약대로 IDLE이다.
+        assertEquals(
+            Decision.IDLE,
+            slowTracker.onSample(
+                sig("a"),
+                displayedAt,
+                hasLabeledElement = true,
+            ),
+        )
+
+        slowTracker.markActionGuideDisplayed(displayedAt)
+        slowTracker.markFinished()
+
+        // 요청 시작 0ms 기준이면 이미 정체 구간이지만, 표시 뒤에는 온전한 7초가 주어진다.
+        assertEquals(Decision.IDLE, slowTracker.onSample(sig("a"), 7_000, hasLabeledElement = true))
+        val stuckAt = displayedAt + ScreenStabilityTracker.STUCK_AFTER_MS
+        assertEquals(Decision.IDLE, slowTracker.onSample(sig("a"), stuckAt - 1, hasLabeledElement = true))
+        assertEquals(Decision.STUCK, slowTracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
     }
 
     /** "안내 후 화면 그대로 7초"는 사용자가 방금 조작했으면 그 조작부터 센다(#319). */
@@ -887,7 +916,7 @@ class ScreenStabilityTrackerTest {
     }
 
     @Test
-    fun `응답을 기다리는 중에는 정체로 보지 않는다`() {
+    fun `요청 대기 중에는 정체를 막고 표시 기준 갱신이 없으면 전송 시각을 유지한다`() {
         // 느린 응답과 멈춘 화면은 다르다. 기다리는 동안 "화면이 그대로예요"라고 말하면 헷갈린다.
         tracker.onSample(sig("a"), 0, hasLabeledElement = true)
         tracker.onSample(sig("a"), 100, hasLabeledElement = true)
@@ -898,6 +927,8 @@ class ScreenStabilityTrackerTest {
 
         tracker.markFinished()
 
+        // 완료 문구·확인 대기처럼 실패 처리 없이 새 행동 안내도 표시하지 않은 응답은
+        // markActionGuideDisplayed를 부르지 않으므로 전송 시각 기준을 그대로 쓴다(#494).
         assertEquals(Decision.STUCK, tracker.onSample(sig("a"), stuckAt, hasLabeledElement = true))
     }
 
