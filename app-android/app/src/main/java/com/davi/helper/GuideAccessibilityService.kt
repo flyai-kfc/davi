@@ -864,9 +864,9 @@ class GuideAccessibilityService : AccessibilityService() {
                 // 이 갈래도 보존 안내를 **폐기**한다(다른 화면이면 `reset()`). 접힌 화면에서
                 // 타면 안내는 사라졌는데 재질의가 안 나가 `Discarded`와 같은 침묵이 된다
                 // (#456 3차 리뷰 P2). 보존분이 없어 폐기가 아닌 경우에 걸쇠를 푸는 것도
-                // 손해가 크지 않다 — 다만 **한 번이 아니라 최대 네 번**이다(#456 팀 리뷰):
-                // `forgetRotation()`이 방문 이력까지 비워 복귀 카운터가 0부터 다시 세므로,
-                // A/B 회전이 다시 접히려면 `send` 넷을 지나야 한다.
+                // 손해가 크지 않다 — 다만 **한 번이 아니라 여러 번**이다(#456 팀 리뷰):
+                // `forgetRotation()`이 방문 이력까지 비워 전이 카운터가 0부터 다시 세므로,
+                // A/B 회전이 다시 접히려면 `send` 셋을 지나야 한다.
                 stability.forgetRotation()
             }
             is GuideDisplayState.RedisplayResult.Show -> {

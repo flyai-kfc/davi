@@ -620,8 +620,8 @@ class ScreenStabilityTrackerTest {
 
         // 같은 전이(a→b)의 두 번째다 — 여기서 회전으로 판정한다. 화면당 3회에서 멈춘다.
         assertEquals(Decision.IDLE, send("b", 3_000))
-        // 다음 바퀴도 계속 접힌다.
-        assertNotEquals(Decision.SEND, send("a", 4_000))
+        // 다음 바퀴도 계속 접힌다. `a`는 그 시점 `sentSignature`와 같아 회전 갈래를 안 타므로
+        // 여기서 단언하지 않는다 — 접기가 깨져도 통과하는 줄이 된다.
         assertNotEquals(Decision.SEND, send("b", 5_000))
     }
 
@@ -724,7 +724,7 @@ class ScreenStabilityTrackerTest {
         assertEquals(Decision.SEND, send("a", 63_000))
 
         // 걸쇠가 살아 있으면 회전 구성원은 **첫 복귀에서 바로** 접힌다. 풀렸다면 여기서
-        // 4회 묶음이 되살아난다. 뒤에 `a`를 한 줄 더 두지 않는 이유는 그 시점의
+        // 묶음이 되살아난다. 뒤에 `a`를 한 줄 더 두지 않는 이유는 그 시점의
         // `sentSignature`가 `a`라 걸쇠와 무관하게 SEND가 안 나오기 때문이다 — 통과만 하는
         // 단언이 된다.
         assertEquals(Decision.IDLE, send("b", 68_000))
@@ -751,12 +751,38 @@ class ScreenStabilityTrackerTest {
         // `목록→상세1→목록→상세2→목록`(#456 팀 재리뷰 P1). 구조만 세면 마지막 복귀에서
         // 목록 방문이 2가 되어 회전으로 접히고, 클릭을 못 받는 앱에서는 그 뒤 목록 안내가
         // 세션 내내 사라진다. 전이쌍으로 세면 `상세2→목록`은 처음이라 갈린다.
+        //
+        // **두 상세의 구조가 다를 때의 이야기다.** 구조 축은 label과 role을 빼므로 두 상세가
+        // 같은 구조로 접힐 수 있고, 그러면 실제 열은 `목록↔상세` 왕복이라 회전과 구분되지
+        // 않는다 — 그건 이 기능이 처음부터 수용한 모호함이다.
         assertEquals(Decision.SEND, send("목록", 0))
         assertEquals(Decision.SEND, send("상세1", 1_000))
         assertEquals(Decision.SEND, send("목록", 2_000))
         assertEquals(Decision.SEND, send("상세2", 3_000))
 
         assertEquals(Decision.SEND, send("목록", 4_000))
+    }
+
+    @Test
+    fun `구조가 셋 도는 회전도 접힌다`() {
+        // 떠남 판정을 쌍 소속만으로 하면 걸쇠가 매 바퀴 지워져 영영 수렴하지 않는다 —
+        // 접히는 동안 sentSignature가 멈춰 있어 아직 안 걸린 구성원으로 가는 전이가 새 쌍이
+        // 되고, 그 요청이 「어느 쌍에도 없는 구조」로 읽히기 때문이다. 최근 방문이 그것을 막는다.
+        // 전이쌍이 셋(a→b·b→c·c→a)이라 각각 두 번째가 서야 다 접힌다 — 구조 둘일 때보다
+        // 늦게 수렴한다. 성질은 「멎는다」이지 「몇 회에 멎는다」가 아니다.
+        var at = 0L
+        val order = listOf("a", "b", "c")
+        val decisions = mutableListOf<Decision>()
+        repeat(15) { turn ->
+            decisions += send(order[turn % 3], at)
+            at += 1_000
+        }
+
+        assertEquals(
+            "구조 셋 회전이 수렴하지 않았다: $decisions",
+            0,
+            decisions.takeLast(4).count { it == Decision.SEND },
+        )
     }
 
     @Test

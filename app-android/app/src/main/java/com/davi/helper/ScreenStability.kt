@@ -672,12 +672,20 @@ class ScreenStabilityTracker(
         // 접고 있던 중에 **어느 회전 쌍에도 없는 구조**를 실제로 물었다 — 그 화면을 떠난
         // 것이다(#456). 이력을 들고 가면 돌아왔을 때 옛 회전 기록이 남아 영구히 접힌다.
         //
-        // 방문 이력이 아니라 **쌍 소속**으로 본다. 이력만 보면 접힘이 길어져 기록이 창 밖으로
-        // 늙은 뒤, 회전 구성원을 다시 묻는 것(실패 재시도·완료 확인 ×가 `sentSignature`를
-        // 비운 뒤의 첫 요청)이 "떠남"으로 읽혀 걸쇠가 통째로 풀린다.
+        // **쌍 소속과 최근 방문을 둘 다 본다.** 어느 쪽 하나만으로는 각각 다르게 깨진다.
+        //
+        // 쌍 소속만 보면 **구조가 셋 이상 도는 회전에서 걸쇠가 매 바퀴 지워진다** — 접히는
+        // 동안 [sentSignature]가 멈춰 있어서 아직 걸쇠에 안 든 구성원으로 가는 전이가 새 쌍이
+        // 되어 요청이 나가고, 그 요청이 「어느 쌍에도 없는 구조」로 읽혀 걸쇠를 통째로 비운다.
+        // `a→b→c`가 그렇게 주기마다 처음으로 되돌아가 영영 수렴하지 않는다.
+        //
+        // 최근 방문만 보면 반대로 깨진다 — 접힘이 길어져 기록이 창 밖으로 늙은 뒤 회전
+        // 구성원을 다시 묻는 것(실패 재시도·완료 확인 ×가 [sentSignature]를 비운 뒤의 첫
+        // 요청)이 "떠남"으로 읽혀 걸쇠가 풀린다. 그래서 둘을 AND로 묶어 **지우기를 더 어렵게**만 한다.
         if (
             rotatingTransitions.isNotEmpty() &&
-            rotatingTransitions.none { signature.structure == it.first || signature.structure == it.second }
+            rotatingTransitions.none { signature.structure == it.first || signature.structure == it.second } &&
+            visitsSeen(signature.structure, nowMs) == 0
         ) {
             clearRotationHistory()
         }
@@ -816,7 +824,7 @@ class ScreenStabilityTracker(
      * 구분은 그 전이가 **되풀이될 때** 생긴다: 회전은 계속 돌고 복귀는 거기서 멈춘다.
      * 첫 복귀에 접으면 뒤로 가서 돌아온 화면의 안내가 안 나오고, 클릭 이벤트를 안 쏘는
      * 앱에서는 인과 게이트도 그것을 못 살린다(#394). 그래서 접는 자리를 같은 전이의 두 번째로
-     * 둔다 — **구조 축이 흔들리는** 회전의 요청이 화면당 4회에서 멈춘다.
+     * 둔다 — **구조 축이 흔들리는** 회전의 요청이 화면당 3회에서 멈춘다(구조 둘이 교대할 때).
      *
      * **이 상한은 구조 축 위에서만 성립한다.** 회전이 구조를 안 흔들고 내용만 흔들면 이 갈래로
      * 오지 않고, 클릭을 아직 못 본 앱에서는 조용함 게이트(#427)가 그 내용 변화에 대해 화면당
@@ -825,6 +833,10 @@ class ScreenStabilityTracker(
      * **이 세기는 결론에 닿는 데까지만 쓴다.** 접힌 뒤의 유지는 [rotatingTransitions] 걸쇠가
      * 맡는다 — 접히는 동안에는 이력이 갱신되지 않아 이 세기만으로는 창 주기마다 풀린다.
      */
+    /** [structure]를 최근 [ROTATION_WINDOW_MS] 안에 물어본 적이 있는가. 떠남 판정의 받침이다. */
+    private fun visitsSeen(structure: String, nowMs: Long): Int =
+        visitedStructures.count { (seen, at) -> seen == structure && nowMs - at <= ROTATION_WINDOW_MS }
+
     private fun transitionsSeen(from: String, to: String, nowMs: Long): Int {
         // 지금 일어나려는 전이를 1로 세고, 이력에서 같은 쌍을 더한다.
         var seen = 1
@@ -1161,7 +1173,7 @@ class ScreenStabilityTracker(
         const val ROTATION_WINDOW_MS = 30_000L
 
         /**
-         * 같은 구조로 이만큼 되돌아오면 회전으로 본다. **1이면 뒤로 가기와 구분되지 않는다** —
+         * 같은 **전이쌍**이 이만큼 일어나면 회전으로 본다. **1이면 뒤로 가기와 구분되지 않는다** —
          * 근거는 `transitionsSeen`의 주석에 있다.
          */
         const val ROTATION_RETURNS = 2
