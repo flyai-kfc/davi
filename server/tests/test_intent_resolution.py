@@ -273,6 +273,53 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
     assert "message에는 첫 질문의 prompt를 그대로 써서" in prompt
 
 
+def test_first_prompt_asks_only_goal_critical_details_and_defers_on_screen_choices():
+    prompt = build_intent_prompt(_request("커피를 주문하고 싶어"))
+
+    assert "수행할 작업·대상·경로가 달라져 목표 한 문장이" in prompt
+    assert "우선순위가 높은 질문을 최대 두 개" in prompt
+    assert "필요한 질문이 하나뿐이면 하나만" in prompt
+    assert "각각 [질문], [화면선택]," in prompt
+    assert "clarification에는" in prompt
+    assert "[질문]만 넣으세요" in prompt
+    assert "안내가 끝났을 때 목표를 달성했는지 판정할 수 있는" in prompt
+    assert '사용자가 "크게"처럼 정도를 말했지만 완료 경계가 여러 개이거나' in prompt
+    assert "뉴스처럼" in prompt
+    assert "앱·수단·전달 경로가 빠져 있고 선택에 따라 실제 안내 경로가" in prompt
+    assert '"스마트폰", "앱", "인터넷" 같은 포괄 표현' in prompt
+    assert "질문 예산을 채우려고 별개의 선택 조건을" in prompt
+    assert '"찾아 선택하기", "원하는 것을 고르기"처럼 누락을 goal 안에' in prompt
+    assert "구체적인 사진·가게·수량처럼 사용자가 앱 화면을 보며 고를 수 있고" in prompt
+    assert '사용자가 "가까운 곳"을 찾는다고 했다면 기기의 현재 위치를 기준으로' in prompt
+    assert "이동·호출 작업의 출발지나 목적지처럼 값에 따라 실제 경로가" in prompt
+    assert "사용자가 본인도 모를 수 있는 물리 대상의 정확한 이름을" in prompt
+    assert "약 이름처럼 화면에서 촬영·검색·선택하며 식별할 수 있는 값" in prompt
+
+
+def test_finalization_prompt_does_not_request_a_new_goal_critical_question_plan():
+    request = SlotFillRequest.model_validate(
+        {
+            "utterance": "커피를 주문하고 싶어",
+            "session_id": str(uuid.uuid4()),
+            "clarification_answers": [
+                {
+                    "question_id": "q1",
+                    "prompt": "어느 앱으로 주문할까요?",
+                    "answer": "배달 앱",
+                    "source": "freeform",
+                }
+            ],
+        }
+    )
+
+    prompt = build_intent_prompt(request)
+
+    assert "status는 ready 또는 unable_to_finalize만 사용하세요" in prompt
+    assert "우선순위가 높은 질문을 최대 두 개" not in prompt
+    assert "구체적인 사진·가게·수량처럼" not in prompt
+    assert "clarification에는" not in prompt
+
+
 def test_prompt_treats_unknown_or_declined_details_as_unavailable_without_reasking():
     prompt = build_intent_prompt(
         _request(
