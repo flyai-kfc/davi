@@ -282,6 +282,9 @@ def test_first_prompt_asks_only_goal_critical_details_and_defers_on_screen_choic
     assert "각각 [질문], [화면선택]," in prompt
     assert "clarification에는" in prompt
     assert "[질문]만 넣으세요" in prompt
+    assert "decision_basis에는 후보 목록이나 분류 태그를 나열하지 말고" in prompt
+    assert "판단 근거만 짧은 한국어 한 문장으로" in prompt
+    assert "decision_basis에 빠진 정보 후보" not in prompt
     assert "안내가 끝났을 때 목표를 달성했는지 판정할 수 있는" in prompt
     assert '사용자가 "크게"처럼 정도를 말했지만 완료 경계가 여러 개이거나' in prompt
     assert "뉴스처럼" in prompt
