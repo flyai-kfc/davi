@@ -478,7 +478,13 @@ def cmd_compare(args: argparse.Namespace) -> int:
         and not _judge_batches_match(baseline_batch, candidate_batch, args.scenarios)
     ):
         scenario_hint = (
-            _SCENARIO_HASH_HELP if baseline_batch[1] != candidate_batch[1] else ""
+            _SCENARIO_HASH_HELP
+            if (
+                baseline_batch[0] == candidate_batch[0]
+                and baseline_batch[2] == candidate_batch[2]
+                and baseline_batch[1] != candidate_batch[1]
+            )
+            else ""
         )
         print(
             "평가자 모델·채점 시나리오·채점 계약 배치가 다르다 — goal·환각·선택 강요를 "

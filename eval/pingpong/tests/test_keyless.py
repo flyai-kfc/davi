@@ -753,6 +753,59 @@ def test_compare는_시나리오_파일_없이도_메타데이터를_비교한�
         assert not error
 
 
+@pytest.mark.parametrize(
+    ("candidate_model", "candidate_contract", "expects_scenario_hint"),
+    [
+        ("judge", "contract-v1", True),
+        ("other", "contract-v1", False),
+        ("judge", "contract-v2", False),
+        ("other", "contract-v2", False),
+    ],
+)
+def test_compare는_채점_해시만_다를_때_원본_시나리오를_안내한다(
+    scenarios,
+    tmp_path,
+    capsys,
+    candidate_model,
+    candidate_contract,
+    expects_scenario_hint,
+):
+    from pingpong_eval import cli
+
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+        "채점시_시나리오해시": "baseline-digest",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=common,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="candidate",
+        meta_overrides={
+            **common,
+            "평가자모델": candidate_model,
+            "채점계약": candidate_contract,
+            "채점시_시나리오해시": "candidate-digest",
+        },
+    )
+
+    assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    error = capsys.readouterr().err
+    assert "채점 계약 배치가 다르다" in error
+    assert "같은 배치로 다시 채점한다" in error
+    assert ("--scenarios <파일>" in error) is expects_scenario_hint
+
+
 def test_compare는_파일이_같아도_실행_id가_다르면_막는다(scenarios, tmp_path):
     from pingpong_eval import cli
 
