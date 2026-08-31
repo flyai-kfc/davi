@@ -450,6 +450,10 @@ def test_finalization_prompt_includes_answers_and_forbids_more_questions():
     assert "우선순위가 높은 질문을 최대 두 개" not in prompt
     assert "구체적인 사진·가게·수량처럼" not in prompt
     assert "clarification에는" not in prompt
+    # 첫 호출에서만 정의하는 태그·질문 출력 규칙을 최종화에서 새로 소개하지 않는다.
+    for tag in ("[질문]", "[화면선택]", "[현장확인]"):
+        assert tag not in prompt
+    assert "질문 prompt·options" not in prompt
     assert str(request.session_id) not in prompt
 
 
