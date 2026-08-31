@@ -846,6 +846,8 @@ PR은 해당 시점의 변경·검증 근거 링크로만 남긴다.
   release 배포는 `DAVI_AZURE_LLM_PROVIDER=openai`를 필수로 요구하며, 미설정·다른 공급자는
   빌드·배포 전에 거부한다. release Bicep도 같은 값만 허용하고, 배포 후에는 정확한 revision의
   `DAVI_LLM_PROVIDER`를 Azure 관리 API로 대조한다(공개 health 응답은 넓히지 않는다).
+  호출 공급자는 OpenAI지만 기존 revision과의 전환을 위해 Gemini 키 참조도 당분간 유지한다.
+  준비할 비밀과 향후 참조 제거 순서는 배포 문서 §2에 명시하며, 공유 Key Vault 비밀을 삭제하지 않는다.
   공급자를 바꾸려면 고지·재동의와 이 배포 관문을 함께 갱신해야 한다. development의 공급자 선택은 유지한다.
   현재 Responses API의 `store` 미지정에 따른 보관은 처리방침 §6·§7에 명시한다.
   무보관 설정 적용이나 공급자 계정의 별도 데이터 공유 설정 검증을 완료한 것으로 쓰지 않는다.

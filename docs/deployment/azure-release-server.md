@@ -49,6 +49,20 @@ GitHub 배포 identity `id-davi-github-deploy`가 이미 resource group `Contrib
 현재 release 고지는 OpenAI다. LLM 키는 기존 `OPENAI-API-KEY`가 있으면 재사용한다. 세션 JWT 서명 비밀은
 development와 분리해 새 이름으로 만든다. 값은 저장소·GitHub·명령 출력에 남기지 않는다.
 
+**현재 템플릿은 호출 공급자와 별개로 다음 세 비밀을 모두 참조한다.** 새 Key Vault를 쓰는 경우도
+빠짐없이 준비해야 한다. Gemini 비밀이 없으면 OpenAI 설정이어도 Key Vault 참조 해석이 실패할 수 있다.
+
+| Key Vault secret 이름 | 용도 | 필요 여부 |
+|---|---|---|
+| `GEMINI-API-KEY` | 기존 revision과 호환되는 무조건 배선(현재 추론에는 사용하지 않음) | 필수 |
+| `OPENAI-API-KEY` | 현재 release의 OpenAI 호출 | 필수 |
+| `DAVI-RELEASE-AUTH-JWT-SECRET` | development와 분리한 release 세션 JWT 서명 | 필수 |
+
+기존 Gemini 배선은 이 PR에서 제거하지 않는다. Azure의 secret은 revision 밖의 앱 단위이므로,
+향후 제거는 **비밀은 유지한 채 참조 없는 새 revision 배포 → 참조하는 기존 revision 모두 비활성화
+→ Container App secret 제거** 순서로 별도 검증한다([Azure secret 관리](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets)).
+이번 변경은 공유 Key Vault의 Gemini 비밀을 삭제하지 않으며, development 배포도 그대로 유지한다.
+
 ```bash
 read -rsp "release JWT secret(32자 이상): " DAVI_RELEASE_JWT_SECRET
 echo
@@ -110,6 +124,8 @@ environment 변수를 Azure 로그인·image 빌드 전에 대조한다. 미설�
 release Bicep도 `openai`만 받는다. 공급자 변경은 변수만 바꾸는 운영 작업이 아니라 처리방침·
 앱 고지·재동의와 배포 관문을 함께 바꾸는 변경이다(`SPEC.md` §11). development 기본값·선택지는
 이 release 제한과 별개다. 회귀 테스트는 실제 검증 셸·revision 검사식과 앱/처리방침의 제공처를 묶는다.
+로컬에 `bash` 또는 `jq`가 없으면 해당 실행 테스트만 사유를 남겨 건너뛰고 정적 계약 검사는 유지한다.
+CI의 서버 테스트 단계는 두 도구의 존재를 먼저 요구하므로 도구 누락을 skip으로 통과시키지 않는다.
 
 ## 5. 최초 배포와 검증
 

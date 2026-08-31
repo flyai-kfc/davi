@@ -1,13 +1,17 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+BASH = shutil.which("bash")
+JQ = shutil.which("jq")
 
 
 def _text(relative_path: str) -> str:
@@ -28,6 +32,7 @@ def _disclosed_release_provider() -> str:
     return match.group(1)
 
 
+@pytest.mark.skipif(BASH is None, reason="bash 미설치: release 사전검증 실행만 건너뜀")
 @pytest.mark.parametrize("provider", [None, "", "gemini", "anthropic", "openai"])
 def test_release_preflight_requires_the_disclosed_provider(provider: str | None) -> None:
     # 실제 키·Azure 연결 없이 workflow의 사전 검증만 실행한다.
@@ -47,7 +52,8 @@ def test_release_preflight_requires_the_disclosed_provider(provider: str | None)
     if provider is not None:
         env["DAVI_AZURE_LLM_PROVIDER"] = provider
     script = _release_step_script("release 배포 변수 검증")
-    result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+    # which가 찾은 절대 경로를 사용한다. 자식의 최소 PATH와 탐색 PATH가 달라도 같은 도구다.
+    result = subprocess.run([BASH, "-c", script], env=env, capture_output=True, text=True)
     assert (result.returncode == 0) == (provider == "openai"), result.stdout + result.stderr
     if provider != "openai":
         assert "::error::" in result.stdout
@@ -57,7 +63,7 @@ def test_release_preflight_requires_the_disclosed_provider(provider: str | None)
                 env.pop("DAVI_AZURE_OPENAI_KEY_SECRET_NAME")
             else:
                 env["DAVI_AZURE_OPENAI_KEY_SECRET_NAME"] = key
-            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+            result = subprocess.run([BASH, "-c", script], env=env, capture_output=True, text=True)
             assert result.returncode != 0
             assert "DAVI_AZURE_OPENAI_KEY_SECRET_NAME" in result.stdout
 
@@ -86,6 +92,68 @@ def test_release_deploy_inputs_also_run_backend_regressions() -> None:
         assert f"- '{path}'" in backend_filter
 
 
+def test_ci_requires_release_test_tools_before_pytest() -> None:
+    ci = _text(".github/workflows/ci.yml")
+    test_step = ci.split("      - name: 테스트\n", 1)[1].split("\n      - name:", 1)[0]
+    for tool in ("bash", "jq"):
+        assert test_step.index(f"command -v {tool}") < test_step.index("          pytest")
+
+
+def test_release_secret_wiring_preserves_existing_secrets_and_requires_openai() -> None:
+    template = _text("infra/azure/release-server.bicep")
+    assert "param geminiApiKeySecretName string = 'GEMINI-API-KEY'" in template
+    assert "empty(openAiApiKeySecretName)" not in template
+    assert re.search(
+        r"@minLength\(1\)\s*@description\([^\n]*\)\s*param openAiApiKeySecretName string\n",
+        template,
+    )
+    secrets = re.search(r"secrets:\s*\[(.*?)\n      \]", template, re.S)
+    assert secrets  # 필수 secret 목록이 선택 분기/concat으로 돌아가지 않게 한다.
+    names = re.findall(r"name: '([^']+)'", secrets.group(1))
+    assert len(names) == 3
+    assert set(names) == {"gemini-api-key", "auth-jwt-secret", "openai-api-key"}
+    for parameter in (
+        "geminiApiKeySecretName",
+        "authJwtSecretSecretName",
+        "openAiApiKeySecretName",
+    ):
+        assert f"/secrets/${{{parameter}}}" in secrets.group(1)
+    env = re.search(r"env:\s*\[(.*?)\n          \]", template, re.S)
+    assert env
+    refs = dict(re.findall(r"name: '([^']+)'\s+secretRef: '([^']+)'", env.group(1)))
+    assert refs == {
+        "DAVI_AUTH_JWT_SECRET": "auth-jwt-secret",
+        "OPENAI_API_KEY": "openai-api-key",
+        "GEMINI_API_KEY": "gemini-api-key",
+    }
+    runbook = _text("docs/deployment/azure-release-server.md")
+    for secret in ("GEMINI-API-KEY", "OPENAI-API-KEY", "DAVI-RELEASE-AUTH-JWT-SECRET"):
+        assert f"`{secret}`" in runbook
+
+
+def test_release_openai_initializes_all_operations_without_gemini_key(set_runtime_profile) -> None:
+    from app.main import app
+
+    set_runtime_profile(
+        davi_env="production",
+        davi_use_stub_llm=False,
+        davi_llm_provider="openai",
+        davi_model="",
+        openai_api_key="fixture-openai-key-not-a-real-secret",
+        gemini_api_key="",
+        anthropic_api_key="",
+        davi_bind_host="0.0.0.0",
+        davi_auth_source="azure_container_apps",
+    )
+    # 서버 자체는 선택한 키만 필요하다(ACA 템플릿의 기존 secret 참조 요구와 별개다).
+    # lifespan은 세 operation 공급자를 모두 초기화하되 외부 API를 호출하지 않는다.
+    with TestClient(app) as client:
+        response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.skipif(JQ is None, reason="jq 미설치: release revision 검사식 실행만 건너뜀")
 @pytest.mark.parametrize(
     "providers", [[], [""], ["gemini"], ["anthropic"], ["openai"], ["openai", "gemini"]]
 )
@@ -114,7 +182,7 @@ def test_release_revision_verification_rejects_an_undisclosed_provider(
     }
     result = subprocess.run(
         [
-            "jq",
+            JQ,
             "-e",
             "--arg",
             "expected_revision",
