@@ -148,6 +148,58 @@ SM-S921N / Android 15 / One UI 7.0에서 런처 구성에 따라 달라지는 �
 행동이 있더라도 사람 검토가 `accepted`로 끝난 fixture만 후보 모델 + judge의 픽스처당 2회 호출
 대상이 된다.
 
+## 삼성 시계 picker·자유 입력과 인증 코드 fixture
+
+`samsung_clock_alarm_picker_values.json`은 SM-S921N / Android 15 / One UI 7.0의 새 알람
+편집 화면에서 실제로 전송된 29개 요소를 익명화해 보존한다(#462). 오전/오후 선택값은 클릭 가능한
+`TextView`/`Button`으로, 시·분의 현재 값은 편집 가능한 `EditText` label인 `6, 시간`과
+`00, 분`으로 관측됐다. Davi가 실제 전송한 계약에서는 선택된 `오전` `TextView`도
+`editable=true`였고 `오후` `Button`은 editable이 아니었다. 비어 있는 알람 이름만
+`showing_hint_text=true`인 `EditText`다. 요일 7개는 `unchecked`, 공휴일 행과 스위치는
+`enabled=false`, 알람음 스위치는 `checked`로 관측된 상태도 함께 보존한다.
+
+이 fixture 4개를 수집한 SM-S921N은 SPEC §3의 **개발용 공기계**이며,
+#478·#490에서 Android 16 / One UI 8.x로 확인한 SM-S921N과 **다른 물리 기기**다.
+캡처 기기를 다시 지정해 확인한 공개 빌드 정보는 Android 15
+(SDK 35) / One UI 7.0 / `S921NKSS9BYG8`, 보안 패치 2025-08-01이다. serial·`device_id`는
+보존하지 않는다. 따라서 이 fixture의 29개 요소·`오전 editable=true`와 #490의 30개 요소·
+비-editable 관측은 같은 기기의 모순된 덤프가 아니라, 서로 다른 OS·물리 기기에서 얻은 별도
+접근성 관측으로 읽어야 한다. 어느 차이가 OS·앱 버전·수집 시점 중 무엇에서 비롯됐는지는
+추측하지 않는다.
+
+#462 이전 직렬화기는 숫자로 시작하지 않는 editable 값 `오전`을 NumberPicker 숫자 예외나
+hint/name 폴백 어느 쪽에도 보존하지 못해 n2 label을 빈 문자열로 전송했다. #462 이후의
+`label="오전"` 계약 형태를 이 picker fixture가 server/eval 경계에서 고정하고, Android 투영
+구현 자체의 rollback은 앱 단위 테스트가 지킨다.
+
+`samsung_clock_alarm_name_filled.json`은 같은 편집 화면의 알람 이름에 합성 문자열
+`DAVI_E2E_TEST`만 입력한 뒤 Davi가 다시 전송한 29개 요소를 보존한다. 이때 n24는
+`label="알람 이름 DAVI_E2E_TEST"`, `editable=true`, `focused=true`,
+`showing_hint_text=false`였고 IME는 닫힌 상태였다. 따라서 자유 입력값이 label과 별도 입력 상태로
+함께 전달되는 실기기 계약 증거가 생겼다. 입력은 `adb shell input text`로 주입했으므로 이 fixture의
+`focused=true`·`ime_visible=false` 조합은 개발 관측 상태이며, IME가 열린 사용자 타이핑 경로의
+표본은 아니다.
+
+두 fixture 모두 동적 날짜는 `다음 날`, 기본 알람음의 고유 이름은 `기본 소리`로 치환했다.
+새 알람은 저장하지 않았고, 실제 모델 대신 키가 필요 없는 Stub으로 로딩·계약·PII 경로만
+확인했으므로 `observed_model_action`을 추측해 넣지 않는다.
+`google_auth_totp_input_filled.json`은 Chrome에서 시작한 실제 Google 인증 흐름의 전면
+package가 `com.google.android.gms`로 전환된 상태에서 수집했다. 빈 입력칸에 합성 6자리 값만
+넣고 제출하지 않았으며, 실기기 접근성 ID `totpPin`을 일반 의미 표지로 판정한 앱은 실제 값을
+wire 전에 제외하고 n3을 `label="인증 코드 입력"`으로 전송했다. IME가 열린 상태였고 요청은
+요소 5개 중 editable 1개를 포함했다. 계정·페이지 문구는 `일반 요소 N`으로 치환했고 원본 트리,
+합성 값, 계정 식별값, 모델 응답은 저장하지 않았다.
+
+`google_auth_password_input_filled.json`은 같은 Google 인증 흐름의 `password=true` 입력칸에
+합성 문자열만 넣은 뒤 수집했다. 실제 값은 wire 전에 제외되고 n3은
+`label="비밀번호 입력"`으로 전송됐다. TOTP 표본과 마찬가지로 IME가 열린 상태였으며 계정·페이지
+문구와 합성 값은 fixture에 남기지 않았다.
+
+실기기 probe의 debug E2E 경계는 요소별 label·bounds 상세 로그만 억제한다. 비식별 집계인
+`event=screen_stable`은 이 게이트 밖에서 기록되지만, 이번 검증에서 보존한 원문 발췌는
+`e2e control=start` / `e2e control=stop` 두 종류다. 화면 계약은 로컬 Stub 수신 경계에서
+package, 요소 수, editable 수, 안전 label 존재와 합성 값 부재를 검증했다.
+
 ## 평가 계층
 
 1. 항상 실행: 이 하니스의 fixture loader / PII / 스키마 / 입력 보존

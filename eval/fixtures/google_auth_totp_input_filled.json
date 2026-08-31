@@ -1,0 +1,92 @@
+{
+  "id": "google-auth-totp-input-filled",
+  "description": "Google 인증 화면에서 TOTP 값이 안전한 일반 입력 label로 치환되는 실기기 입력",
+  "source": {
+    "kind": "anonymized_real_device",
+    "captured_at": "2026-08-28",
+    "issue": 462,
+    "device_model": "SM-S921N",
+    "os_version": "Android 15",
+    "ui_version": "One UI 7.0",
+    "anonymization": [
+      "Chrome에서 연 인증 흐름의 실제 전면 package는 Google Play 서비스였으며 계정과 페이지 문구는 일반 요소 label로 치환",
+      "빈 TOTP 입력칸에는 합성 6자리 값만 입력하고 제출하지 않았으며 값은 Davi의 기기측 민감 입력 투영에서 제외",
+      "민감 입력 노드는 실제 전송된 안전한 label '인증 코드 입력'만 보존",
+      "SPEC §3의 Android 15 / One UI 7.0 개발용 공기계에서 수집했으며 공개 빌드는 S921NKSS9BYG8; #478·#490의 Android 16 SM-S921N과는 다른 물리 기기",
+      "device_id, 계정 식별값, 모델 응답 원문, 서버 식별자와 화면 시그니처 해시는 포함하지 않음"
+    ]
+  },
+  "input": {
+    "goal": "verify one-time code input",
+    "screen": {
+      "package_name": "com.google.android.gms",
+      "window_title": "로그인",
+      "elements": [
+        {
+          "node_id": "n1",
+          "label": "일반 요소 1",
+          "role": "WebView",
+          "enabled": true,
+          "selected": false,
+          "obscured": false,
+          "bounds": [0, 91, 1080, 1099],
+          "can_scroll_forward": true,
+          "can_scroll_backward": true,
+          "scroll_axis": "vertical",
+          "next_swipe_direction": "down",
+          "prev_swipe_direction": "up"
+        },
+        {
+          "node_id": "n2",
+          "label": "일반 요소 2",
+          "role": "View",
+          "clickable": true,
+          "enabled": true,
+          "selected": false,
+          "obscured": false,
+          "bounds": [0, 91, 1080, 1099]
+        },
+        {
+          "node_id": "n3",
+          "label": "인증 코드 입력",
+          "role": "EditText",
+          "clickable": true,
+          "editable": true,
+          "focused": true,
+          "enabled": true,
+          "selected": false,
+          "showing_hint_text": false,
+          "obscured": false,
+          "bounds": [78, 649, 1002, 808]
+        },
+        {
+          "node_id": "n4",
+          "label": "일반 요소 3",
+          "role": "Button",
+          "clickable": true,
+          "enabled": true,
+          "selected": false,
+          "obscured": false,
+          "bounds": [24, 1134, 356, 1278]
+        },
+        {
+          "node_id": "n5",
+          "label": "일반 요소 4",
+          "role": "Button",
+          "clickable": true,
+          "enabled": true,
+          "selected": false,
+          "obscured": false,
+          "bounds": [756, 1134, 1020, 1278]
+        }
+      ],
+      "has_scrollable_element": true,
+      "ime_visible": true
+    },
+    "steps": []
+  },
+  "expected": {
+    "stub_outcome": "success",
+    "action_type": "tap"
+  }
+}

@@ -508,6 +508,7 @@ class UiTreeSerializerTest {
         assertSensitiveIdentity(resourceId = "com.example:id/otp_field")
         assertSensitiveIdentity(resourceId = "com.example:id/pinEditText")
         assertSensitiveIdentity(resourceId = "com.example:id/OTPField")
+        assertSensitiveIdentity(resourceId = "totpPin")
         assertSensitiveIdentity(resourceId = "com.example:id/verification_code")
         assertSensitiveIdentity(resourceId = "com.example:id/securityCode")
         assertFalse(sensitiveIdentity(hintText = "spinner value"))
