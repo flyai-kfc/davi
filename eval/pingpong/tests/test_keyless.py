@@ -693,6 +693,61 @@ def test_compare는_실행_조건이_다르면_막는다(
     assert f"> ⚠️ {warning}" in drift_report.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    ("field", "candidate_digest", "mismatch"),
+    [
+        ("시나리오해시", "same", None),
+        ("시나리오해시", "different", "시나리오 파일 해시"),
+        ("채점시_시나리오해시", "different", "채점 계약 배치가 다르다"),
+    ],
+)
+def test_compare는_시나리오_파일_없이도_메타데이터를_비교한다(
+    scenarios, tmp_path, capsys, field, candidate_digest, mismatch
+):
+    """파일이 없으면 legacy 동치만 증명할 수 없다. 같은 해시 비교는 계속 가능하다."""
+
+    from pingpong_eval import cli
+
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+        "채점시_시나리오해시": "same",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=common,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="candidate",
+        meta_overrides={**common, field: candidate_digest},
+    )
+
+    code = cli.main(
+        [
+            "compare",
+            str(baseline),
+            str(candidate),
+            "--scenarios",
+            str(tmp_path / "missing.json"),
+        ]
+    )
+
+    assert code == (1 if mismatch else 0)
+    error = capsys.readouterr().err
+    if mismatch:
+        assert mismatch in error
+    else:
+        assert not error
+
+
 def test_compare는_파일이_같아도_실행_id가_다르면_막는다(scenarios, tmp_path):
     from pingpong_eval import cli
 

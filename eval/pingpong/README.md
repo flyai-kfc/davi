@@ -77,6 +77,8 @@ python3 -m pingpong_eval compare runs/<기존> runs/<후보> --out runs/ab.md
 `--allow-scenario-drift`로 불일치를 알고 우회하면 stderr와 출력 Markdown 양쪽에 항목을 남긴다.
 기본 파일이 아닌 시나리오의 옛 CRLF/LF run을 비교할 때는 `compare --scenarios <파일>`로 그
 내용을 함께 지정한다.
+`compare`는 기록된 해시가 같으면 시나리오 파일 없이도 비교한다. 해시가 서로 다르고 파일을
+읽을 수 없으면 줄바꿈 변형인지 증명할 수 없으므로 traceback 대신 해당 해시·배치 불일치를 보고한다.
 예전 run을 읽을 때도 코드 지표는 저장된 transcript에서 다시 계산한다. 다만 필드가
 생기기 전 run은 최초 누락 슬롯 키를 복원할 수 없으므로 누락 정보 환각률은 `-`로 남고,
 그 결과만 환각률 분모에서 개별로 빼고 보고서 셀에 `n`을 표시한다. 비교 가능한 결과가

@@ -70,7 +70,12 @@ def _scenario_digests_match(first: str | None, second: str | None, path: Path) -
         return False
     if first == second:
         return True
-    variants = _scenario_digest_variants(path)
+    try:
+        variants = _scenario_digest_variants(path)
+    except OSError:
+        # compare는 같은 해시라면 파일 없이도 가능하다. 파일을 읽을 수 없으면
+        # 서로 다른 해시의 legacy 동치를 증명할 수 없으므로 불일치로만 다룬다.
+        return False
     return first in variants and second in variants
 
 
@@ -168,7 +173,8 @@ def cmd_judge(args: argparse.Namespace) -> int:
             result.judge_batch is not None
             and result.judge_batch.scenario_digest in compatible_digests
         ):
-            # 옛 CRLF raw hash로 저장된 부분 채점도 현재 정규화 배치와 섞이지 않게 이관한다.
+            # 이관은 현재 내용의 LF/CRLF 줄바꿈 변형에 한정한다. 선택 밖 결과도
+            # 해시만 정규화하며, 모델·채점 계약이 다른 점수는 여전히 별도 배치다.
             result.judge_batch.scenario_digest = current
 
     picked = results
