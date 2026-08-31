@@ -33,6 +33,10 @@ from .sut import PingpongError, SlotFillHttpAdapter
 from .user_sim import UserSimulator
 
 DEFAULT_SCENARIOS = Path("scenarios/handwritten-30.json")
+_SCENARIO_HASH_HELP = (
+    "같은 내용의 LF/CRLF 줄바꿈 판이라면 --scenarios <파일>로 "
+    "실행 당시 시나리오 파일을 먼저 지정한다. "
+)
 
 
 def load_scenarios(path: Path) -> ScenarioFile:
@@ -451,9 +455,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
         ):
             input_mismatches.append(key)
     if input_mismatches and not args.allow_scenario_drift:
+        scenario_hint = (
+            _SCENARIO_HASH_HELP if "시나리오 파일 해시" in input_mismatches else ""
+        )
         print(
             f"A/B 입력 조건이 다르거나 기록되지 않았다: {', '.join(input_mismatches)}. "
-            "알고 비교하려면 --allow-scenario-drift 를 쓴다.",
+            f"{scenario_hint}조건 차이를 알고 비교하려면 --allow-scenario-drift 를 쓴다.",
             file=sys.stderr,
         )
         return 1
@@ -470,10 +477,14 @@ def cmd_compare(args: argparse.Namespace) -> int:
         and candidate_batch is not None
         and not _judge_batches_match(baseline_batch, candidate_batch, args.scenarios)
     ):
+        scenario_hint = (
+            _SCENARIO_HASH_HELP if baseline_batch[1] != candidate_batch[1] else ""
+        )
         print(
             "평가자 모델·채점 시나리오·채점 계약 배치가 다르다 — goal·환각·선택 강요를 "
             f"A/B로 묶을 수 없다(기준 {baseline_batch} / 후보 {candidate_batch}). "
-            "같은 배치로 다시 채점한다. 모델과 해시가 같은데 걸린다면 채점 계약이 다른 "
+            f"{scenario_hint}배치 차이가 남으면 같은 배치로 다시 채점한다. "
+            "모델과 해시가 같은데 걸린다면 채점 계약이 다른 "
             "것이고, 그 필드가 생기기 전의 실행은 값이 비어 있어 재채점 없이는 못 맞댄다.",
             file=sys.stderr,
         )

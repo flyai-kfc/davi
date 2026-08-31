@@ -674,6 +674,8 @@ def test_compare는_실행_조건이_다르면_막는다(
     )
 
     assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    # seed·호출 상한 불일치는 시나리오 파일을 지정해도 해결되지 않는다.
+    assert "--scenarios" not in capsys.readouterr().err
     drift_report = tmp_path / "drift.md"
     assert (
         cli.main(
@@ -744,6 +746,9 @@ def test_compare는_시나리오_파일_없이도_메타데이터를_비교한�
     error = capsys.readouterr().err
     if mismatch:
         assert mismatch in error
+        assert "--scenarios <파일>" in error
+        if field == "시나리오해시":
+            assert error.index("--scenarios") < error.index("--allow-scenario-drift")
     else:
         assert not error
 
@@ -884,10 +889,16 @@ def test_부분_재채점은_옛_crlf_배치를_현재_배치로_이관한다(
     assert summary["전체"]["충족"] == 1
 
 
-def test_compare는_lf와_crlf_해시를_같은_입력으로_본다(scenarios, tmp_path):
+def test_compare는_커스텀_시나리오의_lf_crlf_해시를_원본으로_대조한다(
+    scenarios, tmp_path, capsys
+):
     from pingpong_eval import cli
 
-    path = ROOT / DEFAULT_SCENARIOS
+    # 기본 파일과 해시가 다른 커스텀 파일: 기본 --scenarios로 동치를 증명할 수 없다.
+    path = tmp_path / "custom.json"
+    path.write_text(
+        (ROOT / DEFAULT_SCENARIOS).read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
     canonical = cli.scenario_digest(path)
     (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
     common = {
@@ -911,6 +922,20 @@ def test_compare는_lf와_crlf_해시를_같은_입력으로_본다(scenarios, t
         meta_overrides={**common, "채점시_시나리오해시": canonical},
     )
 
+    assert (
+        cli.main(
+            [
+                "compare",
+                str(baseline),
+                str(candidate),
+                "--scenarios",
+                str(ROOT / DEFAULT_SCENARIOS),
+            ]
+        )
+        == 1
+    )
+    assert "--scenarios <파일>" in capsys.readouterr().err
+    # 안내대로 실제 원본을 주면 drift 우회·유료 재채점 없이 두 배치가 다시 비교된다.
     assert (
         cli.main(
             [
