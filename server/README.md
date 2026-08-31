@@ -538,7 +538,9 @@ workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, 
   `dogfoodDeviceId=`로 찍힌다. `adb shell settings get secure android_id`는 셸 스코프
   값이라(Android 8+ 서명키별) 이 값을 얻을 수 없다.
 - 다른 debug 키스토어로 빌드하면 해시가 바뀐다. 화이트리스트가 리스트이니 새 값을 추가하면 된다.
-- 개인 기기는 옵트인하지도 등록하지도 않는다 — 공기계(SM-S921N)만(SPEC §3). 옵트인 없는
+- 개인 기기는 옵트인하지도 등록하지도 않는다. 모델명이 아니라 SPEC §3에서 **Android 15 /
+  One UI 7.0 개발용 공기계**로 지정한 기기만 등록한다. 같은 SM-S921N인 Android 16 추가
+  검증 기기는 개인 데이터 유무가 미확인이고 raw 저장·픽스처 수집 대상이 아니다. 옵트인 없는
   빌드와 release는 값을 계산하지도 보내지도 않는다.
 
 ## 스텁 프로브로 완료 재확인 루프를 재현한다 (#480)

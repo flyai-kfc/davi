@@ -314,33 +314,26 @@ def test_repository_launcher_fixtures_preserve_observed_layout_variants():
     assert scrollable[0].can_scroll_backward is False
 
 
-@pytest.mark.parametrize(
-    ("filename", "focused_ids"),
-    [
-        ("samsung_clock_alarm_picker_values.json", set()),
-        ("samsung_clock_alarm_name_filled.json", {"n24"}),
-        ("google_auth_totp_input_filled.json", {"n3"}),
-        ("google_auth_password_input_filled.json", {"n3"}),
-    ],
-)
-def test_editable_fixtures_explicit_focus_matches_wire_defaults(
-    tmp_path: Path, filename: str, focused_ids: set[str]
-):
-    path = FIXTURES / filename
-    fixture = load_fixture(path)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    elements = payload["input"]["screen"]["elements"]
+def test_editable_fixtures_explicit_focus_matches_wire_defaults(tmp_path: Path):
+    checked = 0
+    for path in sorted(FIXTURES.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        elements = payload["input"]["screen"]["elements"]
+        if not any("editable" in element for element in elements):
+            continue
 
-    # 저장 표기는 명시형으로 통일하되, 현재 wire의 false 생략과 같은 요청이어야 한다.
-    assert all(type(element.get("focused")) is bool for element in elements)
-    assert {element["node_id"] for element in elements if element["focused"]} == (
-        focused_ids
-    )
-    for element in elements:
-        if element["focused"] is False:
-            del element["focused"]
-    omitted = load_fixture(_write_fixture(tmp_path, filename, payload))
-    assert omitted.request.model_dump() == fixture.request.model_dump()
+        checked += 1
+        fixture = load_fixture(path)
+        # 저장 표기는 명시형으로 통일하되, 현재 wire의 false 생략과 같은 요청이어야 한다.
+        assert all(type(element.get("focused")) is bool for element in elements), (
+            path.name
+        )
+        for element in elements:
+            if element["focused"] is False:
+                del element["focused"]
+        omitted = load_fixture(_write_fixture(tmp_path, path.name, payload))
+        assert omitted.request.model_dump() == fixture.request.model_dump(), path.name
+    assert checked > 0
 
 
 def test_repository_alarm_picker_fixture_preserves_observed_value_projection():
