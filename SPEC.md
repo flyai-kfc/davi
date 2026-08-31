@@ -231,11 +231,12 @@
   - **스토어 사용자까지 넓히는 경우** — `DOGFOOD_OPT_IN`이 `defaultConfig`에서 `false`이고
     debug 블록만 덮으므로(`app-android/app/build.gradle.kts`) release APK는 `device_id`를
     계산·전송하지 않는다. 서버 allowlist에 무엇을 넣든 스토어 사용자는 대상이 되지 않고,
-    켜려면 빌드 스크립트를 고쳐야 해서 **diff에 드러난다**. 단 **막는 것은 관문이 아니라
-    상수다** — `verifyReleaseConfiguration`이 보는 것은 debug 서버·토큰·카카오 키·마스킹
-    우회이고 이 값은 검사하지 않는다. **관문은 #455가 받는다** — release BuildConfig의
-    상수를 보는 기존 CI 스텝에 한 줄을 더하는 일이고, 그것이 서면 이 문단의 「관문이
-    아니라 상수다」를 고쳐야 한다.
+    켜려면 빌드 스크립트를 고쳐야 해서 **diff에 드러난다**. 이 상수는 **CI에서 생성물을
+    검사한다**(#455) — `DAVI_DOGFOOD=true`인 조건에서도 release BuildConfig의
+    `DOGFOOD_OPT_IN = false`를 확인해 debug 값이 새는 배선 실수를 실패로 드러낸다.
+    **옵트인 설정 자체를 금지하는 것은 아니다.** `verifyReleaseConfiguration`의 금지 목록에
+    도그푸딩 설정을 넣지 않으므로, 다른 개발 전용 설정이 없는 도그푸딩 머신은
+    `local.properties`에 `DAVI_DOGFOOD=true`를 둔 채 release를 빌드할 수 있다.
 - 운영 로그(비식별 메타 한 줄)와는 **별개 채널**이다. 로그의 비식별 원칙은 이 정책과
   무관하게 유지된다(`server/CLAUDE.md`).
 
