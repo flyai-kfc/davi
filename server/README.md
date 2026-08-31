@@ -514,7 +514,7 @@ Windows처럼 Bash 실행기를 사용하지 않는 환경에서는 GitHub의
 **Actions → Azure release deploy → Run workflow**에서 `main`을 선택해 같은 workflow를 실행한다.
 GitHub environment 승인 대기 상태라면 Actions에서 승인한 뒤 실행이 끝날 때까지 기다린다.
 
-workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, release 인증 출처,
+workflow는 고정 FQDN, 이번 run의 image와 revision, production 프로필, 고지된 OpenAI 공급자, release 인증 출처,
 개발·테스트 토큰 미배선 및 `/health`를 검증한다. 실행기가 workflow를 찾지 못했다고 끝난 경우에는
 곧바로 재실행하지 말고 출력된 request ID로 Actions run을 먼저 확인해 중복 배포를 피한다. 성공 후에는
 더미 로그인 probe와 release APK의 로그인·next-step 실기기 확인까지 수행한다. 최초 Azure/GitHub
@@ -574,6 +574,10 @@ DAVI_STUB_FORCE_DONE=true DAVI_STUB_DELAY_MS=5500 \
 ruff check . && ruff format --check .
 pytest
 ```
+
+release 배포 회귀의 셸 실행에는 `bash`, revision 검사식 실행에는 `jq`가 필요하다. 로컬에 없는
+도구의 테스트만 이유를 남겨 skip하며(`pytest -rs`로 확인), 정적 배포 계약 검사는 계속 실행한다.
+CI는 두 도구를 필수로 확인한 뒤 pytest를 실행한다. 로컬 skip은 해당 경로의 통과가 아니다.
 
 ## 구조
 

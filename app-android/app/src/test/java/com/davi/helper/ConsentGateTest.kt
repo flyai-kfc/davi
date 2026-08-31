@@ -88,6 +88,18 @@ class ConsentGateTest {
         assertFalse(ConsentGate.hasAgreed("1", REQUIRED_NAMES, "2"))
     }
 
+    /** OpenAI 고지 v3는 배포된 v2의 동의를 물려받지 않는다(#502). */
+    @Test
+    fun `openai disclosure v3 requires fresh consent from v2`() {
+        assertTrue(ConsentGate.needsConsent(storedVersion = "2", currentVersion = "3"))
+        assertFalse(ConsentGate.hasAgreed("2", REQUIRED_NAMES + "KAKAO", "3"))
+    }
+
+    @Test
+    fun `openai disclosure v3 accepts all required consents at v3`() {
+        assertTrue(ConsentGate.hasAgreed("3", REQUIRED_NAMES, "3"))
+    }
+
     /**
      * **이 테스트가 리뷰가 짚은 구멍이다.** 필수 목록은 코드라 문안 버전과 따로 늘어난다 —
      * 버전이 같아도 저장된 항목이 지금의 필수를 덮지 못하면 다시 받아야 한다.

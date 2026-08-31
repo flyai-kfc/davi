@@ -32,19 +32,21 @@ param revisionSuffix string
 param imageRepository string = 'davi-server'
 
 @allowed([
-  'gemini'
   'openai'
 ])
-param llmProvider string = 'gemini'
+@description('현재 release 동의·처리방침에 고지된 공급자만 허용한다. 변경 시 고지·재동의도 함께 갱신한다.')
+param llmProvider string
 
 @description('비우면 서버가 공급자 기본 모델을 고른다.')
 param daviModel string = ''
 
+// 기존 revision의 참조를 함께 없애지 않는다. 제거 순서는 배포 문서 §2를 따른다.
 @minLength(1)
 param geminiApiKeySecretName string = 'GEMINI-API-KEY'
 
-@description('OpenAI를 선택할 때만 쓰는 Key Vault secret 이름.')
-param openAiApiKeySecretName string = ''
+@minLength(1)
+@description('release OpenAI 호출에 필요한 Key Vault secret 이름.')
+param openAiApiKeySecretName string
 
 @minLength(1)
 @description('release 세션 JWT 서명 비밀의 Key Vault secret 이름. 값은 32자 이상이어야 한다.')
@@ -109,7 +111,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: containerIdentity.id
         }
       ]
-      secrets: concat([
+      secrets: [
         {
           name: 'gemini-api-key'
           keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${geminiApiKeySecretName}'
@@ -120,13 +122,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${authJwtSecretSecretName}'
           identity: containerIdentity.id
         }
-      ], empty(openAiApiKeySecretName) ? [] : [
         {
           name: 'openai-api-key'
           keyVaultUrl: 'https://${keyVault.name}${environment().suffixes.keyvaultDns}/secrets/${openAiApiKeySecretName}'
           identity: containerIdentity.id
         }
-      ])
+      ]
     }
     template: {
       revisionSuffix: revisionSuffix
@@ -138,7 +139,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: concat([
+          env: [
             {
               name: 'DAVI_ENV'
               value: 'production'
@@ -179,12 +180,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'GEMINI_API_KEY'
               secretRef: 'gemini-api-key'
             }
-          ], empty(openAiApiKeySecretName) ? [] : [
             {
               name: 'OPENAI_API_KEY'
               secretRef: 'openai-api-key'
             }
-          ])
+          ]
           probes: [
             {
               type: 'Liveness'

@@ -110,6 +110,9 @@ jobs:
               - 'eval/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/eval-judge.yml'
+              # release 배포 입력만 바뀌어도 고지 공급자 관문 회귀를 실행한다(#502).
+              - '.github/workflows/azure-release-deploy.yml'
+              - 'infra/azure/release-server.bicep'
               # 앱의 계약 파일이 바뀌어도 백엔드 잡을 돌린다.
               # test_contract_drift.py 가 이 파일을 읽어 서버 enum과 대조하기 때문이다.
               # 이게 없으면 앱만 고친 PR에서 드리프트 검사가 통째로 건너뛰어진다.
@@ -710,7 +713,11 @@ jobs:
       - name: 테스트
         if: needs.changes.outputs.backend == 'true'
         working-directory: server
-        run: pytest
+        run: |
+          # 로컬의 도구 미설치 skip이 필수 CI에서 관문을 비우지 못하게 한다(#502).
+          command -v bash >/dev/null
+          command -v jq >/dev/null
+          pytest
 
       # #30의 음성 경로(PII 탐지·원문 비노출·스키마 거부)는 하니스 스모크만으로 검증할 수 없다.
       - name: eval 린트

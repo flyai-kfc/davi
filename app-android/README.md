@@ -216,7 +216,7 @@ package·label·component·profile은 서버·파일·상세 로그에 나가지
 폐기한다. 두 번째 응답이 `unable_to_finalize`이면 재시작/홈 안전 종료 화면을 보이고 세 번째 요청을
 하지 않는다. 늦은 응답은 generation으로 버린다. 원시 음성을 Davi 서버에 보내거나 저장하지 않고,
 발화·질문·답·goal·대화 UUID는 `GuideSvc` 로그에 남기지 않는다. 인식된 텍스트와 답은 의미 보존을 위해 서버와
-Gemini에 전달된다는 내부 도그푸딩 경계는 `../SPEC.md` §4에 명시돼 있다.
+선택한 LLM 공급자에 전달된다는 클로즈드 베타의 처리 경계와 고지 점검은 `../SPEC.md` §4·§11에 명시돼 있다.
 
 **옵트인 debug 빌드**(`local.properties`에 `DAVI_DOGFOOD=true`)는 접근성 서비스 연결 시
 `GuideSvc`의 `connected ... dogfoodDeviceId=<16자 해시>`로 도그푸딩 화이트리스트 등록 값을
