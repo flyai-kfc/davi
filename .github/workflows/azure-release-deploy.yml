@@ -38,17 +38,12 @@ jobs:
       DAVI_AZURE_OPENAI_KEY_SECRET_NAME: ${{ vars.DAVI_AZURE_OPENAI_KEY_SECRET_NAME }}
       DAVI_AZURE_MODEL: ${{ vars.DAVI_AZURE_MODEL }}
       IMAGE_REPOSITORY: davi-server
+      # 동의 문안·처리방침의 제공처와 함께 변경한다. environment 변수가 덮을 수 없다.
+      RELEASE_DISCLOSED_LLM_PROVIDER: openai
       EXPECTED_RELEASE_FQDN: davi-server-release.greenbeach-0566d3be.koreacentral.azurecontainerapps.io
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Azure 로그인
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: release 배포 변수 검증
         shell: bash
@@ -62,7 +57,9 @@ jobs:
             DAVI_AZURE_CONTAINER_IDENTITY_NAME \
             DAVI_AZURE_CONTAINER_APP_NAME \
             DAVI_AZURE_AUTH_JWT_SECRET_NAME \
-            DAVI_AZURE_KAKAO_APP_ID; do
+            DAVI_AZURE_KAKAO_APP_ID \
+            DAVI_AZURE_LLM_PROVIDER \
+            DAVI_AZURE_OPENAI_KEY_SECRET_NAME; do
             test -n "${!name:-}" || {
               echo "::error::davi-release environment variable $name 을 설정하세요."
               exit 1
@@ -81,23 +78,17 @@ jobs:
             echo "::error::DAVI_AZURE_KAKAO_APP_ID는 양의 정수여야 합니다."
             exit 1
           fi
-          if [ -n "${DAVI_AZURE_MODEL:-}" ] && [ -z "${DAVI_AZURE_LLM_PROVIDER:-}" ]; then
-            echo "::error::DAVI_AZURE_MODEL을 pin 하려면 DAVI_AZURE_LLM_PROVIDER도 함께 지정하세요."
+          if [ "$DAVI_AZURE_LLM_PROVIDER" != "$RELEASE_DISCLOSED_LLM_PROVIDER" ]; then
+            echo "::error::release 공급자는 현재 고지한 $RELEASE_DISCLOSED_LLM_PROVIDER여야 합니다. 고지·재동의와 배포 관문을 함께 변경하세요."
             exit 1
           fi
-          case "${DAVI_AZURE_LLM_PROVIDER:-gemini}" in
-            gemini) ;;
-            openai)
-              test -n "${DAVI_AZURE_OPENAI_KEY_SECRET_NAME:-}" || {
-                echo "::error::openai에는 DAVI_AZURE_OPENAI_KEY_SECRET_NAME이 필요합니다."
-                exit 1
-              }
-              ;;
-            *)
-              echo "::error::release Azure 배선은 gemini 또는 openai만 지원합니다."
-              exit 1
-              ;;
-          esac
+
+      - name: Azure 로그인
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: 불변 image tag로 ACR push
         shell: bash
@@ -141,8 +132,8 @@ jobs:
               revisionSuffix="$revision_suffix" \
               authJwtSecretSecretName="$DAVI_AZURE_AUTH_JWT_SECRET_NAME" \
               kakaoAppId="$DAVI_AZURE_KAKAO_APP_ID" \
-              llmProvider="${DAVI_AZURE_LLM_PROVIDER:-gemini}" \
-              openAiApiKeySecretName="${DAVI_AZURE_OPENAI_KEY_SECRET_NAME:-}" \
+              llmProvider="$DAVI_AZURE_LLM_PROVIDER" \
+              openAiApiKeySecretName="$DAVI_AZURE_OPENAI_KEY_SECRET_NAME" \
               daviModel="${DAVI_AZURE_MODEL:-}")"
 
           deployed_revision="$(jq -er '.deployedRevision.value' <<<"$deployment_outputs")"
@@ -178,6 +169,7 @@ jobs:
               && jq -e \
                 --arg expected_revision "$EXPECTED_REVISION" \
                 --arg expected_image "$EXPECTED_IMAGE" \
+                --arg expected_provider "$RELEASE_DISCLOSED_LLM_PROVIDER" \
                 '.name == $expected_revision
                   and .properties.active == true
                   and .properties.provisioningState == "Provisioned"
@@ -188,6 +180,8 @@ jobs:
                     .name == "DAVI_ENV" and .value == "production")
                   and any(.properties.template.containers[0].env[];
                     .name == "DAVI_USE_STUB_LLM" and .value == "false")
+                  and ([.properties.template.containers[0].env[]
+                    | select(.name == "DAVI_LLM_PROVIDER") | .value] == [$expected_provider])
                   and any(.properties.template.containers[0].env[];
                     .name == "DAVI_AUTH_SOURCE" and .value == "azure_container_apps")
                   and (all(.properties.template.containers[0].env[];
@@ -200,10 +194,11 @@ jobs:
                 /tmp/davi-release-health >/dev/null; then
               printf 'verified release revision: %s\n' "$EXPECTED_REVISION"
               printf 'verified release image: %s\n' "$EXPECTED_IMAGE"
+              printf 'verified release provider: %s\n' "$RELEASE_DISCLOSED_LLM_PROVIDER"
               printf 'release URL: https://%s\n' "$DEPLOYED_FQDN"
               exit 0
             fi
             sleep 10
           done
-          echo '::error::release revision/image/profile 또는 HTTPS health 확인에 실패했습니다.'
+          echo '::error::release revision/image/profile/provider 또는 HTTPS health 확인에 실패했습니다.'
           exit 1

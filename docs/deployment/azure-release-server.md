@@ -17,7 +17,7 @@ release에는 `DAVI_DEV_ACCESS_TOKEN`과 `DAVI_TEST_ACCESS_TOKEN`을 배선하�
 
 - `infra/azure/release-server.bicep`: 기존 기반 자원을 참조해 release Container App과 revision만 만든다.
 - `.github/workflows/azure-release-deploy.yml`: GitHub-hosted runner에서 image를 build/push하고 정확한
-  revision·image·production profile·HTTPS health를 검증한다.
+  revision·image·production profile·고지된 공급자·HTTPS health를 검증한다.
 - `app-android/app/build.gradle.kts`: release APK의 고정 HTTPS endpoint와 빈 개발 토큰을 만든다.
 
 development는 `main` 변경 때 자동 배포하지만 release는 수동 승격한다. GitHub Actions의
@@ -46,7 +46,7 @@ GitHub 배포 identity `id-davi-github-deploy`가 이미 resource group `Contrib
 
 ## 2. Key Vault: release 인증 비밀 준비
 
-LLM 키는 같은 공급자를 쓴다면 기존 `GEMINI-API-KEY`를 재사용할 수 있다. 세션 JWT 서명 비밀은
+현재 release 고지는 OpenAI다. LLM 키는 기존 `OPENAI-API-KEY`가 있으면 재사용한다. 세션 JWT 서명 비밀은
 development와 분리해 새 이름으로 만든다. 값은 저장소·GitHub·명령 출력에 남기지 않는다.
 
 ```bash
@@ -60,7 +60,7 @@ az keyvault secret set \
 unset DAVI_RELEASE_JWT_SECRET
 ```
 
-OpenAI를 선택한다면 같은 방식으로 `OPENAI-API-KEY` secret을 준비한다. 배포 identity에는 secret
+`OPENAI-API-KEY`가 없으면 같은 방식으로 준비한다. 배포 identity에는 secret
 읽기 권한을 주지 않는다. secret 값은 Container App runtime identity만 읽는다.
 
 ## 3. Azure OIDC: release environment subject 추가
@@ -101,9 +101,15 @@ Repository **Settings → Environments → New environment**에서 `davi-release
 | `DAVI_AZURE_CONTAINER_APP_NAME` | `davi-server-release` |
 | `DAVI_AZURE_AUTH_JWT_SECRET_NAME` | `DAVI-RELEASE-AUTH-JWT-SECRET` |
 | `DAVI_AZURE_KAKAO_APP_ID` | 카카오 개발자 콘솔의 숫자 앱 ID |
-| `DAVI_AZURE_LLM_PROVIDER` | 선택. 비우면 `gemini`, 또는 `openai` |
-| `DAVI_AZURE_OPENAI_KEY_SECRET_NAME` | OpenAI일 때 `OPENAI-API-KEY` |
+| `DAVI_AZURE_LLM_PROVIDER` | 필수. 현재 고지와 같은 `openai`만 허용 |
+| `DAVI_AZURE_OPENAI_KEY_SECRET_NAME` | 필수. `OPENAI-API-KEY` |
 | `DAVI_AZURE_MODEL` | 선택. 평소 비우고 공급자 기본 모델 사용 |
+
+공급자 기본값은 없다. workflow는 저장소에 고정한 `RELEASE_DISCLOSED_LLM_PROVIDER=openai`와
+environment 변수를 Azure 로그인·image 빌드 전에 대조한다. 미설정·빈 값·다른 공급자는 실패하며,
+release Bicep도 `openai`만 받는다. 공급자 변경은 변수만 바꾸는 운영 작업이 아니라 처리방침·
+앱 고지·재동의와 배포 관문을 함께 바꾸는 변경이다(`SPEC.md` §11). development 기본값·선택지는
+이 release 제한과 별개다. 회귀 테스트는 실제 검증 셸·revision 검사식과 앱/처리방침의 제공처를 묶는다.
 
 ## 5. 최초 배포와 검증
 
@@ -133,7 +139,10 @@ curl --fail --silent --show-error \
 
 production health 응답은 진단 정보를 노출하지 않고 `{"status":"ok"}`만 반환한다. workflow는 이에
 더해 release APK 고정 FQDN, 정확한 revision/image, `DAVI_ENV=production`, stub 비활성,
-`DAVI_AUTH_SOURCE=azure_container_apps`, 개발 토큰 미배선을 확인한다. ACA 모드의 로그인 제한은
+`DAVI_AUTH_SOURCE=azure_container_apps`, 개발 토큰 미배선을 확인한다. 공급자는 공개 health가 아니라
+Azure 관리 API의 **해당 revision** 환경변수에서 `DAVI_LLM_PROVIDER=openai`인지 대조한다.
+누락·다른 값·중복 항목은 실패한다. 새 관문의 실제 배포 검증을 포함한 완료·보류 상태는
+`SPEC.md` §11에 갱신한다. ACA 모드의 로그인 제한은
 플랫폼이 보장하는 `X-Forwarded-For`의 가장 오른쪽 IP만 사용하고, 누락·오형식은 카카오 API 전에
 503으로 닫는다. IP는 인증·권한·로그에 쓰지 않는다.
 

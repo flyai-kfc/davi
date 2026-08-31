@@ -1,12 +1,33 @@
 """앱 동의 문안과 처리방침 원본의 공급자·버전 동기화를 키 없이 확인한다(#502)."""
 
-from pathlib import Path
 import re
 import unittest
 import xml.etree.ElementTree as ET
-
+from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[2]
+PROVIDER_NAMES = {"openai": "OpenAI", "gemini": "Google Gemini", "anthropic": "Anthropic"}
+
+
+def disclosed_providers(text):
+    return {
+        name
+        for name in PROVIDER_NAMES.values()
+        if re.search(rf"\b{re.escape(name)}\b", text, re.ASCII)
+    }
+
+
+def policy_recipients(policy):
+    # §7의 보유 설명이나 표 밖의 과거 공급자 언급이 §6 제공처 누락을 가리지 않게 한다.
+    section = re.search(r"^## 6\..*?\n(.*?)(?=^## |\Z)", policy, re.MULTILINE | re.DOTALL)
+    if section is None:
+        return set()
+    recipient_cells = [
+        line.strip().split("|")[1].strip()
+        for line in section.group(1).splitlines()
+        if line.strip().startswith("|")
+    ]
+    return disclosed_providers("\n".join(recipient_cells))
 
 
 class ConsentDisclosureTest(unittest.TestCase):
@@ -23,12 +44,26 @@ class ConsentDisclosureTest(unittest.TestCase):
         self.assertEqual(match.group(1), self.strings["consent_version"])
 
     def test_screen_voice_and_third_party_disclose_openai_retention(self):
+        workflow = (APP_ROOT.parent / ".github/workflows/azure-release-deploy.yml").read_text(
+            encoding="utf-8"
+        )
+        provider = re.search(
+            r"^\s+RELEASE_DISCLOSED_LLM_PROVIDER:\s*(\w+)\s*$", workflow, re.MULTILINE
+        )
+        self.assertIsNotNone(provider)
+        expected = {PROVIDER_NAMES[provider.group(1)]}
         for key in ("consent_screen_detail", "consent_voice_detail", "consent_third_party_body"):
             with self.subTest(key=key):
-                self.assertIn("OpenAI", self.strings[key])
+                self.assertEqual(disclosed_providers(self.strings[key]), expected)
                 self.assertIn("악용 방지", self.strings[key])
-        self.assertIn("| OpenAI (현재 release", self.policy)
-        self.assertNotIn("현재 Google Gemini", self.policy)
+        self.assertEqual(policy_recipients(self.policy), expected)
+
+    def test_recipient_comparison_ignores_format_but_not_another_provider(self):
+        for name in ("OpenAI", "Anthropic"):
+            for cell in (name, f" **{name}** (현재 release) ", f"    {name}    "):
+                with self.subTest(name=name, cell=cell):
+                    policy = f"## 6. 제3자 제공\n| {cell} | 목적 |\n## 7. 보유\nOpenAI\n"
+                    self.assertEqual(policy_recipients(policy), {name})
 
     def test_audio_provider_is_distinct_from_davi_server(self):
         voice = self.strings["consent_voice_detail"]
