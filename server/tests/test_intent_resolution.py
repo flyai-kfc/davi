@@ -274,7 +274,7 @@ def test_prompt_excludes_session_id_and_does_not_define_fixed_slots():
 
 
 def test_first_prompt_asks_only_goal_critical_details_and_defers_on_screen_choices():
-    prompt = build_intent_prompt(_request("커피를 주문하고 싶어"))
+    prompt = build_intent_prompt(_request("글씨를 크게 해줘"))
 
     assert "수행할 작업·대상·경로가 달라져 목표 한 문장이" in prompt
     assert "우선순위가 높은 질문을 최대 두 개" in prompt
@@ -287,12 +287,14 @@ def test_first_prompt_asks_only_goal_critical_details_and_defers_on_screen_choic
     assert "decision_basis에 빠진 정보 후보" not in prompt
     assert "안내가 끝났을 때 목표를 달성했는지 판정할 수 있는" in prompt
     assert '사용자가 "크게"처럼 정도를 말했지만 완료 경계가 여러 개이거나' in prompt
+    assert "안내 흐름이 같아도 목표 완료 경계가 불분명하면 질문을 우선하세요" in prompt
     assert "뉴스처럼" in prompt
     assert "앱·수단·전달 경로가 빠져 있고 선택에 따라 실제 안내 경로가" in prompt
     assert '"스마트폰", "앱", "인터넷" 같은 포괄 표현' in prompt
     assert "질문 예산을 채우려고 별개의 선택 조건을" in prompt
     assert '"찾아 선택하기", "원하는 것을 고르기"처럼 누락을 goal 안에' in prompt
     assert "구체적인 사진·가게·수량처럼 사용자가 앱 화면을 보며 고를 수 있고" in prompt
+    assert "흐름이 같고 목표 완료 경계도 분명한 값은 목표 확정 질문으로 묻지 마세요" in prompt
     assert "화면에서 고르게 남긴 값은 goal에서도 생략하고" in prompt
     assert '"찾아 선택하기"처럼 새 하위 목표를' in prompt
     assert '사용자가 "가까운 곳"을 찾는다고 했다면 기기의 현재 위치를 기준으로' in prompt
