@@ -269,8 +269,12 @@ jobs:
 
       # Android SDK 경로(ANDROID_HOME)와 라이선스 동의를 준비한다.
       # compileSdk 36 플랫폼은 AGP가 필요 시 자동 다운로드한다.
+      # packages 기본값 'tools platform-tools'의 `tools`는 폐기된 패키지라 SDK 저장소에서
+      # 빠지자 sdkmanager가 실패했다(2026-09-23, 8/31까지는 통과). 빌드에 쓰지 않으므로 뺀다.
       - name: Android SDK 셋업
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # 버전을 지정하지 않으면 wrapper(gradle-wrapper.properties)의 Gradle을 쓴다.
       # 캐시(~/.gradle)도 이 액션이 관리한다.
