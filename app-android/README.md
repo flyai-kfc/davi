@@ -333,7 +333,7 @@ DAVI_RELEASE_KEY_PASSWORD=<key 비밀번호>
 |---|---|---|
 | debug | 각자 PC의 `~/.android/debug.keystore` | 개발 중 실기기 |
 | release, 직접 설치 | 업로드 키(`davi-upload.jks`) | `adb install`로 넣는 서명 검증 |
-| release, Play 배포 | **Google의 앱 서명 키** | 내부 테스트·프로덕션 |
+| release, Play 배포 | **Google의 앱 서명 키** | 내부·비공개 테스트·프로덕션(트랙이 달라도 같은 키) |
 
 **셋 다 등록한다.** Play가 AAB를 받아 재서명하므로 마지막 것은 업로드 키 해시와 다르고,
 **첫 업로드 전에는 존재하지도 않는다.** 그래서 로그인이 실패하면 **어느 경로로 설치한
