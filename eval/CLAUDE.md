@@ -81,6 +81,9 @@ Ruff 린트 규칙은 `pyproject.toml`에 둔다. 모노레포 형제 `server/`�
   치환했고 합성 입력값은 제출하지 않았다. 이 정적 인증 fixture도 Android serializer 자체를
   실행하지 않는다. fixture에 합성 값이 없다는 eval 단언은 저장 입력의 안전성만 지키며, 실제
   값 제외 투영의 rollback은 앱 단위 테스트가 지킨다.
+  #112 이후 `editable` 상태를 보존한 fixture는 파일명 대신 요소 JSON의 `editable` 키로 판별해
+  모든 요소의 `focused`를 명시한다. 생략된 값은 현재 wire 기본값 `false`로만 펼치고 실제
+  `true`는 유지한다. #112 이전 구버전 fixture의 미관측 필드는 소급해 채우지 않는다.
 - 완료 fixture의 두 사람 기대값은 축이 다르다. `expected_verified`는 evidence가 화면 label을
   올바르게 인용했는지, `expected_verdict`는 evidence 문장과 무관하게 현재 화면이 목표 상태를
   직접 뒷받침/반박하는지다. 알려진 오판도 지우지 않고 case id와 혼동행렬로 남긴다(#71·#425).

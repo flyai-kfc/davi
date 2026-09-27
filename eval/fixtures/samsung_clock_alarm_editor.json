@@ -9,6 +9,7 @@
     "os_version": "Android 15",
     "ui_version": "One UI 7.0",
     "anonymization": [
+      "focused 생략은 현재 wire 계약 기본값 false로 명시했으며 기존 true와 관측 내용은 유지",
       "알람 이름·요일·메뉴 label을 순서 기반 일반 요소로 치환",
       "요소 수·클릭/편집/포커스 수·IME·스크롤 메타는 실측 로그 값이고 label 원문은 로그에 없어 넣지 않음",
       "device_id와 모델 응답 원문은 포함하지 않음"
@@ -63,6 +64,7 @@
           "role": "EditText",
           "clickable": true,
           "editable": true,
+          "focused": false,
           "bounds": [
             70,
             1200,
@@ -75,6 +77,7 @@
           "label": "요일 1",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             70,
             1360,
@@ -87,6 +90,7 @@
           "label": "요일 2",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             205,
             1360,
@@ -99,6 +103,7 @@
           "label": "요일 3",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             340,
             1360,
@@ -111,6 +116,7 @@
           "label": "요일 4",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             475,
             1360,
@@ -123,6 +129,7 @@
           "label": "요일 5",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             610,
             1360,
@@ -135,6 +142,7 @@
           "label": "요일 6",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             745,
             1360,
@@ -147,6 +155,7 @@
           "label": "요일 7",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             880,
             1360,
@@ -159,6 +168,7 @@
           "label": "일반 요소 1",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             70,
             1560,
@@ -171,6 +181,7 @@
           "label": "일반 요소 2",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             260,
             1560,
@@ -183,6 +194,7 @@
           "label": "일반 요소 3",
           "role": "TextView",
           "clickable": false,
+          "focused": false,
           "bounds": [
             450,
             1560,
@@ -195,6 +207,7 @@
           "label": "취소",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             640,
             1560,
@@ -207,6 +220,7 @@
           "label": "저장",
           "role": "Button",
           "clickable": true,
+          "focused": false,
           "bounds": [
             830,
             1560,
@@ -219,6 +233,7 @@
           "label": "알람 편집",
           "role": "TextView",
           "clickable": false,
+          "focused": false,
           "bounds": [
             70,
             300,
@@ -231,6 +246,7 @@
           "label": "일반 요소 4",
           "role": "TextView",
           "clickable": false,
+          "focused": false,
           "bounds": [
             70,
             1700,
@@ -243,6 +259,7 @@
           "label": "일반 요소 5",
           "role": "TextView",
           "clickable": false,
+          "focused": false,
           "bounds": [
             70,
             1820,
