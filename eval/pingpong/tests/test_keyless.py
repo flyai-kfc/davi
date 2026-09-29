@@ -674,6 +674,8 @@ def test_compare는_실행_조건이_다르면_막는다(
     )
 
     assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    # seed·호출 상한 불일치는 시나리오 파일을 지정해도 해결되지 않는다.
+    assert "--scenarios" not in capsys.readouterr().err
     drift_report = tmp_path / "drift.md"
     assert (
         cli.main(
@@ -691,6 +693,117 @@ def test_compare는_실행_조건이_다르면_막는다(
     warning = f"입력 조건 불일치를 알고 비교했다: {field}"
     assert warning in capsys.readouterr().err
     assert f"> ⚠️ {warning}" in drift_report.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("field", "candidate_digest", "mismatch"),
+    [
+        ("시나리오해시", "same", None),
+        ("시나리오해시", "different", "시나리오 파일 해시"),
+        ("채점시_시나리오해시", "different", "채점 계약 배치가 다르다"),
+    ],
+)
+def test_compare는_시나리오_파일_없이도_메타데이터를_비교한다(
+    scenarios, tmp_path, capsys, field, candidate_digest, mismatch
+):
+    """파일이 없으면 legacy 동치만 증명할 수 없다. 같은 해시 비교는 계속 가능하다."""
+
+    from pingpong_eval import cli
+
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+        "채점시_시나리오해시": "same",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=common,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="candidate",
+        meta_overrides={**common, field: candidate_digest},
+    )
+
+    code = cli.main(
+        [
+            "compare",
+            str(baseline),
+            str(candidate),
+            "--scenarios",
+            str(tmp_path / "missing.json"),
+        ]
+    )
+
+    assert code == (1 if mismatch else 0)
+    error = capsys.readouterr().err
+    if mismatch:
+        assert mismatch in error
+        assert "--scenarios <파일>" in error
+        if field == "시나리오해시":
+            assert error.index("--scenarios") < error.index("--allow-scenario-drift")
+    else:
+        assert not error
+
+
+@pytest.mark.parametrize(
+    ("candidate_model", "candidate_contract", "expects_scenario_hint"),
+    [
+        ("judge", "contract-v1", True),
+        ("other", "contract-v1", False),
+        ("judge", "contract-v2", False),
+        ("other", "contract-v2", False),
+    ],
+)
+def test_compare는_채점_해시만_다를_때_원본_시나리오를_안내한다(
+    scenarios,
+    tmp_path,
+    capsys,
+    candidate_model,
+    candidate_contract,
+    expects_scenario_hint,
+):
+    from pingpong_eval import cli
+
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+        "채점시_시나리오해시": "baseline-digest",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="baseline",
+        meta_overrides=common,
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest="same",
+        name="candidate",
+        meta_overrides={
+            **common,
+            "평가자모델": candidate_model,
+            "채점계약": candidate_contract,
+            "채점시_시나리오해시": "candidate-digest",
+        },
+    )
+
+    assert cli.main(["compare", str(baseline), str(candidate)]) == 1
+    error = capsys.readouterr().err
+    assert "채점 계약 배치가 다르다" in error
+    assert "같은 배치로 다시 채점한다" in error
+    assert ("--scenarios <파일>" in error) is expects_scenario_hint
 
 
 def test_compare는_파일이_같아도_실행_id가_다르면_막는다(scenarios, tmp_path):
@@ -726,6 +839,168 @@ def test_judge는_시나리오_드리프트를_막고_옵션으로만_연다(tmp
     base = ["judge", str(run_dir), "--scenarios", str(ROOT / DEFAULT_SCENARIOS)]
     assert cli.main([*base, "--dry-run"]) == 1
     assert cli.main([*base, "--dry-run", "--allow-scenario-drift"]) == 0
+
+
+def test_judge는_옛_crlf_해시를_같은_시나리오로_받는다(tmp_path):
+    """Windows raw hash로 찍힌 옛 run도 실제 내용이 같으면 drift 우회 없이 채점한다."""
+
+    from pingpong_eval import cli
+
+    path = ROOT / DEFAULT_SCENARIOS
+    scenario = load_scenarios(path).scenarios[0]
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    run_dir = _make_run_dir(tmp_path, scenario, digest=legacy_crlf)
+
+    assert cli.main(["judge", str(run_dir), "--scenarios", str(path), "--dry-run"]) == 0
+
+
+def test_부분_재채점은_옛_crlf_배치를_현재_배치로_이관한다(
+    monkeypatch, tmp_path, capsys
+):
+    """옛 CRLF digest의 미선택 채점도 같은 입력이면 stale로 버리지 않는다."""
+
+    from pingpong_eval import cli
+    from pingpong_eval.judge import judge_contract
+    from pingpong_eval.models import (
+        Achievement,
+        JudgeBatch,
+        JudgeResult,
+        ScenarioResult,
+        StopReason,
+        Transcript,
+    )
+
+    class _OkJudge:
+        model = "같은모델"
+        base_url = None
+        input_tokens = 0
+        output_tokens = 0
+
+        def parse(self, prompt, response_model, system=None):
+            return response_model(
+                achievement=Achievement.PARTIAL,
+                reason="새 채점",
+                slot_scores=[],
+                violations=[],
+            )
+
+    monkeypatch.setattr(cli, "ClaudeJudge", _OkJudge)
+
+    path = ROOT / DEFAULT_SCENARIOS
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    first, second = load_scenarios(path).scenarios[:2]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "meta.json").write_text(
+        json.dumps({"시나리오해시": legacy_crlf}), encoding="utf-8"
+    )
+    legacy_batch = JudgeBatch(
+        model="같은모델",
+        scenario_digest=legacy_crlf,
+        judge_contract=judge_contract(),
+    )
+    with (run_dir / "transcripts.jsonl").open("w", encoding="utf-8") as handle:
+        for scenario in (first, second):
+            handle.write(
+                ScenarioResult(
+                    scenario_id=scenario.id,
+                    difficulty=scenario.difficulty,
+                    factors=scenario.factors,
+                    transcript=Transcript(
+                        scenario_id=scenario.id,
+                        opening="사진 보내줘",
+                        stop_reason=StopReason.READY,
+                    ),
+                    judge=JudgeResult(
+                        achievement=Achievement.FULL,
+                        reason="옛 채점",
+                        slot_scores=[],
+                        violations=[],
+                    ),
+                    judge_batch=legacy_batch,
+                ).model_dump_json()
+                + "\n"
+            )
+
+    code = cli.main(
+        ["judge", str(run_dir), "--scenarios", str(path), "--only", first.id]
+    )
+    assert code == 0
+
+    lines = (run_dir / "transcripts.jsonl").read_text(encoding="utf-8").splitlines()
+    saved = {r.scenario_id: r for r in map(ScenarioResult.model_validate_json, lines)}
+    assert saved[first.id].judge.reason == "새 채점"
+    assert saved[second.id].judge.reason == "옛 채점"
+    assert saved[first.id].judge_batch.scenario_digest == canonical
+    assert saved[second.id].judge_batch.scenario_digest == canonical
+    assert "다른 배치에서 채점된" not in capsys.readouterr().err
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["전체"]["부분"] == 1
+    assert summary["전체"]["충족"] == 1
+
+
+def test_compare는_커스텀_시나리오의_lf_crlf_해시를_원본으로_대조한다(
+    scenarios, tmp_path, capsys
+):
+    from pingpong_eval import cli
+
+    # 기본 파일과 해시가 다른 커스텀 파일: 기본 --scenarios로 동치를 증명할 수 없다.
+    path = tmp_path / "custom.json"
+    path.write_text(
+        (ROOT / DEFAULT_SCENARIOS).read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+    canonical = cli.scenario_digest(path)
+    (legacy_crlf,) = cli._scenario_digest_variants(path) - {canonical}
+    common = {
+        "seed": 1,
+        "max_requests": 2,
+        "평가자모델": "judge",
+        "채점계약": "contract-v1",
+    }
+    baseline = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest=legacy_crlf,
+        name="baseline",
+        meta_overrides={**common, "채점시_시나리오해시": legacy_crlf},
+    )
+    candidate = _make_run_dir(
+        tmp_path,
+        scenarios[0],
+        digest=canonical,
+        name="candidate",
+        meta_overrides={**common, "채점시_시나리오해시": canonical},
+    )
+
+    assert (
+        cli.main(
+            [
+                "compare",
+                str(baseline),
+                str(candidate),
+                "--scenarios",
+                str(ROOT / DEFAULT_SCENARIOS),
+            ]
+        )
+        == 1
+    )
+    assert "--scenarios <파일>" in capsys.readouterr().err
+    # 안내대로 실제 원본을 주면 drift 우회·유료 재채점 없이 두 배치가 다시 비교된다.
+    assert (
+        cli.main(
+            [
+                "compare",
+                str(baseline),
+                str(candidate),
+                "--scenarios",
+                str(path),
+            ]
+        )
+        == 0
+    )
 
 
 def test_재채점_실패는_이전_채점값을_남기지_않는다(monkeypatch, tmp_path):
@@ -979,6 +1254,18 @@ def test_시나리오_해시는_내용이_바뀌면_달라진다(tmp_path):
     before = scenario_digest(path)
     path.write_text('{"version": 1, "시나리오": [] }', encoding="utf-8")
     assert scenario_digest(path) != before
+
+
+def test_시나리오_해시는_lf와_crlf가_같다(tmp_path):
+    from pingpong_eval.cli import scenario_digest
+
+    lf = tmp_path / "lf.json"
+    crlf = tmp_path / "crlf.json"
+    text = '{\n  "version": 1,\n  "시나리오": []\n}\n'
+    lf.write_bytes(text.encode("utf-8"))
+    crlf.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+
+    assert scenario_digest(lf) == scenario_digest(crlf)
 
 
 def test_채점_지시문은_모든_위반_축을_열거한다(scenarios):

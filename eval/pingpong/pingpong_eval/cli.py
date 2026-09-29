@@ -33,6 +33,10 @@ from .sut import PingpongError, SlotFillHttpAdapter
 from .user_sim import UserSimulator
 
 DEFAULT_SCENARIOS = Path("scenarios/handwritten-30.json")
+_SCENARIO_HASH_HELP = (
+    "같은 내용의 LF/CRLF 줄바꿈 판이라면 --scenarios <파일>로 "
+    "실행 당시 시나리오 파일을 먼저 지정한다. "
+)
 
 
 def load_scenarios(path: Path) -> ScenarioFile:
@@ -44,10 +48,55 @@ def scenario_digest(path: Path) -> str:
 
     run과 judge를 나눠 두면 그 사이에 시나리오 파일이 바뀔 수 있다. 그러면 옛 대화를 새 정답으로
     조용히 채점하게 되고, 수치는 멀쩡해 보이지만 비교할 수 없는 값이 된다. 그래서 실행 때 찍고
-    채점 때 대조한다.
+    채점 때 대조한다. 체크아웃 OS에 따른 CRLF/LF 차이는 내용 변경이 아니므로 universal newline로
+    읽은 UTF-8 bytes를 해시한다.
     """
 
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    return _digest(path.read_text(encoding="utf-8").encode("utf-8"))
+
+
+def _digest(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()[:16]
+
+
+def _scenario_digest_variants(path: Path) -> set[str]:
+    """정규화 계약 전 run의 LF/CRLF raw 해시를 같은 내용으로 받아들인다."""
+
+    normalized = path.read_text(encoding="utf-8").encode("utf-8")
+    return {
+        _digest(normalized),
+        _digest(normalized.replace(b"\n", b"\r\n")),
+    }
+
+
+def _scenario_digests_match(first: str | None, second: str | None, path: Path) -> bool:
+    if not first or not second:
+        return False
+    if first == second:
+        return True
+    try:
+        variants = _scenario_digest_variants(path)
+    except OSError:
+        # compare는 같은 해시라면 파일 없이도 가능하다. 파일을 읽을 수 없으면
+        # 서로 다른 해시의 legacy 동치를 증명할 수 없으므로 불일치로만 다룬다.
+        return False
+    return first in variants and second in variants
+
+
+def _judge_batches_match(
+    first: tuple[str, str, str], second: tuple[str, str, str], path: Path
+) -> bool:
+    """모델·계약이 같을 때만 LF/CRLF legacy digest 호환을 적용한다."""
+
+    if first == second:
+        return True
+    first_model, first_digest, first_contract = first
+    second_model, second_digest, second_contract = second
+    return (
+        first_model == second_model
+        and first_contract == second_contract
+        and _scenario_digests_match(first_digest, second_digest, path)
+    )
 
 
 def _load_results(path: Path) -> list[ScenarioResult]:
@@ -108,7 +157,11 @@ def cmd_judge(args: argparse.Namespace) -> int:
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     recorded = meta.get("시나리오해시")
     current = scenario_digest(args.scenarios)
-    if recorded and recorded != current and not args.allow_scenario_drift:
+    if (
+        recorded
+        and not _scenario_digests_match(recorded, current, args.scenarios)
+        and not args.allow_scenario_drift
+    ):
         print(
             f"시나리오 파일이 실행 당시와 다르다(기록 {recorded} · 지금 {current}). "
             "옛 대화를 새 정답으로 채점하면 비교할 수 없는 수치가 된다. "
@@ -118,6 +171,15 @@ def cmd_judge(args: argparse.Namespace) -> int:
         return 1
     scenarios = {s.id: s for s in load_scenarios(args.scenarios).scenarios}
     results = _load_results(path)
+    compatible_digests = _scenario_digest_variants(args.scenarios)
+    for result in results:
+        if (
+            result.judge_batch is not None
+            and result.judge_batch.scenario_digest in compatible_digests
+        ):
+            # 이관은 현재 내용의 LF/CRLF 줄바꿈 변형에 한정한다. 선택 밖 결과도
+            # 해시만 정규화하며, 모델·채점 계약이 다른 점수는 여전히 별도 배치다.
+            result.judge_batch.scenario_digest = current
 
     picked = results
     if args.difficulty:
@@ -377,11 +439,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     input_mismatches = []
     baseline_digest = baseline_meta.get("시나리오해시")
     candidate_digest = candidate_meta.get("시나리오해시")
-    if (
-        not baseline_digest
-        or not candidate_digest
-        or baseline_digest != candidate_digest
-    ):
+    if not _scenario_digests_match(baseline_digest, candidate_digest, args.scenarios):
         input_mismatches.append("시나리오 파일 해시")
     if [r.scenario_id for r in baseline_results] != [
         r.scenario_id for r in candidate_results
@@ -397,9 +455,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
         ):
             input_mismatches.append(key)
     if input_mismatches and not args.allow_scenario_drift:
+        scenario_hint = (
+            _SCENARIO_HASH_HELP if "시나리오 파일 해시" in input_mismatches else ""
+        )
         print(
             f"A/B 입력 조건이 다르거나 기록되지 않았다: {', '.join(input_mismatches)}. "
-            "알고 비교하려면 --allow-scenario-drift 를 쓴다.",
+            f"{scenario_hint}조건 차이를 알고 비교하려면 --allow-scenario-drift 를 쓴다.",
             file=sys.stderr,
         )
         return 1
@@ -414,12 +475,22 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if (
         baseline_batch is not None
         and candidate_batch is not None
-        and baseline_batch != candidate_batch
+        and not _judge_batches_match(baseline_batch, candidate_batch, args.scenarios)
     ):
+        scenario_hint = (
+            _SCENARIO_HASH_HELP
+            if (
+                baseline_batch[0] == candidate_batch[0]
+                and baseline_batch[2] == candidate_batch[2]
+                and baseline_batch[1] != candidate_batch[1]
+            )
+            else ""
+        )
         print(
             "평가자 모델·채점 시나리오·채점 계약 배치가 다르다 — goal·환각·선택 강요를 "
             f"A/B로 묶을 수 없다(기준 {baseline_batch} / 후보 {candidate_batch}). "
-            "같은 배치로 다시 채점한다. 모델과 해시가 같은데 걸린다면 채점 계약이 다른 "
+            f"{scenario_hint}배치 차이가 남으면 같은 배치로 다시 채점한다. "
+            "모델과 해시가 같은데 걸린다면 채점 계약이 다른 "
             "것이고, 그 필드가 생기기 전의 실행은 값이 비어 있어 재채점 없이는 못 맞댄다.",
             file=sys.stderr,
         )
@@ -552,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
     compare = sub.add_parser("compare", help="#316 완료 지표로 두 실행을 A/B 비교한다")
     compare.add_argument("baseline", help="기준 runs/<타임스탬프>")
     compare.add_argument("candidate", help="후보 runs/<타임스탬프>")
+    compare.add_argument("--scenarios", type=Path, default=DEFAULT_SCENARIOS)
     compare.add_argument("--baseline-name", default="기존 자유 발화")
     compare.add_argument("--candidate-name", default="#316 질문 계획")
     compare.add_argument("--out", help="Markdown 출력 경로")
